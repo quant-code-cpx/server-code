@@ -1,0 +1,50 @@
+import { Module } from '@nestjs/common'
+import { ConfigModule } from '@nestjs/config'
+import { APP_GUARD } from '@nestjs/core'
+import { seconds, ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler'
+import configs from './config'
+import { SharedModule } from './shared/shared.module'
+import { AuthModule } from './apps/auth/auth.module'
+import { UserModule } from './apps/user/user.module'
+import { QueueModule } from './queue/queue.module'
+import { WebsocketModule } from './websocket/websocket.module'
+import { JwtAuthGuard } from './lifecycle/guard/jwt-auth.guard'
+
+@Module({
+  imports: [
+    // ── 环境配置（全局） ──
+    ConfigModule.forRoot({
+      envFilePath: ['.env'],
+      isGlobal: true,
+      load: [...Object.values(configs)],
+    }),
+
+    // ── 限流（全局） ──
+    ThrottlerModule.forRootAsync({
+      useFactory: () => ({
+        errorMessage: '操作过于频繁，请稍后再试！',
+        throttlers: [{ ttl: seconds(10), limit: 20 }],
+      }),
+    }),
+
+    // ── 核心共享模块（Prisma、Redis、Logger、Token） ──
+    SharedModule,
+
+    // ── 功能模块 ──
+    AuthModule,
+    UserModule,
+
+    // ── 队列模块（BullMQ 回测任务） ──
+    QueueModule,
+
+    // ── WebSocket 实时推送 ──
+    WebsocketModule,
+  ],
+  controllers: [],
+  providers: [
+    // 全局守卫：JWT 鉴权 → 限流
+    { provide: APP_GUARD, useClass: JwtAuthGuard },
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
+  ],
+})
+export class AppModule {}

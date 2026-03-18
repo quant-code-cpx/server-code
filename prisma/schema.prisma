@@ -1,0 +1,33 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────
+// User
+// ─────────────────────────────────────────────
+
+enum UserStatus {
+  ACTIVE      // 正常
+  DEACTIVATED // 禁用
+  DELETED     // 已注销
+}
+
+model User {
+  id        Int        @id @default(autoincrement())
+  account   String     @unique @db.VarChar(64)   // 登录账号
+  password  String     @db.VarChar(255)           // 密码（bcrypt 加密）
+  nickname  String     @db.VarChar(64)            // 昵称
+  status    UserStatus @default(ACTIVE)           // 账号状态
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  @@map("users")
+}

@@ -6,9 +6,13 @@ import configs from './config'
 import { SharedModule } from './shared/shared.module'
 import { AuthModule } from './apps/auth/auth.module'
 import { UserModule } from './apps/user/user.module'
+import { StockModule } from './apps/stock/stock.module'
+import { MarketModule } from './apps/market/market.module'
+import { HeatmapModule } from './apps/heatmap/heatmap.module'
 import { QueueModule } from './queue/queue.module'
 import { WebsocketModule } from './websocket/websocket.module'
 import { JwtAuthGuard } from './lifecycle/guard/jwt-auth.guard'
+import { TushareModule } from './tushare/tushare.module'
 
 @Module({
   imports: [
@@ -30,9 +34,15 @@ import { JwtAuthGuard } from './lifecycle/guard/jwt-auth.guard'
     // ── 核心共享模块（Prisma、Redis、Logger、Token） ──
     SharedModule,
 
+    // ── Tushare 数据模块（API 封装 + 启动时数据新鲜度检测） ──
+    TushareModule,
+
     // ── 功能模块 ──
     AuthModule,
     UserModule,
+    StockModule,
+    MarketModule,
+    HeatmapModule,
 
     // ── 队列模块（BullMQ 回测任务） ──
     QueueModule,

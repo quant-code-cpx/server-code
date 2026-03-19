@@ -3,12 +3,14 @@ import { AppModule } from './app.module'
 import { ConfigService } from '@nestjs/config'
 import { ValidationPipe } from '@nestjs/common'
 import helmet from 'helmet'
+import cookieParser from 'cookie-parser'
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger'
 import { IAppConfig, APP_CONFIG_TOKEN } from './config/app.config'
 import { LoggerService } from './shared/logger/logger.service'
 import { TransformInterceptor } from './lifecycle/interceptors/transform.interceptor'
 import { LoggingInterceptor } from './lifecycle/interceptors/logging.interceptor'
 import { GlobalExceptionsFilter } from './lifecycle/filters/global.exception'
+import { REFRESH_TOKEN_COOKIE } from './constant/auth.constant'
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { bufferLogs: true })
@@ -25,6 +27,9 @@ async function bootstrap() {
     origin: isDev ? true : process.env.CORS_ORIGIN || false,
     credentials: true,
   })
+
+  // ── Cookie 解析（用于读取 HttpOnly Refresh Token Cookie） ──
+  app.use(cookieParser())
 
   // ── 前缀 ──
   app.setGlobalPrefix(globalPrefix)
@@ -58,6 +63,7 @@ async function bootstrap() {
       .setDescription('量化交易后端接口文档')
       .setVersion('1.0')
       .addBearerAuth()
+      .addCookieAuth(REFRESH_TOKEN_COOKIE)
       .build()
     const document = SwaggerModule.createDocument(app, swaggerConfig)
     SwaggerModule.setup('docs', app, document)

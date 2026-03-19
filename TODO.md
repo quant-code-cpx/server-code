@@ -21,23 +21,25 @@
 ## 二、Tushare 数据模块 (`src/tushare/`)
 
 - [x] `TushareService` — 封装 Tushare Pro HTTP 接口基础调用
-- [x] `TushareSyncService` — 应用启动时检测数据新鲜度（入口已创建）
-- [ ] 补充 `checkDataFreshness()` 各子检测方法：
-  - [ ] `checkStockBasicFreshness()` — 检查股票基础信息是否最新（对比上市日期 / 数量变化）
-  - [ ] `checkTradingCalendarFreshness()` — 检查交易日历是否覆盖到今天
-  - [ ] `checkDailyFreshness()` — 检查日线行情最新日期是否等于最近交易日
-  - [ ] `checkMoneyFlowFreshness()` — 检查资金流向数据是否最新
-- [ ] 实现各 Tushare 接口封装方法（建议按接口分文件，放在 `src/tushare/apis/` 下）：
-  - [ ] `stock_basic` — 股票基础信息列表
-  - [ ] `trade_cal` — 交易日历
-  - [ ] `daily` — 日线行情（OHLCV）
-  - [ ] `daily_basic` — 每日基本面指标（PE / PB / 换手率 / 市值等）
-  - [ ] `moneyflow` — 个股资金流向
-  - [ ] `moneyflow_hsgt` — 沪深港通资金流向
-  - [ ] `index_daily` — 指数日线行情
-  - [ ] `stk_factor` — 技术因子（MACD / RSI / KDJ 等）
-  - [ ] `concept` — 概念板块列表
-  - [ ] `concept_detail` — 概念板块成分股
+- [x] `TushareSyncService` — 应用启动时检测数据新鲜度 + 交易日 18:30 定时同步
+- [x] 补充 `checkDataFreshness()` 各子检测方法：
+  - [x] `checkStockBasicFreshness()` — 检查股票基础信息是否最新（按日刷新）
+  - [x] `checkTradingCalendarFreshness()` — 检查交易日历是否覆盖到今天及未来一年
+  - [x] `checkDailyFreshness()` — 检查日/周/月线、复权因子、每日指标最新日期是否等于最近已完成交易日
+  - [x] `checkMoneyFlowFreshness()` — 检查东财个股/行业/板块/大盘资金流向是否最新
+  - [x] `checkExpressFreshness()` — 检查业绩快报公告日期是否需要补数
+- [x] 实现各 Tushare 接口封装方法（放在 `src/tushare/` 内统一封装）：
+  - [x] `stock_basic` — 股票基础信息列表
+  - [x] `stock_company` — 上市公司基础信息
+  - [x] `trade_cal` — 交易日历
+  - [x] `daily` / `weekly` / `monthly` — 历史全量日周月线行情（OHLCV）
+  - [x] `adj_factor` — 复权因子
+  - [x] `daily_basic` — 每日基本面指标（PE / PB / 换手率 / 市值等）
+  - [x] `moneyflow_dc` — 东财个股资金流向
+  - [x] `moneyflow_ind_dc` — 东财行业 / 概念 / 地域板块资金流向
+  - [x] `moneyflow_mkt_dc` — 东财大盘资金流向
+  - [x] `express` — 业绩快报
+  - [x] 额外补充 `trade_cal` 作为交易日判断与补数基准数据
 
 ---
 
@@ -65,9 +67,9 @@
 
 - [x] 股票列表接口（按交易所 / 状态 / 行业筛选，骨架）
 - [x] 股票详情接口（骨架）
-- [ ] Prisma Schema 添加 `Stock` 模型（ts_code / name / industry / area / list_date 等）
-- [ ] `StockService.findAll()` — 分页 + 多条件筛选，从数据库查询
-- [ ] `StockService.findOne()` — 返回基础信息 + 最新日线行情
+- [x] Prisma Schema 添加 `StockBasic` / `StockCompany` 等 Tushare 数据模型
+- [x] `StockService.findAll()` — 多条件筛选，从数据库查询
+- [x] `StockService.findOne()` — 返回基础信息 + 公司信息 + 最新行情 / 指标 / 复权因子
 - [ ] 股票搜索接口（按代码 / 名称模糊匹配）
 - [ ] 股票行情历史接口（日线 OHLCV + 成交额，支持日期范围）
 - [ ] 股票基本面指标接口（PE / PB / 换手率 / 市值）
@@ -79,10 +81,9 @@
 
 - [x] 大盘资金流向接口（骨架）
 - [x] 行业板块涨跌及资金流向接口（骨架）
-- [ ] Prisma Schema 添加 `MarketMoneyFlow` 模型（来自 `moneyflow_hsgt`）
-- [ ] Prisma Schema 添加 `SectorFlow` 模型（行业涨跌 + 净流入）
-- [ ] `MarketService.getMarketMoneyFlow()` — 大盘净流入 / 流出趋势
-- [ ] `MarketService.getSectorFlow()` — 行业板块涨跌幅排名 + 净流入 Top N
+- [x] Prisma Schema 添加东财资金流向模型（`moneyflow_dc` / `moneyflow_ind_dc` / `moneyflow_mkt_dc`）
+- [x] `MarketService.getMarketMoneyFlow()` — 返回指定日期或最新交易日的大盘资金流向
+- [x] `MarketService.getSectorFlow()` — 返回行业 / 概念 / 地域板块资金流向
 - [ ] 沪深港通（北向 / 南向）资金接口
 - [ ] 龙虎榜数据接口（top_list / top_inst）
 - [ ] 大宗交易数据接口（block_trade）

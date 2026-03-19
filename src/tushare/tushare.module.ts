@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common'
 import { TushareService } from './tushare.service'
+import { TushareApiService } from './tushare-api.service'
 import { TushareSyncService } from './tushare-sync.service'
 
 /**
@@ -9,7 +10,7 @@ import { TushareSyncService } from './tushare-sync.service'
  * TushareSyncService 在应用启动时自动执行数据新鲜度检测。
  */
 @Module({
-  providers: [TushareService, TushareSyncService],
-  exports: [TushareService],
+  providers: [TushareService, TushareApiService, TushareSyncService],
+  exports: [TushareService, TushareApiService],
 })
 export class TushareModule {}

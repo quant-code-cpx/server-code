@@ -1,6 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -15,31 +12,376 @@ datasource db {
 // ─────────────────────────────────────────────
 
 enum UserStatus {
-  ACTIVE      // 正常
+  ACTIVE // 正常
   DEACTIVATED // 禁用
-  DELETED     // 已注销
+  DELETED // 已注销
 }
 
 enum UserRole {
   SUPER_ADMIN // 超级管理员（顶级权限，有且仅有一个）
-  ADMIN       // 管理员
-  USER        // 普通用户
+  ADMIN // 管理员
+  USER // 普通用户
 }
 
 model User {
   id             Int        @id @default(autoincrement())
-  account        String     @unique @db.VarChar(64)  // 登录账号
-  password       String     @db.VarChar(255)          // 密码（bcrypt 加密）
-  nickname       String     @db.VarChar(64)           // 昵称
-  role           UserRole   @default(USER)            // 用户角色
-  status         UserStatus @default(ACTIVE)          // 账号状态
-  email          String?    @db.VarChar(128)          // 邮箱（可选）
-  wechat         String?    @db.VarChar(64)           // 微信号（可选）
-  lastLoginAt    DateTime?                            // 最后登录时间
-  backtestQuota  Int        @default(3)               // 回测任务数量限制（仅管理员以上可修改）
-  watchlistLimit Int        @default(10)              // 监控股票数量限制（管理员以上不受限制）
+  account        String     @unique @db.VarChar(64) // 登录账号
+  password       String     @db.VarChar(255) // 密码（bcrypt 加密）
+  nickname       String     @db.VarChar(64) // 昵称
+  role           UserRole   @default(USER) // 用户角色
+  status         UserStatus @default(ACTIVE) // 账号状态
+  email          String?    @db.VarChar(128) // 邮箱（可选）
+  wechat         String?    @db.VarChar(64) // 微信号（可选）
+  lastLoginAt    DateTime? // 最后登录时间
+  backtestQuota  Int        @default(3) // 回测任务数量限制（仅管理员以上可修改）
+  watchlistLimit Int        @default(10) // 监控股票数量限制（管理员以上不受限制）
   createdAt      DateTime   @default(now())
   updatedAt      DateTime   @updatedAt
 
   @@map("users")
+}
+
+// ─────────────────────────────────────────────
+// Tushare 数据枚举
+// ─────────────────────────────────────────────
+
+enum StockExchange {
+  SSE
+  SZSE
+  BSE
+  HKEX
+}
+
+enum StockListStatus {
+  L // 上市
+  D // 退市
+  P // 暂停上市
+}
+
+enum MoneyflowContentType {
+  INDUSTRY @map("行业")
+  CONCEPT  @map("概念")
+  REGION   @map("地域")
+}
+
+enum TushareSyncTask {
+  STOCK_BASIC
+  STOCK_COMPANY
+  TRADE_CAL
+  DAILY
+  WEEKLY
+  MONTHLY
+  ADJ_FACTOR
+  DAILY_BASIC
+  MONEYFLOW_DC
+  MONEYFLOW_IND_DC
+  MONEYFLOW_MKT_DC
+  EXPRESS
+}
+
+enum TushareSyncStatus {
+  SUCCESS
+  FAILED
+  SKIPPED
+}
+
+// ─────────────────────────────────────────────
+// Tushare - 基础数据
+// ─────────────────────────────────────────────
+
+model StockBasic {
+  tsCode     String           @id @map("ts_code") @db.VarChar(16) // TS 股票代码
+  symbol     String?          @db.VarChar(16) // 股票代码
+  name       String?          @db.VarChar(64) // 股票名称
+  area       String?          @db.VarChar(64) // 地域
+  industry   String?          @db.VarChar(64) // 所属行业
+  fullname   String?          @db.VarChar(128) // 股票全称
+  enname     String?          @db.VarChar(128) // 英文全称
+  cnspell    String?          @db.VarChar(64) // 拼音缩写
+  market     String?          @db.VarChar(32) // 市场类别
+  exchange   StockExchange? // 交易所
+  currType   String?          @map("curr_type") @db.VarChar(16) // 交易货币
+  listStatus StockListStatus? @map("list_status") // 上市状态
+  listDate   DateTime?        @map("list_date") @db.Date // 上市日期
+  delistDate DateTime?        @map("delist_date") @db.Date // 退市日期
+  isHs       String?          @map("is_hs") @db.VarChar(4) // 是否沪深港通标的
+  actName    String?          @map("act_name") @db.VarChar(128) // 实控人名称
+  actEntType String?          @map("act_ent_type") @db.VarChar(64) // 实控人企业性质
+  syncedAt   DateTime         @default(now()) @map("synced_at")
+
+  @@index([symbol])
+  @@index([name])
+  @@index([exchange])
+  @@index([industry])
+  @@index([listStatus])
+  @@map("stock_basic")
+}
+
+model StockCompany {
+  tsCode        String         @id @map("ts_code") @db.VarChar(16) // TS 股票代码
+  comName       String?        @map("com_name") @db.VarChar(128) // 公司全称
+  comId         String?        @map("com_id") @db.VarChar(64) // 统一社会信用代码
+  chairman      String?        @db.VarChar(64) // 法人代表
+  manager       String?        @db.VarChar(64) // 总经理
+  secretary     String?        @db.VarChar(64) // 董秘
+  regCapital    Float?         @map("reg_capital") // 注册资本
+  setupDate     DateTime?      @map("setup_date") @db.Date // 注册日期
+  province      String?        @db.VarChar(64) // 所在省份
+  city          String?        @db.VarChar(64) // 所在城市
+  introduction  String? // 公司介绍
+  website       String?        @db.VarChar(255) // 公司主页
+  email         String?        @db.VarChar(128) // 电子邮件
+  office        String? // 办公地址
+  annDate       DateTime?      @map("ann_date") @db.Date // 公告日期
+  businessScope String?        @map("business_scope") // 经营范围
+  employees     Int? // 员工人数
+  mainBusiness  String?        @map("main_business") // 主要业务及产品
+  exchange      StockExchange? // 交易所
+  syncedAt      DateTime       @default(now()) @map("synced_at")
+
+  @@index([exchange])
+  @@index([annDate])
+  @@map("stock_company")
+}
+
+model TradeCal {
+  exchange     StockExchange // 交易所
+  calDate      DateTime      @map("cal_date") @db.Date // 日历日期
+  isOpen       String?       @map("is_open") @db.Char(1) // 是否交易 0/1
+  pretradeDate DateTime?     @map("pretrade_date") @db.Date // 上一个交易日
+  syncedAt     DateTime      @default(now()) @map("synced_at")
+
+  @@id([exchange, calDate])
+  @@index([calDate, isOpen])
+  @@map("trade_cal")
+}
+
+// ─────────────────────────────────────────────
+// Tushare - 行情 / 指标 / 资金流
+// ─────────────────────────────────────────────
+
+model Daily {
+  tsCode    String   @map("ts_code") @db.VarChar(16) // 股票代码
+  tradeDate DateTime @map("trade_date") @db.Date // 交易日期
+  open      Float? // 开盘价
+  high      Float? // 最高价
+  low       Float? // 最低价
+  close     Float? // 收盘价
+  preClose  Float?   @map("pre_close") // 昨收价
+  change    Float? // 涨跌额
+  pctChg    Float?   @map("pct_chg") // 涨跌幅
+  vol       Float? // 成交量（手）
+  amount    Float? // 成交额（千元）
+  syncedAt  DateTime @default(now()) @map("synced_at")
+
+  @@id([tsCode, tradeDate])
+  @@index([tradeDate])
+  @@map("daily")
+}
+
+model Weekly {
+  tsCode    String   @map("ts_code") @db.VarChar(16) // 股票代码
+  tradeDate DateTime @map("trade_date") @db.Date // 周线对应交易日
+  close     Float? // 收盘价
+  open      Float? // 开盘价
+  high      Float? // 最高价
+  low       Float? // 最低价
+  preClose  Float?   @map("pre_close") // 前一周期收盘价
+  change    Float? // 涨跌额
+  pctChg    Float?   @map("pct_chg") // 涨跌幅
+  vol       Float? // 成交量（手）
+  amount    Float? // 成交额（千元）
+  syncedAt  DateTime @default(now()) @map("synced_at")
+
+  @@id([tsCode, tradeDate])
+  @@index([tradeDate])
+  @@map("weekly")
+}
+
+model Monthly {
+  tsCode    String   @map("ts_code") @db.VarChar(16) // 股票代码
+  tradeDate DateTime @map("trade_date") @db.Date // 月线对应交易日
+  close     Float? // 收盘价
+  open      Float? // 开盘价
+  high      Float? // 最高价
+  low       Float? // 最低价
+  preClose  Float?   @map("pre_close") // 前一周期收盘价
+  change    Float? // 涨跌额
+  pctChg    Float?   @map("pct_chg") // 涨跌幅
+  vol       Float? // 成交量（手）
+  amount    Float? // 成交额（千元）
+  syncedAt  DateTime @default(now()) @map("synced_at")
+
+  @@id([tsCode, tradeDate])
+  @@index([tradeDate])
+  @@map("monthly")
+}
+
+model AdjFactor {
+  tsCode    String   @map("ts_code") @db.VarChar(16) // 股票代码
+  tradeDate DateTime @map("trade_date") @db.Date // 交易日期
+  adjFactor Float?   @map("adj_factor") // 复权因子
+  syncedAt  DateTime @default(now()) @map("synced_at")
+
+  @@id([tsCode, tradeDate])
+  @@index([tradeDate])
+  @@map("adj_factor")
+}
+
+model DailyBasic {
+  tsCode        String   @map("ts_code") @db.VarChar(16) // TS 股票代码
+  tradeDate     DateTime @map("trade_date") @db.Date // 交易日期
+  close         Float? // 当日收盘价
+  turnoverRate  Float?   @map("turnover_rate") // 换手率
+  turnoverRateF Float?   @map("turnover_rate_f") // 换手率（自由流通股）
+  volumeRatio   Float?   @map("volume_ratio") // 量比
+  pe            Float? // 市盈率
+  peTtm         Float?   @map("pe_ttm") // 市盈率 TTM
+  pb            Float? // 市净率
+  ps            Float? // 市销率
+  psTtm         Float?   @map("ps_ttm") // 市销率 TTM
+  dvRatio       Float?   @map("dv_ratio") // 股息率
+  dvTtm         Float?   @map("dv_ttm") // 股息率 TTM
+  totalShare    Float?   @map("total_share") // 总股本
+  floatShare    Float?   @map("float_share") // 流通股本
+  freeShare     Float?   @map("free_share") // 自由流通股本
+  totalMv       Float?   @map("total_mv") // 总市值
+  circMv        Float?   @map("circ_mv") // 流通市值
+  limitStatus   Int?     @map("limit_status") // 涨跌停状态
+  syncedAt      DateTime @default(now()) @map("synced_at")
+
+  @@id([tsCode, tradeDate])
+  @@index([tradeDate])
+  @@map("daily_basic")
+}
+
+model MoneyflowDc {
+  tsCode           String   @map("ts_code") @db.VarChar(16) // 股票代码
+  tradeDate        DateTime @map("trade_date") @db.Date // 交易日期
+  name             String?  @db.VarChar(64) // 股票名称
+  pctChange        Float?   @map("pct_change") // 涨跌幅
+  close            Float? // 最新价
+  netAmount        Float?   @map("net_amount") // 今日主力净流入额
+  netAmountRate    Float?   @map("net_amount_rate") // 今日主力净流入净占比
+  buyElgAmount     Float?   @map("buy_elg_amount") // 超大单净流入额
+  buyElgAmountRate Float?   @map("buy_elg_amount_rate") // 超大单净流入占比
+  buyLgAmount      Float?   @map("buy_lg_amount") // 大单净流入额
+  buyLgAmountRate  Float?   @map("buy_lg_amount_rate") // 大单净流入占比
+  buyMdAmount      Float?   @map("buy_md_amount") // 中单净流入额
+  buyMdAmountRate  Float?   @map("buy_md_amount_rate") // 中单净流入占比
+  buySmAmount      Float?   @map("buy_sm_amount") // 小单净流入额
+  buySmAmountRate  Float?   @map("buy_sm_amount_rate") // 小单净流入占比
+  syncedAt         DateTime @default(now()) @map("synced_at")
+
+  @@id([tsCode, tradeDate])
+  @@index([tradeDate])
+  @@map("moneyflow_dc")
+}
+
+model MoneyflowIndDc {
+  tsCode           String               @map("ts_code") @db.VarChar(32) // 板块代码
+  tradeDate        DateTime             @map("trade_date") @db.Date // 交易日期
+  contentType      MoneyflowContentType @map("content_type") // 板块类型
+  name             String?              @db.VarChar(128) // 板块名称
+  pctChange        Float?               @map("pct_change") // 涨跌幅
+  close            Float? // 最新价
+  netAmount        Float?               @map("net_amount") // 主力净流入额
+  netAmountRate    Float?               @map("net_amount_rate") // 主力净流入占比
+  buyElgAmount     Float?               @map("buy_elg_amount") // 超大单净流入额
+  buyElgAmountRate Float?               @map("buy_elg_amount_rate") // 超大单净流入占比
+  buyLgAmount      Float?               @map("buy_lg_amount") // 大单净流入额
+  buyLgAmountRate  Float?               @map("buy_lg_amount_rate") // 大单净流入占比
+  buyMdAmount      Float?               @map("buy_md_amount") // 中单净流入额
+  buyMdAmountRate  Float?               @map("buy_md_amount_rate") // 中单净流入占比
+  buySmAmount      Float?               @map("buy_sm_amount") // 小单净流入额
+  buySmAmountRate  Float?               @map("buy_sm_amount_rate") // 小单净流入占比
+  buySmAmountStock String?              @map("buy_sm_amount_stock") @db.VarChar(64) // 主力净流入最大股
+  rank             Int? // 序号
+  syncedAt         DateTime             @default(now()) @map("synced_at")
+
+  @@id([tsCode, tradeDate, contentType])
+  @@index([tradeDate, contentType])
+  @@map("moneyflow_ind_dc")
+}
+
+model MoneyflowMktDc {
+  tradeDate        DateTime @id @map("trade_date") @db.Date // 交易日期
+  closeSh          Float?   @map("close_sh") // 上证收盘价
+  pctChangeSh      Float?   @map("pct_change_sh") // 上证涨跌幅
+  closeSz          Float?   @map("close_sz") // 深证收盘价
+  pctChangeSz      Float?   @map("pct_change_sz") // 深证涨跌幅
+  netAmount        Float?   @map("net_amount") // 主力净流入额
+  netAmountRate    Float?   @map("net_amount_rate") // 主力净流入占比
+  buyElgAmount     Float?   @map("buy_elg_amount") // 超大单净流入额
+  buyElgAmountRate Float?   @map("buy_elg_amount_rate") // 超大单净流入占比
+  buyLgAmount      Float?   @map("buy_lg_amount") // 大单净流入额
+  buyLgAmountRate  Float?   @map("buy_lg_amount_rate") // 大单净流入占比
+  buyMdAmount      Float?   @map("buy_md_amount") // 中单净流入额
+  buyMdAmountRate  Float?   @map("buy_md_amount_rate") // 中单净流入占比
+  buySmAmount      Float?   @map("buy_sm_amount") // 小单净流入额
+  buySmAmountRate  Float?   @map("buy_sm_amount_rate") // 小单净流入占比
+  syncedAt         DateTime @default(now()) @map("synced_at")
+
+  @@map("moneyflow_mkt_dc")
+}
+
+model Express {
+  tsCode                String    @map("ts_code") @db.VarChar(16) // TS 股票代码
+  annDate               DateTime  @map("ann_date") @db.Date // 公告日期
+  endDate               DateTime  @map("end_date") @db.Date // 报告期
+  revenue               Float? // 营业收入
+  operateProfit         Float?    @map("operate_profit") // 营业利润
+  totalProfit           Float?    @map("total_profit") // 利润总额
+  nIncome               Float?    @map("n_income") // 净利润
+  totalAssets           Float?    @map("total_assets") // 总资产
+  totalHldrEqyExcMinInt Float?    @map("total_hldr_eqy_exc_min_int") // 股东权益合计（不含少数股东权益）
+  dilutedEps            Float?    @map("diluted_eps") // 摊薄每股收益
+  dilutedRoe            Float?    @map("diluted_roe") // 摊薄净资产收益率
+  yoyNetProfit          Float?    @map("yoy_net_profit") // 去年同期修正后净利润
+  bps                   Float? // 每股净资产
+  yoySales              Float?    @map("yoy_sales") // 营业收入同比
+  yoyOp                 Float?    @map("yoy_op") // 营业利润同比
+  yoyTp                 Float?    @map("yoy_tp") // 利润总额同比
+  yoyDeduNp             Float?    @map("yoy_dedu_np") // 归母净利润同比
+  yoyEps                Float?    @map("yoy_eps") // 每股收益同比
+  yoyRoe                Float?    @map("yoy_roe") // 净资产收益率同比
+  growthAssets          Float?    @map("growth_assets") // 总资产较年初增长率
+  yoyEquity             Float?    @map("yoy_equity") // 股东权益较年初增长率
+  growthBps             Float?    @map("growth_bps") // 每股净资产较年初增长率
+  orLastYear            Float?    @map("or_last_year") // 去年同期营业收入
+  opLastYear            Float?    @map("op_last_year") // 去年同期营业利润
+  tpLastYear            Float?    @map("tp_last_year") // 去年同期利润总额
+  npLastYear            Float?    @map("np_last_year") // 去年同期净利润
+  epsLastYear           Float?    @map("eps_last_year") // 去年同期每股收益
+  openNetAssets         Float?    @map("open_net_assets") // 期初净资产
+  openBps               Float?    @map("open_bps") // 期初每股净资产
+  perfSummary           String?   @map("perf_summary") // 业绩简要说明
+  isAudit               Int?      @map("is_audit") // 是否审计
+  remark                String? // 备注
+  updateFlag            DateTime? @map("update_flag") @db.Date // 更新标志
+  syncedAt              DateTime  @default(now()) @map("synced_at")
+
+  @@id([tsCode, endDate, annDate])
+  @@index([annDate])
+  @@map("express")
+}
+
+// ─────────────────────────────────────────────
+// Tushare - 同步日志
+// ─────────────────────────────────────────────
+
+model TushareSyncLog {
+  id         Int               @id @default(autoincrement())
+  task       TushareSyncTask // 同步任务
+  status     TushareSyncStatus // 执行结果
+  tradeDate  DateTime?         @map("trade_date") @db.Date // 对应交易日（如有）
+  message    String? // 简要说明
+  payload    Json? // 附加信息（条数、时间范围、异常等）
+  startedAt  DateTime          @map("started_at") // 开始时间
+  finishedAt DateTime?         @map("finished_at") // 结束时间
+  createdAt  DateTime          @default(now()) @map("created_at")
+
+  @@index([task, status, startedAt(sort: Desc)])
+  @@index([tradeDate])
+  @@map("tushare_sync_logs")
 }

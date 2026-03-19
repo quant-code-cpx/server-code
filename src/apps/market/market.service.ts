@@ -1,25 +1,73 @@
 import { Injectable } from '@nestjs/common'
+import { MoneyflowContentType } from '@prisma/client'
+import { PrismaService } from 'src/shared/prisma.service'
 import { MoneyFlowQueryDto } from './dto/money-flow-query.dto'
 
 /**
  * MarketService
  *
- * 市场与行业涨跌、资金流入流出分析服务。
- * 数据来源：本地数据库（由 TushareSyncService 同步自 Tushare）。
- *
- * 待实现：
- *  - getMarketMoneyFlow()  大盘整体资金流向
- *  - getSectorFlow()       行业板块涨跌及净流入排名
+ * 当前先基于同步入库的东财资金流向表提供查询，
+ * 对外返回“最新交易日”或指定日期的市场 / 行业 / 概念 / 地域资金流向。
  */
 @Injectable()
 export class MarketService {
-  getMarketMoneyFlow(_query: MoneyFlowQueryDto) {
-    // TODO: 查询数据库，返回指定日期的大盘资金流向汇总
-    return []
+  constructor(private readonly prisma: PrismaService) {}
+
+  async getMarketMoneyFlow(query: MoneyFlowQueryDto) {
+    const tradeDate = query.trade_date ? this.parseDate(query.trade_date) : await this.resolveLatestMarketTradeDate()
+    if (!tradeDate) {
+      return []
+    }
+
+    return this.prisma.moneyflowMktDc.findMany({
+      where: { tradeDate },
+      orderBy: { tradeDate: 'desc' },
+    })
   }
 
-  getSectorFlow(_query: MoneyFlowQueryDto) {
-    // TODO: 查询数据库，返回行业板块的涨跌幅 + 净流入排名
-    return []
+  async getSectorFlow(query: MoneyFlowQueryDto) {
+    const tradeDate = query.trade_date ? this.parseDate(query.trade_date) : await this.resolveLatestSectorTradeDate()
+    if (!tradeDate) {
+      return {
+        tradeDate: null,
+        industry: [],
+        concept: [],
+        region: [],
+      }
+    }
+
+    const rows = await this.prisma.moneyflowIndDc.findMany({
+      where: { tradeDate },
+      orderBy: [{ contentType: 'asc' }, { rank: 'asc' }, { netAmount: 'desc' }],
+    })
+
+    return {
+      tradeDate,
+      industry: rows.filter((item) => item.contentType === MoneyflowContentType.INDUSTRY),
+      concept: rows.filter((item) => item.contentType === MoneyflowContentType.CONCEPT),
+      region: rows.filter((item) => item.contentType === MoneyflowContentType.REGION),
+    }
+  }
+
+  private async resolveLatestMarketTradeDate() {
+    const record = await this.prisma.moneyflowMktDc.findFirst({
+      orderBy: { tradeDate: 'desc' },
+      select: { tradeDate: true },
+    })
+
+    return record?.tradeDate ?? null
+  }
+
+  private async resolveLatestSectorTradeDate() {
+    const record = await this.prisma.moneyflowIndDc.findFirst({
+      orderBy: { tradeDate: 'desc' },
+      select: { tradeDate: true },
+    })
+
+    return record?.tradeDate ?? null
+  }
+
+  private parseDate(value: string) {
+    return new Date(`${value.slice(0, 4)}-${value.slice(4, 6)}-${value.slice(6, 8)}T00:00:00+08:00`)
   }
 }

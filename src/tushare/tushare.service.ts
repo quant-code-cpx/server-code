@@ -45,7 +45,7 @@ export class TushareService {
   constructor(private readonly configService: ConfigService) {
     const cfg = this.configService.get<ITushareConfig>(TUSHARE_CONFIG_TOKEN, { infer: true })
     if (!cfg) {
-      throw new Error('TushareConfig is not registered. Ensure TushareConfig is loaded in ConfigModule.')
+      throw new Error(`Tushare config "${TUSHARE_CONFIG_TOKEN}" is not registered.`)
     }
     this.token = cfg.token
     this.baseUrl = cfg.baseUrl

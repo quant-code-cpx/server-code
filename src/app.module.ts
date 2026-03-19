@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common'
 import { ConfigModule } from '@nestjs/config'
 import { APP_GUARD } from '@nestjs/core'
+import { ScheduleModule } from '@nestjs/schedule'
 import { seconds, ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler'
 import configs from './config'
 import { SharedModule } from './shared/shared.module'
@@ -33,6 +34,9 @@ import { TushareModule } from './tushare/tushare.module'
 
     // ── 核心共享模块（Prisma、Redis、Logger、Token） ──
     SharedModule,
+
+    // ── 定时任务（Tushare 盘后同步等） ──
+    ScheduleModule.forRoot(),
 
     // ── Tushare 数据模块（API 封装 + 启动时数据新鲜度检测） ──
     TushareModule,

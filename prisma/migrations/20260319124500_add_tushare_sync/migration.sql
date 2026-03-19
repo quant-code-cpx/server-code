@@ -1,6 +1,3 @@
--- CreateSchema
-CREATE SCHEMA IF NOT EXISTS "public";
-
 -- CreateEnum
 CREATE TYPE "UserStatus" AS ENUM ('ACTIVE', 'DEACTIVATED', 'DELETED');
 
@@ -372,4 +369,3 @@ CREATE INDEX "tushare_sync_logs_task_status_started_at_idx" ON "tushare_sync_log
 
 -- CreateIndex
 CREATE INDEX "tushare_sync_logs_trade_date_idx" ON "tushare_sync_logs"("trade_date");
-

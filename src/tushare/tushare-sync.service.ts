@@ -1,10 +1,11 @@
 import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
-import { Cron } from '@nestjs/schedule'
+import { SchedulerRegistry } from '@nestjs/schedule'
 import dayjs from 'dayjs'
 import isoWeek from 'dayjs/plugin/isoWeek'
 import timezone from 'dayjs/plugin/timezone'
 import utc from 'dayjs/plugin/utc'
+import { CronJob } from 'cron'
 import {
   MoneyflowContentType as PrismaMoneyflowContentType,
   Prisma,
@@ -78,6 +79,7 @@ export class TushareSyncService implements OnApplicationBootstrap {
     private readonly tushareApiService: TushareApiService,
     private readonly prisma: PrismaService,
     private readonly configService: ConfigService,
+    private readonly schedulerRegistry: SchedulerRegistry,
   ) {
     const cfg = this.configService.get<ITushareConfig>(TUSHARE_CONFIG_TOKEN, { infer: true })
     if (!cfg) {
@@ -96,19 +98,31 @@ export class TushareSyncService implements OnApplicationBootstrap {
       return
     }
 
+    this.registerDailySyncJob()
     await this.runPipeline('bootstrap')
   }
 
-  /** 每天 18:30 触发一次，再结合交易日历判断是否实际执行同步 */
-  @Cron(process.env.TUSHARE_SYNC_CRON || TUSHARE_SYNC_CRON, {
-    timeZone: process.env.TUSHARE_SYNC_TIME_ZONE || TUSHARE_SYNC_TIME_ZONE,
-  })
-  async handleDailySyncCron() {
-    if (!this.syncEnabled) {
+  /** 按配置动态注册 Cron，避免绕过 ConfigService。 */
+  private registerDailySyncJob() {
+    if (this.schedulerRegistry.doesExist('cron', 'tushare-daily-sync')) {
       return
     }
 
-    await this.runPipeline('schedule')
+    const cfg = this.configService.get<ITushareConfig>(TUSHARE_CONFIG_TOKEN, { infer: true })
+    const cronExpression = cfg?.syncCron || TUSHARE_SYNC_CRON
+    const cronTimeZone = cfg?.syncTimeZone || this.syncTimeZone
+    const job = CronJob.from({
+      cronTime: cronExpression,
+      timeZone: cronTimeZone,
+      onTick: () => {
+        void this.runPipeline('schedule')
+      },
+      start: false,
+    })
+
+    job.start()
+    this.schedulerRegistry.addCronJob('tushare-daily-sync', job)
+    this.logger.log(`已注册 Tushare 定时同步任务：${cronExpression} [${cronTimeZone}]`)
   }
 
   private async runPipeline(trigger: 'bootstrap' | 'schedule') {

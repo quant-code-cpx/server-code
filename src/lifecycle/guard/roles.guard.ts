@@ -3,7 +3,7 @@ import { Reflector } from '@nestjs/core'
 import { UserRole } from '@prisma/client'
 import { ROLES_KEY } from 'src/common/decorators/roles.decorator'
 import { ROLE_LEVEL } from 'src/constant/user.constant'
-import { TokenPayload } from 'src/shared/token.service'
+import { TokenPayload } from 'src/shared/token.interface'
 
 @Injectable()
 export class RolesGuard implements CanActivate {

@@ -6,19 +6,7 @@ import { nanoid } from 'nanoid'
 import { ITokenConfig, TOKEN_CONFIG_TOKEN } from 'src/config/token.config'
 import { REDIS_CLIENT } from './redis.provider'
 import { REDIS_KEY } from 'src/constant/auth.constant'
-
-import { UserRole } from '@prisma/client'
-
-export interface TokenPayload {
-  id: number
-  account: string
-  nickname: string
-  role: UserRole
-  /** JWT 唯一标识符，用于 Token 黑名单和 Refresh Token 绑定 */
-  jti: string
-  iat?: number
-  exp?: number
-}
+import { TokenPayload } from './token.interface'
 
 @Injectable()
 export class TokenService {

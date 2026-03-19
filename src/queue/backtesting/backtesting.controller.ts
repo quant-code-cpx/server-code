@@ -4,7 +4,7 @@ import { Request } from 'express'
 import { BacktestingService } from './backtesting.service'
 import { SubmitBacktestingDto } from './dto/submit-backtesting.dto'
 import { JobStatusDto } from './dto/job-status.dto'
-import { TokenPayload } from 'src/shared/token.service'
+import { TokenPayload } from 'src/shared/token.interface'
 
 @ApiTags('Backtesting - 回测任务')
 @Controller('backtesting')

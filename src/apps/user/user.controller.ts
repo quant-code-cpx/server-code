@@ -12,7 +12,7 @@ import { UserIdDto } from './dto/user-id.dto'
 import { CurrentUser } from 'src/common/decorators/current-user.decorator'
 import { Roles } from 'src/common/decorators/roles.decorator'
 import { RolesGuard } from 'src/lifecycle/guard/roles.guard'
-import { TokenPayload } from 'src/shared/token.service'
+import { TokenPayload } from 'src/shared/token.interface'
 
 @ApiBearerAuth()
 @ApiTags('User - 用户')

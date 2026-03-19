@@ -174,7 +174,7 @@ export class UserService implements OnApplicationBootstrap {
 
   // ── 修改用户状态（管理员以上，需高于目标用户角色）────────────────────────
 
-  async updateStatus(id: number, dto: UpdateUserStatusDto, operator: TokenPayload) {
+  async updateStatus(id: number, dto: Omit<UpdateUserStatusDto, 'id'>, operator: TokenPayload) {
     const target = await this.findOne(id)
     this.assertHigherRole(operator, target.role, id)
     if (id === operator.id) throw new BusinessException(ErrorEnum.CANNOT_DISABLE_SELF)
@@ -184,7 +184,7 @@ export class UserService implements OnApplicationBootstrap {
 
   // ── 管理员更新用户信息（配额等）──────────────────────────────────────────
 
-  async adminUpdateUser(id: number, dto: AdminUpdateUserDto, operator: TokenPayload) {
+  async adminUpdateUser(id: number, dto: Omit<AdminUpdateUserDto, 'id'>, operator: TokenPayload) {
     const target = await this.findOne(id)
     this.assertHigherRole(operator, target.role, id)
 

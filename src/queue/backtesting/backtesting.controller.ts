@@ -1,8 +1,9 @@
-import { Body, Controller, Get, Param, Post, Req } from '@nestjs/common'
+import { Body, Controller, Post, Req } from '@nestjs/common'
 import { ApiOperation, ApiTags } from '@nestjs/swagger'
 import { Request } from 'express'
 import { BacktestingService } from './backtesting.service'
 import { SubmitBacktestingDto } from './dto/submit-backtesting.dto'
+import { JobStatusDto } from './dto/job-status.dto'
 import { TokenPayload } from 'src/shared/token.service'
 
 @ApiTags('Backtesting - 回测任务')
@@ -16,9 +17,10 @@ export class BacktestingController {
     return this.backtestingService.submit(dto, req.user?.id ?? 0)
   }
 
-  @Get('status/:jobId')
+  @Post('status')
   @ApiOperation({ summary: '查询回测任务状态' })
-  async status(@Param('jobId') jobId: string) {
+  async status(@Body() { jobId }: JobStatusDto) {
     return this.backtestingService.getJobStatus(jobId)
   }
 }
+

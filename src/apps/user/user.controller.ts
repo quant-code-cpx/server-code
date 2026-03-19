@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Query, UseGuards } from '@nestjs/common'
+import { Body, Controller, Post, UseGuards } from '@nestjs/common'
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger'
 import { UserRole } from '@prisma/client'
 import { UserService } from './user.service'
@@ -8,6 +8,7 @@ import { ChangePasswordDto } from './dto/change-password.dto'
 import { UpdateUserStatusDto } from './dto/update-user-status.dto'
 import { UserListQueryDto } from './dto/user-list-query.dto'
 import { AdminUpdateUserDto } from './dto/admin-update-user.dto'
+import { UserIdDto } from './dto/user-id.dto'
 import { CurrentUser } from 'src/common/decorators/current-user.decorator'
 import { Roles } from 'src/common/decorators/roles.decorator'
 import { RolesGuard } from 'src/lifecycle/guard/roles.guard'
@@ -25,7 +26,7 @@ export class UserController {
    * - SUPER_ADMIN 可创建 ADMIN / USER
    * - ADMIN 可创建 USER
    */
-  @Post()
+  @Post('create')
   @Roles(UserRole.ADMIN)
   @ApiOperation({ summary: '创建用户（管理员以上）' })
   async create(@Body() dto: CreateUserDto, @CurrentUser() currentUser: TokenPayload) {
@@ -35,17 +36,17 @@ export class UserController {
   /**
    * 用户列表（管理员以上）
    */
-  @Get()
+  @Post('list')
   @Roles(UserRole.ADMIN)
   @ApiOperation({ summary: '用户列表（管理员以上）' })
-  async findAll(@Query() query: UserListQueryDto) {
+  async findAll(@Body() query: UserListQueryDto) {
     return this.userService.findAll(query)
   }
 
   /**
    * 当前登录用户个人详情
    */
-  @Get('profile')
+  @Post('profile/detail')
   @ApiOperation({ summary: '获取个人详情' })
   async getProfile(@CurrentUser() currentUser: TokenPayload) {
     return this.userService.getProfile(currentUser)
@@ -54,7 +55,7 @@ export class UserController {
   /**
    * 修改个人资料（昵称、邮箱、微信号）
    */
-  @Patch('profile')
+  @Post('profile/update')
   @ApiOperation({ summary: '修改个人资料' })
   async updateProfile(@CurrentUser() currentUser: TokenPayload, @Body() dto: UpdateProfileDto) {
     return this.userService.updateProfile(currentUser, dto)
@@ -63,7 +64,7 @@ export class UserController {
   /**
    * 修改个人密码
    */
-  @Patch('profile/password')
+  @Post('profile/change-password')
   @ApiOperation({ summary: '修改密码' })
   async changePassword(@CurrentUser() currentUser: TokenPayload, @Body() dto: ChangePasswordDto) {
     return this.userService.changePassword(currentUser, dto)
@@ -72,58 +73,58 @@ export class UserController {
   /**
    * 获取指定用户详情（管理员以上）
    */
-  @Get(':id')
+  @Post('detail')
   @Roles(UserRole.ADMIN)
   @ApiOperation({ summary: '获取指定用户详情（管理员以上）' })
-  async findOne(@Param('id', ParseIntPipe) id: number) {
+  async findOne(@Body() { id }: UserIdDto) {
     return this.userService.findOne(id)
   }
 
   /**
    * 管理员更新用户信息（配额、昵称等），需高于目标用户角色
    */
-  @Patch(':id')
+  @Post('update')
   @Roles(UserRole.ADMIN)
   @ApiOperation({ summary: '更新用户信息（管理员以上，需高于目标用户角色）' })
   async adminUpdateUser(
-    @Param('id', ParseIntPipe) id: number,
     @Body() dto: AdminUpdateUserDto,
     @CurrentUser() currentUser: TokenPayload,
   ) {
-    return this.userService.adminUpdateUser(id, dto, currentUser)
+    const { id, ...updateData } = dto
+    return this.userService.adminUpdateUser(id, updateData, currentUser)
   }
 
   /**
    * 修改用户状态（启用/禁用），需高于目标用户角色
    */
-  @Patch(':id/status')
+  @Post('update-status')
   @Roles(UserRole.ADMIN)
   @ApiOperation({ summary: '修改用户状态（管理员以上，需高于目标用户角色）' })
   async updateStatus(
-    @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateUserStatusDto,
     @CurrentUser() currentUser: TokenPayload,
   ) {
-    return this.userService.updateStatus(id, dto, currentUser)
+    const { id, ...statusData } = dto
+    return this.userService.updateStatus(id, statusData, currentUser)
   }
 
   /**
    * 重置用户密码，需高于目标用户角色，返回新的随机密码
    */
-  @Post(':id/reset-password')
+  @Post('reset-password')
   @Roles(UserRole.ADMIN)
   @ApiOperation({ summary: '重置用户密码（管理员以上，需高于目标用户角色）' })
-  async resetPassword(@Param('id', ParseIntPipe) id: number, @CurrentUser() currentUser: TokenPayload) {
+  async resetPassword(@Body() { id }: UserIdDto, @CurrentUser() currentUser: TokenPayload) {
     return this.userService.resetPassword(id, currentUser)
   }
 
   /**
    * 软删除用户，需高于目标用户角色
    */
-  @Delete(':id')
+  @Post('delete')
   @Roles(UserRole.ADMIN)
   @ApiOperation({ summary: '删除用户（软删除，需高于目标用户角色）' })
-  async remove(@Param('id', ParseIntPipe) id: number, @CurrentUser() currentUser: TokenPayload) {
+  async remove(@Body() { id }: UserIdDto, @CurrentUser() currentUser: TokenPayload) {
     return this.userService.remove(id, currentUser)
   }
 }

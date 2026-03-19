@@ -1,4 +1,4 @@
-import { Controller, Get, Query } from '@nestjs/common'
+import { Body, Controller, Post } from '@nestjs/common'
 import { ApiOperation, ApiTags } from '@nestjs/swagger'
 import { HeatmapService } from './heatmap.service'
 import { HeatmapQueryDto } from './dto/heatmap-query.dto'
@@ -8,9 +8,10 @@ import { HeatmapQueryDto } from './dto/heatmap-query.dto'
 export class HeatmapController {
   constructor(private readonly heatmapService: HeatmapService) {}
 
-  @Get()
+  @Post('data')
   @ApiOperation({ summary: '获取市场热力图数据（涨跌幅分布）' })
-  getHeatmap(@Query() query: HeatmapQueryDto) {
+  getHeatmap(@Body() query: HeatmapQueryDto) {
     return this.heatmapService.getHeatmap(query)
   }
 }
+

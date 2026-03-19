@@ -1,22 +1,24 @@
-import { Controller, Get, Param, Query } from '@nestjs/common'
+import { Body, Controller, Post } from '@nestjs/common'
 import { ApiOperation, ApiTags } from '@nestjs/swagger'
 import { StockService } from './stock.service'
 import { StockListQueryDto } from './dto/stock-list-query.dto'
+import { StockDetailDto } from './dto/stock-detail.dto'
 
 @ApiTags('Stock - 股票')
 @Controller('stock')
 export class StockController {
   constructor(private readonly stockService: StockService) {}
 
-  @Get()
+  @Post('list')
   @ApiOperation({ summary: '获取股票列表' })
-  findAll(@Query() query: StockListQueryDto) {
+  findAll(@Body() query: StockListQueryDto) {
     return this.stockService.findAll(query)
   }
 
-  @Get(':code')
+  @Post('detail')
   @ApiOperation({ summary: '获取股票详情' })
-  findOne(@Param('code') code: string) {
+  findOne(@Body() { code }: StockDetailDto) {
     return this.stockService.findOne(code)
   }
 }
+

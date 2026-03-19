@@ -12,6 +12,14 @@ export enum ErrorEnum {
   USER_NOT_FOUND = '2002:用户不存在',
   INVALID_PASSWORD = '2003:密码有误',
   USER_DISABLED = '2004:账号已被禁用',
+  FORBIDDEN = '2005:权限不足',
+  CANNOT_CREATE_HIGHER_ROLE = '2006:不能创建高于或等于自身角色的账号',
+  CANNOT_OPERATE_HIGHER_ROLE = '2007:无法操作同级或更高级别的用户',
+  SUPER_ADMIN_UNIQUE = '2008:超级管理员有且仅有一个，不可重复创建',
+  CANNOT_DELETE_SELF = '2009:不能删除自己的账号',
+  CANNOT_DISABLE_SELF = '2010:不能禁用自己的账号',
+  PASSWORD_TOO_SHORT = '2011:密码不能少于8位',
+  SUPER_ADMIN_CANNOT_CHANGE_ROLE = '2012:超级管理员角色不可更改',
 }
 
 export const SUCCESS_CODE = 0

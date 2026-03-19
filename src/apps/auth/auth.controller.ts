@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Headers, Post, Req, Res } from '@nestjs/common'
+import { Body, Controller, Headers, Post, Req, Res } from '@nestjs/common'
 import { ApiCookieAuth, ApiOperation, ApiTags } from '@nestjs/swagger'
 import { Request, Response } from 'express'
 import { AuthService } from './auth.service'
@@ -19,7 +19,7 @@ export class AuthController {
    * 验证码有效期 60 秒，验证后即失效（一次性）。
    */
   @Public()
-  @Get('captcha')
+  @Post('captcha')
   @ApiOperation({ summary: '获取图片验证码' })
   async captcha() {
     return this.authService.generateCaptcha()
@@ -93,3 +93,4 @@ export class AuthController {
     })
   }
 }
+

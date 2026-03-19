@@ -90,13 +90,17 @@ export class AuthService {
       throw new BusinessException(ErrorEnum.USER_DISABLED)
     }
 
-    // 6. 登录成功：清除失败计数，生成 Token
-    await this.redis.del(REDIS_KEY.LOGIN_FAIL(account))
+    // 6. 登录成功：清除失败计数，更新最后登录时间，生成 Token
+    await Promise.all([
+      this.redis.del(REDIS_KEY.LOGIN_FAIL(account)),
+      this.updateLastLoginAt(user.id),
+    ])
 
     return this.tokenService.generateTokens({
       id: user.id,
       account: user.account,
       nickname: user.nickname,
+      role: user.role,
     })
   }
 
@@ -137,11 +141,18 @@ export class AuthService {
     // Token 轮换：撤销旧 Refresh Token
     await this.tokenService.revokeRefreshToken(payload.id, payload.jti)
 
+    // 从数据库获取最新用户信息（角色可能已更新）
+    const user = await this.prisma.user.findUnique({ where: { id: payload.id } })
+    if (!user || user.status !== 'ACTIVE') {
+      throw new BusinessException(ErrorEnum.USER_DISABLED)
+    }
+
     // 签发新的 Token 对
     return this.tokenService.generateTokens({
-      id: payload.id,
-      account: payload.account,
-      nickname: payload.nickname,
+      id: user.id,
+      account: user.account,
+      nickname: user.nickname,
+      role: user.role,
     })
   }
 
@@ -166,5 +177,11 @@ export class AuthService {
         await this.tokenService.revokeRefreshToken(payload.id, payload.jti)
       }
     }
+  }
+
+  // ── 工具方法 ─────────────────────────────────────────────────────────────
+
+  private async updateLastLoginAt(userId: number): Promise<void> {
+    await this.prisma.user.update({ where: { id: userId }, data: { lastLoginAt: new Date() } })
   }
 }

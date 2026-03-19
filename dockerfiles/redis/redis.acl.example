@@ -1,0 +1,15 @@
+# Redis ACL 配置示例（用于文档说明和生产部署参考）
+# 将此文件复制为 redis.acl 并按需修改后使用。
+#
+# 格式说明:
+#   user <username> on ><password> ~<key-pattern> +<commands>
+#   on / off        - 启用 / 禁用该账户
+#   ><password>     - 明文密码（Redis 内部以 SHA-256 存储）
+#   ~<pattern>      - 允许访问的 key 模式（* 表示所有 key）
+#   +@<category>    - 允许的命令集合，+@all 表示所有命令
+#   -@<category>    - 禁止的命令集合
+#
+# 生产环境建议使用强密码并限制命令权限，例如：
+#   user default on ><your-strong-password> ~* +@read +@write +@string +@hash +@list +@set +@sorted_set
+
+user default on ><your-password> ~* +@all

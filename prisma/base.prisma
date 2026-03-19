@@ -1,0 +1,16 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// Prisma 全局配置
+//
+// 此文件包含 generator 与 datasource 块，是整个 Schema 的核心基础配置。
+// 其他 .prisma 文件（user.prisma、tushare.prisma）中只需定义 enum 和 model，
+// Prisma CLI 会在构建时自动将目录内所有 .prisma 文件合并为一份完整的 Schema。
+// ─────────────────────────────────────────────────────────────────────────────
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}

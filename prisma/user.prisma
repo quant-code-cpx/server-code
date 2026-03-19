@@ -1,0 +1,40 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// 用户模块 Schema
+//
+// 包含用户所有相关的枚举与数据模型：
+//   - UserStatus  账号状态枚举（正常 / 禁用 / 已注销）
+//   - UserRole    角色枚举（超级管理员 / 管理员 / 普通用户）
+//   - User        核心用户表
+// ─────────────────────────────────────────────────────────────────────────────
+
+// 账号状态
+enum UserStatus {
+  ACTIVE      // 正常（可以登录）
+  DEACTIVATED // 禁用（管理员操作，暂时停用）
+  DELETED     // 已注销（逻辑删除，不可恢复）
+}
+
+// 用户角色（权限从高到低）
+enum UserRole {
+  SUPER_ADMIN // 超级管理员（顶级权限，有且仅有一个）
+  ADMIN       // 管理员
+  USER        // 普通用户
+}
+
+model User {
+  id             Int        @id @default(autoincrement())
+  account        String     @unique @db.VarChar(64)   // 登录账号（唯一）
+  password       String     @db.VarChar(255)          // 密码（bcrypt 加密存储）
+  nickname       String     @db.VarChar(64)           // 昵称
+  role           UserRole   @default(USER)             // 用户角色
+  status         UserStatus @default(ACTIVE)           // 账号状态
+  email          String?    @db.VarChar(128)          // 邮箱（可选）
+  wechat         String?    @db.VarChar(64)           // 微信号（可选）
+  lastLoginAt    DateTime?                             // 最后登录时间
+  backtestQuota  Int        @default(3)               // 回测任务数量限制（管理员以上可修改）
+  watchlistLimit Int        @default(10)              // 监控股票数量限制（管理员以上不受限制）
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  @@map("users")
+}

@@ -3,6 +3,7 @@ import { RedisClientType } from 'redis'
 import * as svgCaptcha from 'svg-captcha'
 import { nanoid } from 'nanoid'
 import * as bcrypt from 'bcrypt'
+import { UserStatus } from '@prisma/client'
 import { PrismaService } from 'src/shared/prisma.service'
 import { TokenService } from 'src/shared/token.service'
 import { REDIS_CLIENT } from 'src/shared/redis.provider'
@@ -86,15 +87,12 @@ export class AuthService {
     }
 
     // 5. 账号状态检查
-    if (user.status !== 'ACTIVE') {
+    if (user.status !== UserStatus.ACTIVE) {
       throw new BusinessException(ErrorEnum.USER_DISABLED)
     }
 
     // 6. 登录成功：清除失败计数，更新最后登录时间，生成 Token
-    await Promise.all([
-      this.redis.del(REDIS_KEY.LOGIN_FAIL(account)),
-      this.updateLastLoginAt(user.id),
-    ])
+    await Promise.all([this.redis.del(REDIS_KEY.LOGIN_FAIL(account)), this.updateLastLoginAt(user.id)])
 
     return this.tokenService.generateTokens({
       id: user.id,
@@ -143,7 +141,7 @@ export class AuthService {
 
     // 从数据库获取最新用户信息（角色可能已更新）
     const user = await this.prisma.user.findUnique({ where: { id: payload.id } })
-    if (!user || user.status !== 'ACTIVE') {
+    if (!user || user.status !== UserStatus.ACTIVE) {
       throw new BusinessException(ErrorEnum.USER_DISABLED)
     }
 

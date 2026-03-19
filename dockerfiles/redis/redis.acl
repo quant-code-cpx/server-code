@@ -1,0 +1,11 @@
+# Redis ACL 文件（开发环境）
+# 此文件为实际使用的 ACL 配置，密码为开发默认值。
+# 生产环境请替换为强密码，并通过 secrets 或 CI/CD 注入。
+#
+# 格式: user <username> on ><password> ~<key-pattern> +<commands>
+#   on          - 启用该用户
+#   ><password> - 明文密码（Redis 内部会转换为 SHA-256 哈希）
+#   ~*          - 允许访问所有 key
+#   +@all       - 允许所有命令
+
+user default on >password ~* +@all

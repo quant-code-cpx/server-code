@@ -1,0 +1,110 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Docker Compose — 开发环境
+#
+# 包含三个服务：
+#   database  - PostgreSQL 17（持久存储到 named volume）
+#   redis     - Redis 7.4（AOF 持久化 + ACL 认证）
+#   app       - NestJS 开发服务器（热重载，源码通过 bind-mount 挂载）
+#
+# 快速启动：
+#   docker compose up --build        # 首次构建并启动
+#   docker compose up -d             # 后台启动（依赖已构建）
+#   docker compose down              # 停止并删除容器（数据卷保留）
+#   docker compose down -v           # 停止并删除容器 + 数据卷（⚠️ 数据丢失）
+#
+# 注意：.env 中的 DATABASE_URL / REDIS_HOST 等在 Docker 内由 environment 块覆盖，
+#       请勿在 .env 中直接修改这些值用于 Docker 环境。
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+  # ── PostgreSQL ────────────────────────────────────────────────────────────
+  database:
+    build:
+      context: ./dockerfiles/postgresql
+      dockerfile: Dockerfile
+    container_name: quant_postgres
+    environment:
+      POSTGRES_DB: quant_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - '5432:5432'
+    networks:
+      - quant-net
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d quant_db']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    restart: unless-stopped
+
+  # ── Redis ─────────────────────────────────────────────────────────────────
+  redis:
+    build:
+      context: ./dockerfiles/redis
+      dockerfile: Dockerfile
+    container_name: quant_redis
+    volumes:
+      - redis_data:/data
+      - redis_logs:/var/log/redis
+    ports:
+      - '6379:6379'
+    networks:
+      - quant-net
+    healthcheck:
+      test: ['CMD', 'redis-cli', '-a', 'password', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+
+  # ── NestJS 开发服务器（热重载）───────────────────────────────────────────
+  app:
+    build:
+      context: .
+      dockerfile: dockerfiles/app/Dockerfile
+    container_name: quant_app
+    # 加载 .env 作为基础配置，下方 environment 块会覆盖 Docker 专属项
+    env_file: .env
+    environment:
+      NODE_ENV: development
+      # 使用 Docker 服务名作为主机名，覆盖 .env 中的 localhost 配置
+      DATABASE_URL: postgresql://postgres:password@database:5432/quant_db?schema=public
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_USERNAME: default
+      REDIS_PASSWORD: password
+    volumes:
+      # 将项目根目录挂载到容器，实现热重载
+      - .:/app
+      # 使用匿名 volume 覆盖容器内的 node_modules，
+      # 防止主机的 node_modules（macOS）覆盖容器内（alpine）编译的原生模块
+      - /app/node_modules
+    ports:
+      - '${PORT:-3000}:3000'
+    networks:
+      - quant-net
+    depends_on:
+      database:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+# ── 网络 ──────────────────────────────────────────────────────────────────────
+networks:
+  quant-net:
+    driver: bridge
+
+# ── 数据卷 ────────────────────────────────────────────────────────────────────
+volumes:
+  # PostgreSQL 数据文件
+  postgres_data:
+  # Redis AOF / RDB 持久化数据
+  redis_data:
+  # Redis 运行日志
+  redis_logs:

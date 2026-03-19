@@ -8,6 +8,19 @@ import { REDIS_CLIENT } from './redis.provider'
 import { REDIS_KEY } from 'src/constant/auth.constant'
 import { TokenPayload } from './token.interface'
 
+/**
+ * TokenService — JWT Token 的生命周期管理。
+ *
+ * 责责以下职责：
+ *   1. 签发 Access Token / Refresh Token（二者共享同一 jti，支持一锟消双剥）
+ *   2. 将 Refresh Token jti 写入 Redis，实现服务端主动吹销
+ *   3. Access Token 自成为一体，过期则失效；登出时可将其 jti 列入 Redis 黑名单
+ *   4. Refresh Token 轮换：每次刷新时撤销旧 Token、签发新 Token，防止重放攻击
+ *
+ * Token 过期时间由 token.config.ts 配置注入：
+ *   - ACCESS_TOKEN_EXPIRE   (s)，默认 1800s（30 分钟）
+ *   - REFRESH_TOKEN_EXPIRE  (s)，默认 43200s（12 小时）
+ */
 @Injectable()
 export class TokenService {
   private readonly accessTokenOptions: JwtSignOptions
@@ -27,6 +40,10 @@ export class TokenService {
     this.refreshTokenTTL = refreshTokenOptions.expiresIn as number
   }
 
+  /**
+   * 仅签发 Access Token（不写 Redis，通常不对外暴露）。
+   * 适用于内部剛新推送下签发新 Token 的场景。
+   */
   async generateAccessToken(payload: Omit<TokenPayload, 'jti'>): Promise<string> {
     return this.jwtService.signAsync({ ...payload, jti: nanoid() }, this.accessTokenOptions)
   }
@@ -98,4 +115,3 @@ export class TokenService {
     return val === '1'
   }
 }
-

@@ -47,7 +47,6 @@ export class AuthController {
    * Refresh Token 优先从 HttpOnly Cookie 中读取；不存在时回退到请求体（兼容非浏览器客户端）。
    * 采用 Token 轮换策略：旧 Refresh Token 作废，同时签发新的 Refresh Token 写入 Cookie。
    */
-  @Public()
   @Post('refresh')
   @ApiOperation({ summary: '刷新 AccessToken' })
   async refresh(
@@ -74,7 +73,11 @@ export class AuthController {
   @Post('logout')
   @ApiCookieAuth(REFRESH_TOKEN_COOKIE)
   @ApiOperation({ summary: '登出' })
-  async logout(@Headers('authorization') authorization: string, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
+  async logout(
+    @Headers('authorization') authorization: string,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
     const accessToken = authorization?.replace(/^Bearer\s+/i, '') ?? ''
     const refreshToken = req.cookies?.[REFRESH_TOKEN_COOKIE] as string | undefined
     await this.authService.logout(accessToken, refreshToken)
@@ -93,4 +96,3 @@ export class AuthController {
     })
   }
 }
-

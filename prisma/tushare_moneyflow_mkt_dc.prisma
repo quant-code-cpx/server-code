@@ -1,0 +1,21 @@
+// 全市场资金流向——东财数据（来自 moneyflow_mkt_dc 接口）
+model MoneyflowMktDc {
+  tradeDate        DateTime @id @map("trade_date") @db.Date
+  closeSh          Float?   @map("close_sh")
+  pctChangeSh      Float?   @map("pct_change_sh")
+  closeSz          Float?   @map("close_sz")
+  pctChangeSz      Float?   @map("pct_change_sz")
+  netAmount        Float?   @map("net_amount")
+  netAmountRate    Float?   @map("net_amount_rate")
+  buyElgAmount     Float?   @map("buy_elg_amount")
+  buyElgAmountRate Float?   @map("buy_elg_amount_rate")
+  buyLgAmount      Float?   @map("buy_lg_amount")
+  buyLgAmountRate  Float?   @map("buy_lg_amount_rate")
+  buyMdAmount      Float?   @map("buy_md_amount")
+  buyMdAmountRate  Float?   @map("buy_md_amount_rate")
+  buySmAmount      Float?   @map("buy_sm_amount")
+  buySmAmountRate  Float?   @map("buy_sm_amount_rate")
+  syncedAt         DateTime @default(now()) @map("synced_at")
+
+  @@map("moneyflow_mkt_dc")
+}

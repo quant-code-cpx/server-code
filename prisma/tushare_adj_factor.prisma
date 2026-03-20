@@ -1,0 +1,11 @@
+// 复权因子（来自 adj_factor 接口）
+model AdjFactor {
+  tsCode    String   @map("ts_code") @db.VarChar(16)
+  tradeDate DateTime @map("trade_date") @db.Date
+  adjFactor Float?   @map("adj_factor")
+  syncedAt  DateTime @default(now()) @map("synced_at")
+
+  @@id([tsCode, tradeDate])
+  @@index([tradeDate])
+  @@map("adj_factor")
+}

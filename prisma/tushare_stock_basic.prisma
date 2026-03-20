@@ -1,0 +1,28 @@
+// 股票基本信息（来自 stock_basic 接口）
+model StockBasic {
+  tsCode     String           @id @map("ts_code") @db.VarChar(16)
+  symbol     String?          @db.VarChar(16)
+  name       String?          @db.VarChar(64)
+  area       String?          @db.VarChar(64)
+  industry   String?          @db.VarChar(64)
+  fullname   String?          @db.VarChar(128)
+  enname     String?          @db.VarChar(128)
+  cnspell    String?          @db.VarChar(64)
+  market     String?          @db.VarChar(32)
+  exchange   StockExchange?
+  currType   String?          @map("curr_type") @db.VarChar(16)
+  listStatus StockListStatus? @map("list_status")
+  listDate   DateTime?        @map("list_date") @db.Date
+  delistDate DateTime?        @map("delist_date") @db.Date
+  isHs       String?          @map("is_hs") @db.VarChar(4)
+  actName    String?          @map("act_name") @db.VarChar(128)
+  actEntType String?          @map("act_ent_type") @db.VarChar(64)
+  syncedAt   DateTime         @default(now()) @map("synced_at")
+
+  @@index([symbol])
+  @@index([name])
+  @@index([exchange])
+  @@index([industry])
+  @@index([listStatus])
+  @@map("stock_basic")
+}

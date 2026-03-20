@@ -1,0 +1,12 @@
+// 交易日历（来自 trade_cal 接口）
+model TradeCal {
+  exchange     StockExchange
+  calDate      DateTime      @map("cal_date") @db.Date
+  isOpen       String?       @map("is_open") @db.Char(1)
+  pretradeDate DateTime?     @map("pretrade_date") @db.Date
+  syncedAt     DateTime      @default(now()) @map("synced_at")
+
+  @@id([exchange, calDate])
+  @@index([calDate, isOpen])
+  @@map("trade_cal")
+}

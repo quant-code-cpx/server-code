@@ -1,0 +1,19 @@
+// 日线行情（来自 daily 接口）
+model Daily {
+  tsCode    String   @map("ts_code") @db.VarChar(16)
+  tradeDate DateTime @map("trade_date") @db.Date
+  open      Float?
+  high      Float?
+  low       Float?
+  close     Float?
+  preClose  Float?   @map("pre_close")
+  change    Float?
+  pctChg    Float?   @map("pct_chg")
+  vol       Float?
+  amount    Float?
+  syncedAt  DateTime @default(now()) @map("synced_at")
+
+  @@id([tsCode, tradeDate])
+  @@index([tradeDate])
+  @@map("daily")
+}

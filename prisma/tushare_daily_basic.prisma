@@ -1,0 +1,27 @@
+// 每日基础指标（来自 daily_basic 接口）
+model DailyBasic {
+  tsCode        String   @map("ts_code") @db.VarChar(16)
+  tradeDate     DateTime @map("trade_date") @db.Date
+  close         Float?
+  turnoverRate  Float?   @map("turnover_rate")
+  turnoverRateF Float?   @map("turnover_rate_f")
+  volumeRatio   Float?   @map("volume_ratio")
+  pe            Float?
+  peTtm         Float?   @map("pe_ttm")
+  pb            Float?
+  ps            Float?
+  psTtm         Float?   @map("ps_ttm")
+  dvRatio       Float?   @map("dv_ratio")
+  dvTtm         Float?   @map("dv_ttm")
+  totalShare    Float?   @map("total_share")
+  floatShare    Float?   @map("float_share")
+  freeShare     Float?   @map("free_share")
+  totalMv       Float?   @map("total_mv")
+  circMv        Float?   @map("circ_mv")
+  limitStatus   Int?     @map("limit_status")
+  syncedAt      DateTime @default(now()) @map("synced_at")
+
+  @@id([tsCode, tradeDate])
+  @@index([tradeDate])
+  @@map("daily_basic")
+}

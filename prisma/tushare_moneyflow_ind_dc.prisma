@@ -1,0 +1,26 @@
+// 行业 / 概念 / 地域资金流向——东财数据（来自 moneyflow_ind_dc 接口）
+model MoneyflowIndDc {
+  tsCode           String               @map("ts_code") @db.VarChar(32)
+  tradeDate        DateTime             @map("trade_date") @db.Date
+  contentType      MoneyflowContentType @map("content_type")
+  name             String?              @db.VarChar(128)
+  pctChange        Float?               @map("pct_change")
+  close            Float?
+  netAmount        Float?               @map("net_amount")
+  netAmountRate    Float?               @map("net_amount_rate")
+  buyElgAmount     Float?               @map("buy_elg_amount")
+  buyElgAmountRate Float?               @map("buy_elg_amount_rate")
+  buyLgAmount      Float?               @map("buy_lg_amount")
+  buyLgAmountRate  Float?               @map("buy_lg_amount_rate")
+  buyMdAmount      Float?               @map("buy_md_amount")
+  buyMdAmountRate  Float?               @map("buy_md_amount_rate")
+  buySmAmount      Float?               @map("buy_sm_amount")
+  buySmAmountRate  Float?               @map("buy_sm_amount_rate")
+  buySmAmountStock String?              @map("buy_sm_amount_stock") @db.VarChar(64)
+  rank             Int?
+  syncedAt         DateTime             @default(now()) @map("synced_at")
+
+  @@id([tsCode, tradeDate, contentType])
+  @@index([tradeDate, contentType])
+  @@map("moneyflow_ind_dc")
+}

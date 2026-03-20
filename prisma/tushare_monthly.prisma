@@ -1,0 +1,19 @@
+// 月线行情（来自 monthly 接口）
+model Monthly {
+  tsCode    String   @map("ts_code") @db.VarChar(16)
+  tradeDate DateTime @map("trade_date") @db.Date
+  close     Float?
+  open      Float?
+  high      Float?
+  low       Float?
+  preClose  Float?   @map("pre_close")
+  change    Float?
+  pctChg    Float?   @map("pct_chg")
+  vol       Float?
+  amount    Float?
+  syncedAt  DateTime @default(now()) @map("synced_at")
+
+  @@id([tsCode, tradeDate])
+  @@index([tradeDate])
+  @@map("monthly")
+}

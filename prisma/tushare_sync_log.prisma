@@ -1,0 +1,16 @@
+// Tushare 同步日志（记录每次数据同步任务的执行详情）
+model TushareSyncLog {
+  id         Int               @id @default(autoincrement())
+  task       TushareSyncTask
+  status     TushareSyncStatus
+  tradeDate  DateTime?         @map("trade_date") @db.Date
+  message    String?
+  payload    Json?
+  startedAt  DateTime          @map("started_at")
+  finishedAt DateTime?         @map("finished_at")
+  createdAt  DateTime          @default(now()) @map("created_at")
+
+  @@index([task, status, startedAt(sort: Desc)])
+  @@index([tradeDate])
+  @@map("tushare_sync_logs")
+}

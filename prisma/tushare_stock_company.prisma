@@ -1,0 +1,27 @@
+// 上市公司基本信息（来自 stock_company 接口）
+model StockCompany {
+  tsCode        String         @id @map("ts_code") @db.VarChar(16)
+  comName       String?        @map("com_name") @db.VarChar(128)
+  comId         String?        @map("com_id") @db.VarChar(64)
+  chairman      String?        @db.VarChar(64)
+  manager       String?        @db.VarChar(64)
+  secretary     String?        @db.VarChar(64)
+  regCapital    Float?         @map("reg_capital")
+  setupDate     DateTime?      @map("setup_date") @db.Date
+  province      String?        @db.VarChar(64)
+  city          String?        @db.VarChar(64)
+  introduction  String?
+  website       String?        @db.VarChar(255)
+  email         String?        @db.VarChar(128)
+  office        String?
+  annDate       DateTime?      @map("ann_date") @db.Date
+  businessScope String?        @map("business_scope")
+  employees     Int?
+  mainBusiness  String?        @map("main_business")
+  exchange      StockExchange?
+  syncedAt      DateTime       @default(now()) @map("synced_at")
+
+  @@index([exchange])
+  @@index([annDate])
+  @@map("stock_company")
+}

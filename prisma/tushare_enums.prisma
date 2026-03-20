@@ -1,0 +1,46 @@
+// Enums used by Tushare models
+
+// 证券交易所
+enum StockExchange {
+  SSE  // 上海证券交易所
+  SZSE // 深圳证券交易所
+  BSE  // 北京证券交易所
+  HKEX // 香港交易所
+}
+
+// 股票上市状态
+enum StockListStatus {
+  L // 上市（Listed）
+  D // 退市（Delisted）
+  P // 暂停上市（Paused）
+}
+
+// 资金流板块类型
+enum MoneyflowContentType {
+  INDUSTRY @map("行业")
+  CONCEPT  @map("概念")
+  REGION   @map("地域")
+}
+
+// Tushare 同步任务类型
+enum TushareSyncTask {
+  STOCK_BASIC
+  STOCK_COMPANY
+  TRADE_CAL
+  DAILY
+  WEEKLY
+  MONTHLY
+  ADJ_FACTOR
+  DAILY_BASIC
+  MONEYFLOW_DC
+  MONEYFLOW_IND_DC
+  MONEYFLOW_MKT_DC
+  EXPRESS
+}
+
+// 同步任务执行结果
+enum TushareSyncStatus {
+  SUCCESS // 成功
+  FAILED  // 失败
+  SKIPPED // 跳过（如当日非交易日）
+}

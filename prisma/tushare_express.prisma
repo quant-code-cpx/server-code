@@ -1,0 +1,41 @@
+// 业绩快报（来自 express 接口）
+model Express {
+  tsCode                String    @map("ts_code") @db.VarChar(16)
+  annDate               DateTime  @map("ann_date") @db.Date
+  endDate               DateTime  @map("end_date") @db.Date
+  revenue               Float?
+  operateProfit         Float?    @map("operate_profit")
+  totalProfit           Float?    @map("total_profit")
+  nIncome               Float?    @map("n_income")
+  totalAssets           Float?    @map("total_assets")
+  totalHldrEqyExcMinInt Float?    @map("total_hldr_eqy_exc_min_int")
+  dilutedEps            Float?    @map("diluted_eps")
+  dilutedRoe            Float?    @map("diluted_roe")
+  yoyNetProfit          Float?    @map("yoy_net_profit")
+  bps                   Float?
+  yoySales              Float?    @map("yoy_sales")
+  yoyOp                 Float?    @map("yoy_op")
+  yoyTp                 Float?    @map("yoy_tp")
+  yoyDeduNp             Float?    @map("yoy_dedu_np")
+  yoyEps                Float?    @map("yoy_eps")
+  yoyRoe                Float?    @map("yoy_roe")
+  growthAssets          Float?    @map("growth_assets")
+  yoyEquity             Float?    @map("yoy_equity")
+  growthBps             Float?    @map("growth_bps")
+  orLastYear            Float?    @map("or_last_year")
+  opLastYear            Float?    @map("op_last_year")
+  tpLastYear            Float?    @map("tp_last_year")
+  npLastYear            Float?    @map("np_last_year")
+  epsLastYear           Float?    @map("eps_last_year")
+  openNetAssets         Float?    @map("open_net_assets")
+  openBps               Float?    @map("open_bps")
+  perfSummary           String?   @map("perf_summary")
+  isAudit               Int?      @map("is_audit")
+  remark                String?
+  updateFlag            DateTime? @map("update_flag") @db.Date
+  syncedAt              DateTime  @default(now()) @map("synced_at")
+
+  @@id([tsCode, endDate, annDate])
+  @@index([annDate])
+  @@map("express")
+}

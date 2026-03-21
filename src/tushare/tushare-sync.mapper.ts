@@ -368,3 +368,112 @@ export function mapExpressRecord(record: TushareRecord): Prisma.ExpressCreateMan
     updateFlag: readString(record, 'update_flag'),
   }
 }
+
+export function mapFinaIndicatorRecord(record: TushareRecord): Prisma.FinaIndicatorCreateManyInput | null {
+  const tsCode = readString(record, 'ts_code')
+  const endDate = readDate(record, 'end_date')
+  if (!tsCode || !endDate) {
+    return null
+  }
+
+  return {
+    tsCode,
+    annDate: readDate(record, 'ann_date'),
+    endDate,
+    eps: readNumber(record, 'eps'),
+    dtEps: readNumber(record, 'dt_eps'),
+    totalRevenuePers: readNumber(record, 'total_revenue_ps'),
+    revenuePers: readNumber(record, 'revenue_ps'),
+    grossprofit_margin: readNumber(record, 'grossprofit_margin'),
+    netprofit_margin: readNumber(record, 'netprofit_margin'),
+    roe: readNumber(record, 'roe'),
+    dtRoe: readNumber(record, 'dt_roe'),
+    roa: readNumber(record, 'roa'),
+    roa2: readNumber(record, 'roa2'),
+    debtToAssets: readNumber(record, 'debt_to_assets'),
+    currentRatio: readNumber(record, 'current_ratio'),
+    quickRatio: readNumber(record, 'quick_ratio'),
+    cashRatio: readNumber(record, 'cash_ratio'),
+    fcff: readNumber(record, 'fcff'),
+    fcfe: readNumber(record, 'fcfe'),
+    ebit: readNumber(record, 'ebit'),
+    ebitda: readNumber(record, 'ebitda'),
+    netdebt: readNumber(record, 'netdebt'),
+    ocfToNetprofit: readNumber(record, 'ocf_to_netprofit'),
+    ocfToOr: readNumber(record, 'ocf_to_or'),
+    revenueYoy: readNumber(record, 'revenue_yoy'),
+    netprofitYoy: readNumber(record, 'netprofit_yoy'),
+    ocfYoy: readNumber(record, 'ocf_yoy'),
+    dtEpsYoy: readNumber(record, 'dt_eps_yoy'),
+    roeYoy: readNumber(record, 'roe_yoy'),
+    bpsYoy: readNumber(record, 'bps_yoy'),
+    assetsYoy: readNumber(record, 'assets_yoy'),
+    eqtYoy: readNumber(record, 'eqt_yoy'),
+    trYoy: readNumber(record, 'tr_yoy'),
+  }
+}
+
+export function mapDividendRecord(record: TushareRecord): Prisma.DividendCreateManyInput | null {
+  const tsCode = readString(record, 'ts_code')
+  const annDate = readDate(record, 'ann_date')
+  if (!tsCode || !annDate) {
+    return null
+  }
+
+  return {
+    tsCode,
+    annDate,
+    endDate: readDate(record, 'end_date'),
+    divProc: readString(record, 'div_proc'),
+    stkDiv: readNumber(record, 'stk_div'),
+    stkBoRate: readNumber(record, 'stk_bo_rate'),
+    stkCoRate: readNumber(record, 'stk_co_rate'),
+    cashDiv: readNumber(record, 'cash_div'),
+    cashDivTax: readNumber(record, 'cash_div_tax'),
+    recordDate: readDate(record, 'record_date'),
+    exDate: readDate(record, 'ex_date'),
+    payDate: readDate(record, 'pay_date'),
+    divListdate: readDate(record, 'div_listdate'),
+    impAnnDate: readDate(record, 'imp_ann_date'),
+    baseDate: readDate(record, 'base_date'),
+    baseShare: readNumber(record, 'base_share'),
+  }
+}
+
+export function mapTop10HoldersRecord(record: TushareRecord): Prisma.Top10HoldersCreateManyInput | null {
+  const tsCode = readString(record, 'ts_code')
+  const endDate = readDate(record, 'end_date')
+  const holderName = readString(record, 'holder_name')
+  if (!tsCode || !endDate || !holderName) {
+    return null
+  }
+
+  return {
+    tsCode,
+    annDate: readDate(record, 'ann_date'),
+    endDate,
+    holderName,
+    holdAmount: readNumber(record, 'hold_amount'),
+    holdRatio: readNumber(record, 'hold_ratio'),
+    holderType: readString(record, 'holder_type'),
+  }
+}
+
+export function mapTop10FloatHoldersRecord(record: TushareRecord): Prisma.Top10FloatHoldersCreateManyInput | null {
+  const tsCode = readString(record, 'ts_code')
+  const endDate = readDate(record, 'end_date')
+  const holderName = readString(record, 'holder_name')
+  if (!tsCode || !endDate || !holderName) {
+    return null
+  }
+
+  return {
+    tsCode,
+    annDate: readDate(record, 'ann_date'),
+    endDate,
+    holderName,
+    holdAmount: readNumber(record, 'hold_amount'),
+    holdRatio: readNumber(record, 'hold_ratio'),
+    holderType: readString(record, 'holder_type'),
+  }
+}

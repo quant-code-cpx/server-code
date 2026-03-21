@@ -1,0 +1,42 @@
+// 财务指标数据（来自 fina_indicator 接口）
+// 按季度/年度报告期存储，主要用于财务分析区
+model FinaIndicator {
+  tsCode            String    @map("ts_code") @db.VarChar(16)
+  annDate           DateTime? @map("ann_date") @db.Date
+  endDate           DateTime  @map("end_date") @db.Date
+  eps               Float?                                      // 基本每股收益
+  dtEps             Float?    @map("dt_eps")                   // 稀释每股收益
+  totalRevenuePers  Float?    @map("total_revenue_ps")         // 每股营业总收入
+  revenuePers       Float?    @map("revenue_ps")               // 每股营业收入
+  grossprofit_margin Float?   @map("grossprofit_margin")       // 销售毛利率
+  netprofit_margin  Float?    @map("netprofit_margin")         // 销售净利率
+  roe               Float?                                      // 净资产收益率
+  dtRoe             Float?    @map("dt_roe")                   // 扣非净资产收益率
+  roa               Float?                                      // 总资产报酬率
+  roa2              Float?    @map("roa2")                     // 投入资本回报率
+  debtToAssets      Float?    @map("debt_to_assets")           // 资产负债率
+  currentRatio      Float?    @map("current_ratio")            // 流动比率
+  quickRatio        Float?    @map("quick_ratio")              // 速动比率
+  cashRatio         Float?    @map("cash_ratio")               // 现金比率
+  fcff              Float?                                      // 企业自由现金流量
+  fcfe              Float?                                      // 股权自由现金流量
+  ebit              Float?                                      // 息税前利润
+  ebitda            Float?                                      // 息税折旧摊销前利润
+  netdebt           Float?                                      // 净债务
+  ocfToNetprofit    Float?    @map("ocf_to_netprofit")         // 经营活动产生现金流量净额/净利润
+  ocfToOr           Float?    @map("ocf_to_or")                // 经营活动现金流量/营业收入
+  revenueYoy        Float?    @map("revenue_yoy")              // 营业收入同比增长率
+  netprofitYoy      Float?    @map("netprofit_yoy")            // 净利润同比增长率
+  ocfYoy            Float?    @map("ocf_yoy")                  // 经营活动现金流量同比增长率
+  dtEpsYoy          Float?    @map("dt_eps_yoy")               // 稀释每股收益同比增长率
+  roeYoy            Float?    @map("roe_yoy")                  // 净资产收益率同比增长率
+  bpsYoy            Float?    @map("bps_yoy")                  // 每股净资产相对年初增长率
+  assetsYoy         Float?    @map("assets_yoy")               // 资产总计相对年初增长率
+  eqtYoy            Float?    @map("eqt_yoy")                  // 归属母公司股东权益相对年初增长率
+  trYoy             Float?    @map("tr_yoy")                   // 营业总收入同比增长率
+  syncedAt          DateTime  @default(now()) @map("synced_at")
+
+  @@id([tsCode, endDate])
+  @@index([annDate])
+  @@map("fina_indicator")
+}

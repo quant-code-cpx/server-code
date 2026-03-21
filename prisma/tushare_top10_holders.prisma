@@ -1,0 +1,32 @@
+// 前十大股东数据（来自 top10_holders 接口）
+// 按报告期存储，同一期内有多条（最多 10 条）
+model Top10Holders {
+  tsCode     String    @map("ts_code") @db.VarChar(16)
+  annDate    DateTime? @map("ann_date") @db.Date          // 公告日期
+  endDate    DateTime  @map("end_date") @db.Date          // 报告期（季报/年报截止日）
+  holderName String    @map("holder_name") @db.VarChar(128) // 股东名称
+  holdAmount Float?    @map("hold_amount")                 // 持股数量（股）
+  holdRatio  Float?    @map("hold_ratio")                  // 持股比例（%）
+  holderType String?   @map("holder_type") @db.VarChar(32) // 股东类型：法人/个人/其他
+  syncedAt   DateTime  @default(now()) @map("synced_at")
+
+  @@id([tsCode, endDate, holderName])
+  @@index([endDate])
+  @@map("top10_holders")
+}
+
+// 前十大流通股东数据（来自 top10_floatholders 接口）
+model Top10FloatHolders {
+  tsCode     String    @map("ts_code") @db.VarChar(16)
+  annDate    DateTime? @map("ann_date") @db.Date
+  endDate    DateTime  @map("end_date") @db.Date
+  holderName String    @map("holder_name") @db.VarChar(128)
+  holdAmount Float?    @map("hold_amount")
+  holdRatio  Float?    @map("hold_ratio")
+  holderType String?   @map("holder_type") @db.VarChar(32)
+  syncedAt   DateTime  @default(now()) @map("synced_at")
+
+  @@id([tsCode, endDate, holderName])
+  @@index([endDate])
+  @@map("top10_float_holders")
+}

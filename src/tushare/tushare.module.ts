@@ -37,6 +37,6 @@ import { TushareSyncSupportService } from './sync/tushare-sync-support.service'
     TushareMoneyflowSyncService,
     TushareSyncService,
   ],
-  exports: [TushareService, TushareApiService],
+  exports: [TushareService, TushareApiService, TushareFinancialPerformanceSyncService],
 })
 export class TushareModule {}

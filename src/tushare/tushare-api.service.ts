@@ -5,13 +5,17 @@ import {
   StockListStatus,
   TUSHARE_ADJ_FACTOR_FIELDS,
   TUSHARE_DAILY_BASIC_FIELDS,
+  TUSHARE_DIVIDEND_FIELDS,
   TUSHARE_EXPRESS_FIELDS,
+  TUSHARE_FINA_INDICATOR_FIELDS,
   TUSHARE_MONEYFLOW_DC_FIELDS,
   TUSHARE_MONEYFLOW_IND_DC_FIELDS,
   TUSHARE_MONEYFLOW_MKT_DC_FIELDS,
   TUSHARE_OHLCV_FIELDS,
   TUSHARE_STOCK_BASIC_FIELDS,
   TUSHARE_STOCK_COMPANY_FIELDS,
+  TUSHARE_TOP10_FLOAT_HOLDERS_FIELDS,
+  TUSHARE_TOP10_HOLDERS_FIELDS,
   TUSHARE_TRADE_CAL_FIELDS,
   TushareApiName,
 } from 'src/constant/tushare.constant'
@@ -141,6 +145,86 @@ export class TushareApiService {
         end_date: endDate,
       },
       fields: [...TUSHARE_EXPRESS_FIELDS],
+      limit,
+    })
+  }
+
+  /** 获取某个报告期所有股票的财务指标（按季度/年度 end_date 查询） */
+  getFinaIndicatorByPeriod(period: string, limit?: number) {
+    return this.tushareService.call({
+      api_name: TushareApiName.FINA_INDICATOR,
+      params: { period },
+      fields: [...TUSHARE_FINA_INDICATOR_FIELDS],
+      limit,
+    })
+  }
+
+  /** 获取指定股票的所有历史财务指标（用于初始全量补数） */
+  getFinaIndicatorByTsCode(tsCode: string, limit?: number) {
+    return this.tushareService.call({
+      api_name: TushareApiName.FINA_INDICATOR,
+      params: { ts_code: tsCode },
+      fields: [...TUSHARE_FINA_INDICATOR_FIELDS],
+      limit,
+    })
+  }
+
+  /** 获取指定股票的所有分红记录 */
+  getDividendByTsCode(tsCode: string, limit?: number) {
+    return this.tushareService.call({
+      api_name: TushareApiName.DIVIDEND,
+      params: { ts_code: tsCode },
+      fields: [...TUSHARE_DIVIDEND_FIELDS],
+      limit,
+    })
+  }
+
+  /** 获取指定公告日的全市场分红公告 */
+  getDividendByAnnDate(annDate: string, limit?: number) {
+    return this.tushareService.call({
+      api_name: TushareApiName.DIVIDEND,
+      params: { ann_date: annDate },
+      fields: [...TUSHARE_DIVIDEND_FIELDS],
+      limit,
+    })
+  }
+
+  /** 获取某报告期所有股票的前十大股东 */
+  getTop10HoldersByPeriod(period: string, limit?: number) {
+    return this.tushareService.call({
+      api_name: TushareApiName.TOP10_HOLDERS,
+      params: { period },
+      fields: [...TUSHARE_TOP10_HOLDERS_FIELDS],
+      limit,
+    })
+  }
+
+  /** 获取指定股票某报告期的前十大股东（用于按需查询） */
+  getTop10HoldersByTsCode(tsCode: string, limit?: number) {
+    return this.tushareService.call({
+      api_name: TushareApiName.TOP10_HOLDERS,
+      params: { ts_code: tsCode },
+      fields: [...TUSHARE_TOP10_HOLDERS_FIELDS],
+      limit,
+    })
+  }
+
+  /** 获取某报告期所有股票的前十大流通股东 */
+  getTop10FloatHoldersByPeriod(period: string, limit?: number) {
+    return this.tushareService.call({
+      api_name: TushareApiName.TOP10_FLOAT_HOLDERS,
+      params: { period },
+      fields: [...TUSHARE_TOP10_FLOAT_HOLDERS_FIELDS],
+      limit,
+    })
+  }
+
+  /** 获取指定股票所有报告期的前十大流通股东（用于按需查询） */
+  getTop10FloatHoldersByTsCode(tsCode: string, limit?: number) {
+    return this.tushareService.call({
+      api_name: TushareApiName.TOP10_FLOAT_HOLDERS,
+      params: { ts_code: tsCode },
+      fields: [...TUSHARE_TOP10_FLOAT_HOLDERS_FIELDS],
       limit,
     })
   }

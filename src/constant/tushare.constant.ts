@@ -12,6 +12,10 @@ export enum TushareApiName {
   MONEYFLOW_IND_DC = 'moneyflow_ind_dc',
   MONEYFLOW_MKT_DC = 'moneyflow_mkt_dc',
   EXPRESS = 'express',
+  FINA_INDICATOR = 'fina_indicator',
+  DIVIDEND = 'dividend',
+  TOP10_HOLDERS = 'top10_holders',
+  TOP10_FLOAT_HOLDERS = 'top10_floatholders',
 }
 
 /** A 股常用交易所代码 */
@@ -56,6 +60,10 @@ export enum TushareSyncTaskName {
   MONEYFLOW_IND_DC = 'MONEYFLOW_IND_DC',
   MONEYFLOW_MKT_DC = 'MONEYFLOW_MKT_DC',
   EXPRESS = 'EXPRESS',
+  FINA_INDICATOR = 'FINA_INDICATOR',
+  DIVIDEND = 'DIVIDEND',
+  TOP10_HOLDERS = 'TOP10_HOLDERS',
+  TOP10_FLOAT_HOLDERS = 'TOP10_FLOAT_HOLDERS',
 }
 
 /** 同步执行状态 */
@@ -265,4 +273,79 @@ export const TUSHARE_EXPRESS_FIELDS = [
   'is_audit',
   'remark',
   'update_flag',
+] as const
+
+export const TUSHARE_FINA_INDICATOR_FIELDS = [
+  'ts_code',
+  'ann_date',
+  'end_date',
+  'eps',
+  'dt_eps',
+  'total_revenue_ps',
+  'revenue_ps',
+  'grossprofit_margin',
+  'netprofit_margin',
+  'roe',
+  'dt_roe',
+  'roa',
+  'roa2',
+  'debt_to_assets',
+  'current_ratio',
+  'quick_ratio',
+  'cash_ratio',
+  'fcff',
+  'fcfe',
+  'ebit',
+  'ebitda',
+  'netdebt',
+  'ocf_to_netprofit',
+  'ocf_to_or',
+  'revenue_yoy',
+  'netprofit_yoy',
+  'ocf_yoy',
+  'dt_eps_yoy',
+  'roe_yoy',
+  'bps_yoy',
+  'assets_yoy',
+  'eqt_yoy',
+  'tr_yoy',
+] as const
+
+export const TUSHARE_DIVIDEND_FIELDS = [
+  'ts_code',
+  'end_date',
+  'ann_date',
+  'div_proc',
+  'stk_div',
+  'stk_bo_rate',
+  'stk_co_rate',
+  'cash_div',
+  'cash_div_tax',
+  'record_date',
+  'ex_date',
+  'pay_date',
+  'div_listdate',
+  'imp_ann_date',
+  'base_date',
+  'base_share',
+] as const
+
+export const TUSHARE_TOP10_HOLDERS_FIELDS = [
+  'ts_code',
+  'ann_date',
+  'end_date',
+  'holder_name',
+  'hold_amount',
+  'hold_ratio',
+  'holder_type',
+] as const
+
+export const TUSHARE_TOP10_FLOAT_HOLDERS_FIELDS = [
+  'ts_code',
+  'ann_date',
+  'end_date',
+  'holder_name',
+  'hold_amount',
+  'hold_ratio',
+  'holder_type',
 ] as const

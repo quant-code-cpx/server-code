@@ -1,6 +1,6 @@
-import dayjs from 'dayjs'
-import timezone from 'dayjs/plugin/timezone'
-import utc from 'dayjs/plugin/utc'
+import * as dayjs from 'dayjs'
+const timezone = require('dayjs/plugin/timezone')
+const utc = require('dayjs/plugin/utc')
 import {
   MoneyflowContentType as PrismaMoneyflowContentType,
   Prisma,
@@ -43,7 +43,7 @@ function readDate(record: TushareRecord, key: string): Date | null {
     return null
   }
 
-  const parsed = dayjs.tz(value, 'YYYYMMDD', 'Asia/Shanghai')
+  const parsed = (dayjs as any).tz(value, 'YYYYMMDD', 'Asia/Shanghai')
   return parsed.isValid() ? parsed.toDate() : null
 }
 
@@ -163,9 +163,9 @@ export function mapTradeCalRecord(record: TushareRecord): Prisma.TradeCalCreateM
   }
 }
 
-function mapOhlcvRecord<T extends Prisma.DailyCreateManyInput | Prisma.WeeklyCreateManyInput | Prisma.MonthlyCreateManyInput>(
-  record: TushareRecord,
-): Omit<T, 'syncedAt'> | null {
+function mapOhlcvRecord<
+  T extends Prisma.DailyCreateManyInput | Prisma.WeeklyCreateManyInput | Prisma.MonthlyCreateManyInput,
+>(record: TushareRecord): Omit<T, 'syncedAt'> | null {
   const tsCode = readString(record, 'ts_code')
   const tradeDate = readDate(record, 'trade_date')
   if (!tsCode || !tradeDate) {
@@ -365,6 +365,6 @@ export function mapExpressRecord(record: TushareRecord): Prisma.ExpressCreateMan
     perfSummary: readString(record, 'perf_summary'),
     isAudit: readInt(record, 'is_audit'),
     remark: readString(record, 'remark'),
-    updateFlag: readDate(record, 'update_flag'),
+    updateFlag: readString(record, 'update_flag'),
   }
 }

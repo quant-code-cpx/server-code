@@ -27,23 +27,25 @@ import { TushareService } from './tushare.service'
 export class TushareApiService {
   constructor(private readonly tushareService: TushareService) {}
 
-  getStockBasic(listStatus: StockListStatus) {
+  getStockBasic(listStatus: StockListStatus, limit?: number) {
     return this.tushareService.call({
       api_name: TushareApiName.STOCK_BASIC,
       params: { list_status: listStatus },
       fields: [...TUSHARE_STOCK_BASIC_FIELDS],
+      limit,
     })
   }
 
-  getStockCompany(exchange: StockExchange) {
+  getStockCompany(exchange: StockExchange, limit?: number) {
     return this.tushareService.call({
       api_name: TushareApiName.STOCK_COMPANY,
       params: { exchange },
       fields: [...TUSHARE_STOCK_COMPANY_FIELDS],
+      limit,
     })
   }
 
-  getTradeCalendar(exchange: StockExchange, startDate: string, endDate: string) {
+  getTradeCalendar(exchange: StockExchange, startDate: string, endDate: string, limit?: number) {
     return this.tushareService.call({
       api_name: TushareApiName.TRADE_CAL,
       params: {
@@ -52,58 +54,65 @@ export class TushareApiService {
         end_date: endDate,
       },
       fields: [...TUSHARE_TRADE_CAL_FIELDS],
+      limit,
     })
   }
 
-  getDailyByTradeDate(tradeDate: string) {
+  getDailyByTradeDate(tradeDate: string, limit?: number) {
     return this.tushareService.call({
       api_name: TushareApiName.DAILY,
       params: { trade_date: tradeDate },
       fields: [...TUSHARE_OHLCV_FIELDS],
+      limit,
     })
   }
 
-  getWeeklyByTradeDate(tradeDate: string) {
+  getWeeklyByTradeDate(tradeDate: string, limit?: number) {
     return this.tushareService.call({
       api_name: TushareApiName.WEEKLY,
       params: { trade_date: tradeDate },
       fields: [...TUSHARE_OHLCV_FIELDS],
+      limit,
     })
   }
 
-  getMonthlyByTradeDate(tradeDate: string) {
+  getMonthlyByTradeDate(tradeDate: string, limit?: number) {
     return this.tushareService.call({
       api_name: TushareApiName.MONTHLY,
       params: { trade_date: tradeDate },
       fields: [...TUSHARE_OHLCV_FIELDS],
+      limit,
     })
   }
 
-  getAdjFactorByTradeDate(tradeDate: string) {
+  getAdjFactorByTradeDate(tradeDate: string, limit?: number) {
     return this.tushareService.call({
       api_name: TushareApiName.ADJ_FACTOR,
       params: { trade_date: tradeDate },
       fields: [...TUSHARE_ADJ_FACTOR_FIELDS],
+      limit,
     })
   }
 
-  getDailyBasicByTradeDate(tradeDate: string) {
+  getDailyBasicByTradeDate(tradeDate: string, limit?: number) {
     return this.tushareService.call({
       api_name: TushareApiName.DAILY_BASIC,
       params: { trade_date: tradeDate },
       fields: [...TUSHARE_DAILY_BASIC_FIELDS],
+      limit,
     })
   }
 
-  getMoneyflowDcByTradeDate(tradeDate: string) {
+  getMoneyflowDcByTradeDate(tradeDate: string, limit?: number) {
     return this.tushareService.call({
       api_name: TushareApiName.MONEYFLOW_DC,
       params: { trade_date: tradeDate },
       fields: [...TUSHARE_MONEYFLOW_DC_FIELDS],
+      limit,
     })
   }
 
-  getMoneyflowIndDcByTradeDate(tradeDate: string, contentType: MoneyflowContentType) {
+  getMoneyflowIndDcByTradeDate(tradeDate: string, contentType: MoneyflowContentType, limit?: number) {
     return this.tushareService.call({
       api_name: TushareApiName.MONEYFLOW_IND_DC,
       params: {
@@ -111,18 +120,20 @@ export class TushareApiService {
         content_type: contentType,
       },
       fields: [...TUSHARE_MONEYFLOW_IND_DC_FIELDS],
+      limit,
     })
   }
 
-  getMoneyflowMktDcByTradeDate(tradeDate: string) {
+  getMoneyflowMktDcByTradeDate(tradeDate: string, limit?: number) {
     return this.tushareService.call({
       api_name: TushareApiName.MONEYFLOW_MKT_DC,
       params: { trade_date: tradeDate },
       fields: [...TUSHARE_MONEYFLOW_MKT_DC_FIELDS],
+      limit,
     })
   }
 
-  getExpress(startDate: string, endDate: string) {
+  getExpress(startDate: string, endDate: string, limit?: number) {
     return this.tushareService.call({
       api_name: TushareApiName.EXPRESS,
       params: {
@@ -130,6 +141,7 @@ export class TushareApiService {
         end_date: endDate,
       },
       fields: [...TUSHARE_EXPRESS_FIELDS],
+      limit,
     })
   }
 }

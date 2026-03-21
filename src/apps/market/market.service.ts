@@ -1,8 +1,9 @@
 import { Injectable } from '@nestjs/common'
 import { MoneyflowContentType } from '@prisma/client'
-import dayjs from 'dayjs'
-import timezone from 'dayjs/plugin/timezone'
-import utc from 'dayjs/plugin/utc'
+import * as dayjs from 'dayjs'
+// use require for plugins to ensure compatibility with commonjs output
+const timezone = require('dayjs/plugin/timezone')
+const utc = require('dayjs/plugin/utc')
 import { PrismaService } from 'src/shared/prisma.service'
 import { MoneyFlowQueryDto } from './dto/money-flow-query.dto'
 
@@ -74,6 +75,6 @@ export class MarketService {
   }
 
   private parseDate(value: string) {
-    return dayjs.tz(value, 'YYYYMMDD', 'Asia/Shanghai').toDate()
+    return (dayjs as any).tz(value, 'YYYYMMDD', 'Asia/Shanghai').toDate()
   }
 }

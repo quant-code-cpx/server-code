@@ -5,6 +5,8 @@ export interface TushareRequestParams {
   params?: Record<string, unknown>
   /** 需要返回的字段，留空则返回全部 */
   fields?: string[]
+  /** 最多返回的记录数（Tushare 限流时使用） */
+  limit?: number
 }
 
 export interface TushareResponse<T = Record<string, unknown>[]> {

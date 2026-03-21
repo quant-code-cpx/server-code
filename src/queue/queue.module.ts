@@ -14,7 +14,9 @@ import { WebsocketModule } from 'src/websocket/websocket.module'
     BullModule.forRootAsync({
       useFactory: (configService: ConfigService) => {
         const { host, port } = configService.get<IRedisConfig>(REDIS_CONFIG_TOKEN)
-        return { connection: { host, port } }
+        const username = process.env.REDIS_USERNAME || undefined
+        const password = process.env.REDIS_PASSWORD || undefined
+        return { connection: { host, port, username, password } }
       },
       inject: [ConfigService],
     }),

@@ -3,7 +3,7 @@ import { AppModule } from './app.module'
 import { ConfigService } from '@nestjs/config'
 import { ValidationPipe } from '@nestjs/common'
 import helmet from 'helmet'
-import cookieParser from 'cookie-parser'
+const cookieParser = require('cookie-parser')
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger'
 import { IAppConfig, APP_CONFIG_TOKEN } from './config/app.config'
 import { LoggerService } from './shared/logger/logger.service'

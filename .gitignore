@@ -38,3 +38,6 @@ lerna-debug.log*
 # dotfiles
 .env
 !.env.example
+
+# Redis ACL（含明文密码，由 docker-entrypoint.sh 在容器启动时自动生成）
+dockerfiles/redis/redis.acl

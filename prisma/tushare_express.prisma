@@ -32,7 +32,7 @@ model Express {
   perfSummary           String?   @map("perf_summary")
   isAudit               Int?      @map("is_audit")
   remark                String?
-  updateFlag            DateTime? @map("update_flag") @db.Date
+  updateFlag            String?   @map("update_flag") @db.VarChar(8)
   syncedAt              DateTime  @default(now()) @map("synced_at")
 
   @@id([tsCode, endDate, annDate])

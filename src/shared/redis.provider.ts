@@ -29,7 +29,11 @@ export const RedisProvider: Provider = {
   provide: REDIS_CLIENT,
   useFactory: async (configService: ConfigService<AllConfigType>, loggerService: LoggerService) => {
     const { url } = configService.get<IRedisConfig>(REDIS_CONFIG_TOKEN)
-    const client = createClient({ url }).on('error', (err) => {
+    // Prefer explicit username/password options in addition to URL to avoid
+    // potential parsing/auth issues in some environments.
+    const username = process.env.REDIS_USERNAME || undefined
+    const password = process.env.REDIS_PASSWORD || undefined
+    const client = createClient({ url, username, password }).on('error', (err) => {
       loggerService.error('Redis client error', err?.message, 'RedisProvider')
     })
     await client.connect()

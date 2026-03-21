@@ -22,6 +22,11 @@ export class TushareService {
   private readonly token: string
   private readonly baseUrl: string
   private readonly timeout: number
+  private readonly requestIntervalMs: number
+  private readonly rateLimitRetryDelayMs: number
+  private readonly maxRetries: number
+  private requestQueue: Promise<void> = Promise.resolve()
+  private lastRequestAt = 0
 
   constructor(private readonly configService: ConfigService) {
     const cfg = this.configService.get<ITushareConfig>(TUSHARE_CONFIG_TOKEN, { infer: true })
@@ -31,6 +36,9 @@ export class TushareService {
     this.token = cfg.token
     this.baseUrl = cfg.baseUrl
     this.timeout = cfg.timeout
+    this.requestIntervalMs = cfg.requestIntervalMs
+    this.rateLimitRetryDelayMs = cfg.rateLimitRetryDelayMs
+    this.maxRetries = cfg.maxRetries
   }
 
   /**
@@ -45,11 +53,16 @@ export class TushareService {
    * 本方法会将 fields + items 自动组装为 Record<string, unknown>[] 格式。
    */
   async call<T = Record<string, unknown>>(req: TushareRequestParams): Promise<T[]> {
+    return this.enqueueRequest(() => this.callWithRetry<T>(req))
+  }
+
+  private async callWithRetry<T>(req: TushareRequestParams, attempt: number = 1): Promise<T[]> {
     const body = JSON.stringify({
       api_name: req.api_name,
       token: this.token,
       params: req.params ?? {},
       fields: req.fields ? req.fields.join(',') : '',
+      ...(req.limit !== undefined ? { limit: req.limit } : {}),
     })
 
     const controller = new AbortController()
@@ -71,12 +84,51 @@ export class TushareService {
     }
 
     const json = (await response.json()) as TushareResponse
+    if (this.isRateLimitError(json) && attempt <= this.maxRetries) {
+      this.logger.warn(
+        `Tushare 接口触发频控 [${req.api_name}]，第 ${attempt} 次重试前等待 ${this.rateLimitRetryDelayMs}ms。`,
+      )
+      await this.sleep(this.rateLimitRetryDelayMs)
+      return this.callWithRetry<T>(req, attempt + 1)
+    }
+
     if (json.code !== 0) {
       this.logger.error(`Tushare 接口错误 [${req.api_name}] code=${json.code} msg=${json.msg}`)
       throw new Error(`Tushare error: ${json.msg}`)
     }
 
     return this.parseRecords<T>(json)
+  }
+
+  private enqueueRequest<T>(task: () => Promise<T>): Promise<T> {
+    const queuedTask = async () => {
+      await this.waitForRequestSlot()
+      return task()
+    }
+
+    const result = this.requestQueue.then(queuedTask, queuedTask)
+    this.requestQueue = result.then(
+      () => undefined,
+      () => undefined,
+    )
+    return result
+  }
+
+  private async waitForRequestSlot() {
+    const now = Date.now()
+    const waitMs = Math.max(0, this.requestIntervalMs - (now - this.lastRequestAt))
+    if (waitMs > 0) {
+      await this.sleep(waitMs)
+    }
+    this.lastRequestAt = Date.now()
+  }
+
+  private isRateLimitError(json: TushareResponse) {
+    return json.code === 40203 || /每分钟最多访问该接口/.test(json.msg)
+  }
+
+  private sleep(ms: number) {
+    return new Promise<void>((resolve) => setTimeout(resolve, ms))
   }
 
   /** 将 Tushare { fields, items } 格式转为对象数组 */

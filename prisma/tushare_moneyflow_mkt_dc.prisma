@@ -17,5 +17,5 @@ model MoneyflowMktDc {
   buySmAmountRate  Float?   @map("buy_sm_amount_rate")
   syncedAt         DateTime @default(now()) @map("synced_at")
 
-  @@map("moneyflow_mkt_dc")
+  @@map("market_capital_flows")
 }

@@ -23,5 +23,5 @@ model DailyBasic {
 
   @@id([tsCode, tradeDate])
   @@index([tradeDate])
-  @@map("daily_basic")
+  @@map("stock_daily_valuation_metrics")
 }

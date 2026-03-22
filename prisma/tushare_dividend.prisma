@@ -1,9 +1,10 @@
 // 分红送转数据（来自 dividend 接口）
 // 记录每次分红预案/实施情况
 model Dividend {
+  id          BigInt    @id @default(autoincrement())
   tsCode      String    @map("ts_code") @db.VarChar(16)
   endDate     DateTime? @map("end_date") @db.Date            // 分红年度截止日
-  annDate     DateTime  @map("ann_date") @db.Date            // 预案公告日
+  annDate     DateTime? @map("ann_date") @db.Date            // 预案公告日（部分历史实施记录为空）
   divProc     String?   @map("div_proc") @db.VarChar(32)     // 方案进度：预案/实施/撤销等
   stkDiv      Float?    @map("stk_div")                      // 每股送转（股）
   stkBoRate   Float?    @map("stk_bo_rate")                  // 每股送股比例
@@ -19,8 +20,9 @@ model Dividend {
   baseShare   Float?    @map("base_share")                   // 基准股本（万股）
   syncedAt    DateTime  @default(now()) @map("synced_at")
 
-  @@id([tsCode, annDate])
+  @@index([annDate])
+  @@index([tsCode, annDate])
   @@index([endDate])
   @@index([exDate])
-  @@map("dividend")
+  @@map("stock_dividend_events")
 }

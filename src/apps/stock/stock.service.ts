@@ -95,14 +95,14 @@ export class StockService {
     const [countResult, items] = await Promise.all([
       this.prisma.$queryRaw<[{ count: bigint }]>`
         SELECT COUNT(*)::bigint AS count
-        FROM stock_basic sb
+        FROM stock_basic_profiles sb
         LEFT JOIN LATERAL (
           SELECT pe_ttm, pb, dv_ttm, total_mv, circ_mv, turnover_rate
-          FROM daily_basic WHERE ts_code = sb.ts_code ORDER BY trade_date DESC LIMIT 1
+          FROM stock_daily_valuation_metrics WHERE ts_code = sb.ts_code ORDER BY trade_date DESC LIMIT 1
         ) db ON true
         LEFT JOIN LATERAL (
           SELECT pct_chg, amount, close, vol
-          FROM daily WHERE ts_code = sb.ts_code ORDER BY trade_date DESC LIMIT 1
+          FROM stock_daily_prices WHERE ts_code = sb.ts_code ORDER BY trade_date DESC LIMIT 1
         ) d ON true
         ${whereClause}
       `,
@@ -115,14 +115,14 @@ export class StockService {
           db.pe_ttm AS "peTtm", db.pb,          db.dv_ttm AS "dvTtm",
           db.total_mv AS "totalMv", db.circ_mv AS "circMv", db.turnover_rate AS "turnoverRate",
           d.pct_chg AS "pctChg", d.amount, d.close, d.vol
-        FROM stock_basic sb
+        FROM stock_basic_profiles sb
         LEFT JOIN LATERAL (
           SELECT pe_ttm, pb, dv_ttm, total_mv, circ_mv, turnover_rate
-          FROM daily_basic WHERE ts_code = sb.ts_code ORDER BY trade_date DESC LIMIT 1
+          FROM stock_daily_valuation_metrics WHERE ts_code = sb.ts_code ORDER BY trade_date DESC LIMIT 1
         ) db ON true
         LEFT JOIN LATERAL (
           SELECT pct_chg, amount, close, vol
-          FROM daily WHERE ts_code = sb.ts_code ORDER BY trade_date DESC LIMIT 1
+          FROM stock_daily_prices WHERE ts_code = sb.ts_code ORDER BY trade_date DESC LIMIT 1
         ) d ON true
         ${whereClause}
         ORDER BY ${sortCol} ${sortDir}
@@ -248,9 +248,9 @@ export class StockService {
 
     // 选择表名（日/周/月）
     const tableMap: Record<ChartPeriod, string> = {
-      [ChartPeriod.DAILY]: 'daily',
-      [ChartPeriod.WEEKLY]: 'weekly',
-      [ChartPeriod.MONTHLY]: 'monthly',
+      [ChartPeriod.DAILY]: 'stock_daily_prices',
+      [ChartPeriod.WEEKLY]: 'stock_weekly_prices',
+      [ChartPeriod.MONTHLY]: 'stock_monthly_prices',
     }
     const tableName = Prisma.raw(tableMap[period])
 
@@ -274,7 +274,7 @@ export class StockService {
         t.pct_chg     AS "pctChg",
         af.adj_factor AS "adjFactor"
       FROM ${tableName} t
-      LEFT JOIN adj_factor af
+      LEFT JOIN stock_adjustment_factors af
         ON af.ts_code = t.ts_code AND af.trade_date = t.trade_date
       WHERE t.ts_code = ${tsCode}
         AND t.trade_date >= ${startDate}

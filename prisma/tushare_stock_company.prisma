@@ -23,5 +23,5 @@ model StockCompany {
 
   @@index([exchange])
   @@index([annDate])
-  @@map("stock_company")
+  @@map("stock_company_profiles")
 }

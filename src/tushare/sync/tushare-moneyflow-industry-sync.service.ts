@@ -1,5 +1,9 @@
 import { Injectable } from '@nestjs/common'
-import { TUSHARE_MONEYFLOW_CONTENT_TYPES, TushareSyncTaskName } from 'src/constant/tushare.constant'
+import {
+  TUSHARE_MONEYFLOW_CONTENT_TYPES,
+  TUSHARE_MONEYFLOW_RECENT_TRADE_DAYS,
+  TushareSyncTaskName,
+} from 'src/constant/tushare.constant'
 import { mapMoneyflowIndDcRecord } from '../tushare-sync.mapper'
 import { TushareApiService } from '../tushare-api.service'
 import { TushareSyncSupportService } from './tushare-sync-support.service'
@@ -24,14 +28,25 @@ export class TushareMoneyflowIndustrySyncService {
   }
 
   async checkFreshness(targetTradeDate: string) {
+    const recentTradeDates = await this.resolveRecentTradeDates(targetTradeDate)
+    const earliestRetainedTradeDate = recentTradeDates[0]
+
     await this.support.syncDailyLikeDataset({
       task: TushareSyncTaskName.MONEYFLOW_IND_DC,
       modelName: 'moneyflowIndDc',
       latestLocalDate: () => this.support.getLatestDateString('moneyflowIndDc'),
-      resolveDates: (startDate) => this.support.getOpenTradeDatesBetween(startDate, targetTradeDate),
+      resolveDates: (startDate) => this.filterTradeDatesByStartDate(recentTradeDates, startDate),
       syncOneDate: (tradeDate) => this.syncByTradeDate(tradeDate),
       targetTradeDate,
     })
+
+    if (earliestRetainedTradeDate) {
+      await this.support.deleteRowsBeforeDate(
+        'moneyflowIndDc',
+        'tradeDate',
+        this.support.toDate(earliestRetainedTradeDate),
+      )
+    }
   }
 
   private async syncByTradeDate(tradeDate: string) {
@@ -54,5 +69,13 @@ export class TushareMoneyflowIndustrySyncService {
     }
 
     return targetTradeDate
+  }
+
+  private async resolveRecentTradeDates(targetTradeDate: string) {
+    return this.support.getRecentOpenTradeDates(targetTradeDate, TUSHARE_MONEYFLOW_RECENT_TRADE_DAYS)
+  }
+
+  private async filterTradeDatesByStartDate(tradeDates: string[], startDate: string) {
+    return tradeDates.filter((tradeDate) => this.support.compareDateString(tradeDate, startDate) >= 0)
   }
 }

@@ -8,5 +8,5 @@ model TradeCal {
 
   @@id([exchange, calDate])
   @@index([calDate, isOpen])
-  @@map("trade_cal")
+  @@map("exchange_trade_calendars")
 }

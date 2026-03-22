@@ -12,7 +12,7 @@ model Top10Holders {
 
   @@id([tsCode, endDate, holderName])
   @@index([endDate])
-  @@map("top10_holders")
+  @@map("top_ten_shareholder_snapshots")
 }
 
 // 前十大流通股东数据（来自 top10_floatholders 接口）
@@ -28,5 +28,5 @@ model Top10FloatHolders {
 
   @@id([tsCode, endDate, holderName])
   @@index([endDate])
-  @@map("top10_float_holders")
+  @@map("top_ten_float_shareholder_snapshots")
 }

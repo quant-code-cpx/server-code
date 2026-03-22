@@ -22,5 +22,5 @@ model MoneyflowIndDc {
 
   @@id([tsCode, tradeDate, contentType])
   @@index([tradeDate, contentType])
-  @@map("moneyflow_ind_dc")
+  @@map("sector_capital_flows")
 }

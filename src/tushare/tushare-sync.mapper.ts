@@ -43,8 +43,16 @@ function readDate(record: TushareRecord, key: string): Date | null {
     return null
   }
 
-  const parsed = (dayjs as any).tz(value, 'YYYYMMDD', 'Asia/Shanghai')
-  return parsed.isValid() ? parsed.toDate() : null
+  if (!/^\d{8}$/.test(value)) {
+    return null
+  }
+
+  const year = Number(value.slice(0, 4))
+  const month = Number(value.slice(4, 6))
+  const day = Number(value.slice(6, 8))
+  const parsed = new Date(Date.UTC(year, month - 1, day))
+
+  return Number.isNaN(parsed.getTime()) ? null : parsed
 }
 
 function mapExchange(value: string | null): PrismaStockExchange | null {
@@ -387,9 +395,9 @@ export function mapFinaIndicatorRecord(record: TushareRecord): Prisma.FinaIndica
     grossprofit_margin: readNumber(record, 'grossprofit_margin'),
     netprofit_margin: readNumber(record, 'netprofit_margin'),
     roe: readNumber(record, 'roe'),
-    dtRoe: readNumber(record, 'dt_roe'),
+    dtRoe: readNumber(record, 'roe_dt'),
     roa: readNumber(record, 'roa'),
-    roa2: readNumber(record, 'roa2'),
+    roa2: readNumber(record, 'roic'),
     debtToAssets: readNumber(record, 'debt_to_assets'),
     currentRatio: readNumber(record, 'current_ratio'),
     quickRatio: readNumber(record, 'quick_ratio'),
@@ -401,7 +409,7 @@ export function mapFinaIndicatorRecord(record: TushareRecord): Prisma.FinaIndica
     netdebt: readNumber(record, 'netdebt'),
     ocfToNetprofit: readNumber(record, 'ocf_to_netprofit'),
     ocfToOr: readNumber(record, 'ocf_to_or'),
-    revenueYoy: readNumber(record, 'revenue_yoy'),
+    revenueYoy: readNumber(record, 'or_yoy'),
     netprofitYoy: readNumber(record, 'netprofit_yoy'),
     ocfYoy: readNumber(record, 'ocf_yoy'),
     dtEpsYoy: readNumber(record, 'dt_eps_yoy'),
@@ -415,14 +423,13 @@ export function mapFinaIndicatorRecord(record: TushareRecord): Prisma.FinaIndica
 
 export function mapDividendRecord(record: TushareRecord): Prisma.DividendCreateManyInput | null {
   const tsCode = readString(record, 'ts_code')
-  const annDate = readDate(record, 'ann_date')
-  if (!tsCode || !annDate) {
+  if (!tsCode) {
     return null
   }
 
   return {
     tsCode,
-    annDate,
+    annDate: readDate(record, 'ann_date'),
     endDate: readDate(record, 'end_date'),
     divProc: readString(record, 'div_proc'),
     stkDiv: readNumber(record, 'stk_div'),

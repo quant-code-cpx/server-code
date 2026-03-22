@@ -14,6 +14,7 @@ import {
 import {
   MoneyflowContentType,
   StockExchange,
+  TUSHARE_MONEYFLOW_RECENT_TRADE_DAYS,
   TUSHARE_SYNC_CUTOFF_HOUR,
   TUSHARE_SYNC_CUTOFF_MINUTE,
   TushareSyncExecutionStatus,
@@ -21,6 +22,7 @@ import {
 } from 'src/constant/tushare.constant'
 import { ITushareConfig, TUSHARE_CONFIG_TOKEN } from 'src/config/tushare.config'
 import { PrismaService } from 'src/shared/prisma.service'
+import { TushareApiError } from '../tushare.service'
 import { DailyLikeSyncOptions, TaskExecutionResult } from './tushare-sync.types'
 
 dayjs.extend(utc)
@@ -46,6 +48,18 @@ export class TushareSyncSupportService {
     this.syncTimeZone = cfg.syncTimeZone
   }
 
+  /**
+   * 通用的“按日期型数据集”补数模板。
+   *
+   * 适用于：
+   * - daily / weekly / monthly / adj_factor / daily_basic 这类可以按日期增量推进的数据；
+   * - 通过读取本地最大日期实现断点续跑；
+   * - 通过 `resolveDates()` 决定本轮实际要补哪些日期；
+   * - 通过 `syncOneDate()` 执行单个日期的抓取与落库。
+   *
+   * 这类任务通常执行时间较长，因此这里会额外输出阶段性进度日志，
+   * 避免长时间只有“开始执行 DAILY...”而没有后续反馈，造成误判为卡死。
+   */
   async syncDailyLikeDataset(options: DailyLikeSyncOptions) {
     await this.executeTask(options.task, async () => {
       const latestLocalDate = await options.latestLocalDate()
@@ -67,8 +81,23 @@ export class TushareSyncSupportService {
       }
 
       let totalRows = 0
-      for (const tradeDate of tradeDates) {
-        totalRows += await options.syncOneDate(tradeDate)
+      const totalDates = tradeDates.length
+      for (const [index, tradeDate] of tradeDates.entries()) {
+        if (index === 0 || (index + 1) % 250 === 0 || index === totalDates - 1) {
+          this.logger.log(
+            `[${options.task}] 补数进度 ${index + 1}/${totalDates}，当前日期 ${tradeDate}，累计写入 ${totalRows} 条。`,
+          )
+        }
+
+        try {
+          totalRows += await options.syncOneDate(tradeDate)
+        } catch (error) {
+          if (this.isDailyQuotaExceededError(error)) {
+            throw error
+          }
+
+          throw new Error(`[${options.task}] 同步日期 ${tradeDate} 失败：${(error as Error).message}`)
+        }
       }
 
       return {
@@ -96,6 +125,20 @@ export class TushareSyncSupportService {
       this.logger[level](`[${taskName}] ${result.message}`)
       return result
     } catch (error) {
+      if (this.isDailyQuotaExceededError(error)) {
+        const result: TaskExecutionResult = {
+          status: TushareSyncExecutionStatus.SKIPPED,
+          message: `[${error.apiName}] 触发当日访问配额限制，已跳过本次任务：${error.message}`,
+          payload: {
+            apiName: error.apiName,
+            code: error.code,
+          },
+        }
+        await this.writeSyncLog(taskName, result, startedAt)
+        this.logger.warn(`[${taskName}] ${result.message}`)
+        return result
+      }
+
       const result: TaskExecutionResult = {
         status: TushareSyncExecutionStatus.FAILED,
         message: (error as Error).message,
@@ -123,15 +166,15 @@ export class TushareSyncSupportService {
   }
 
   async replaceAllRows(modelName: string, data: unknown[]) {
-    return this.prisma.$transaction(async (tx) => {
-      await (tx as any)[modelName].deleteMany()
-      if (!data.length) {
-        return 0
-      }
+    const model = (this.prisma as any)[modelName]
 
-      const result = await (tx as any)[modelName].createMany({ data })
-      return result.count as number
-    })
+    if (!data.length) {
+      await model.deleteMany()
+      return 0
+    }
+
+    const [, result] = await this.prisma.$transaction([model.deleteMany(), model.createMany({ data })])
+    return result.count as number
   }
 
   async replaceTradeDateRows(
@@ -140,21 +183,22 @@ export class TushareSyncSupportService {
     data: unknown[],
     extraWhere: Record<string, unknown> = {},
   ) {
-    return this.prisma.$transaction(async (tx) => {
-      await (tx as any)[modelName].deleteMany({
-        where: {
-          tradeDate,
-          ...extraWhere,
-        },
-      })
+    // 针对单个交易日的幂等覆盖写入：先删该日期旧数据，再整批写入新数据。
+    const model = (this.prisma as any)[modelName]
+    const deleteArgs = {
+      where: {
+        tradeDate,
+        ...extraWhere,
+      },
+    }
 
-      if (!data.length) {
-        return 0
-      }
+    if (!data.length) {
+      await model.deleteMany(deleteArgs)
+      return 0
+    }
 
-      const result = await (tx as any)[modelName].createMany({ data })
-      return result.count as number
-    })
+    const [, result] = await this.prisma.$transaction([model.deleteMany(deleteArgs), model.createMany({ data })])
+    return result.count as number
   }
 
   async replaceDateRangeRows(
@@ -164,25 +208,52 @@ export class TushareSyncSupportService {
     endDate: Date,
     data: unknown[],
     extraWhere: Record<string, unknown> = {},
+    options: { skipDuplicates?: boolean } = {},
   ) {
-    return this.prisma.$transaction(async (tx) => {
-      await (tx as any)[modelName].deleteMany({
-        where: {
-          ...extraWhere,
-          [fieldName]: {
-            gte: startDate,
-            lte: endDate,
-          },
+    // 针对日期区间的幂等覆盖写入：常用于公告型、窗口型同步任务。
+    const model = (this.prisma as any)[modelName]
+    const deleteArgs = {
+      where: {
+        ...extraWhere,
+        [fieldName]: {
+          gte: startDate,
+          lte: endDate,
         },
-      })
+      },
+    }
 
-      if (!data.length) {
-        return 0
-      }
+    if (!data.length) {
+      await model.deleteMany(deleteArgs)
+      return 0
+    }
 
-      const result = await (tx as any)[modelName].createMany({ data })
-      return result.count as number
+    const [, result] = await this.prisma.$transaction([
+      model.deleteMany(deleteArgs),
+      model.createMany({
+        data,
+        skipDuplicates: options.skipDuplicates,
+      }),
+    ])
+    return result.count as number
+  }
+
+  async deleteRowsBeforeDate(
+    modelName: string,
+    fieldName: string,
+    cutoffDate: Date,
+    extraWhere: Record<string, unknown> = {},
+  ) {
+    const model = (this.prisma as any)[modelName]
+    const result = await model.deleteMany({
+      where: {
+        ...extraWhere,
+        [fieldName]: {
+          lt: cutoffDate,
+        },
+      },
     })
+
+    return result.count as number
   }
 
   async getOpenTradeDatesBetween(startDate: string, endDate: string) {
@@ -190,6 +261,7 @@ export class TushareSyncSupportService {
       return []
     }
 
+    // 统一以 SSE 交易日历驱动 A 股按日数据同步，保证日线/周线/月线推进口径一致。
     const rows = await this.prisma.tradeCal.findMany({
       where: {
         exchange: PrismaStockExchange.SSE,
@@ -206,7 +278,29 @@ export class TushareSyncSupportService {
     return rows.map((row) => this.formatDate(row.calDate))
   }
 
+  async getRecentOpenTradeDates(endDate: string, limit: number = TUSHARE_MONEYFLOW_RECENT_TRADE_DAYS) {
+    if (limit <= 0) {
+      return []
+    }
+
+    const rows = await this.prisma.tradeCal.findMany({
+      where: {
+        exchange: PrismaStockExchange.SSE,
+        isOpen: '1',
+        calDate: {
+          lte: this.toDate(endDate),
+        },
+      },
+      orderBy: { calDate: 'desc' },
+      take: limit,
+      select: { calDate: true },
+    })
+
+    return rows.map((row) => this.formatDate(row.calDate)).reverse()
+  }
+
   async getPeriodEndTradeDates(startDate: string, endDate: string, unit: 'week' | 'month') {
+    // 先展开区间内所有开市日，再折叠为“每周最后一个交易日 / 每月最后一个交易日”。
     const openDates = await this.getOpenTradeDatesBetween(startDate, endDate)
     const grouped = new Map<string, string>()
 
@@ -344,11 +438,19 @@ export class TushareSyncSupportService {
   }
 
   toDate(value: string) {
-    return this.getCurrentShanghaiDay(value).toDate()
+    const year = Number(value.slice(0, 4))
+    const month = Number(value.slice(4, 6))
+    const day = Number(value.slice(6, 8))
+
+    return new Date(Date.UTC(year, month - 1, day))
   }
 
   formatDate(value: Date) {
-    return (dayjs(value) as any).tz(this.syncTimeZone).format('YYYYMMDD')
+    const year = value.getUTCFullYear()
+    const month = String(value.getUTCMonth() + 1).padStart(2, '0')
+    const day = String(value.getUTCDate()).padStart(2, '0')
+
+    return `${year}${month}${day}`
   }
 
   addDays(value: string, days: number) {
@@ -386,5 +488,9 @@ export class TushareSyncSupportService {
       case MoneyflowContentType.REGION:
         return PrismaMoneyflowContentType.REGION
     }
+  }
+
+  private isDailyQuotaExceededError(error: unknown): error is TushareApiError {
+    return error instanceof TushareApiError && error.code === 40203 && /(每天|每小时)最多访问该接口/.test(error.message)
   }
 }

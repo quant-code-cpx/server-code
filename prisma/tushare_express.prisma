@@ -37,5 +37,5 @@ model Express {
 
   @@id([tsCode, endDate, annDate])
   @@index([annDate])
-  @@map("express")
+  @@map("earnings_express_reports")
 }

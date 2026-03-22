@@ -62,6 +62,12 @@ export class TushareApiService {
     })
   }
 
+  /**
+   * 按交易日获取全市场日线。
+   *
+   * 这不是“单只股票”的日线，而是指定 `trade_date` 下全市场股票的日线快照；
+   * 因此配合同步层按交易日遍历，就可以覆盖“所有股票全部历史日线”。
+   */
   getDailyByTradeDate(tradeDate: string, limit?: number) {
     return this.tushareService.call({
       api_name: TushareApiName.DAILY,
@@ -71,6 +77,11 @@ export class TushareApiService {
     })
   }
 
+  /**
+   * 按周末交易日获取全市场周线。
+   *
+   * 同步层会先根据交易日历解析出每周最后一个交易日，再在这里取回该周对应的周线快照。
+   */
   getWeeklyByTradeDate(tradeDate: string, limit?: number) {
     return this.tushareService.call({
       api_name: TushareApiName.WEEKLY,
@@ -80,6 +91,11 @@ export class TushareApiService {
     })
   }
 
+  /**
+   * 按月末交易日获取全市场月线。
+   *
+   * 同步层会先根据交易日历解析出每月最后一个交易日，再在这里取回该月对应的月线快照。
+   */
   getMonthlyByTradeDate(tradeDate: string, limit?: number) {
     return this.tushareService.call({
       api_name: TushareApiName.MONTHLY,
@@ -89,6 +105,7 @@ export class TushareApiService {
     })
   }
 
+  /** 按交易日获取全市场复权因子。 */
   getAdjFactorByTradeDate(tradeDate: string, limit?: number) {
     return this.tushareService.call({
       api_name: TushareApiName.ADJ_FACTOR,
@@ -98,6 +115,7 @@ export class TushareApiService {
     })
   }
 
+  /** 按交易日获取全市场每日估值/换手等指标。 */
   getDailyBasicByTradeDate(tradeDate: string, limit?: number) {
     return this.tushareService.call({
       api_name: TushareApiName.DAILY_BASIC,
@@ -184,6 +202,19 @@ export class TushareApiService {
     return this.tushareService.call({
       api_name: TushareApiName.DIVIDEND,
       params: { ann_date: annDate },
+      fields: [...TUSHARE_DIVIDEND_FIELDS],
+      limit,
+    })
+  }
+
+  /** 获取指定公告日期区间的全市场分红公告 */
+  getDividendByDateRange(startDate: string, endDate: string, limit?: number) {
+    return this.tushareService.call({
+      api_name: TushareApiName.DIVIDEND,
+      params: {
+        start_date: startDate,
+        end_date: endDate,
+      },
       fields: [...TUSHARE_DIVIDEND_FIELDS],
       limit,
     })

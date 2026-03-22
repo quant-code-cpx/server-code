@@ -15,5 +15,5 @@ model Weekly {
 
   @@id([tsCode, tradeDate])
   @@index([tradeDate])
-  @@map("weekly")
+  @@map("stock_weekly_prices")
 }

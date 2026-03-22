@@ -99,6 +99,9 @@ export const TUSHARE_MONEYFLOW_CONTENT_TYPES = [
   MoneyflowContentType.REGION,
 ] as const
 
+/** 资金流向仅保留最近 60 个交易日，避免在低积分账户下做不可持续的历史全量回补 */
+export const TUSHARE_MONEYFLOW_RECENT_TRADE_DAYS = 60
+
 /** 接口字段清单：字段来自 Tushare 文档镜像模型元数据 */
 export const TUSHARE_STOCK_BASIC_FIELDS = [
   'ts_code',
@@ -286,9 +289,9 @@ export const TUSHARE_FINA_INDICATOR_FIELDS = [
   'grossprofit_margin',
   'netprofit_margin',
   'roe',
-  'dt_roe',
+  'roe_dt',
   'roa',
-  'roa2',
+  'roic',
   'debt_to_assets',
   'current_ratio',
   'quick_ratio',
@@ -298,9 +301,8 @@ export const TUSHARE_FINA_INDICATOR_FIELDS = [
   'ebit',
   'ebitda',
   'netdebt',
-  'ocf_to_netprofit',
   'ocf_to_or',
-  'revenue_yoy',
+  'or_yoy',
   'netprofit_yoy',
   'ocf_yoy',
   'dt_eps_yoy',

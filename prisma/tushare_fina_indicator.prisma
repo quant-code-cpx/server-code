@@ -38,5 +38,5 @@ model FinaIndicator {
 
   @@id([tsCode, endDate])
   @@index([annDate])
-  @@map("fina_indicator")
+  @@map("financial_indicator_snapshots")
 }

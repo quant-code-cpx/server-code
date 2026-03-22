@@ -62,7 +62,7 @@ export class AuthService {
    * 登录成功后返回 accessToken 与 refreshToken，调用方需将 refreshToken 写入 HttpOnly Cookie。
    */
   async login(dto: LoginDto): Promise<{ accessToken: string; refreshToken: string; refreshTokenTTL: number }> {
-    const { account, password, captchaId, captchaCode } = dto
+    const { account, password, captchaId, captchaCode } = this.normalizeLoginPayload(dto)
 
     // 1. 验证码校验（先于密码，避免暴力破解绕过验证码）
     await this.validateCaptcha(captchaId, captchaCode)
@@ -70,7 +70,8 @@ export class AuthService {
     // 2. 检查账号是否被锁定
     const isLocked = await this.redis.exists(REDIS_KEY.LOGIN_LOCK(account))
     if (isLocked) {
-      throw new BusinessException(ErrorEnum.ACCOUNT_LOCKED)
+      this.logger.warn(`账号 [${account}] 当前处于登录锁定状态，统一返回账号或密码错误`)
+      throw new BusinessException(ErrorEnum.INVALID_USERNAME_PASSWORD)
     }
 
     // 3. 查询用户
@@ -100,6 +101,28 @@ export class AuthService {
       nickname: user.nickname,
       role: user.role,
     })
+  }
+
+  private normalizeLoginPayload(dto: LoginDto): {
+    account: string
+    password: string
+    captchaId: string
+    captchaCode: string
+  } {
+    const account = this.readLoginField(dto.account, { trim: true })
+    const password = this.readLoginField(dto.password)
+    const captchaId = this.readLoginField(dto.captchaId, { trim: true })
+    const captchaCode = this.readLoginField(dto.captchaCode, { trim: true })
+
+    if (!captchaId || !captchaCode) {
+      throw new BusinessException(ErrorEnum.INVALID_CAPTCHA)
+    }
+
+    if (!account || !password) {
+      throw new BusinessException(ErrorEnum.INVALID_USERNAME_PASSWORD)
+    }
+
+    return { account, password, captchaId, captchaCode }
   }
 
   /** 记录登录失败次数；达到上限则锁定账号 */
@@ -181,5 +204,18 @@ export class AuthService {
 
   private async updateLastLoginAt(userId: number): Promise<void> {
     await this.prisma.user.update({ where: { id: userId }, data: { lastLoginAt: new Date() } })
+  }
+
+  private readLoginField(value: unknown, options?: { trim?: boolean }): string | null {
+    if (typeof value !== 'string') {
+      return null
+    }
+
+    const normalized = options?.trim ? value.trim() : value
+    if (!normalized || normalized.trim().length === 0) {
+      return null
+    }
+
+    return normalized
   }
 }

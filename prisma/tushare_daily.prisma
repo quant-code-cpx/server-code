@@ -15,5 +15,5 @@ model Daily {
 
   @@id([tsCode, tradeDate])
   @@index([tradeDate])
-  @@map("daily")
+  @@map("stock_daily_prices")
 }

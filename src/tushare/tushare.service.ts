@@ -3,6 +3,17 @@ import { ConfigService } from '@nestjs/config'
 import { ITushareConfig, TUSHARE_CONFIG_TOKEN } from 'src/config/tushare.config'
 import { TushareRequestParams, TushareResponse } from './tushare.interface'
 
+export class TushareApiError extends Error {
+  constructor(
+    readonly apiName: string,
+    readonly code: number,
+    message: string,
+  ) {
+    super(message)
+    this.name = 'TushareApiError'
+  }
+}
+
 /**
  * TushareService
  *
@@ -84,7 +95,7 @@ export class TushareService {
     }
 
     const json = (await response.json()) as TushareResponse
-    if (this.isRateLimitError(json) && attempt <= this.maxRetries) {
+    if (this.isRetryableRateLimitError(json) && attempt <= this.maxRetries) {
       this.logger.warn(
         `Tushare 接口触发频控 [${req.api_name}]，第 ${attempt} 次重试前等待 ${this.rateLimitRetryDelayMs}ms。`,
       )
@@ -94,7 +105,7 @@ export class TushareService {
 
     if (json.code !== 0) {
       this.logger.error(`Tushare 接口错误 [${req.api_name}] code=${json.code} msg=${json.msg}`)
-      throw new Error(`Tushare error: ${json.msg}`)
+      throw new TushareApiError(req.api_name, json.code, `Tushare error: ${json.msg}`)
     }
 
     return this.parseRecords<T>(json)
@@ -123,8 +134,8 @@ export class TushareService {
     this.lastRequestAt = Date.now()
   }
 
-  private isRateLimitError(json: TushareResponse) {
-    return json.code === 40203 || /每分钟最多访问该接口/.test(json.msg)
+  private isRetryableRateLimitError(json: TushareResponse) {
+    return json.code === 40203 && /每分钟最多访问该接口/.test(json.msg)
   }
 
   private sleep(ms: number) {

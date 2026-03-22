@@ -19,5 +19,5 @@ model MoneyflowDc {
 
   @@id([tsCode, tradeDate])
   @@index([tradeDate])
-  @@map("moneyflow_dc")
+  @@map("stock_capital_flows")
 }

@@ -7,5 +7,5 @@ model AdjFactor {
 
   @@id([tsCode, tradeDate])
   @@index([tradeDate])
-  @@map("adj_factor")
+  @@map("stock_adjustment_factors")
 }

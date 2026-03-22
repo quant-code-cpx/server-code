@@ -15,5 +15,5 @@ model Monthly {
 
   @@id([tsCode, tradeDate])
   @@index([tradeDate])
-  @@map("monthly")
+  @@map("stock_monthly_prices")
 }

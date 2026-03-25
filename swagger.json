@@ -1,0 +1,2485 @@
+{
+  "openapi": "3.0.0",
+  "paths": {
+    "/auth/captcha": {
+      "post": {
+        "operationId": "AuthController_captcha",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ResponseModel"
+                    },
+                    {
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/CaptchaResponseDto"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "summary": "获取图片验证码",
+        "tags": [
+          "Auth - 认证"
+        ]
+      }
+    },
+    "/auth/login": {
+      "post": {
+        "operationId": "AuthController_login",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ResponseModel"
+                    },
+                    {
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/AccessTokenResponseDto"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "summary": "登录（验证码 + 账号密码）",
+        "tags": [
+          "Auth - 认证"
+        ]
+      }
+    },
+    "/auth/refresh": {
+      "post": {
+        "operationId": "AuthController_refresh",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ResponseModel"
+                    },
+                    {
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/AccessTokenResponseDto"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "summary": "刷新 AccessToken",
+        "tags": [
+          "Auth - 认证"
+        ]
+      }
+    },
+    "/auth/logout": {
+      "post": {
+        "operationId": "AuthController_logout",
+        "parameters": [
+          {
+            "name": "authorization",
+            "required": true,
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ResponseModel"
+                    },
+                    {
+                      "properties": {
+                        "data": {
+                          "type": "null",
+                          "nullable": true
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "refresh_token": []
+          }
+        ],
+        "summary": "登出",
+        "tags": [
+          "Auth - 认证"
+        ]
+      }
+    },
+    "/user/create": {
+      "post": {
+        "operationId": "UserController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateUserDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ResponseModel"
+                    },
+                    {
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/CreatedUserDto"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "创建用户（管理员以上）",
+        "tags": [
+          "User - 用户"
+        ]
+      }
+    },
+    "/user/list": {
+      "post": {
+        "operationId": "UserController_findAll",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserListQueryDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ResponseModel"
+                    },
+                    {
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/UserListDataDto"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "用户列表（管理员以上）",
+        "tags": [
+          "User - 用户"
+        ]
+      }
+    },
+    "/user/profile/detail": {
+      "post": {
+        "operationId": "UserController_getProfile",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ResponseModel"
+                    },
+                    {
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/UserSafeDto"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "获取个人详情",
+        "tags": [
+          "User - 用户"
+        ]
+      }
+    },
+    "/user/profile/update": {
+      "post": {
+        "operationId": "UserController_updateProfile",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateProfileDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ResponseModel"
+                    },
+                    {
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/UserSafeDto"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "修改个人资料",
+        "tags": [
+          "User - 用户"
+        ]
+      }
+    },
+    "/user/profile/change-password": {
+      "post": {
+        "operationId": "UserController_changePassword",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangePasswordDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ResponseModel"
+                    },
+                    {
+                      "properties": {
+                        "data": {
+                          "type": "null",
+                          "nullable": true
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "修改密码",
+        "tags": [
+          "User - 用户"
+        ]
+      }
+    },
+    "/user/detail": {
+      "post": {
+        "operationId": "UserController_findOne",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserIdDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ResponseModel"
+                    },
+                    {
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/UserSafeDto"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "获取指定用户详情（管理员以上）",
+        "tags": [
+          "User - 用户"
+        ]
+      }
+    },
+    "/user/update": {
+      "post": {
+        "operationId": "UserController_adminUpdateUser",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminUpdateUserDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ResponseModel"
+                    },
+                    {
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/UserSafeDto"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "更新用户信息（管理员以上，需高于目标用户角色）",
+        "tags": [
+          "User - 用户"
+        ]
+      }
+    },
+    "/user/update-status": {
+      "post": {
+        "operationId": "UserController_updateStatus",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateUserStatusDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ResponseModel"
+                    },
+                    {
+                      "properties": {
+                        "data": {
+                          "type": "null",
+                          "nullable": true
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "修改用户状态（管理员以上，需高于目标用户角色）",
+        "tags": [
+          "User - 用户"
+        ]
+      }
+    },
+    "/user/reset-password": {
+      "post": {
+        "operationId": "UserController_resetPassword",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserIdDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ResponseModel"
+                    },
+                    {
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/ResetPasswordDataDto"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "重置用户密码（管理员以上，需高于目标用户角色）",
+        "tags": [
+          "User - 用户"
+        ]
+      }
+    },
+    "/user/delete": {
+      "post": {
+        "operationId": "UserController_remove",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserIdDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ResponseModel"
+                    },
+                    {
+                      "properties": {
+                        "data": {
+                          "type": "null",
+                          "nullable": true
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "删除用户（软删除，需高于目标用户角色）",
+        "tags": [
+          "User - 用户"
+        ]
+      }
+    },
+    "/stock/list": {
+      "post": {
+        "operationId": "StockController_findAll",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StockListQueryDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ResponseModel"
+                    },
+                    {
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/StockListDataDto"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "summary": "股票列表（分页 + 多维筛选 + 排序）",
+        "tags": [
+          "Stock - 股票"
+        ]
+      }
+    },
+    "/stock/search": {
+      "post": {
+        "operationId": "StockController_search",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StockSearchDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ResponseModel"
+                    },
+                    {
+                      "properties": {
+                        "data": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/StockSearchItemDto"
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "summary": "股票搜索建议（联想词）",
+        "tags": [
+          "Stock - 股票"
+        ]
+      }
+    },
+    "/stock/detail": {
+      "post": {
+        "operationId": "StockController_findOne",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StockDetailDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ResponseModel"
+                    },
+                    {
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/StockDetailLegacyDataDto"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "summary": "获取股票详情（旧接口，兼容保留）",
+        "tags": [
+          "Stock - 股票"
+        ]
+      }
+    },
+    "/stock/detail/overview": {
+      "post": {
+        "operationId": "StockController_detailOverview",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StockDetailDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ResponseModel"
+                    },
+                    {
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/StockDetailOverviewDataDto"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "summary": "股票详情 - 总览（基本信息 + 公司简介 + 最新行情 + 估值）",
+        "tags": [
+          "Stock - 股票"
+        ]
+      }
+    },
+    "/stock/detail/chart": {
+      "post": {
+        "operationId": "StockController_detailChart",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StockDetailChartDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ResponseModel"
+                    },
+                    {
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/StockChartDataDto"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "summary": "股票详情 - K 线图（支持日/周/月 + 前/后复权）",
+        "tags": [
+          "Stock - 股票"
+        ]
+      }
+    },
+    "/stock/detail/money-flow": {
+      "post": {
+        "operationId": "StockController_detailMoneyFlow",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StockDetailMoneyFlowDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ResponseModel"
+                    },
+                    {
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/StockMoneyFlowDataDto"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "summary": "股票详情 - 资金流（最近 N 日资金流向）",
+        "tags": [
+          "Stock - 股票"
+        ]
+      }
+    },
+    "/stock/detail/financials": {
+      "post": {
+        "operationId": "StockController_detailFinancials",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StockDetailFinancialsDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ResponseModel"
+                    },
+                    {
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/StockFinancialsDataDto"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "summary": "股票详情 - 财务指标（最近 N 个报告期）",
+        "tags": [
+          "Stock - 股票"
+        ]
+      }
+    },
+    "/stock/detail/shareholders": {
+      "post": {
+        "operationId": "StockController_detailShareholders",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StockDetailShareholdersDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ResponseModel"
+                    },
+                    {
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/StockShareholdersDataDto"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "summary": "股票详情 - 股东与分红（前十大 + 分红历史）",
+        "tags": [
+          "Stock - 股票"
+        ]
+      }
+    },
+    "/market/money-flow": {
+      "post": {
+        "operationId": "MarketController_getMarketMoneyFlow",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MoneyFlowQueryDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ResponseModel"
+                    },
+                    {
+                      "properties": {
+                        "data": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/MarketMoneyFlowItemDto"
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "summary": "获取市场整体资金流入流出",
+        "tags": [
+          "Market - 市场与行业"
+        ]
+      }
+    },
+    "/market/sector-flow": {
+      "post": {
+        "operationId": "MarketController_getSectorFlow",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MoneyFlowQueryDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ResponseModel"
+                    },
+                    {
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/SectorFlowDataDto"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "summary": "获取行业板块涨跌及资金流向",
+        "tags": [
+          "Market - 市场与行业"
+        ]
+      }
+    },
+    "/heatmap/data": {
+      "post": {
+        "operationId": "HeatmapController_getHeatmap",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HeatmapQueryDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ResponseModel"
+                    },
+                    {
+                      "properties": {
+                        "data": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/HeatmapItemDto"
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "summary": "获取市场热力图数据（涨跌幅分布）",
+        "tags": [
+          "Heatmap - 热力图"
+        ]
+      }
+    },
+    "/backtesting/submit": {
+      "post": {
+        "operationId": "BacktestingController_submit",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubmitBacktestingDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "提交回测任务",
+        "tags": [
+          "Backtesting - 回测任务"
+        ]
+      }
+    },
+    "/backtesting/status": {
+      "post": {
+        "operationId": "BacktestingController_status",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JobStatusDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "查询回测任务状态",
+        "tags": [
+          "Backtesting - 回测任务"
+        ]
+      }
+    }
+  },
+  "info": {
+    "title": "Quant Server API",
+    "description": "量化交易后端接口文档",
+    "version": "1.0",
+    "contact": {}
+  },
+  "tags": [],
+  "servers": [],
+  "components": {
+    "securitySchemes": {
+      "bearer": {
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "type": "http"
+      },
+      "cookie": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "refresh_token"
+      }
+    },
+    "schemas": {
+      "ResponseModel": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "number",
+            "default": 0
+          },
+          "data": {
+            "type": "object"
+          },
+          "message": {
+            "type": "string",
+            "default": ""
+          }
+        },
+        "required": [
+          "code",
+          "data",
+          "message"
+        ]
+      },
+      "CaptchaResponseDto": {
+        "type": "object",
+        "properties": {
+          "captchaId": {
+            "type": "string",
+            "description": "验证码 ID，登录时需要携带"
+          },
+          "svgImage": {
+            "type": "string",
+            "description": "SVG 格式的验证码图片"
+          }
+        },
+        "required": [
+          "captchaId",
+          "svgImage"
+        ]
+      },
+      "AccessTokenResponseDto": {
+        "type": "object",
+        "properties": {
+          "accessToken": {
+            "type": "string",
+            "description": "访问令牌（Bearer Token）"
+          }
+        },
+        "required": [
+          "accessToken"
+        ]
+      },
+      "LoginDto": {
+        "type": "object",
+        "properties": {
+          "account": {
+            "type": "string",
+            "example": "admin",
+            "description": "登录账号"
+          },
+          "password": {
+            "type": "string",
+            "example": "123456",
+            "description": "密码"
+          },
+          "captchaId": {
+            "type": "string",
+            "example": "abc123",
+            "description": "验证码 ID（由 GET /auth/captcha 获取）"
+          },
+          "captchaCode": {
+            "type": "string",
+            "example": "A8K2",
+            "description": "验证码文本（不区分大小写）"
+          }
+        },
+        "required": [
+          "account",
+          "password",
+          "captchaId",
+          "captchaCode"
+        ]
+      },
+      "CreatedUserDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "number"
+          },
+          "account": {
+            "type": "string"
+          },
+          "nickname": {
+            "type": "string",
+            "nullable": true
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "SUPER_ADMIN",
+              "ADMIN",
+              "USER"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "ACTIVE",
+              "DEACTIVATED",
+              "DELETED"
+            ]
+          },
+          "email": {
+            "type": "string",
+            "nullable": true
+          },
+          "wechat": {
+            "type": "string",
+            "nullable": true
+          },
+          "lastLoginAt": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
+          },
+          "backtestQuota": {
+            "type": "number"
+          },
+          "watchlistLimit": {
+            "type": "number"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "initialPassword": {
+            "type": "string",
+            "description": "新建用户初始密码（仅本次返回）"
+          }
+        },
+        "required": [
+          "id",
+          "account",
+          "role",
+          "status",
+          "backtestQuota",
+          "watchlistLimit",
+          "createdAt",
+          "updatedAt",
+          "initialPassword"
+        ]
+      },
+      "CreateUserDto": {
+        "type": "object",
+        "properties": {
+          "account": {
+            "type": "string",
+            "example": "zhangsan",
+            "description": "登录账号"
+          },
+          "nickname": {
+            "type": "string",
+            "example": "张三",
+            "description": "昵称"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "SUPER_ADMIN",
+              "ADMIN",
+              "USER"
+            ],
+            "description": "用户角色（默认 USER）"
+          }
+        },
+        "required": [
+          "account",
+          "nickname"
+        ]
+      },
+      "UserSafeDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "number"
+          },
+          "account": {
+            "type": "string"
+          },
+          "nickname": {
+            "type": "string",
+            "nullable": true
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "SUPER_ADMIN",
+              "ADMIN",
+              "USER"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "ACTIVE",
+              "DEACTIVATED",
+              "DELETED"
+            ]
+          },
+          "email": {
+            "type": "string",
+            "nullable": true
+          },
+          "wechat": {
+            "type": "string",
+            "nullable": true
+          },
+          "lastLoginAt": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
+          },
+          "backtestQuota": {
+            "type": "number"
+          },
+          "watchlistLimit": {
+            "type": "number"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "account",
+          "role",
+          "status",
+          "backtestQuota",
+          "watchlistLimit",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "UserListDataDto": {
+        "type": "object",
+        "properties": {
+          "total": {
+            "type": "number"
+          },
+          "page": {
+            "type": "number"
+          },
+          "pageSize": {
+            "type": "number"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UserSafeDto"
+            }
+          }
+        },
+        "required": [
+          "total",
+          "page",
+          "pageSize",
+          "items"
+        ]
+      },
+      "UserListQueryDto": {
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": "number",
+            "description": "页码，从1开始",
+            "default": 1
+          },
+          "pageSize": {
+            "type": "number",
+            "description": "每页条数",
+            "default": 20
+          },
+          "account": {
+            "type": "string",
+            "description": "账号模糊搜索"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "ACTIVE",
+              "DEACTIVATED",
+              "DELETED"
+            ],
+            "description": "用户状态筛选"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "SUPER_ADMIN",
+              "ADMIN",
+              "USER"
+            ],
+            "description": "用户角色筛选"
+          }
+        }
+      },
+      "UpdateProfileDto": {
+        "type": "object",
+        "properties": {
+          "nickname": {
+            "type": "string",
+            "example": "李四",
+            "description": "昵称"
+          },
+          "email": {
+            "type": "string",
+            "example": "user@example.com",
+            "description": "邮箱"
+          },
+          "wechat": {
+            "type": "string",
+            "example": "wx_12345",
+            "description": "微信号"
+          }
+        }
+      },
+      "ChangePasswordDto": {
+        "type": "object",
+        "properties": {
+          "oldPassword": {
+            "type": "string",
+            "description": "旧密码"
+          },
+          "newPassword": {
+            "type": "string",
+            "description": "新密码（至少8位）"
+          }
+        },
+        "required": [
+          "oldPassword",
+          "newPassword"
+        ]
+      },
+      "UserIdDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "number",
+            "example": 1,
+            "description": "用户 ID"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "AdminUpdateUserDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "number",
+            "example": 1,
+            "description": "用户 ID"
+          },
+          "nickname": {
+            "type": "string",
+            "example": "张三",
+            "description": "昵称"
+          },
+          "email": {
+            "type": "string",
+            "example": "user@example.com",
+            "description": "邮箱"
+          },
+          "wechat": {
+            "type": "string",
+            "example": "wx_12345",
+            "description": "微信号"
+          },
+          "backtestQuota": {
+            "type": "number",
+            "example": 5,
+            "description": "回测任务数量限制"
+          },
+          "watchlistLimit": {
+            "type": "number",
+            "example": 20,
+            "description": "监控股票数量限制"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "UpdateUserStatusDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "number",
+            "example": 1,
+            "description": "用户 ID"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "ACTIVE",
+              "DEACTIVATED"
+            ],
+            "description": "用户状态"
+          }
+        },
+        "required": [
+          "id",
+          "status"
+        ]
+      },
+      "ResetPasswordDataDto": {
+        "type": "object",
+        "properties": {
+          "newPassword": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "newPassword"
+        ]
+      },
+      "StockListItemDto": {
+        "type": "object",
+        "properties": {
+          "tsCode": {
+            "type": "string"
+          },
+          "symbol": {
+            "type": "string",
+            "nullable": true
+          },
+          "name": {
+            "type": "string",
+            "nullable": true
+          },
+          "fullname": {
+            "type": "string",
+            "nullable": true
+          },
+          "exchange": {
+            "type": "string",
+            "nullable": true
+          },
+          "currType": {
+            "type": "string",
+            "nullable": true
+          },
+          "market": {
+            "type": "string",
+            "nullable": true
+          },
+          "industry": {
+            "type": "string",
+            "nullable": true
+          },
+          "area": {
+            "type": "string",
+            "nullable": true
+          },
+          "listStatus": {
+            "type": "string",
+            "nullable": true
+          },
+          "listDate": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
+          },
+          "latestTradeDate": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
+          },
+          "peTtm": {
+            "type": "number",
+            "nullable": true
+          },
+          "pb": {
+            "type": "number",
+            "nullable": true
+          },
+          "dvTtm": {
+            "type": "number",
+            "nullable": true
+          },
+          "totalMv": {
+            "type": "number",
+            "nullable": true
+          },
+          "circMv": {
+            "type": "number",
+            "nullable": true
+          },
+          "turnoverRate": {
+            "type": "number",
+            "nullable": true
+          },
+          "pctChg": {
+            "type": "number",
+            "nullable": true
+          },
+          "amount": {
+            "type": "number",
+            "nullable": true
+          },
+          "close": {
+            "type": "number",
+            "nullable": true
+          }
+        },
+        "required": [
+          "tsCode"
+        ]
+      },
+      "StockListDataDto": {
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": "number"
+          },
+          "pageSize": {
+            "type": "number"
+          },
+          "total": {
+            "type": "number"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StockListItemDto"
+            }
+          }
+        },
+        "required": [
+          "page",
+          "pageSize",
+          "total",
+          "items"
+        ]
+      },
+      "StockListQueryDto": {
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": "number",
+            "description": "页码，从 1 开始",
+            "default": 1
+          },
+          "pageSize": {
+            "type": "number",
+            "description": "每页条数",
+            "default": 20,
+            "maximum": 100
+          },
+          "keyword": {
+            "type": "string",
+            "description": "关键词搜索：股票代码 / 名称 / 拼音缩写"
+          },
+          "exchange": {
+            "type": "string",
+            "description": "交易所：SSE（上交所）/ SZSE（深交所）/ BSE（北交所）"
+          },
+          "listStatus": {
+            "type": "string",
+            "description": "上市状态：L（上市）/ D（退市）/ P（暂停）",
+            "default": "L"
+          },
+          "industry": {
+            "type": "string",
+            "description": "所属行业（模糊匹配）"
+          },
+          "area": {
+            "type": "string",
+            "description": "地域（模糊匹配，如：广东、上海）"
+          },
+          "market": {
+            "type": "string",
+            "description": "市场板块（主板 / 创业板 / 科创板 等，模糊匹配）"
+          },
+          "isHs": {
+            "type": "string",
+            "description": "是否沪深港通标的：N / H / S"
+          },
+          "minTotalMv": {
+            "type": "number",
+            "description": "最小总市值（万元）"
+          },
+          "maxTotalMv": {
+            "type": "number",
+            "description": "最大总市值（万元）"
+          },
+          "maxPeTtm": {
+            "type": "number",
+            "description": "最大市盈率 TTM"
+          },
+          "minPb": {
+            "type": "number",
+            "description": "最小市净率 PB"
+          },
+          "maxPb": {
+            "type": "number",
+            "description": "最大市净率 PB"
+          },
+          "minDvTtm": {
+            "type": "number",
+            "description": "最小股息率 TTM（%）"
+          },
+          "minTurnoverRate": {
+            "type": "number",
+            "description": "最小换手率（%）"
+          },
+          "maxTurnoverRate": {
+            "type": "number",
+            "description": "最大换手率（%）"
+          },
+          "minPctChg": {
+            "type": "number",
+            "description": "最小涨跌幅（%）"
+          },
+          "maxPctChg": {
+            "type": "number",
+            "description": "最大涨跌幅（%）"
+          },
+          "minAmount": {
+            "type": "number",
+            "description": "最小成交额（千元）"
+          },
+          "maxAmount": {
+            "type": "number",
+            "description": "最大成交额（千元）"
+          },
+          "sortBy": {
+            "type": "string",
+            "enum": [
+              "totalMv",
+              "pctChg",
+              "turnoverRate",
+              "amount",
+              "peTtm",
+              "pb",
+              "dvTtm",
+              "listDate"
+            ],
+            "description": "排序字段",
+            "default": "totalMv"
+          },
+          "sortOrder": {
+            "type": "string",
+            "enum": [
+              "asc",
+              "desc"
+            ],
+            "description": "排序方向",
+            "default": "desc"
+          }
+        }
+      },
+      "StockSearchItemDto": {
+        "type": "object",
+        "properties": {
+          "tsCode": {
+            "type": "string"
+          },
+          "symbol": {
+            "type": "string",
+            "nullable": true
+          },
+          "name": {
+            "type": "string",
+            "nullable": true
+          },
+          "exchange": {
+            "type": "string",
+            "nullable": true
+          },
+          "market": {
+            "type": "string",
+            "nullable": true
+          },
+          "industry": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "tsCode"
+        ]
+      },
+      "StockSearchDto": {
+        "type": "object",
+        "properties": {
+          "keyword": {
+            "type": "string",
+            "description": "搜索关键词（代码 / 名称 / 拼音缩写）",
+            "example": "平安"
+          },
+          "limit": {
+            "type": "number",
+            "description": "返回条数上限",
+            "default": 10,
+            "maximum": 20
+          }
+        },
+        "required": [
+          "keyword"
+        ]
+      },
+      "StockDetailLegacyDataDto": {
+        "type": "object",
+        "properties": {
+          "stock": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "company": {
+            "type": "object",
+            "additionalProperties": true,
+            "nullable": true
+          },
+          "latestDaily": {
+            "type": "object",
+            "additionalProperties": true,
+            "nullable": true
+          },
+          "latestDailyBasic": {
+            "type": "object",
+            "additionalProperties": true,
+            "nullable": true
+          },
+          "latestAdjFactor": {
+            "type": "object",
+            "additionalProperties": true,
+            "nullable": true
+          }
+        },
+        "required": [
+          "stock",
+          "company",
+          "latestDaily",
+          "latestDailyBasic",
+          "latestAdjFactor"
+        ]
+      },
+      "StockDetailDto": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "example": "000001.SZ",
+            "description": "股票代码（ts_code）"
+          }
+        },
+        "required": [
+          "code"
+        ]
+      },
+      "StockDetailOverviewDataDto": {
+        "type": "object",
+        "properties": {
+          "basic": {
+            "type": "object",
+            "additionalProperties": true,
+            "nullable": true
+          },
+          "company": {
+            "type": "object",
+            "additionalProperties": true,
+            "nullable": true
+          },
+          "latestQuote": {
+            "type": "object",
+            "additionalProperties": true,
+            "nullable": true
+          },
+          "latestValuation": {
+            "type": "object",
+            "additionalProperties": true,
+            "nullable": true
+          },
+          "latestExpress": {
+            "type": "object",
+            "additionalProperties": true,
+            "nullable": true
+          }
+        },
+        "required": [
+          "basic",
+          "company",
+          "latestQuote",
+          "latestValuation",
+          "latestExpress"
+        ]
+      },
+      "StockChartItemDto": {
+        "type": "object",
+        "properties": {
+          "tradeDate": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "open": {
+            "type": "number",
+            "nullable": true
+          },
+          "high": {
+            "type": "number",
+            "nullable": true
+          },
+          "low": {
+            "type": "number",
+            "nullable": true
+          },
+          "close": {
+            "type": "number",
+            "nullable": true
+          },
+          "vol": {
+            "type": "number",
+            "nullable": true
+          },
+          "amount": {
+            "type": "number",
+            "nullable": true
+          },
+          "pctChg": {
+            "type": "number",
+            "nullable": true
+          },
+          "ma5": {
+            "type": "number",
+            "nullable": true
+          },
+          "ma10": {
+            "type": "number",
+            "nullable": true
+          },
+          "ma20": {
+            "type": "number",
+            "nullable": true
+          }
+        },
+        "required": [
+          "tradeDate"
+        ]
+      },
+      "StockChartDataDto": {
+        "type": "object",
+        "properties": {
+          "tsCode": {
+            "type": "string"
+          },
+          "period": {
+            "type": "string"
+          },
+          "adjustType": {
+            "type": "string"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StockChartItemDto"
+            }
+          }
+        },
+        "required": [
+          "tsCode",
+          "period",
+          "adjustType",
+          "items"
+        ]
+      },
+      "StockDetailChartDto": {
+        "type": "object",
+        "properties": {
+          "tsCode": {
+            "type": "string",
+            "example": "000001.SZ",
+            "description": "股票代码（ts_code）"
+          },
+          "period": {
+            "type": "string",
+            "enum": [
+              "D",
+              "W",
+              "M"
+            ],
+            "description": "周期：D（日）/ W（周）/ M（月）",
+            "default": "D"
+          },
+          "adjustType": {
+            "type": "string",
+            "enum": [
+              "none",
+              "qfq",
+              "hfq"
+            ],
+            "description": "复权方式：none（不复权）/ qfq（前复权）/ hfq（后复权）",
+            "default": "qfq"
+          },
+          "startDate": {
+            "type": "string",
+            "description": "开始日期（YYYYMMDD）",
+            "example": "20240101"
+          },
+          "endDate": {
+            "type": "string",
+            "description": "结束日期（YYYYMMDD）",
+            "example": "20260321"
+          }
+        },
+        "required": [
+          "tsCode"
+        ]
+      },
+      "StockMoneyFlowSummaryDto": {
+        "type": "object",
+        "properties": {
+          "netAmount5d": {
+            "type": "number"
+          },
+          "netAmount20d": {
+            "type": "number"
+          },
+          "netAmount60d": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "netAmount5d",
+          "netAmount20d",
+          "netAmount60d"
+        ]
+      },
+      "StockMoneyFlowItemDto": {
+        "type": "object",
+        "properties": {
+          "tradeDate": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "close": {
+            "type": "number",
+            "nullable": true
+          },
+          "pctChange": {
+            "type": "number",
+            "nullable": true
+          },
+          "netAmount": {
+            "type": "number",
+            "nullable": true
+          },
+          "netAmountRate": {
+            "type": "number",
+            "nullable": true
+          }
+        },
+        "required": [
+          "tradeDate"
+        ]
+      },
+      "StockMoneyFlowDataDto": {
+        "type": "object",
+        "properties": {
+          "tsCode": {
+            "type": "string"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/StockMoneyFlowSummaryDto"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StockMoneyFlowItemDto"
+            }
+          }
+        },
+        "required": [
+          "tsCode",
+          "summary",
+          "items"
+        ]
+      },
+      "StockDetailMoneyFlowDto": {
+        "type": "object",
+        "properties": {
+          "tsCode": {
+            "type": "string",
+            "example": "000001.SZ",
+            "description": "股票代码（ts_code）"
+          },
+          "days": {
+            "type": "number",
+            "description": "查询最近 N 个交易日的资金流数据",
+            "default": 60,
+            "maximum": 120
+          }
+        },
+        "required": [
+          "tsCode"
+        ]
+      },
+      "StockFinancialsDataDto": {
+        "type": "object",
+        "properties": {
+          "tsCode": {
+            "type": "string"
+          },
+          "latest": {
+            "type": "object",
+            "additionalProperties": true,
+            "nullable": true
+          },
+          "history": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "recentExpress": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          }
+        },
+        "required": [
+          "tsCode",
+          "latest",
+          "history",
+          "recentExpress"
+        ]
+      },
+      "StockDetailFinancialsDto": {
+        "type": "object",
+        "properties": {
+          "tsCode": {
+            "type": "string",
+            "example": "000001.SZ",
+            "description": "股票代码（ts_code）"
+          },
+          "periods": {
+            "type": "number",
+            "description": "返回最近 N 个报告期",
+            "default": 8,
+            "maximum": 20
+          }
+        },
+        "required": [
+          "tsCode"
+        ]
+      },
+      "StockShareholdersDataDto": {
+        "type": "object",
+        "properties": {
+          "tsCode": {
+            "type": "string"
+          },
+          "dividendHistory": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "top10Holders": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "top10FloatHolders": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "required": [
+          "tsCode",
+          "dividendHistory",
+          "top10Holders",
+          "top10FloatHolders"
+        ]
+      },
+      "StockDetailShareholdersDto": {
+        "type": "object",
+        "properties": {
+          "tsCode": {
+            "type": "string",
+            "example": "000001.SZ",
+            "description": "股票代码（ts_code）"
+          }
+        },
+        "required": [
+          "tsCode"
+        ]
+      },
+      "MarketMoneyFlowItemDto": {
+        "type": "object",
+        "properties": {
+          "tradeDate": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "netAmount": {
+            "type": "number",
+            "nullable": true
+          },
+          "buyAmount": {
+            "type": "number",
+            "nullable": true
+          },
+          "sellAmount": {
+            "type": "number",
+            "nullable": true
+          }
+        },
+        "required": [
+          "tradeDate"
+        ]
+      },
+      "MoneyFlowQueryDto": {
+        "type": "object",
+        "properties": {
+          "trade_date": {
+            "type": "string",
+            "description": "查询日期（YYYYMMDD），默认为最新交易日",
+            "example": "20240101"
+          }
+        }
+      },
+      "SectorFlowItemDto": {
+        "type": "object",
+        "properties": {
+          "tradeDate": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "contentType": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string",
+            "nullable": true
+          },
+          "netAmount": {
+            "type": "number",
+            "nullable": true
+          },
+          "rank": {
+            "type": "number",
+            "nullable": true
+          }
+        },
+        "required": [
+          "tradeDate",
+          "contentType"
+        ]
+      },
+      "SectorFlowDataDto": {
+        "type": "object",
+        "properties": {
+          "tradeDate": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
+          },
+          "industry": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SectorFlowItemDto"
+            }
+          },
+          "concept": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SectorFlowItemDto"
+            }
+          },
+          "region": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SectorFlowItemDto"
+            }
+          }
+        },
+        "required": [
+          "industry",
+          "concept",
+          "region"
+        ]
+      },
+      "HeatmapItemDto": {
+        "type": "object",
+        "properties": {
+          "tsCode": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string",
+            "nullable": true
+          },
+          "industry": {
+            "type": "string",
+            "nullable": true
+          },
+          "pctChg": {
+            "type": "number",
+            "nullable": true
+          },
+          "totalMv": {
+            "type": "number",
+            "nullable": true
+          }
+        },
+        "required": [
+          "tsCode"
+        ]
+      },
+      "HeatmapQueryDto": {
+        "type": "object",
+        "properties": {
+          "trade_date": {
+            "type": "string",
+            "description": "查询日期（YYYYMMDD），默认为最新交易日",
+            "example": "20240101"
+          },
+          "group_by": {
+            "type": "string",
+            "description": "分组维度：industry（行业）/ concept（概念板块）",
+            "default": "industry"
+          }
+        }
+      },
+      "SubmitBacktestingDto": {
+        "type": "object",
+        "properties": {
+          "strategyId": {
+            "type": "string",
+            "example": "ma_cross",
+            "description": "策略标识"
+          },
+          "startDate": {
+            "type": "string",
+            "example": "2023-01-01",
+            "description": "回测开始日期"
+          },
+          "endDate": {
+            "type": "string",
+            "example": "2024-01-01",
+            "description": "回测结束日期"
+          },
+          "initialCapital": {
+            "type": "number",
+            "example": 100000,
+            "description": "初始资金"
+          },
+          "params": {
+            "type": "object",
+            "description": "策略参数"
+          }
+        },
+        "required": [
+          "strategyId",
+          "startDate",
+          "endDate",
+          "initialCapital"
+        ]
+      },
+      "JobStatusDto": {
+        "type": "object",
+        "properties": {
+          "jobId": {
+            "type": "string",
+            "example": "abc123",
+            "description": "回测任务 ID"
+          }
+        },
+        "required": [
+          "jobId"
+        ]
+      }
+    }
+  }
+}

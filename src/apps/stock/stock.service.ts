@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common'
 import { Prisma } from '@prisma/client'
 import * as dayjs from 'dayjs'
 import { PrismaService } from 'src/shared/prisma.service'
-import { TushareFinancialPerformanceSyncService } from 'src/tushare/sync/tushare-financial-performance-sync.service'
+import { FinancialSyncService } from 'src/tushare/sync/financial-sync.service'
 import { StockListQueryDto, StockSortBy } from './dto/stock-list-query.dto'
 import { StockSearchDto } from './dto/stock-search.dto'
 import { StockDetailChartDto, AdjustType, ChartPeriod } from './dto/stock-detail-chart.dto'
@@ -26,12 +26,15 @@ export interface StockListRow {
   tsCode: string
   symbol: string | null
   name: string | null
+  fullname: string | null
   exchange: string | null
+  currType: string | null
   market: string | null
   industry: string | null
   area: string | null
   listStatus: string | null
   listDate: Date | null
+  latestTradeDate: Date | null
   isHs: string | null
   cnspell: string | null
   peTtm: number | null
@@ -57,7 +60,7 @@ export interface StockListRow {
 export class StockService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly dividendSyncService: TushareFinancialPerformanceSyncService,
+    private readonly dividendSyncService: FinancialSyncService,
   ) {}
 
   // ─── 股票列表 ─────────────────────────────────────────────────────────────────
@@ -83,35 +86,66 @@ export class StockService {
     if (query.industry) conditions.push(Prisma.sql`sb.industry ILIKE ${'%' + query.industry + '%'}`)
     if (query.area) conditions.push(Prisma.sql`sb.area ILIKE ${'%' + query.area + '%'}`)
     if (query.market) conditions.push(Prisma.sql`sb.market ILIKE ${'%' + query.market + '%'}`)
+    if (query.isHs) conditions.push(Prisma.sql`sb.is_hs = ${query.isHs}`)
     if (query.minTotalMv !== undefined) conditions.push(Prisma.sql`db.total_mv >= ${query.minTotalMv}`)
     if (query.maxTotalMv !== undefined) conditions.push(Prisma.sql`db.total_mv <= ${query.maxTotalMv}`)
     if (query.maxPeTtm !== undefined) conditions.push(Prisma.sql`db.pe_ttm <= ${query.maxPeTtm}`)
+    if (query.minPb !== undefined) conditions.push(Prisma.sql`db.pb >= ${query.minPb}`)
+    if (query.maxPb !== undefined) conditions.push(Prisma.sql`db.pb <= ${query.maxPb}`)
     if (query.minDvTtm !== undefined) conditions.push(Prisma.sql`db.dv_ttm >= ${query.minDvTtm}`)
+    if (query.minTurnoverRate !== undefined) conditions.push(Prisma.sql`db.turnover_rate >= ${query.minTurnoverRate}`)
+    if (query.maxTurnoverRate !== undefined) conditions.push(Prisma.sql`db.turnover_rate <= ${query.maxTurnoverRate}`)
+    if (query.minPctChg !== undefined) conditions.push(Prisma.sql`d.pct_chg >= ${query.minPctChg}`)
+    if (query.maxPctChg !== undefined) conditions.push(Prisma.sql`d.pct_chg <= ${query.maxPctChg}`)
+    if (query.minAmount !== undefined) conditions.push(Prisma.sql`d.amount >= ${query.minAmount}`)
+    if (query.maxAmount !== undefined) conditions.push(Prisma.sql`d.amount <= ${query.maxAmount}`)
 
     const whereClause = conditions.length > 0 ? Prisma.sql`WHERE ${Prisma.join(conditions, ' AND ')}` : Prisma.empty
     const sortCol = Prisma.raw(SORT_COLUMN_MAP[sortBy])
     const sortDir = Prisma.raw(sortOrder === 'asc' ? 'ASC NULLS LAST' : 'DESC NULLS LAST')
 
+    const requiresMetricJoinForCount =
+      query.minTotalMv !== undefined ||
+      query.maxTotalMv !== undefined ||
+      query.maxPeTtm !== undefined ||
+      query.minPb !== undefined ||
+      query.maxPb !== undefined ||
+      query.minDvTtm !== undefined ||
+      query.minTurnoverRate !== undefined ||
+      query.maxTurnoverRate !== undefined ||
+      query.minPctChg !== undefined ||
+      query.maxPctChg !== undefined ||
+      query.minAmount !== undefined ||
+      query.maxAmount !== undefined
+
+    const countPromise = requiresMetricJoinForCount
+      ? this.prisma.$queryRaw<[{ count: bigint }]>`
+          SELECT COUNT(*)::bigint AS count
+          FROM stock_basic_profiles sb
+          LEFT JOIN LATERAL (
+            SELECT pe_ttm, pb, dv_ttm, total_mv, circ_mv, turnover_rate
+            FROM stock_daily_valuation_metrics WHERE ts_code = sb.ts_code ORDER BY trade_date DESC LIMIT 1
+          ) db ON true
+          LEFT JOIN LATERAL (
+            SELECT pct_chg, amount, close, vol
+            FROM stock_daily_prices WHERE ts_code = sb.ts_code ORDER BY trade_date DESC LIMIT 1
+          ) d ON true
+          ${whereClause}
+        `
+      : this.prisma.$queryRaw<[{ count: bigint }]>`
+          SELECT COUNT(*)::bigint AS count
+          FROM stock_basic_profiles sb
+          ${whereClause}
+        `
+
     const [countResult, items] = await Promise.all([
-      this.prisma.$queryRaw<[{ count: bigint }]>`
-        SELECT COUNT(*)::bigint AS count
-        FROM stock_basic_profiles sb
-        LEFT JOIN LATERAL (
-          SELECT pe_ttm, pb, dv_ttm, total_mv, circ_mv, turnover_rate
-          FROM stock_daily_valuation_metrics WHERE ts_code = sb.ts_code ORDER BY trade_date DESC LIMIT 1
-        ) db ON true
-        LEFT JOIN LATERAL (
-          SELECT pct_chg, amount, close, vol
-          FROM stock_daily_prices WHERE ts_code = sb.ts_code ORDER BY trade_date DESC LIMIT 1
-        ) d ON true
-        ${whereClause}
-      `,
+      countPromise,
       this.prisma.$queryRaw<StockListRow[]>`
         SELECT
-          sb.ts_code            AS "tsCode",   sb.symbol,    sb.name,
-          sb.exchange::text     AS "exchange",  sb.market,    sb.industry,
+          sb.ts_code            AS "tsCode",   sb.symbol,    sb.name, sb.fullname,
+          sb.exchange::text     AS "exchange",  sb.curr_type AS "currType", sb.market,    sb.industry,
           sb.area,              sb.list_status::text AS "listStatus",
-          sb.list_date          AS "listDate",  sb.is_hs AS "isHs", sb.cnspell,
+          sb.list_date          AS "listDate",  d.trade_date AS "latestTradeDate", sb.is_hs AS "isHs", sb.cnspell,
           db.pe_ttm AS "peTtm", db.pb,          db.dv_ttm AS "dvTtm",
           db.total_mv AS "totalMv", db.circ_mv AS "circMv", db.turnover_rate AS "turnoverRate",
           d.pct_chg AS "pctChg", d.amount, d.close, d.vol
@@ -121,7 +155,7 @@ export class StockService {
           FROM stock_daily_valuation_metrics WHERE ts_code = sb.ts_code ORDER BY trade_date DESC LIMIT 1
         ) db ON true
         LEFT JOIN LATERAL (
-          SELECT pct_chg, amount, close, vol
+          SELECT trade_date, pct_chg, amount, close, vol
           FROM stock_daily_prices WHERE ts_code = sb.ts_code ORDER BY trade_date DESC LIMIT 1
         ) d ON true
         ${whereClause}

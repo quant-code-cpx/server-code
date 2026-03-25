@@ -2,6 +2,8 @@ import { Body, Controller, Post } from '@nestjs/common'
 import { ApiOperation, ApiTags } from '@nestjs/swagger'
 import { MarketService } from './market.service'
 import { MoneyFlowQueryDto } from './dto/money-flow-query.dto'
+import { ApiSuccessResponse } from 'src/common/decorators/api-success-response.decorator'
+import { MarketMoneyFlowItemDto, SectorFlowDataDto } from './dto/market-response.dto'
 
 @ApiTags('Market - 市场与行业')
 @Controller('market')
@@ -10,14 +12,15 @@ export class MarketController {
 
   @Post('money-flow')
   @ApiOperation({ summary: '获取市场整体资金流入流出' })
+  @ApiSuccessResponse(MarketMoneyFlowItemDto, { isArray: true })
   getMarketMoneyFlow(@Body() query: MoneyFlowQueryDto) {
     return this.marketService.getMarketMoneyFlow(query)
   }
 
   @Post('sector-flow')
   @ApiOperation({ summary: '获取行业板块涨跌及资金流向' })
+  @ApiSuccessResponse(SectorFlowDataDto)
   getSectorFlow(@Body() query: MoneyFlowQueryDto) {
     return this.marketService.getSectorFlow(query)
   }
 }
-

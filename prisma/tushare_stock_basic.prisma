@@ -21,8 +21,15 @@ model StockBasic {
 
   @@index([symbol])
   @@index([name])
+  @@index([cnspell])
   @@index([exchange])
   @@index([industry])
+  @@index([area])
+  @@index([market])
+  @@index([isHs])
   @@index([listStatus])
+  @@index([listStatus, exchange, market])
+  @@index([listStatus, industry, area])
+  @@index([listStatus, listDate])
   @@map("stock_basic_profiles")
 }

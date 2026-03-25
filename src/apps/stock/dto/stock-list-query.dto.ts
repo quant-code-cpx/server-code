@@ -65,6 +65,12 @@ export class StockListQueryDto {
   @MaxLength(50)
   market?: string
 
+  @ApiPropertyOptional({ description: '是否沪深港通标的：N / H / S' })
+  @IsOptional()
+  @IsString()
+  @IsIn(['N', 'H', 'S'])
+  isHs?: string
+
   @ApiPropertyOptional({ description: '最小总市值（万元）' })
   @IsOptional()
   @Type(() => Number)
@@ -85,12 +91,62 @@ export class StockListQueryDto {
   @IsNumber()
   maxPeTtm?: number
 
+  @ApiPropertyOptional({ description: '最小市净率 PB' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  minPb?: number
+
+  @ApiPropertyOptional({ description: '最大市净率 PB' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  maxPb?: number
+
   @ApiPropertyOptional({ description: '最小股息率 TTM（%）' })
   @IsOptional()
   @Type(() => Number)
   @IsNumber()
   @Min(0)
   minDvTtm?: number
+
+  @ApiPropertyOptional({ description: '最小换手率（%）' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  minTurnoverRate?: number
+
+  @ApiPropertyOptional({ description: '最大换手率（%）' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  maxTurnoverRate?: number
+
+  @ApiPropertyOptional({ description: '最小涨跌幅（%）' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  minPctChg?: number
+
+  @ApiPropertyOptional({ description: '最大涨跌幅（%）' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  maxPctChg?: number
+
+  @ApiPropertyOptional({ description: '最小成交额（千元）' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  minAmount?: number
+
+  @ApiPropertyOptional({ description: '最大成交额（千元）' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  maxAmount?: number
 
   @ApiPropertyOptional({ enum: StockSortBy, description: '排序字段', default: StockSortBy.TOTAL_MV })
   @IsOptional()

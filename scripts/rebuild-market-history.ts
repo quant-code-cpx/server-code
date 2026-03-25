@@ -2,16 +2,23 @@ import 'reflect-metadata'
 import { Module } from '@nestjs/common'
 import { ConfigModule } from '@nestjs/config'
 import { NestFactory } from '@nestjs/core'
+import { TushareSyncTask } from '@prisma/client'
 import configs from '../src/config'
 import { PrismaService } from '../src/shared/prisma.service'
-import { TushareApiService } from '../src/tushare/tushare-api.service'
-import { TushareService } from '../src/tushare/tushare.service'
-import { TushareMarketSyncService } from '../src/tushare/sync/tushare-market-sync.service'
-import { TushareSyncSupportService } from '../src/tushare/sync/tushare-sync-support.service'
+import { TushareClient } from '../src/tushare/api/tushare-client.service'
+import { MarketApiService } from '../src/tushare/api/market-api.service'
+import { SyncHelperService } from '../src/tushare/sync/sync-helper.service'
+import { MarketSyncService } from '../src/tushare/sync/market-sync.service'
 
 const AVAILABLE_DATASETS = ['daily', 'adj-factor', 'monthly'] as const
 
 type MarketDataset = (typeof AVAILABLE_DATASETS)[number]
+
+const DATASET_TASK: Record<MarketDataset, TushareSyncTask> = {
+  daily: TushareSyncTask.DAILY,
+  'adj-factor': TushareSyncTask.ADJ_FACTOR,
+  monthly: TushareSyncTask.MONTHLY,
+}
 
 @Module({
   imports: [
@@ -21,7 +28,7 @@ type MarketDataset = (typeof AVAILABLE_DATASETS)[number]
       load: [...Object.values(configs)],
     }),
   ],
-  providers: [PrismaService, TushareService, TushareApiService, TushareSyncSupportService, TushareMarketSyncService],
+  providers: [PrismaService, TushareClient, MarketApiService, SyncHelperService, MarketSyncService],
 })
 class MarketRepairRunnerModule {}
 
@@ -33,32 +40,37 @@ async function main() {
 
   try {
     const prisma = app.get(PrismaService)
-    const support = app.get(TushareSyncSupportService)
-    const market = app.get(TushareMarketSyncService)
-    const targetTradeDate = await support.resolveLatestCompletedTradeDate()
+    const helper = app.get(SyncHelperService)
+    const market = app.get(MarketSyncService)
+    const targetTradeDate = await helper.resolveLatestCompletedTradeDate()
 
     if (!targetTradeDate) {
-      throw new Error('Unable to resolve latest completed trade date for market rebuild.')
+      throw new Error('Unable to resolve latest completed trade date. Is trade_cal populated?')
     }
 
-    for (const dataset of datasets) {
-      console.log(`\n[market-rebuild] reset ${dataset}`)
-      await resetDataset(prisma, dataset)
-      console.log(`[market-rebuild] sync ${dataset} -> ${targetTradeDate}`)
+    console.log(`[market-rebuild] target trade date: ${targetTradeDate}`)
 
+    for (const dataset of datasets) {
+      console.log(`\n[market-rebuild] clearing data: ${dataset}`)
+      await resetDataset(prisma, dataset)
+
+      // 清除同步日志，防止 isTaskSyncedToday 跳过本次重建
+      await prisma.tushareSyncLog.deleteMany({ where: { task: DATASET_TASK[dataset] } })
+
+      console.log(`[market-rebuild] syncing ${dataset} → ${targetTradeDate}`)
       switch (dataset) {
         case 'daily':
-          await market.checkDailyFreshness(targetTradeDate)
+          await market.syncDaily(targetTradeDate)
           break
         case 'adj-factor':
-          await market.checkAdjFactorFreshness(targetTradeDate)
+          await market.syncAdjFactor(targetTradeDate)
           break
         case 'monthly':
-          await market.checkMonthlyFreshness(targetTradeDate)
+          await market.syncMonthly(targetTradeDate)
           break
       }
 
-      console.log(`[market-rebuild] done ${dataset}`)
+      console.log(`[market-rebuild] done: ${dataset}`)
     }
   } finally {
     await app.close()
@@ -93,9 +105,7 @@ async function resetDataset(prisma: PrismaService, dataset: MarketDataset) {
 }
 
 main()
-  .then(() => {
-    process.exit(0)
-  })
+  .then(() => process.exit(0))
   .catch((error) => {
     console.error('[market-rebuild] failed', error)
     process.exit(1)

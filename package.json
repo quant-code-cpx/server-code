@@ -7,6 +7,7 @@
   "license": "UNLICENSED",
   "scripts": {
     "build": "cross-env NODE_ENV=production nest build",
+    "prepare": "husky",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "gr": "nest g resource -- --no-entity",
     "start:dev": "cross-env NODE_ENV=development nest start --watch",
@@ -22,7 +23,9 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
-    "verify:moneyflow": "ts-node -T scripts/verify-moneyflow-window.ts"
+    "rebuild:financial-history": "ts-node -r tsconfig-paths/register -T scripts/rebuild-financial-history.ts",
+    "verify:moneyflow": "ts-node -T scripts/verify-moneyflow-window.ts",
+    "swagger:generate": "ts-node -r tsconfig-paths/register -T scripts/generate-swagger.ts"
   },
   "dependencies": {
     "@nestjs/bullmq": "^11.0.2",
@@ -77,6 +80,7 @@
     "eslint-config-prettier": "^10.0.0",
     "eslint-plugin-prettier": "^5.0.0",
     "jest": "^29.7.0",
+    "husky": "^9.1.7",
     "prettier": "^3.5.0",
     "prisma": "^6.5.0",
     "source-map-support": "^0.5.21",

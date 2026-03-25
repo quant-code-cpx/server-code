@@ -10,24 +10,15 @@ import { FinancialApiService } from '../src/tushare/api/financial-api.service'
 import { SyncHelperService } from '../src/tushare/sync/sync-helper.service'
 import { FinancialSyncService } from '../src/tushare/sync/financial-sync.service'
 
-const AVAILABLE_TASKS = [
-  'income',
-  'express',
-  'fina-indicator',
-  'top10-holders',
-  'top10-float-holders',
-  'dividend',
-] as const
+const AVAILABLE_TASKS = ['income', 'express', 'fina-indicator', 'top10-holders', 'top10-float-holders'] as const
+type RebuildTask = (typeof AVAILABLE_TASKS)[number]
 
-type RepairTask = (typeof AVAILABLE_TASKS)[number]
-
-const TASK_SYNC_LOG: Record<RepairTask, TushareSyncTask> = {
+const TASK_SYNC_LOG: Record<RebuildTask, TushareSyncTask> = {
   income: TushareSyncTask.INCOME,
   express: TushareSyncTask.EXPRESS,
   'fina-indicator': TushareSyncTask.FINA_INDICATOR,
   'top10-holders': TushareSyncTask.TOP10_HOLDERS,
   'top10-float-holders': TushareSyncTask.TOP10_FLOAT_HOLDERS,
-  dividend: TushareSyncTask.DIVIDEND,
 }
 
 @Module({
@@ -40,13 +31,11 @@ const TASK_SYNC_LOG: Record<RepairTask, TushareSyncTask> = {
   ],
   providers: [PrismaService, TushareClient, FinancialApiService, SyncHelperService, FinancialSyncService],
 })
-class RepairRunnerModule {}
+class FinancialRebuildRunnerModule {}
 
 async function main() {
-  const requested = process.argv.slice(2)
-  const tasks = resolveTasks(requested)
-
-  const app = await NestFactory.createApplicationContext(RepairRunnerModule, {
+  const { tasks, years } = resolveArgs(process.argv.slice(2))
+  const app = await NestFactory.createApplicationContext(FinancialRebuildRunnerModule, {
     logger: ['log', 'warn', 'error'],
   })
 
@@ -55,53 +44,58 @@ async function main() {
     const financial = app.get(FinancialSyncService)
 
     for (const task of tasks) {
-      // 清除同步日志，防止 isTaskSyncedToday 跳过本次修复
       await prisma.tushareSyncLog.deleteMany({ where: { task: TASK_SYNC_LOG[task] } })
+      console.log(`\n[financial-rebuild] start ${task} (${years} years)`)
 
-      console.log(`\n[repair] start ${task}`)
       switch (task) {
         case 'income':
-          await financial.rebuildIncomeRecentYears(15)
+          await financial.rebuildIncomeRecentYears(years)
           break
         case 'express':
-          await financial.rebuildExpressRecentYears(15)
+          await financial.rebuildExpressRecentYears(years)
           break
         case 'fina-indicator':
-          await financial.rebuildFinaIndicatorRecentYears(15)
+          await financial.rebuildFinaIndicatorRecentYears(years)
           break
         case 'top10-holders':
-          await financial.rebuildTop10HoldersRecentYears(15)
+          await financial.rebuildTop10HoldersRecentYears(years)
           break
         case 'top10-float-holders':
-          await financial.rebuildTop10FloatHoldersRecentYears(15)
-          break
-        case 'dividend':
-          await financial.syncDividend()
+          await financial.rebuildTop10FloatHoldersRecentYears(years)
           break
       }
-      console.log(`[repair] done ${task}`)
+
+      console.log(`[financial-rebuild] done ${task}`)
     }
   } finally {
     await app.close()
   }
 }
 
-function resolveTasks(requested: string[]): RepairTask[] {
-  if (!requested.length) {
-    return [...AVAILABLE_TASKS]
+function resolveArgs(args: string[]): { tasks: RebuildTask[]; years: number } {
+  const taskArgs = args.filter((arg) => !arg.startsWith('--years='))
+  const yearsArg = args.find((arg) => arg.startsWith('--years='))
+  const years = yearsArg ? Number(yearsArg.slice('--years='.length)) : 15
+
+  if (!Number.isInteger(years) || years <= 0) {
+    throw new Error(`Invalid --years value: ${years}`)
   }
 
-  const invalid = requested.filter((task): task is string => !AVAILABLE_TASKS.includes(task as RepairTask))
-  if (invalid.length) {
-    throw new Error(`Unknown repair task(s): ${invalid.join(', ')}. Allowed: ${AVAILABLE_TASKS.join(', ')}`)
+  if (!taskArgs.length) {
+    return { tasks: [...AVAILABLE_TASKS], years }
   }
 
-  return requested as RepairTask[]
+  const invalid = taskArgs.filter((task): task is string => !AVAILABLE_TASKS.includes(task as RebuildTask))
+  if (invalid.length > 0) {
+    throw new Error(`Unknown rebuild task(s): ${invalid.join(', ')}. Allowed: ${AVAILABLE_TASKS.join(', ')}`)
+  }
+
+  return { tasks: taskArgs as RebuildTask[], years }
 }
 
 main()
   .then(() => process.exit(0))
   .catch((error) => {
-    console.error('[repair] failed', error)
+    console.error('[financial-rebuild] failed', error)
     process.exit(1)
   })

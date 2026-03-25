@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { ITushareConfig, TUSHARE_CONFIG_TOKEN } from 'src/config/tushare.config'
-import { TushareRequestParams, TushareResponse } from './tushare.interface'
+import { TushareRequestParams, TushareResponse } from '../tushare.interface'
 
 export class TushareApiError extends Error {
   constructor(
@@ -15,21 +15,17 @@ export class TushareApiError extends Error {
 }
 
 /**
- * TushareService
+ * TushareClient — Tushare Pro HTTP 接口底层封装
  *
- * 封装对 Tushare Pro HTTP 接口的基础调用；
- * 所有数据拉取逻辑均应通过此 service 发起请求。
- *
- * 使用方式（示例）：
- *   const records = await this.tushareService.call({
- *     api_name: 'stock_basic',
- *     params: { exchange: 'SSE', list_status: 'L' },
- *     fields: ['ts_code', 'name', 'industry'],
- *   })
+ * 职责：
+ * - 统一发起 HTTP 请求，附带 token
+ * - 请求节流（避免触发频控）
+ * - 频控 40203 自动重试
+ * - 将 { fields, items } 格式解析为对象数组
  */
 @Injectable()
-export class TushareService {
-  private readonly logger = new Logger(TushareService.name)
+export class TushareClient {
+  private readonly logger = new Logger(TushareClient.name)
   private readonly token: string
   private readonly baseUrl: string
   private readonly timeout: number
@@ -52,22 +48,12 @@ export class TushareService {
     this.maxRetries = cfg.maxRetries
   }
 
-  /**
-   * 向 Tushare Pro 发起请求并返回解析后的记录数组。
-   *
-   * Tushare 返回格式：
-   * {
-   *   code: 0,
-   *   msg: '',
-   *   data: { fields: [...], items: [[...], [...]] }
-   * }
-   * 本方法会将 fields + items 自动组装为 Record<string, unknown>[] 格式。
-   */
+  /** 向 Tushare Pro 发起请求并返回解析后的记录数组 */
   async call<T = Record<string, unknown>>(req: TushareRequestParams): Promise<T[]> {
     return this.enqueueRequest(() => this.callWithRetry<T>(req))
   }
 
-  private async callWithRetry<T>(req: TushareRequestParams, attempt: number = 1): Promise<T[]> {
+  private async callWithRetry<T>(req: TushareRequestParams, attempt = 1): Promise<T[]> {
     const body = JSON.stringify({
       api_name: req.api_name,
       token: this.token,
@@ -96,15 +82,13 @@ export class TushareService {
 
     const json = (await response.json()) as TushareResponse
     if (this.isRetryableRateLimitError(json) && attempt <= this.maxRetries) {
-      this.logger.warn(
-        `Tushare 接口触发频控 [${req.api_name}]，第 ${attempt} 次重试前等待 ${this.rateLimitRetryDelayMs}ms。`,
-      )
+      this.logger.warn(`Tushare 频控 [${req.api_name}]，第 ${attempt} 次重试，等待 ${this.rateLimitRetryDelayMs}ms`)
       await this.sleep(this.rateLimitRetryDelayMs)
       return this.callWithRetry<T>(req, attempt + 1)
     }
 
     if (json.code !== 0) {
-      this.logger.error(`Tushare 接口错误 [${req.api_name}] code=${json.code} msg=${json.msg}`)
+      this.logger.error(`Tushare 错误 [${req.api_name}] code=${json.code} msg=${json.msg}`)
       throw new TushareApiError(req.api_name, json.code, `Tushare error: ${json.msg}`)
     }
 
@@ -116,7 +100,6 @@ export class TushareService {
       await this.waitForRequestSlot()
       return task()
     }
-
     const result = this.requestQueue.then(queuedTask, queuedTask)
     this.requestQueue = result.then(
       () => undefined,
@@ -128,9 +111,7 @@ export class TushareService {
   private async waitForRequestSlot() {
     const now = Date.now()
     const waitMs = Math.max(0, this.requestIntervalMs - (now - this.lastRequestAt))
-    if (waitMs > 0) {
-      await this.sleep(waitMs)
-    }
+    if (waitMs > 0) await this.sleep(waitMs)
     this.lastRequestAt = Date.now()
   }
 
@@ -142,7 +123,6 @@ export class TushareService {
     return new Promise<void>((resolve) => setTimeout(resolve, ms))
   }
 
-  /** 将 Tushare { fields, items } 格式转为对象数组 */
   private parseRecords<T>(json: TushareResponse): T[] {
     if (!json.data) return []
     const { fields, items } = json.data

@@ -13,6 +13,8 @@ import { CurrentUser } from 'src/common/decorators/current-user.decorator'
 import { Roles } from 'src/common/decorators/roles.decorator'
 import { RolesGuard } from 'src/lifecycle/guard/roles.guard'
 import { TokenPayload } from 'src/shared/token.interface'
+import { ApiSuccessRawResponse, ApiSuccessResponse } from 'src/common/decorators/api-success-response.decorator'
+import { CreatedUserDto, ResetPasswordDataDto, UserListDataDto, UserSafeDto } from './dto/user-response.dto'
 
 @ApiBearerAuth()
 @ApiTags('User - 用户')
@@ -29,6 +31,7 @@ export class UserController {
   @Post('create')
   @Roles(UserRole.ADMIN)
   @ApiOperation({ summary: '创建用户（管理员以上）' })
+  @ApiSuccessResponse(CreatedUserDto)
   async create(@Body() dto: CreateUserDto, @CurrentUser() currentUser: TokenPayload) {
     return this.userService.create(dto, currentUser)
   }
@@ -39,6 +42,7 @@ export class UserController {
   @Post('list')
   @Roles(UserRole.ADMIN)
   @ApiOperation({ summary: '用户列表（管理员以上）' })
+  @ApiSuccessResponse(UserListDataDto)
   async findAll(@Body() query: UserListQueryDto) {
     return this.userService.findAll(query)
   }
@@ -48,6 +52,7 @@ export class UserController {
    */
   @Post('profile/detail')
   @ApiOperation({ summary: '获取个人详情' })
+  @ApiSuccessResponse(UserSafeDto)
   async getProfile(@CurrentUser() currentUser: TokenPayload) {
     return this.userService.getProfile(currentUser)
   }
@@ -57,6 +62,7 @@ export class UserController {
    */
   @Post('profile/update')
   @ApiOperation({ summary: '修改个人资料' })
+  @ApiSuccessResponse(UserSafeDto)
   async updateProfile(@CurrentUser() currentUser: TokenPayload, @Body() dto: UpdateProfileDto) {
     return this.userService.updateProfile(currentUser, dto)
   }
@@ -66,6 +72,7 @@ export class UserController {
    */
   @Post('profile/change-password')
   @ApiOperation({ summary: '修改密码' })
+  @ApiSuccessRawResponse({ type: 'null', nullable: true })
   async changePassword(@CurrentUser() currentUser: TokenPayload, @Body() dto: ChangePasswordDto) {
     return this.userService.changePassword(currentUser, dto)
   }
@@ -76,6 +83,7 @@ export class UserController {
   @Post('detail')
   @Roles(UserRole.ADMIN)
   @ApiOperation({ summary: '获取指定用户详情（管理员以上）' })
+  @ApiSuccessResponse(UserSafeDto)
   async findOne(@Body() { id }: UserIdDto) {
     return this.userService.findOne(id)
   }
@@ -86,10 +94,8 @@ export class UserController {
   @Post('update')
   @Roles(UserRole.ADMIN)
   @ApiOperation({ summary: '更新用户信息（管理员以上，需高于目标用户角色）' })
-  async adminUpdateUser(
-    @Body() dto: AdminUpdateUserDto,
-    @CurrentUser() currentUser: TokenPayload,
-  ) {
+  @ApiSuccessResponse(UserSafeDto)
+  async adminUpdateUser(@Body() dto: AdminUpdateUserDto, @CurrentUser() currentUser: TokenPayload) {
     const { id, ...updateData } = dto
     return this.userService.adminUpdateUser(id, updateData, currentUser)
   }
@@ -100,10 +106,8 @@ export class UserController {
   @Post('update-status')
   @Roles(UserRole.ADMIN)
   @ApiOperation({ summary: '修改用户状态（管理员以上，需高于目标用户角色）' })
-  async updateStatus(
-    @Body() dto: UpdateUserStatusDto,
-    @CurrentUser() currentUser: TokenPayload,
-  ) {
+  @ApiSuccessRawResponse({ type: 'null', nullable: true })
+  async updateStatus(@Body() dto: UpdateUserStatusDto, @CurrentUser() currentUser: TokenPayload) {
     const { id, ...statusData } = dto
     return this.userService.updateStatus(id, statusData, currentUser)
   }
@@ -114,6 +118,7 @@ export class UserController {
   @Post('reset-password')
   @Roles(UserRole.ADMIN)
   @ApiOperation({ summary: '重置用户密码（管理员以上，需高于目标用户角色）' })
+  @ApiSuccessResponse(ResetPasswordDataDto)
   async resetPassword(@Body() { id }: UserIdDto, @CurrentUser() currentUser: TokenPayload) {
     return this.userService.resetPassword(id, currentUser)
   }
@@ -124,8 +129,8 @@ export class UserController {
   @Post('delete')
   @Roles(UserRole.ADMIN)
   @ApiOperation({ summary: '删除用户（软删除，需高于目标用户角色）' })
+  @ApiSuccessRawResponse({ type: 'null', nullable: true })
   async remove(@Body() { id }: UserIdDto, @CurrentUser() currentUser: TokenPayload) {
     return this.userService.remove(id, currentUser)
   }
 }
-

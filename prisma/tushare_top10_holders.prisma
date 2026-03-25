@@ -7,6 +7,8 @@ model Top10Holders {
   holderName String    @map("holder_name") @db.VarChar(128) // 股东名称
   holdAmount Float?    @map("hold_amount")                 // 持股数量（股）
   holdRatio  Float?    @map("hold_ratio")                  // 持股比例（%）
+  holdFloatRatio Float? @map("hold_float_ratio")           // 占流通股本比例（%）
+  holdChange Float?    @map("hold_change")                 // 持股变动
   holderType String?   @map("holder_type") @db.VarChar(32) // 股东类型：法人/个人/其他
   syncedAt   DateTime  @default(now()) @map("synced_at")
 
@@ -23,6 +25,8 @@ model Top10FloatHolders {
   holderName String    @map("holder_name") @db.VarChar(128)
   holdAmount Float?    @map("hold_amount")
   holdRatio  Float?    @map("hold_ratio")
+  holdFloatRatio Float? @map("hold_float_ratio")
+  holdChange Float?    @map("hold_change")
   holderType String?   @map("holder_type") @db.VarChar(32)
   syncedAt   DateTime  @default(now()) @map("synced_at")
 

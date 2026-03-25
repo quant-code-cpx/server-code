@@ -7,6 +7,9 @@ import { Public } from 'src/common/decorators/public.decorator'
 import { REFRESH_TOKEN_COOKIE } from 'src/constant/auth.constant'
 import { BusinessException } from 'src/common/exceptions/business.exception'
 import { ErrorEnum } from 'src/constant/response-code.constant'
+import { ApiSuccessResponse, ApiSuccessRawResponse } from 'src/common/decorators/api-success-response.decorator'
+import { CaptchaResponseDto } from './dto/captcha-response.dto'
+import { AccessTokenResponseDto } from './dto/auth-response.dto'
 
 @ApiTags('Auth - 认证')
 @Controller('auth')
@@ -21,6 +24,7 @@ export class AuthController {
   @Public()
   @Post('captcha')
   @ApiOperation({ summary: '获取图片验证码' })
+  @ApiSuccessResponse(CaptchaResponseDto)
   async captcha() {
     return this.authService.generateCaptcha()
   }
@@ -36,6 +40,7 @@ export class AuthController {
   @Public()
   @Post('login')
   @ApiOperation({ summary: '登录（验证码 + 账号密码）' })
+  @ApiSuccessResponse(AccessTokenResponseDto)
   async login(@Body() dto: LoginDto, @Res({ passthrough: true }) res: Response) {
     const { accessToken, refreshToken, refreshTokenTTL } = await this.authService.login(dto)
     this.setRefreshTokenCookie(res, refreshToken, refreshTokenTTL)
@@ -49,6 +54,7 @@ export class AuthController {
    */
   @Post('refresh')
   @ApiOperation({ summary: '刷新 AccessToken' })
+  @ApiSuccessResponse(AccessTokenResponseDto)
   async refresh(
     @Req() req: Request,
     @Body('refreshToken') bodyRefreshToken: string,
@@ -73,6 +79,7 @@ export class AuthController {
   @Post('logout')
   @ApiCookieAuth(REFRESH_TOKEN_COOKIE)
   @ApiOperation({ summary: '登出' })
+  @ApiSuccessRawResponse({ type: 'null', nullable: true })
   async logout(
     @Headers('authorization') authorization: string,
     @Req() req: Request,

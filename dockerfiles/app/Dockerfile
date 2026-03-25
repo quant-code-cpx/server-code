@@ -23,7 +23,7 @@ RUN pnpm install
 # 源码由 docker-compose 以 bind-mount 挂载到 /app，
 # node_modules 通过匿名 volume 保持容器内不被主机目录覆盖。
 
-# 生成 Prisma Client → 应用迁移（首次启动自动建表）→ 启动开发服务器
-CMD ["sh", "-c", "pnpm exec prisma generate && pnpm exec prisma migrate deploy && pnpm start:dev"]
+# 生成 Prisma Client → 同步 schema 到 DB（首次启动自动建表，无需迁移文件）→ 启动开发服务器
+CMD ["sh", "-c", "pnpm exec prisma generate && pnpm exec prisma db push --accept-data-loss && pnpm start:dev"]
 
 EXPOSE 3000

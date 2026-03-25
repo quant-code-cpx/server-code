@@ -1,42 +1,42 @@
 import { Module } from '@nestjs/common'
-import { TushareService } from './tushare.service'
-import { TushareApiService } from './tushare-api.service'
-import { TushareSyncService } from './tushare-sync.service'
-import { TushareBasicSyncService } from './sync/tushare-basic-sync.service'
-import { TushareFinancialIndicatorSyncService } from './sync/tushare-financial-indicator-sync.service'
-import { TushareFinancialPerformanceSyncService } from './sync/tushare-financial-performance-sync.service'
-import { TushareFinancialStatementSyncService } from './sync/tushare-financial-statement-sync.service'
-import { TushareFinancialSyncService } from './sync/tushare-financial-sync.service'
-import { TushareMarketSyncService } from './sync/tushare-market-sync.service'
-import { TushareMoneyflowIndustrySyncService } from './sync/tushare-moneyflow-industry-sync.service'
-import { TushareMoneyflowMarketSyncService } from './sync/tushare-moneyflow-market-sync.service'
-import { TushareMoneyflowStockSyncService } from './sync/tushare-moneyflow-stock-sync.service'
-import { TushareMoneyflowSyncService } from './sync/tushare-moneyflow-sync.service'
-import { TushareSyncSupportService } from './sync/tushare-sync-support.service'
+
+// API 层
+import { TushareClient } from './api/tushare-client.service'
+import { BasicApiService } from './api/basic-api.service'
+import { MarketApiService } from './api/market-api.service'
+import { FinancialApiService } from './api/financial-api.service'
+import { MoneyflowApiService } from './api/moneyflow-api.service'
+
+// 同步层
+import { SyncHelperService } from './sync/sync-helper.service'
+import { BasicSyncService } from './sync/basic-sync.service'
+import { MarketSyncService } from './sync/market-sync.service'
+import { FinancialSyncService } from './sync/financial-sync.service'
+import { MoneyflowSyncService } from './sync/moneyflow-sync.service'
+import { TushareSyncService } from './sync/sync.service'
 
 /**
  * TushareModule
  *
- * 导出 TushareService，供其他功能模块（股票、市场、热力图等）注入使用。
- * TushareSyncService 在应用启动时自动执行数据新鲜度检测。
+ * API 层按 Tushare 文档分类：基础数据 / 行情 / 财务 / 资金流向
+ * 同步层按分类独立维护，由 TushareSyncService 统一编排
  */
 @Module({
   providers: [
-    TushareService,
-    TushareApiService,
-    TushareSyncSupportService,
-    TushareBasicSyncService,
-    TushareMarketSyncService,
-    TushareFinancialPerformanceSyncService,
-    TushareFinancialStatementSyncService,
-    TushareFinancialIndicatorSyncService,
-    TushareFinancialSyncService,
-    TushareMoneyflowStockSyncService,
-    TushareMoneyflowIndustrySyncService,
-    TushareMoneyflowMarketSyncService,
-    TushareMoneyflowSyncService,
+    // API
+    TushareClient,
+    BasicApiService,
+    MarketApiService,
+    FinancialApiService,
+    MoneyflowApiService,
+    // Sync
+    SyncHelperService,
+    BasicSyncService,
+    MarketSyncService,
+    FinancialSyncService,
+    MoneyflowSyncService,
     TushareSyncService,
   ],
-  exports: [TushareService, TushareApiService, TushareFinancialPerformanceSyncService],
+  exports: [TushareClient, FinancialSyncService],
 })
 export class TushareModule {}

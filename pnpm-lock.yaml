@@ -156,6 +156,9 @@ importers:
       eslint-plugin-prettier:
         specifier: ^5.0.0
         version: 5.5.5(@types/eslint@9.6.1)(eslint-config-prettier@10.1.8(eslint@9.39.4(jiti@2.6.1)))(eslint@9.39.4(jiti@2.6.1))(prettier@3.8.1)
+      husky:
+        specifier: ^9.1.7
+        version: 9.1.7
       jest:
         specifier: ^29.7.0
         version: 29.7.0(@types/node@22.19.15)(ts-node@10.9.2(@types/node@22.19.15)(typescript@5.9.3))
@@ -2224,6 +2227,11 @@ packages:
   human-signals@2.1.0:
     resolution: {integrity: sha512-B4FFZ6q/T2jhhksgkbEW3HBvWIfDW85snkQgawt07S7J5QXTk6BkNV+0yAeZrM5QpMAdYlocGoljn0sJ/WQkFw==}
     engines: {node: '>=10.17.0'}
+
+  husky@9.1.7:
+    resolution: {integrity: sha512-5gs5ytaNjBrh5Ow3zrvdUUY+0VxIuWVL4i9irt6friV+BqdCfmV11CQTWMiBYWHbXhco+J1kHfTOUkePhCDvMA==}
+    engines: {node: '>=18'}
+    hasBin: true
 
   iconv-lite@0.7.2:
     resolution: {integrity: sha512-im9DjEDQ55s9fL4EYzOAv0yMqmMBSZp6G0VvFyTMPKWxiSBHUj9NW/qqLmXUwXrrM7AvqSlTCfvqRb0cM8yYqw==}
@@ -5986,6 +5994,8 @@ snapshots:
       - supports-color
 
   human-signals@2.1.0: {}
+
+  husky@9.1.7: {}
 
   iconv-lite@0.7.2:
     dependencies:

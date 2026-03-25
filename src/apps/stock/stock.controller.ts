@@ -8,6 +8,17 @@ import { StockDetailChartDto } from './dto/stock-detail-chart.dto'
 import { StockDetailMoneyFlowDto } from './dto/stock-detail-money-flow.dto'
 import { StockDetailFinancialsDto } from './dto/stock-detail-financials.dto'
 import { StockDetailShareholdersDto } from './dto/stock-detail-shareholders.dto'
+import { ApiSuccessResponse } from 'src/common/decorators/api-success-response.decorator'
+import {
+  StockChartDataDto,
+  StockDetailLegacyDataDto,
+  StockDetailOverviewDataDto,
+  StockFinancialsDataDto,
+  StockListDataDto,
+  StockMoneyFlowDataDto,
+  StockSearchItemDto,
+  StockShareholdersDataDto,
+} from './dto/stock-response.dto'
 
 @ApiTags('Stock - 股票')
 @Controller('stock')
@@ -16,48 +27,56 @@ export class StockController {
 
   @Post('list')
   @ApiOperation({ summary: '股票列表（分页 + 多维筛选 + 排序）' })
+  @ApiSuccessResponse(StockListDataDto)
   findAll(@Body() query: StockListQueryDto) {
     return this.stockService.findAll(query)
   }
 
   @Post('search')
   @ApiOperation({ summary: '股票搜索建议（联想词）' })
+  @ApiSuccessResponse(StockSearchItemDto, { isArray: true })
   search(@Body() dto: StockSearchDto) {
     return this.stockService.search(dto)
   }
 
   @Post('detail')
   @ApiOperation({ summary: '获取股票详情（旧接口，兼容保留）' })
+  @ApiSuccessResponse(StockDetailLegacyDataDto)
   findOne(@Body() { code }: StockDetailDto) {
     return this.stockService.findOne(code)
   }
 
   @Post('detail/overview')
   @ApiOperation({ summary: '股票详情 - 总览（基本信息 + 公司简介 + 最新行情 + 估值）' })
+  @ApiSuccessResponse(StockDetailOverviewDataDto)
   detailOverview(@Body() { code }: StockDetailDto) {
     return this.stockService.getDetailOverview(code)
   }
 
   @Post('detail/chart')
   @ApiOperation({ summary: '股票详情 - K 线图（支持日/周/月 + 前/后复权）' })
+  @ApiSuccessResponse(StockChartDataDto)
   detailChart(@Body() dto: StockDetailChartDto) {
     return this.stockService.getDetailChart(dto)
   }
 
   @Post('detail/money-flow')
   @ApiOperation({ summary: '股票详情 - 资金流（最近 N 日资金流向）' })
+  @ApiSuccessResponse(StockMoneyFlowDataDto)
   detailMoneyFlow(@Body() dto: StockDetailMoneyFlowDto) {
     return this.stockService.getDetailMoneyFlow(dto)
   }
 
   @Post('detail/financials')
   @ApiOperation({ summary: '股票详情 - 财务指标（最近 N 个报告期）' })
+  @ApiSuccessResponse(StockFinancialsDataDto)
   detailFinancials(@Body() dto: StockDetailFinancialsDto) {
     return this.stockService.getDetailFinancials(dto)
   }
 
   @Post('detail/shareholders')
   @ApiOperation({ summary: '股票详情 - 股东与分红（前十大 + 分红历史）' })
+  @ApiSuccessResponse(StockShareholdersDataDto)
   detailShareholders(@Body() dto: StockDetailShareholdersDto) {
     return this.stockService.getDetailShareholders(dto)
   }

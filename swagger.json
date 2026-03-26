@@ -543,7 +543,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/UserIdDto"
+                "$ref": "#/components/schemas/ResetPasswordDto"
               }
             }
           }
@@ -1067,6 +1067,181 @@
         ]
       }
     },
+    "/market/sentiment": {
+      "post": {
+        "operationId": "MarketController_getMarketSentiment",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MoneyFlowQueryDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ResponseModel"
+                    },
+                    {
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/MarketSentimentDto"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "summary": "获取市场情绪（涨跌家数统计，按 pct_chg 分桶）",
+        "tags": [
+          "Market - 市场与行业"
+        ]
+      }
+    },
+    "/market/valuation": {
+      "post": {
+        "operationId": "MarketController_getMarketValuation",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MoneyFlowQueryDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ResponseModel"
+                    },
+                    {
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/MarketValuationDto"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "summary": "获取全市场整体 PE_TTM / PB 中位数及历史分位",
+        "tags": [
+          "Market - 市场与行业"
+        ]
+      }
+    },
+    "/market/index-quote": {
+      "post": {
+        "operationId": "MarketController_getIndexQuote",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MoneyFlowQueryDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ResponseModel"
+                    },
+                    {
+                      "properties": {
+                        "data": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/IndexQuoteItemDto"
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "summary": "获取核心指数行情（上证指数、深证成指、创业板指、沪深300、中证500等）",
+        "tags": [
+          "Market - 市场与行业"
+        ]
+      }
+    },
+    "/market/hsgt-flow": {
+      "post": {
+        "operationId": "MarketController_getHsgtFlow",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MoneyFlowQueryDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ResponseModel"
+                    },
+                    {
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/HsgtFlowHistoryDto"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "summary": "获取沪深港通北向/南向资金流向（近 20 日趋势）",
+        "tags": [
+          "Market - 市场与行业"
+        ]
+      }
+    },
     "/heatmap/data": {
       "post": {
         "operationId": "HeatmapController_getHeatmap",
@@ -1361,6 +1536,21 @@
               "USER"
             ],
             "description": "用户角色（默认 USER）"
+          },
+          "password": {
+            "type": "string",
+            "example": "Abc12345",
+            "description": "初始密码（至少8位，不传则自动生成）"
+          },
+          "backtestQuota": {
+            "type": "number",
+            "example": 5,
+            "description": "回测任务数量限制（-1 为不限）"
+          },
+          "watchlistLimit": {
+            "type": "number",
+            "example": 20,
+            "description": "监控股票数量限制（-1 为不限）"
           }
         },
         "required": [
@@ -1496,6 +1686,26 @@
               "USER"
             ],
             "description": "用户角色筛选"
+          },
+          "sortBy": {
+            "type": "string",
+            "enum": [
+              "createdAt",
+              "updatedAt",
+              "lastLoginAt",
+              "account"
+            ],
+            "description": "排序字段（默认 createdAt）",
+            "example": "createdAt"
+          },
+          "sortOrder": {
+            "type": "string",
+            "enum": [
+              "asc",
+              "desc"
+            ],
+            "description": "排序方向（默认 desc）",
+            "example": "desc"
           }
         }
       },
@@ -1618,6 +1828,24 @@
         },
         "required": [
           "newPassword"
+        ]
+      },
+      "ResetPasswordDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "number",
+            "example": 1,
+            "description": "用户 ID"
+          },
+          "newPassword": {
+            "type": "string",
+            "example": "NewPass88",
+            "description": "新密码（至少8位，不传则自动生成随机密码）"
+          }
+        },
+        "required": [
+          "id"
         ]
       },
       "StockListItemDto": {
@@ -2388,6 +2616,197 @@
           "industry",
           "concept",
           "region"
+        ]
+      },
+      "MarketSentimentDto": {
+        "type": "object",
+        "properties": {
+          "tradeDate": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "total": {
+            "type": "number",
+            "description": "总股票数（仅当日有行情的 A 股）"
+          },
+          "bigRise": {
+            "type": "number",
+            "description": "涨幅 ≥5% 数量"
+          },
+          "rise": {
+            "type": "number",
+            "description": "涨幅 0%~5% 数量"
+          },
+          "flat": {
+            "type": "number",
+            "description": "平盘（pct_chg=0）数量"
+          },
+          "fall": {
+            "type": "number",
+            "description": "跌幅 -5%~0% 数量"
+          },
+          "bigFall": {
+            "type": "number",
+            "description": "跌幅 ≤-5% 数量"
+          }
+        },
+        "required": [
+          "tradeDate",
+          "total",
+          "bigRise",
+          "rise",
+          "flat",
+          "fall",
+          "bigFall"
+        ]
+      },
+      "ValuationPercentileDto": {
+        "type": "object",
+        "properties": {
+          "oneYear": {
+            "type": "number",
+            "description": "近 1 年历史分位（0~100）",
+            "nullable": true
+          },
+          "threeYear": {
+            "type": "number",
+            "description": "近 3 年历史分位（0~100）",
+            "nullable": true
+          },
+          "fiveYear": {
+            "type": "number",
+            "description": "近 5 年历史分位（0~100）",
+            "nullable": true
+          }
+        }
+      },
+      "MarketValuationDto": {
+        "type": "object",
+        "properties": {
+          "tradeDate": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
+          },
+          "peTtmMedian": {
+            "type": "number",
+            "description": "全市场 PE_TTM 中位数",
+            "nullable": true
+          },
+          "pbMedian": {
+            "type": "number",
+            "description": "全市场 PB 中位数",
+            "nullable": true
+          },
+          "peTtmPercentile": {
+            "$ref": "#/components/schemas/ValuationPercentileDto"
+          },
+          "pbPercentile": {
+            "$ref": "#/components/schemas/ValuationPercentileDto"
+          }
+        },
+        "required": [
+          "peTtmPercentile",
+          "pbPercentile"
+        ]
+      },
+      "IndexQuoteItemDto": {
+        "type": "object",
+        "properties": {
+          "tsCode": {
+            "type": "string"
+          },
+          "tradeDate": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "close": {
+            "type": "number",
+            "nullable": true
+          },
+          "preClose": {
+            "type": "number",
+            "nullable": true
+          },
+          "change": {
+            "type": "number",
+            "nullable": true
+          },
+          "pctChg": {
+            "type": "number",
+            "nullable": true
+          },
+          "vol": {
+            "type": "number",
+            "nullable": true
+          },
+          "amount": {
+            "type": "number",
+            "nullable": true
+          }
+        },
+        "required": [
+          "tsCode",
+          "tradeDate"
+        ]
+      },
+      "HsgtFlowDto": {
+        "type": "object",
+        "properties": {
+          "tradeDate": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
+          },
+          "northMoney": {
+            "type": "number",
+            "description": "北向资金合计（沪股通+深股通）亿元",
+            "nullable": true
+          },
+          "hgt": {
+            "type": "number",
+            "description": "沪股通净流入亿元",
+            "nullable": true
+          },
+          "sgt": {
+            "type": "number",
+            "description": "深股通净流入亿元",
+            "nullable": true
+          },
+          "southMoney": {
+            "type": "number",
+            "description": "南向资金合计（港股通）亿元",
+            "nullable": true
+          },
+          "ggtSs": {
+            "type": "number",
+            "description": "港股通（上海）亿元",
+            "nullable": true
+          },
+          "ggtSz": {
+            "type": "number",
+            "description": "港股通（深圳）亿元",
+            "nullable": true
+          }
+        }
+      },
+      "HsgtFlowHistoryDto": {
+        "type": "object",
+        "properties": {
+          "tradeDate": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
+          },
+          "history": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HsgtFlowDto"
+            }
+          }
+        },
+        "required": [
+          "history"
         ]
       },
       "HeatmapItemDto": {

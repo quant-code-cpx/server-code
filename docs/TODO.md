@@ -63,17 +63,20 @@
 
 ---
 
-## 四、股票管理 (`src/apps/stock/`) — 骨架已创建
+## 四、股票管理 (`src/apps/stock/`) — 基本已完成
 
 - [x] 股票列表接口（按交易所 / 状态 / 行业筛选，骨架）
 - [x] 股票详情接口（骨架）
 - [x] Prisma Schema 添加 `StockBasic` / `StockCompany` 等 Tushare 数据模型
 - [x] `StockService.findAll()` — 多条件筛选，从数据库查询
-- [x] `StockService.findOne()` — 返回基础信息 + 公司信息 + 最新行情 / 指标 / 复权因子
-- [ ] 股票搜索接口（按代码 / 名称模糊匹配）
-- [ ] 股票行情历史接口（日线 OHLCV + 成交额，支持日期范围）
-- [ ] 股票基本面指标接口（PE / PB / 换手率 / 市值）
-- [ ] 技术指标接口（MACD / RSI / KDJ / 布林带，数据来自 `stk_factor`）
+- [x] `StockService.findOne()` — 返回基础信息 + 公司信息 + 最新行情 / 指标 / 复权因子（兼容旧接口）
+- [x] 股票搜索接口（按代码 / 名称 / 拼音缩写模糊匹配，`POST /stock/search`）
+- [x] 股票详情 - 总览接口（`POST /stock/detail/overview`，含基础信息 + 公司简介 + 最新行情 + 估值 PE/PB/市值/换手率）
+- [x] 股票详情 - K 线图接口（`POST /stock/detail/chart`，支持日/周/月线 + 前/后/不复权，含日期范围）
+- [x] 股票详情 - 资金流接口（`POST /stock/detail/money-flow`，最近 N 日东财个股资金流向）
+- [x] 股票详情 - 财务指标接口（`POST /stock/detail/financials`，最近 N 个报告期的财务指标 + 利润表数据）
+- [x] 股票详情 - 股东与分红接口（`POST /stock/detail/shareholders`，前十大股东 + 历史分红记录）
+- [ ] 技术指标接口（MACD / RSI / KDJ / 布林带，数据来自 `stk_factor`，需先接入同步）
 
 ---
 

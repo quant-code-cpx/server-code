@@ -5,13 +5,14 @@ import { PrismaService } from 'src/shared/prisma.service'
 import { TokenPayload } from 'src/shared/token.interface'
 import { BusinessException } from 'src/common/exceptions/business.exception'
 import { ErrorEnum } from 'src/constant/response-code.constant'
-import { RANDOM_PASSWORD_LENGTH, ROLE_LEVEL, SUPER_ADMIN_ENV } from 'src/constant/user.constant'
+import { RANDOM_PASSWORD_LENGTH, ROLE_LEVEL, SUPER_ADMIN_ENV, UNLIMITED_QUOTA } from 'src/constant/user.constant'
 import { CreateUserDto } from './dto/create-user.dto'
 import { UpdateProfileDto } from './dto/update-profile.dto'
 import { ChangePasswordDto } from './dto/change-password.dto'
 import { UpdateUserStatusDto } from './dto/update-user-status.dto'
 import { UserListQueryDto } from './dto/user-list-query.dto'
 import { AdminUpdateUserDto } from './dto/admin-update-user.dto'
+import { ResetPasswordDto } from './dto/reset-password.dto'
 
 /** 用户基础信息（不含密码）— 用于列表和详情响应 */
 const USER_SAFE_SELECT = {
@@ -47,9 +48,7 @@ export class UserService implements OnApplicationBootstrap {
     const nickname = process.env[SUPER_ADMIN_ENV.NICKNAME] ?? '超级管理员'
 
     if (!account || !password) {
-      this.logger.warn(
-        `未配置 ${SUPER_ADMIN_ENV.ACCOUNT} / ${SUPER_ADMIN_ENV.PASSWORD} 环境变量，跳过超级管理员初始化`,
-      )
+      this.logger.warn(`未配置 ${SUPER_ADMIN_ENV.ACCOUNT} / ${SUPER_ADMIN_ENV.PASSWORD} 环境变量，跳过超级管理员初始化`)
       return
     }
 
@@ -68,7 +67,14 @@ export class UserService implements OnApplicationBootstrap {
 
     const hashedPassword = await bcrypt.hash(password, 10)
     await this.prisma.user.create({
-      data: { account, password: hashedPassword, nickname, role: UserRole.SUPER_ADMIN },
+      data: {
+        account,
+        password: hashedPassword,
+        nickname,
+        role: UserRole.SUPER_ADMIN,
+        backtestQuota: UNLIMITED_QUOTA,
+        watchlistLimit: UNLIMITED_QUOTA,
+      },
     })
     this.logger.log(`超级管理员 [${account}] 初始化成功`)
   }
@@ -91,8 +97,8 @@ export class UserService implements OnApplicationBootstrap {
     const exists = await this.prisma.user.findUnique({ where: { account: dto.account } })
     if (exists) throw new BusinessException(ErrorEnum.USER_ALREADY_EXISTS)
 
-    // 生成随机初始密码
-    const rawPassword = this.generateRandomPassword(RANDOM_PASSWORD_LENGTH)
+    // 生成或使用指定密码
+    const rawPassword = dto.password ?? this.generateRandomPassword(RANDOM_PASSWORD_LENGTH)
     const hashedPassword = await bcrypt.hash(rawPassword, 10)
 
     const user = await this.prisma.user.create({
@@ -101,6 +107,8 @@ export class UserService implements OnApplicationBootstrap {
         password: hashedPassword,
         nickname: dto.nickname,
         role: targetRole,
+        ...(dto.backtestQuota !== undefined ? { backtestQuota: dto.backtestQuota } : {}),
+        ...(dto.watchlistLimit !== undefined ? { watchlistLimit: dto.watchlistLimit } : {}),
       },
       select: USER_SAFE_SELECT,
     })
@@ -125,7 +133,13 @@ export class UserService implements OnApplicationBootstrap {
 
     const [total, items] = await Promise.all([
       this.prisma.user.count({ where }),
-      this.prisma.user.findMany({ where, skip, take: pageSize, select: USER_SAFE_SELECT, orderBy: { createdAt: 'desc' } }),
+      this.prisma.user.findMany({
+        where,
+        skip,
+        take: pageSize,
+        select: USER_SAFE_SELECT,
+        orderBy: { [query.sortBy ?? 'createdAt']: query.sortOrder ?? 'desc' },
+      }),
     ])
 
     return { total, page, pageSize, items }
@@ -176,6 +190,7 @@ export class UserService implements OnApplicationBootstrap {
 
   async updateStatus(id: number, dto: Omit<UpdateUserStatusDto, 'id'>, operator: TokenPayload) {
     const target = await this.findOne(id)
+    this.assertNotSuperAdmin(target.role)
     this.assertHigherRole(operator, target.role, id)
     if (id === operator.id) throw new BusinessException(ErrorEnum.CANNOT_DISABLE_SELF)
 
@@ -186,6 +201,7 @@ export class UserService implements OnApplicationBootstrap {
 
   async adminUpdateUser(id: number, dto: Omit<AdminUpdateUserDto, 'id'>, operator: TokenPayload) {
     const target = await this.findOne(id)
+    this.assertNotSuperAdmin(target.role)
     this.assertHigherRole(operator, target.role, id)
 
     return this.prisma.user.update({ where: { id }, data: dto, select: USER_SAFE_SELECT })
@@ -193,13 +209,14 @@ export class UserService implements OnApplicationBootstrap {
 
   // ── 重置用户密码（管理员以上）────────────────────────────────────────────
 
-  async resetPassword(id: number, operator: TokenPayload) {
-    const target = await this.findOne(id)
-    this.assertHigherRole(operator, target.role, id)
+  async resetPassword(dto: ResetPasswordDto, operator: TokenPayload) {
+    const target = await this.findOne(dto.id)
+    this.assertNotSuperAdmin(target.role)
+    this.assertHigherRole(operator, target.role, dto.id)
 
-    const rawPassword = this.generateRandomPassword(RANDOM_PASSWORD_LENGTH)
+    const rawPassword = dto.newPassword ?? this.generateRandomPassword(RANDOM_PASSWORD_LENGTH)
     const hashedPassword = await bcrypt.hash(rawPassword, 10)
-    await this.prisma.user.update({ where: { id }, data: { password: hashedPassword } })
+    await this.prisma.user.update({ where: { id: dto.id }, data: { password: hashedPassword } })
 
     return { newPassword: rawPassword }
   }
@@ -208,6 +225,7 @@ export class UserService implements OnApplicationBootstrap {
 
   async remove(id: number, operator: TokenPayload) {
     const target = await this.findOne(id)
+    this.assertNotSuperAdmin(target.role)
     this.assertHigherRole(operator, target.role, id)
     if (id === operator.id) throw new BusinessException(ErrorEnum.CANNOT_DELETE_SELF)
 
@@ -229,6 +247,13 @@ export class UserService implements OnApplicationBootstrap {
     }
   }
 
+  /** 断言目标不是超级管理员（任何人都不能操作 SUPER_ADMIN） */
+  private assertNotSuperAdmin(targetRole: UserRole): void {
+    if (targetRole === UserRole.SUPER_ADMIN) {
+      throw new BusinessException(ErrorEnum.CANNOT_OPERATE_SUPER_ADMIN)
+    }
+  }
+
   /** 判断 operatorRole 是否严格高于 targetRole */
   private hasHigherRole(operatorRole: UserRole, targetRole: UserRole): boolean {
     return ROLE_LEVEL[operatorRole] > ROLE_LEVEL[targetRole]
@@ -240,4 +265,3 @@ export class UserService implements OnApplicationBootstrap {
     return Array.from({ length }, () => chars[Math.floor(Math.random() * chars.length)]).join('')
   }
 }
-

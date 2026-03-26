@@ -20,6 +20,7 @@ export enum ErrorEnum {
   CANNOT_DISABLE_SELF = '2010:不能禁用自己的账号',
   PASSWORD_TOO_SHORT = '2011:密码不能少于8位',
   SUPER_ADMIN_CANNOT_CHANGE_ROLE = '2012:超级管理员角色不可更改',
+  CANNOT_OPERATE_SUPER_ADMIN = '2013:超级管理员账号不允许被编辑、禁用、重置密码或删除',
 }
 
 export const SUCCESS_CODE = 0

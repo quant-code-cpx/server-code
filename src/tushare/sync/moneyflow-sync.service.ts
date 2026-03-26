@@ -9,7 +9,12 @@ import {
 } from 'src/constant/tushare.constant'
 import { ITushareConfig, TUSHARE_CONFIG_TOKEN } from 'src/config/tushare.config'
 import { MoneyflowApiService } from '../api/moneyflow-api.service'
-import { mapMoneyflowDcRecord, mapMoneyflowIndDcRecord, mapMoneyflowMktDcRecord } from '../tushare-sync.mapper'
+import {
+  mapMoneyflowDcRecord,
+  mapMoneyflowHsgtRecord,
+  mapMoneyflowIndDcRecord,
+  mapMoneyflowMktDcRecord,
+} from '../tushare-sync.mapper'
 import { TushareApiError } from '../api/tushare-client.service'
 import { SyncHelperService } from './sync-helper.service'
 
@@ -105,8 +110,8 @@ export class MoneyflowSyncService {
   }): Promise<void> {
     const { task, label, modelName, targetTradeDate, fetchAndMap } = opts
 
-    if (await this.helper.isTaskSyncedToday(task)) {
-      this.logger.log(`[${label}] 今日已同步，跳过`)
+    if (await this.helper.isTaskSyncedForTradeDate(task, targetTradeDate)) {
+      this.logger.log(`[${label}] 目标交易日 ${targetTradeDate} 已同步，跳过`)
       return
     }
 
@@ -188,6 +193,7 @@ export class MoneyflowSyncService {
       {
         status: TushareSyncExecutionStatus.SUCCESS,
         message: `${label}同步完成，${totalRows} 条`,
+        tradeDate: this.helper.toDate(tradeDates[tradeDates.length - 1]),
         payload: {
           rowCount: totalRows,
           dateCount: tradeDates.length,
@@ -201,5 +207,54 @@ export class MoneyflowSyncService {
 
   private isDailyQuotaExceeded(error: unknown): boolean {
     return error instanceof TushareApiError && error.code === 40203 && /(每天|每小时)最多访问该接口/.test(error.message)
+  }
+
+  // ─── 沪深港通资金流向（北向/南向）─────────────────────────────────────────
+
+  async syncMoneyflowHsgt(targetTradeDate: string): Promise<void> {
+    if (await this.helper.isTaskSyncedForTradeDate(TushareSyncTaskName.MONEYFLOW_HSGT, targetTradeDate)) {
+      this.logger.log(`[沪深港通资金流] 目标交易日 ${targetTradeDate} 已同步，跳过`)
+      return
+    }
+
+    const startedAt = new Date()
+    const latestDate = await this.helper.getLatestDateString('moneyflowHsgt')
+    const startDate = latestDate ? this.helper.addDays(latestDate, 1) : this.helper.syncStartDate
+
+    if (this.helper.compareDateString(startDate, targetTradeDate) > 0) {
+      this.logger.log('[沪深港通资金流] 已是最新，无需同步')
+      return
+    }
+
+    this.logger.log(`[沪深港通资金流] 拉取区间 ${startDate} → ${targetTradeDate}`)
+    let totalRows = 0
+
+    try {
+      const rows = await this.api.getMoneyflowHsgtByDateRange(startDate, targetTradeDate)
+      const mapped = rows.map(mapMoneyflowHsgtRecord).filter((r): r is NonNullable<typeof r> => Boolean(r))
+
+      // 按日期幂等写入
+      const tradeDate = this.helper.toDate(targetTradeDate)
+      const startDateObj = this.helper.toDate(startDate)
+      totalRows = await this.helper.replaceDateRangeRows('moneyflowHsgt', 'tradeDate', startDateObj, tradeDate, mapped)
+      this.logger.log(`[沪深港通资金流] 同步完成，${totalRows} 条`)
+    } catch (error) {
+      if (this.isDailyQuotaExceeded(error)) {
+        this.logger.warn('[沪深港通资金流] 触发每日配额限制，跳过')
+        return
+      }
+      throw error
+    }
+
+    await this.helper.writeSyncLog(
+      TushareSyncTaskName.MONEYFLOW_HSGT,
+      {
+        status: TushareSyncExecutionStatus.SUCCESS,
+        message: `沪深港通资金流同步完成，${totalRows} 条`,
+        tradeDate: this.helper.toDate(targetTradeDate),
+        payload: { rowCount: totalRows },
+      },
+      startedAt,
+    )
   }
 }

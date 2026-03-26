@@ -7,8 +7,9 @@ export const ROLE_LEVEL: Record<UserRole, number> = {
   [UserRole.SUPER_ADMIN]: 3,
 }
 
-/** 管理员以上不受监控股票数量限制的占位值 */
+/** 配额/监控数不设上限的占位值（-1 表示不限）*/
 export const ADMIN_WATCHLIST_UNLIMITED = -1
+export const UNLIMITED_QUOTA = -1
 
 /** 超级管理员初始化环境变量 Key */
 export const SUPER_ADMIN_ENV = {

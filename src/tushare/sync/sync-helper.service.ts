@@ -76,6 +76,20 @@ export class SyncHelperService {
     return logDate === todayStr
   }
 
+  /** 检查某个任务是否已成功同步到指定交易日（按 sync log.tradeDate 判断） */
+  async isTaskSyncedForTradeDate(task: TushareSyncTaskName, tradeDate: string): Promise<boolean> {
+    const log = await this.prisma.tushareSyncLog.findFirst({
+      where: {
+        task: TushareSyncTask[task],
+        status: TushareSyncStatus.SUCCESS,
+        tradeDate: this.toDate(tradeDate),
+      },
+      orderBy: { startedAt: 'desc' },
+    })
+
+    return Boolean(log)
+  }
+
   /** 写入同步日志 */
   async writeSyncLog(task: TushareSyncTaskName, result: SyncLogPayload, startedAt: Date) {
     await this.prisma.tushareSyncLog.create({

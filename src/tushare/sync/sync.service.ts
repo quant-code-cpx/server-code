@@ -137,6 +137,7 @@ export class TushareSyncService implements OnApplicationBootstrap {
       await this.safeRun('月线行情', () => this.marketSync.syncMonthly(targetTradeDate), failedTasks)
       await this.safeRun('每日指标', () => this.marketSync.syncDailyBasic(targetTradeDate), failedTasks)
       await this.safeRun('复权因子', () => this.marketSync.syncAdjFactor(targetTradeDate), failedTasks)
+      await this.safeRun('核心指数日线', () => this.marketSync.syncIndexDaily(targetTradeDate), failedTasks)
 
       // ── Phase 3: 财务数据 ──
       this.logger.log('─── Phase 3: 财务数据 ───')
@@ -152,6 +153,7 @@ export class TushareSyncService implements OnApplicationBootstrap {
       await this.safeRun('个股资金流', () => this.moneyflowSync.syncMoneyflowDc(targetTradeDate), failedTasks)
       await this.safeRun('行业资金流', () => this.moneyflowSync.syncMoneyflowIndDc(targetTradeDate), failedTasks)
       await this.safeRun('大盘资金流', () => this.moneyflowSync.syncMoneyflowMktDc(targetTradeDate), failedTasks)
+      await this.safeRun('沪深港通资金流', () => this.moneyflowSync.syncMoneyflowHsgt(targetTradeDate), failedTasks)
 
       // ── Phase 5: 兜底重试 ──
       if (failedTasks.length > 0) {

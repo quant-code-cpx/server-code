@@ -593,3 +593,42 @@ export function mapTop10FloatHoldersRecord(record: TushareRecord): Prisma.Top10F
     holderType: readString(record, 'holder_type'),
   }
 }
+
+export function mapIndexDailyRecord(record: TushareRecord): Prisma.IndexDailyCreateManyInput | null {
+  const tsCode = readString(record, 'ts_code')
+  const tradeDate = readDate(record, 'trade_date')
+  if (!tsCode || !tradeDate) {
+    return null
+  }
+
+  return {
+    tsCode,
+    tradeDate,
+    open: readNumber(record, 'open'),
+    high: readNumber(record, 'high'),
+    low: readNumber(record, 'low'),
+    close: readNumber(record, 'close'),
+    preClose: readNumber(record, 'pre_close'),
+    change: readNumber(record, 'change'),
+    pctChg: readNumber(record, 'pct_chg'),
+    vol: readNumber(record, 'vol'),
+    amount: readNumber(record, 'amount'),
+  }
+}
+
+export function mapMoneyflowHsgtRecord(record: TushareRecord): Prisma.MoneyflowHsgtCreateManyInput | null {
+  const tradeDate = readDate(record, 'trade_date')
+  if (!tradeDate) {
+    return null
+  }
+
+  return {
+    tradeDate,
+    ggtSs: readNumber(record, 'ggt_ss'),
+    ggtSz: readNumber(record, 'ggt_sz'),
+    hgt: readNumber(record, 'hgt'),
+    sgt: readNumber(record, 'sgt'),
+    northMoney: readNumber(record, 'north_money'),
+    southMoney: readNumber(record, 'south_money'),
+  }
+}

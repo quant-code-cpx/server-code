@@ -5,6 +5,7 @@ import {
   mapAdjFactorRecord,
   mapDailyBasicRecord,
   mapDailyRecord,
+  mapIndexDailyRecord,
   mapMonthlyRecord,
   mapWeeklyRecord,
 } from '../tushare-sync.mapper'
@@ -13,7 +14,7 @@ import { SyncHelperService } from './sync-helper.service'
 /**
  * MarketSyncService — 行情数据同步
  *
- * 同步顺序（按用户要求）：日线 → 周线 → 月线 → 每日指标 → 复权因子
+ * 同步顺序（按用户要求）：日线 → 周线 → 月线 → 每日指标 → 复权因子 → 核心指数
  *
  * 全部采用「按交易日拉全市场」策略，从本地最新日期 +1 天开始增量推进，
  * 保证全量覆盖。
@@ -107,6 +108,77 @@ export class MarketSyncService {
     })
   }
 
+  // ─── 核心指数日线 ──────────────────────────────────────────────────────────
+  // 只保留最近 2 年数据，不做历史全量同步
+
+  async syncIndexDaily(targetTradeDate: string): Promise<void> {
+    if (await this.helper.isTaskSyncedForTradeDate(TushareSyncTaskName.INDEX_DAILY, targetTradeDate)) {
+      this.logger.log('[核心指数日线] 目标交易日已同步，跳过')
+      return
+    }
+
+    const startedAt = new Date()
+
+    // 2 年前的第一天作为最早起始，避免回补所有历史
+    const twoYearsAgo = new Date(this.helper.toDate(targetTradeDate))
+    twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2)
+    const earliestStart = this.helper.formatDate(twoYearsAgo)
+
+    const latestDate = await this.helper.getLatestDateString('indexDaily')
+    const rawStart = latestDate ? this.helper.addDays(latestDate, 1) : earliestStart
+    // 不允许起始日期早于 2 年前
+    const startDate = this.helper.compareDateString(rawStart, earliestStart) < 0 ? earliestStart : rawStart
+
+    if (this.helper.compareDateString(startDate, targetTradeDate) > 0) {
+      this.logger.log('[核心指数日线] 已是最新，无需同步')
+      return
+    }
+
+    const tradeDates = await this.helper.getOpenTradeDatesBetween(startDate, targetTradeDate)
+    if (!tradeDates.length) {
+      this.logger.log('[核心指数日线] 无可同步的交易日，跳过')
+      return
+    }
+
+    this.logger.log(
+      `[核心指数日线] 开始同步 ${tradeDates.length} 个交易日: ${tradeDates[0]} → ${tradeDates[tradeDates.length - 1]}`,
+    )
+
+    let totalRows = 0
+    const failed: Array<{ date: string; error: string }> = []
+
+    for (const [i, td] of tradeDates.entries()) {
+      try {
+        const rows = await this.api.getCoreIndexDailyByTradeDate(td)
+        const mapped = rows.map(mapIndexDailyRecord).filter((r): r is NonNullable<typeof r> => Boolean(r))
+        totalRows += await this.helper.replaceTradeDateRows('indexDaily', this.helper.toDate(td), mapped)
+        if (i === 0 || (i + 1) % 100 === 0 || i === tradeDates.length - 1) {
+          this.logger.log(`[核心指数日线] 进度 ${i + 1}/${tradeDates.length}，当前 ${td}，累计 ${totalRows} 条`)
+        }
+      } catch (error) {
+        const msg = (error as Error).message
+        this.logger.error(`[核心指数日线] ${td} 同步失败: ${msg}`)
+        failed.push({ date: td, error: msg })
+      }
+    }
+
+    this.logger.log(`[核心指数日线] 同步完成，${totalRows} 条${failed.length ? `，${failed.length} 个日期失败` : ''}`)
+    await this.helper.writeSyncLog(
+      TushareSyncTaskName.INDEX_DAILY,
+      {
+        status: TushareSyncExecutionStatus.SUCCESS,
+        message: `核心指数日线同步完成，${totalRows} 条`,
+        tradeDate: this.helper.toDate(tradeDates[tradeDates.length - 1]),
+        payload: {
+          rowCount: totalRows,
+          dateCount: tradeDates.length,
+          failedDates: failed.length > 0 ? failed : undefined,
+        },
+      },
+      startedAt,
+    )
+  }
+
   // ═══════════════════════════════════════════════════════════════════════════
   // 通用按交易日同步模板
   // ═══════════════════════════════════════════════════════════════════════════
@@ -121,9 +193,9 @@ export class MarketSyncService {
   }): Promise<void> {
     const { task, label, modelName, targetTradeDate, fetchAndMap, resolveDates } = opts
 
-    // 1. 今日已同步则跳过
-    if (await this.helper.isTaskSyncedToday(task)) {
-      this.logger.log(`[${label}] 今日已同步，跳过`)
+    // 1. 目标交易日已同步则跳过（避免“今天已经跑过一次 25 号数据”导致 26 号盘后被误跳过）
+    if (await this.helper.isTaskSyncedForTradeDate(task, targetTradeDate)) {
+      this.logger.log(`[${label}] 目标交易日 ${targetTradeDate} 已同步，跳过`)
       return
     }
 

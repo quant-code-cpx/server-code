@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsString, MaxLength, IsEnum, IsOptional } from 'class-validator'
+import { IsNotEmpty, IsString, MaxLength, IsEnum, IsOptional, MinLength, IsInt, Min } from 'class-validator'
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
 import { UserRole } from '@prisma/client'
 
@@ -19,5 +19,22 @@ export class CreateUserDto {
   @IsEnum(UserRole)
   @IsOptional()
   role?: UserRole
-}
 
+  @ApiPropertyOptional({ example: 'Abc12345', description: '初始密码（至少8位，不传则自动生成）' })
+  @IsString()
+  @MinLength(8)
+  @IsOptional()
+  password?: string
+
+  @ApiPropertyOptional({ example: 5, description: '回测任务数量限制（-1 为不限）' })
+  @IsInt()
+  @Min(-1)
+  @IsOptional()
+  backtestQuota?: number
+
+  @ApiPropertyOptional({ example: 20, description: '监控股票数量限制（-1 为不限）' })
+  @IsInt()
+  @Min(-1)
+  @IsOptional()
+  watchlistLimit?: number
+}

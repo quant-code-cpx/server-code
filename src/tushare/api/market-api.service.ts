@@ -1,13 +1,15 @@
 import { Injectable } from '@nestjs/common'
 import {
+  CORE_INDEX_CODES,
   TUSHARE_ADJ_FACTOR_FIELDS,
   TUSHARE_DAILY_BASIC_FIELDS,
+  TUSHARE_INDEX_DAILY_FIELDS,
   TUSHARE_OHLCV_FIELDS,
   TushareApiName,
 } from 'src/constant/tushare.constant'
 import { TushareClient } from './tushare-client.service'
 
-/** 行情数据 API：日线、周线、月线、复权因子、每日指标 */
+/** 行情数据 API：日线、周线、月线、复权因子、每日指标、指数日线 */
 @Injectable()
 export class MarketApiService {
   constructor(private readonly client: TushareClient) {}
@@ -55,5 +57,24 @@ export class MarketApiService {
       params: { trade_date: tradeDate },
       fields: [...TUSHARE_DAILY_BASIC_FIELDS],
     })
+  }
+
+  /** 按核心指数代码 + 交易日获取指数日线（单个指数） */
+  getIndexDailyByTsCodeAndDate(tsCode: string, tradeDate: string) {
+    return this.client.call({
+      api_name: TushareApiName.INDEX_DAILY,
+      params: { ts_code: tsCode, trade_date: tradeDate },
+      fields: [...TUSHARE_INDEX_DAILY_FIELDS],
+    })
+  }
+
+  /** 获取所有核心指数在指定交易日的行情（逐只调用后合并） */
+  async getCoreIndexDailyByTradeDate(tradeDate: string) {
+    const allRows: Record<string, unknown>[] = []
+    for (const tsCode of CORE_INDEX_CODES) {
+      const rows = await this.getIndexDailyByTsCodeAndDate(tsCode, tradeDate)
+      allRows.push(...rows)
+    }
+    return allRows
   }
 }

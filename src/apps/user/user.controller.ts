@@ -9,6 +9,7 @@ import { UpdateUserStatusDto } from './dto/update-user-status.dto'
 import { UserListQueryDto } from './dto/user-list-query.dto'
 import { AdminUpdateUserDto } from './dto/admin-update-user.dto'
 import { UserIdDto } from './dto/user-id.dto'
+import { ResetPasswordDto } from './dto/reset-password.dto'
 import { CurrentUser } from 'src/common/decorators/current-user.decorator'
 import { Roles } from 'src/common/decorators/roles.decorator'
 import { RolesGuard } from 'src/lifecycle/guard/roles.guard'
@@ -119,8 +120,8 @@ export class UserController {
   @Roles(UserRole.ADMIN)
   @ApiOperation({ summary: '重置用户密码（管理员以上，需高于目标用户角色）' })
   @ApiSuccessResponse(ResetPasswordDataDto)
-  async resetPassword(@Body() { id }: UserIdDto, @CurrentUser() currentUser: TokenPayload) {
-    return this.userService.resetPassword(id, currentUser)
+  async resetPassword(@Body() dto: ResetPasswordDto, @CurrentUser() currentUser: TokenPayload) {
+    return this.userService.resetPassword(dto, currentUser)
   }
 
   /**

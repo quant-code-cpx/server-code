@@ -8,9 +8,11 @@ export enum TushareApiName {
   MONTHLY = 'monthly',
   ADJ_FACTOR = 'adj_factor',
   DAILY_BASIC = 'daily_basic',
+  INDEX_DAILY = 'index_daily',
   MONEYFLOW_DC = 'moneyflow_dc',
   MONEYFLOW_IND_DC = 'moneyflow_ind_dc',
   MONEYFLOW_MKT_DC = 'moneyflow_mkt_dc',
+  MONEYFLOW_HSGT = 'moneyflow_hsgt',
   INCOME = 'income',
   EXPRESS = 'express',
   FINA_INDICATOR = 'fina_indicator',
@@ -57,9 +59,11 @@ export enum TushareSyncTaskName {
   MONTHLY = 'MONTHLY',
   ADJ_FACTOR = 'ADJ_FACTOR',
   DAILY_BASIC = 'DAILY_BASIC',
+  INDEX_DAILY = 'INDEX_DAILY',
   MONEYFLOW_DC = 'MONEYFLOW_DC',
   MONEYFLOW_IND_DC = 'MONEYFLOW_IND_DC',
   MONEYFLOW_MKT_DC = 'MONEYFLOW_MKT_DC',
+  MONEYFLOW_HSGT = 'MONEYFLOW_HSGT',
   INCOME = 'INCOME',
   EXPRESS = 'EXPRESS',
   FINA_INDICATOR = 'FINA_INDICATOR',
@@ -453,4 +457,38 @@ export const TUSHARE_TOP10_FLOAT_HOLDERS_FIELDS = [
   'hold_float_ratio',
   'hold_change',
   'holder_type',
+] as const
+
+export const TUSHARE_INDEX_DAILY_FIELDS = [
+  'ts_code',
+  'trade_date',
+  'close',
+  'open',
+  'high',
+  'low',
+  'pre_close',
+  'change',
+  'pct_chg',
+  'vol',
+  'amount',
+] as const
+
+export const TUSHARE_MONEYFLOW_HSGT_FIELDS = [
+  'trade_date',
+  'ggt_ss',
+  'ggt_sz',
+  'hgt',
+  'sgt',
+  'north_money',
+  'south_money',
+] as const
+
+/** 需要同步的核心指数代码 */
+export const CORE_INDEX_CODES = [
+  '000001.SH', // 上证指数
+  '399001.SZ', // 深证成指
+  '399006.SZ', // 创业板指
+  '000300.SH', // 沪深 300
+  '000905.SH', // 中证 500
+  '000852.SH', // 中证 1000
 ] as const

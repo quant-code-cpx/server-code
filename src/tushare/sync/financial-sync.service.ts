@@ -11,6 +11,7 @@ import {
   mapTop10HoldersRecord,
 } from '../tushare-sync.mapper'
 import { SyncHelperService } from './sync-helper.service'
+import { TushareSyncMode, TushareSyncPlan } from './sync-plan.types'
 
 /**
  * FinancialSyncService — 财务数据同步
@@ -33,9 +34,115 @@ export class FinancialSyncService {
     private readonly helper: SyncHelperService,
   ) {}
 
+  getSyncPlans(): TushareSyncPlan[] {
+    return [
+      {
+        task: TushareSyncTaskName.INCOME,
+        label: '利润表',
+        category: 'financial',
+        order: 310,
+        bootstrapEnabled: true,
+        supportsManual: true,
+        supportsFullSync: true,
+        requiresTradeDate: false,
+        schedule: {
+          cron: '0 0 21 * * *',
+          timeZone: this.helper.syncTimeZone,
+          description: '每日晚间同步利润表',
+        },
+        execute: ({ mode }) => this.syncIncome(mode),
+      },
+      {
+        task: TushareSyncTaskName.EXPRESS,
+        label: '业绩快报',
+        category: 'financial',
+        order: 320,
+        bootstrapEnabled: true,
+        supportsManual: true,
+        supportsFullSync: true,
+        requiresTradeDate: false,
+        schedule: {
+          cron: '0 10 21 * * *',
+          timeZone: this.helper.syncTimeZone,
+          description: '每日晚间同步业绩快报',
+        },
+        execute: ({ mode }) => this.syncExpress(mode),
+      },
+      {
+        task: TushareSyncTaskName.DIVIDEND,
+        label: '分红数据',
+        category: 'financial',
+        order: 330,
+        bootstrapEnabled: true,
+        supportsManual: true,
+        supportsFullSync: true,
+        requiresTradeDate: false,
+        schedule: {
+          cron: '0 20 21 * * *',
+          timeZone: this.helper.syncTimeZone,
+          description: '每日晚间同步分红数据',
+        },
+        execute: ({ mode }) => this.syncDividend(mode),
+      },
+      {
+        task: TushareSyncTaskName.FINA_INDICATOR,
+        label: '财务指标',
+        category: 'financial',
+        order: 340,
+        bootstrapEnabled: true,
+        supportsManual: true,
+        supportsFullSync: true,
+        requiresTradeDate: false,
+        schedule: {
+          cron: '0 30 21 * * *',
+          timeZone: this.helper.syncTimeZone,
+          description: '每日晚间同步财务指标',
+        },
+        execute: ({ mode }) => this.syncFinaIndicator(mode),
+      },
+      {
+        task: TushareSyncTaskName.TOP10_HOLDERS,
+        label: '十大股东',
+        category: 'financial',
+        order: 350,
+        bootstrapEnabled: true,
+        supportsManual: true,
+        supportsFullSync: true,
+        requiresTradeDate: false,
+        schedule: {
+          cron: '0 40 21 * * *',
+          timeZone: this.helper.syncTimeZone,
+          description: '每日晚间同步十大股东',
+        },
+        execute: ({ mode }) => this.syncTop10Holders(mode),
+      },
+      {
+        task: TushareSyncTaskName.TOP10_FLOAT_HOLDERS,
+        label: '十大流通股东',
+        category: 'financial',
+        order: 360,
+        bootstrapEnabled: true,
+        supportsManual: true,
+        supportsFullSync: true,
+        requiresTradeDate: false,
+        schedule: {
+          cron: '0 50 21 * * *',
+          timeZone: this.helper.syncTimeZone,
+          description: '每日晚间同步十大流通股东',
+        },
+        execute: ({ mode }) => this.syncTop10FloatHolders(mode),
+      },
+    ]
+  }
+
   // ─── 利润表 ────────────────────────────────────────────────────────────────
 
-  async syncIncome(): Promise<void> {
+  async syncIncome(mode: TushareSyncMode = 'incremental'): Promise<void> {
+    if (mode === 'full') {
+      await this.rebuildIncomeRecentYears(this.recentFinancialRebuildYears)
+      return
+    }
+
     if (await this.shouldRebuildRecentYears('income', '利润表')) {
       await this.rebuildIncomeRecentYears(this.recentFinancialRebuildYears)
       return
@@ -308,7 +415,12 @@ export class FinancialSyncService {
 
   // ─── 业绩快报 ──────────────────────────────────────────────────────────────
 
-  async syncExpress(): Promise<void> {
+  async syncExpress(mode: TushareSyncMode = 'incremental'): Promise<void> {
+    if (mode === 'full') {
+      await this.rebuildExpressRecentYears(this.recentFinancialRebuildYears)
+      return
+    }
+
     if (await this.shouldRebuildRecentYears('express', '业绩快报')) {
       await this.rebuildExpressRecentYears(this.recentFinancialRebuildYears)
       return
@@ -369,7 +481,12 @@ export class FinancialSyncService {
 
   // ─── 分红数据 ──────────────────────────────────────────────────────────────
 
-  async syncDividend(): Promise<void> {
+  async syncDividend(mode: TushareSyncMode = 'incremental'): Promise<void> {
+    if (mode === 'full') {
+      await this.fullDividendBuild(new Date())
+      return
+    }
+
     if (await this.helper.isTaskSyncedToday(TushareSyncTaskName.DIVIDEND)) {
       this.logger.log('[分红数据] 今日已同步，跳过')
       return
@@ -514,7 +631,12 @@ export class FinancialSyncService {
 
   // ─── 财务指标 ──────────────────────────────────────────────────────────────
 
-  async syncFinaIndicator(): Promise<void> {
+  async syncFinaIndicator(mode: TushareSyncMode = 'incremental'): Promise<void> {
+    if (mode === 'full') {
+      await this.rebuildFinaIndicatorRecentYears(this.recentFinancialRebuildYears)
+      return
+    }
+
     if (await this.shouldRebuildRecentYears('finaIndicator', '财务指标')) {
       await this.rebuildFinaIndicatorRecentYears(this.recentFinancialRebuildYears)
       return
@@ -625,7 +747,12 @@ export class FinancialSyncService {
 
   // ─── 前十大股东 ────────────────────────────────────────────────────────────
 
-  async syncTop10Holders(): Promise<void> {
+  async syncTop10Holders(mode: TushareSyncMode = 'incremental'): Promise<void> {
+    if (mode === 'full') {
+      await this.rebuildTop10HoldersRecentYears(this.recentFinancialRebuildYears)
+      return
+    }
+
     if (await this.shouldRebuildRecentYears('top10Holders', '十大股东')) {
       await this.rebuildTop10HoldersRecentYears(this.recentFinancialRebuildYears)
       return
@@ -642,7 +769,12 @@ export class FinancialSyncService {
 
   // ─── 前十大流通股东 ────────────────────────────────────────────────────────
 
-  async syncTop10FloatHolders(): Promise<void> {
+  async syncTop10FloatHolders(mode: TushareSyncMode = 'incremental'): Promise<void> {
+    if (mode === 'full') {
+      await this.rebuildTop10FloatHoldersRecentYears(this.recentFinancialRebuildYears)
+      return
+    }
+
     if (await this.shouldRebuildRecentYears('top10FloatHolders', '十大流通股东')) {
       await this.rebuildTop10FloatHoldersRecentYears(this.recentFinancialRebuildYears)
       return

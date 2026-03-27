@@ -13,6 +13,7 @@ import { BasicSyncService } from './sync/basic-sync.service'
 import { MarketSyncService } from './sync/market-sync.service'
 import { FinancialSyncService } from './sync/financial-sync.service'
 import { MoneyflowSyncService } from './sync/moneyflow-sync.service'
+import { TushareSyncRegistryService } from './sync/sync-registry.service'
 import { TushareSyncService } from './sync/sync.service'
 
 /**
@@ -35,8 +36,9 @@ import { TushareSyncService } from './sync/sync.service'
     MarketSyncService,
     FinancialSyncService,
     MoneyflowSyncService,
+    TushareSyncRegistryService,
     TushareSyncService,
   ],
-  exports: [TushareClient, FinancialSyncService],
+  exports: [TushareClient, FinancialSyncService, TushareSyncRegistryService, TushareSyncService],
 })
 export class TushareModule {}

@@ -8,15 +8,20 @@ import { StockDetailChartDto } from './dto/stock-detail-chart.dto'
 import { StockDetailMoneyFlowDto } from './dto/stock-detail-money-flow.dto'
 import { StockDetailFinancialsDto } from './dto/stock-detail-financials.dto'
 import { StockDetailShareholdersDto } from './dto/stock-detail-shareholders.dto'
+import { StockDetailShareCapitalDto } from './dto/stock-detail-share-capital.dto'
+import { StockDetailFinancingDto } from './dto/stock-detail-financing.dto'
 import { ApiSuccessResponse } from 'src/common/decorators/api-success-response.decorator'
 import {
   StockChartDataDto,
   StockDetailLegacyDataDto,
   StockDetailOverviewDataDto,
   StockFinancialsDataDto,
+  StockFinancingDataDto,
   StockListDataDto,
+  StockMainMoneyFlowDataDto,
   StockMoneyFlowDataDto,
   StockSearchItemDto,
+  StockShareCapitalDataDto,
   StockShareholdersDataDto,
 } from './dto/stock-response.dto'
 
@@ -79,5 +84,26 @@ export class StockController {
   @ApiSuccessResponse(StockShareholdersDataDto)
   detailShareholders(@Body() dto: StockDetailShareholdersDto) {
     return this.stockService.getDetailShareholders(dto)
+  }
+
+  @Post('detail/main-money-flow')
+  @ApiOperation({ summary: '股票详情 - 主力资金流向（超大单+大单净流入 vs 散户净流入）' })
+  @ApiSuccessResponse(StockMainMoneyFlowDataDto)
+  detailMainMoneyFlow(@Body() dto: StockDetailMoneyFlowDto) {
+    return this.stockService.getDetailMainMoneyFlow(dto)
+  }
+
+  @Post('detail/share-capital')
+  @ApiOperation({ summary: '股票详情 - 股本结构（总股本/流通股本/限售股 + 历史变化）' })
+  @ApiSuccessResponse(StockShareCapitalDataDto)
+  detailShareCapital(@Body() dto: StockDetailShareCapitalDto) {
+    return this.stockService.getDetailShareCapital(dto)
+  }
+
+  @Post('detail/financing')
+  @ApiOperation({ summary: '股票详情 - 融资记录（配股等历史融资事件）' })
+  @ApiSuccessResponse(StockFinancingDataDto)
+  detailFinancing(@Body() dto: StockDetailFinancingDto) {
+    return this.stockService.getDetailFinancing(dto)
   }
 }

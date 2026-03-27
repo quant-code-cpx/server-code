@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common'
 import { TushareSyncExecutionStatus, TushareSyncTaskName } from 'src/constant/tushare.constant'
 import { FinancialApiService } from '../api/financial-api.service'
 import {
+  mapAllotmentRecord,
   mapDividendRecord,
   mapExpressRecord,
   mapFinaIndicatorRecord,
@@ -394,6 +395,18 @@ export class FinancialSyncService {
 
     await this.helper.prisma.dividend.deleteMany({ where: { tsCode } })
     const result = await this.helper.prisma.dividend.createMany({ data: mapped, skipDuplicates: true })
+    return result.count
+  }
+
+  /** 供 stock.service.ts 按需拉取指定股票的全部配股记录 */
+  async syncAllotmentsForStock(tsCode: string): Promise<number> {
+    const rows = await this.api.getAllotmentByTsCode(tsCode)
+    const mapped = rows.map(mapAllotmentRecord).filter((r): r is NonNullable<typeof r> => Boolean(r))
+
+    await this.helper.prisma.allotment.deleteMany({ where: { tsCode } })
+    if (!mapped.length) return 0
+
+    const result = await this.helper.prisma.allotment.createMany({ data: mapped, skipDuplicates: true })
     return result.count
   }
 

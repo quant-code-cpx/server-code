@@ -138,3 +138,65 @@ export class StockDetailLegacyDataDto {
     unknown
   > | null
 }
+
+// ─── 主力资金流向 ─────────────────────────────────────────────────────────────
+
+export class StockMainMoneyFlowSummaryDto {
+  @ApiProperty({ description: '5日主力净流入（万元）' }) mainNetAmount5d: number
+  @ApiProperty({ description: '10日主力净流入（万元）' }) mainNetAmount10d: number
+  @ApiProperty({ description: '20日主力净流入（万元）' }) mainNetAmount20d: number
+}
+
+export class StockMainMoneyFlowItemDto {
+  @ApiProperty() tradeDate: Date
+  @ApiProperty({ required: false, nullable: true }) close: number | null
+  @ApiProperty({ required: false, nullable: true, description: '主力净流入（万元）' }) mainNetAmount: number | null
+  @ApiProperty({ required: false, nullable: true, description: '主力净流入占比（%）' })
+  mainNetAmountRate: number | null
+  @ApiProperty({ required: false, nullable: true, description: '散户净流入（万元）' }) retailNetAmount: number | null
+}
+
+export class StockMainMoneyFlowDataDto {
+  @ApiProperty() tsCode: string
+  @ApiProperty({ type: StockMainMoneyFlowSummaryDto }) summary: StockMainMoneyFlowSummaryDto
+  @ApiProperty({ type: [StockMainMoneyFlowItemDto] }) items: StockMainMoneyFlowItemDto[]
+}
+
+// ─── 股本结构 ─────────────────────────────────────────────────────────────────
+
+export class StockShareCapitalLatestDto {
+  @ApiProperty({ description: '总股本（万股）' }) totalShare: number
+  @ApiProperty({ description: '流通股本（万股）' }) floatShare: number
+  @ApiProperty({ description: '自由流通股（万股）' }) freeShare: number
+  @ApiProperty({ description: '限售股（万股）' }) restrictedShare: number
+  @ApiProperty({ description: '数据日期' }) announceDate: Date
+}
+
+export class StockShareCapitalHistoryItemDto {
+  @ApiProperty() changeDate: Date
+  @ApiProperty({ required: false, nullable: true }) totalShare: number | null
+  @ApiProperty({ required: false, nullable: true }) floatShare: number | null
+  @ApiProperty() changeReason: string
+}
+
+export class StockShareCapitalDataDto {
+  @ApiProperty() tsCode: string
+  @ApiProperty({ type: StockShareCapitalLatestDto, nullable: true }) latest: StockShareCapitalLatestDto | null
+  @ApiProperty({ type: [StockShareCapitalHistoryItemDto] }) history: StockShareCapitalHistoryItemDto[]
+}
+
+// ─── 融资记录 ─────────────────────────────────────────────────────────────────
+
+export class StockFinancingItemDto {
+  @ApiProperty({ description: '融资类型，如"配股"' }) eventType: string
+  @ApiProperty({ required: false, nullable: true, description: '公告日' }) announceDate: Date | null
+  @ApiProperty({ required: false, nullable: true, description: '融资金额（元）' }) amount: number | null
+  @ApiProperty({ required: false, nullable: true, description: '发行价（元）' }) price: number | null
+  @ApiProperty({ required: false, nullable: true, description: '发行股数（万股）' }) shares: number | null
+  @ApiProperty({ required: false, nullable: true, description: '状态描述' }) status: string | null
+}
+
+export class StockFinancingDataDto {
+  @ApiProperty() tsCode: string
+  @ApiProperty({ type: [StockFinancingItemDto] }) items: StockFinancingItemDto[]
+}

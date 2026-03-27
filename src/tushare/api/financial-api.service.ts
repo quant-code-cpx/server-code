@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common'
 import {
+  TUSHARE_ALLOTMENT_FIELDS,
   TUSHARE_DIVIDEND_FIELDS,
   TUSHARE_EXPRESS_FIELDS,
   TUSHARE_FINA_INDICATOR_FIELDS,
@@ -111,6 +112,15 @@ export class FinancialApiService {
       api_name: TushareApiName.TOP10_FLOAT_HOLDERS,
       params: { ts_code: tsCode, start_date: startDate, end_date: endDate },
       fields: [...TUSHARE_TOP10_FLOAT_HOLDERS_FIELDS],
+    })
+  }
+
+  /** 获取指定股票的全部配股记录 */
+  getAllotmentByTsCode(tsCode: string) {
+    return this.client.call({
+      api_name: TushareApiName.ALLOTMENT,
+      params: { ts_code: tsCode },
+      fields: [...TUSHARE_ALLOTMENT_FIELDS],
     })
   }
 }

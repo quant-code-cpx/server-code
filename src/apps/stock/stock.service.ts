@@ -9,6 +9,8 @@ import { StockDetailChartDto, AdjustType, ChartPeriod } from './dto/stock-detail
 import { StockDetailMoneyFlowDto } from './dto/stock-detail-money-flow.dto'
 import { StockDetailFinancialsDto } from './dto/stock-detail-financials.dto'
 import { StockDetailShareholdersDto } from './dto/stock-detail-shareholders.dto'
+import { StockDetailShareCapitalDto } from './dto/stock-detail-share-capital.dto'
+import { StockDetailFinancingDto } from './dto/stock-detail-financing.dto'
 
 // 排序字段到 SQL 列名的安全映射（value 来自受控枚举，不直接来自用户输入）
 const SORT_COLUMN_MAP: Record<StockSortBy, string> = {
@@ -60,7 +62,7 @@ export interface StockListRow {
 export class StockService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly dividendSyncService: FinancialSyncService,
+    private readonly financialSyncService: FinancialSyncService,
   ) {}
 
   // ─── 股票列表 ─────────────────────────────────────────────────────────────────
@@ -454,7 +456,7 @@ export class StockService {
     // 如果本地没有该股票的分红数据，触发按需同步
     const localDividendCount = await this.prisma.dividend.count({ where: { tsCode } })
     if (localDividendCount === 0) {
-      await this.dividendSyncService.syncDividendsForStock(tsCode).catch(() => {
+      await this.financialSyncService.syncDividendsForStock(tsCode).catch(() => {
         // 同步失败不阻断查询，直接返回空
       })
     }
@@ -520,6 +522,129 @@ export class StockService {
         })),
       },
     }
+  }
+
+  // ─── 股票详情：主力资金流向 ──────────────────────────────────────────────────
+
+  async getDetailMainMoneyFlow({ tsCode, days = 60 }: StockDetailMoneyFlowDto) {
+    const records = await this.prisma.moneyflowDc.findMany({
+      where: { tsCode },
+      orderBy: { tradeDate: 'desc' },
+      take: days,
+    })
+
+    // 在 DC 数据中，buy_elg/lg/md/sm_amount 代表各档净流入（正为净买入，负为净卖出）
+    const calculateMainNetFlow = (r: (typeof records)[0]) =>
+      (r.buyElgAmount ?? 0) + (r.buyLgAmount ?? 0)
+    const calculateRetailNetFlow = (r: (typeof records)[0]) =>
+      (r.buyMdAmount ?? 0) + (r.buySmAmount ?? 0)
+
+    const calculateMainNetFlowSum = (n: number) =>
+      Math.round(records.slice(0, n).reduce((acc, r) => acc + calculateMainNetFlow(r), 0) * 100) / 100
+
+    const items = [...records].reverse().map((r) => {
+      const mainNetAmount = r.buyElgAmount !== null || r.buyLgAmount !== null ? calculateMainNetFlow(r) : null
+      const retailNetAmount = r.buyMdAmount !== null || r.buySmAmount !== null ? calculateRetailNetFlow(r) : null
+      // 主力净流入占比：超大单+大单占比之和
+      const mainNetAmountRate =
+        r.buyElgAmountRate !== null || r.buyLgAmountRate !== null
+          ? Math.round(((r.buyElgAmountRate ?? 0) + (r.buyLgAmountRate ?? 0)) * 100) / 100
+          : null
+      return {
+        tradeDate: r.tradeDate,
+        close: r.close,
+        mainNetAmount: mainNetAmount !== null ? Math.round(mainNetAmount * 100) / 100 : null,
+        mainNetAmountRate,
+        retailNetAmount: retailNetAmount !== null ? Math.round(retailNetAmount * 100) / 100 : null,
+      }
+    })
+
+    return {
+      tsCode,
+      summary: {
+        mainNetAmount5d: calculateMainNetFlowSum(Math.min(5, records.length)),
+        mainNetAmount10d: calculateMainNetFlowSum(Math.min(10, records.length)),
+        mainNetAmount20d: calculateMainNetFlowSum(Math.min(20, records.length)),
+      },
+      items,
+    }
+  }
+
+  // ─── 股票详情：股本结构 ────────────────────────────────────────────────────────
+
+  async getDetailShareCapital({ tsCode }: StockDetailShareCapitalDto) {
+    const latestRecord = await this.prisma.dailyBasic.findFirst({
+      where: { tsCode },
+      orderBy: { tradeDate: 'desc' },
+      select: { tradeDate: true, totalShare: true, floatShare: true, freeShare: true },
+    })
+
+    const latest =
+      latestRecord && latestRecord.totalShare !== null && latestRecord.floatShare !== null
+        ? {
+            totalShare: latestRecord.totalShare,
+            floatShare: latestRecord.floatShare,
+            freeShare: latestRecord.freeShare ?? latestRecord.floatShare,
+            restrictedShare: latestRecord.totalShare - latestRecord.floatShare,
+            announceDate: latestRecord.tradeDate,
+          }
+        : null
+
+    // 取年末快照（每年最后一个交易日），最多返回最近 10 年，用于展示股本结构历史变化
+    const allRecords = await this.prisma.dailyBasic.findMany({
+      where: { tsCode },
+      orderBy: { tradeDate: 'desc' },
+      select: { tradeDate: true, totalShare: true, floatShare: true },
+    })
+
+    // 按年分组，保留每年最后一个交易日记录
+    const yearEndSnapshots = new Map<number, { tradeDate: Date; totalShare: number | null; floatShare: number | null }>()
+    for (const r of allRecords) {
+      const year = r.tradeDate.getFullYear()
+      if (!yearEndSnapshots.has(year)) {
+        yearEndSnapshots.set(year, r)
+      }
+    }
+
+    const history = [...yearEndSnapshots.values()]
+      .sort((a, b) => b.tradeDate.getTime() - a.tradeDate.getTime())
+      .slice(0, 10)
+      .map((r) => ({
+        changeDate: r.tradeDate,
+        totalShare: r.totalShare,
+        floatShare: r.floatShare,
+        changeReason: '定期披露',
+      }))
+
+    return { tsCode, latest, history }
+  }
+
+  // ─── 股票详情：融资记录 ────────────────────────────────────────────────────────
+
+  async getDetailFinancing({ tsCode }: StockDetailFinancingDto) {
+    // 本地无数据时按需从 Tushare 拉取并缓存
+    const localCount = await this.prisma.allotment.count({ where: { tsCode } })
+    if (localCount === 0) {
+      await this.financialSyncService.syncAllotmentsForStock(tsCode).catch(() => {
+        // 同步失败不阻断查询，返回空列表
+      })
+    }
+
+    const allotments = await this.prisma.allotment.findMany({
+      where: { tsCode },
+      orderBy: { annDate: 'desc' },
+    })
+
+    const items = allotments.map((a) => ({
+      eventType: '配股',
+      announceDate: a.annDate,
+      amount: a.raiseFonds,
+      price: a.allotmentPrice,
+      shares: a.allotmentVol,
+      status: a.stateDesc,
+    }))
+
+    return { tsCode, items }
   }
 
   // ─── 旧接口（兼容保留） ───────────────────────────────────────────────────────

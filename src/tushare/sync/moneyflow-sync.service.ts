@@ -248,8 +248,8 @@ export class MoneyflowSyncService {
         }
       } catch (error) {
         if (this.isDailyQuotaExceeded(error)) {
-        this.logger.warn(`[${label}] 触发每日配额限制，已同步 ${i} 个交易日，剩余跳过`)
-        this.logger.warn(`[${label}] 提示: 升级积分后可设置 TUSHARE_MONEYFLOW_FULL_HISTORY=true 获取全量数据`)
+          this.logger.warn(`[${label}] 触发每日配额限制，已同步 ${i} 个交易日，剩余跳过`)
+          this.logger.warn(`[${label}] 提示: 升级积分后可设置 TUSHARE_MONEYFLOW_FULL_HISTORY=true 获取全量数据`)
           break
         }
         const msg = (error as Error).message

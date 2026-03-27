@@ -1540,7 +1540,7 @@
           "password": {
             "type": "string",
             "example": "Abc12345",
-            "description": "初始密码（至少8位，不传则自动生成）"
+            "description": "初始密码（至少8位）"
           },
           "backtestQuota": {
             "type": "number",
@@ -1555,7 +1555,8 @@
         },
         "required": [
           "account",
-          "nickname"
+          "nickname",
+          "password"
         ]
       },
       "UserSafeDto": {
@@ -1841,11 +1842,12 @@
           "newPassword": {
             "type": "string",
             "example": "NewPass88",
-            "description": "新密码（至少8位，不传则自动生成随机密码）"
+            "description": "新密码（至少8位）"
           }
         },
         "required": [
-          "id"
+          "id",
+          "newPassword"
         ]
       },
       "StockListItemDto": {

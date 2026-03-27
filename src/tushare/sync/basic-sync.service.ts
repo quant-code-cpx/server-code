@@ -9,6 +9,7 @@ import {
 import { BasicApiService } from '../api/basic-api.service'
 import { mapStockBasicRecord, mapStockCompanyRecord, mapTradeCalRecord } from '../tushare-sync.mapper'
 import { SyncHelperService } from './sync-helper.service'
+import { TushareSyncMode, TushareSyncPlan } from './sync-plan.types'
 
 /**
  * BasicSyncService — 基础数据同步
@@ -25,10 +26,63 @@ export class BasicSyncService {
     private readonly helper: SyncHelperService,
   ) {}
 
+  getSyncPlans(): TushareSyncPlan[] {
+    return [
+      {
+        task: TushareSyncTaskName.STOCK_BASIC,
+        label: '股票列表',
+        category: 'basic',
+        order: 10,
+        bootstrapEnabled: true,
+        supportsManual: true,
+        supportsFullSync: true,
+        requiresTradeDate: false,
+        schedule: {
+          cron: '0 10 8 * * *',
+          timeZone: this.helper.syncTimeZone,
+          description: '每日早盘前刷新股票列表',
+        },
+        execute: ({ mode }) => this.syncStockBasic(mode),
+      },
+      {
+        task: TushareSyncTaskName.TRADE_CAL,
+        label: '交易日历',
+        category: 'basic',
+        order: 20,
+        bootstrapEnabled: true,
+        supportsManual: true,
+        supportsFullSync: true,
+        requiresTradeDate: false,
+        schedule: {
+          cron: '0 15 8 * * *',
+          timeZone: this.helper.syncTimeZone,
+          description: '每日早盘前刷新交易日历',
+        },
+        execute: ({ mode }) => this.syncTradeCal(mode),
+      },
+      {
+        task: TushareSyncTaskName.STOCK_COMPANY,
+        label: '公司信息',
+        category: 'basic',
+        order: 30,
+        bootstrapEnabled: true,
+        supportsManual: true,
+        supportsFullSync: true,
+        requiresTradeDate: false,
+        schedule: {
+          cron: '0 20 8 * * *',
+          timeZone: this.helper.syncTimeZone,
+          description: '每日早盘前刷新上市公司信息',
+        },
+        execute: ({ mode }) => this.syncStockCompany(mode),
+      },
+    ]
+  }
+
   // ─── 股票列表 ──────────────────────────────────────────────────────────────
 
-  async syncStockBasic(): Promise<void> {
-    if (await this.helper.isTaskSyncedToday(TushareSyncTaskName.STOCK_BASIC)) {
+  async syncStockBasic(mode: TushareSyncMode = 'incremental'): Promise<void> {
+    if (mode !== 'full' && (await this.helper.isTaskSyncedToday(TushareSyncTaskName.STOCK_BASIC))) {
       this.logger.log('[股票列表] 今日已同步，跳过')
       return
     }
@@ -62,8 +116,8 @@ export class BasicSyncService {
 
   // ─── 交易日历 ──────────────────────────────────────────────────────────────
 
-  async syncTradeCal(): Promise<void> {
-    if (await this.helper.isTaskSyncedToday(TushareSyncTaskName.TRADE_CAL)) {
+  async syncTradeCal(mode: TushareSyncMode = 'incremental'): Promise<void> {
+    if (mode !== 'full' && (await this.helper.isTaskSyncedToday(TushareSyncTaskName.TRADE_CAL))) {
       this.logger.log('[交易日历] 今日已同步，跳过')
       return
     }
@@ -110,8 +164,8 @@ export class BasicSyncService {
 
   // ─── 上市公司信息 ──────────────────────────────────────────────────────────
 
-  async syncStockCompany(): Promise<void> {
-    if (await this.helper.isTaskSyncedToday(TushareSyncTaskName.STOCK_COMPANY)) {
+  async syncStockCompany(mode: TushareSyncMode = 'incremental'): Promise<void> {
+    if (mode !== 'full' && (await this.helper.isTaskSyncedToday(TushareSyncTaskName.STOCK_COMPANY))) {
       this.logger.log('[公司信息] 今日已同步，跳过')
       return
     }

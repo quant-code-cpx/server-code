@@ -10,6 +10,7 @@ import {
   mapWeeklyRecord,
 } from '../tushare-sync.mapper'
 import { SyncHelperService } from './sync-helper.service'
+import { TushareSyncMode, TushareSyncPlan } from './sync-plan.types'
 
 /**
  * MarketSyncService — 行情数据同步
@@ -28,14 +29,121 @@ export class MarketSyncService {
     private readonly helper: SyncHelperService,
   ) {}
 
+  getSyncPlans(): TushareSyncPlan[] {
+    return [
+      {
+        task: TushareSyncTaskName.DAILY,
+        label: '日线行情',
+        category: 'market',
+        order: 110,
+        bootstrapEnabled: true,
+        supportsManual: true,
+        supportsFullSync: true,
+        requiresTradeDate: true,
+        schedule: {
+          cron: '0 30 18 * * 1-5',
+          timeZone: this.helper.syncTimeZone,
+          description: '交易日盘后同步日线行情',
+          tradingDayOnly: true,
+        },
+        execute: ({ mode, targetTradeDate }) => this.syncDaily(this.requireTradeDate(targetTradeDate), mode),
+      },
+      {
+        task: TushareSyncTaskName.WEEKLY,
+        label: '周线行情',
+        category: 'market',
+        order: 120,
+        bootstrapEnabled: true,
+        supportsManual: true,
+        supportsFullSync: true,
+        requiresTradeDate: true,
+        schedule: {
+          cron: '0 40 18 * * 5',
+          timeZone: this.helper.syncTimeZone,
+          description: '每周五盘后同步周线行情',
+          tradingDayOnly: true,
+        },
+        execute: ({ mode, targetTradeDate }) => this.syncWeekly(this.requireTradeDate(targetTradeDate), mode),
+      },
+      {
+        task: TushareSyncTaskName.MONTHLY,
+        label: '月线行情',
+        category: 'market',
+        order: 130,
+        bootstrapEnabled: true,
+        supportsManual: true,
+        supportsFullSync: true,
+        requiresTradeDate: true,
+        schedule: {
+          cron: '0 50 18 1 * *',
+          timeZone: this.helper.syncTimeZone,
+          description: '每月1日盘后补齐月线行情',
+        },
+        execute: ({ mode, targetTradeDate }) => this.syncMonthly(this.requireTradeDate(targetTradeDate), mode),
+      },
+      {
+        task: TushareSyncTaskName.DAILY_BASIC,
+        label: '每日指标',
+        category: 'market',
+        order: 140,
+        bootstrapEnabled: true,
+        supportsManual: true,
+        supportsFullSync: true,
+        requiresTradeDate: true,
+        schedule: {
+          cron: '0 35 18 * * 1-5',
+          timeZone: this.helper.syncTimeZone,
+          description: '交易日盘后同步每日指标',
+          tradingDayOnly: true,
+        },
+        execute: ({ mode, targetTradeDate }) => this.syncDailyBasic(this.requireTradeDate(targetTradeDate), mode),
+      },
+      {
+        task: TushareSyncTaskName.ADJ_FACTOR,
+        label: '复权因子',
+        category: 'market',
+        order: 150,
+        bootstrapEnabled: true,
+        supportsManual: true,
+        supportsFullSync: true,
+        requiresTradeDate: true,
+        schedule: {
+          cron: '0 45 18 * * 1-5',
+          timeZone: this.helper.syncTimeZone,
+          description: '交易日盘后同步复权因子',
+          tradingDayOnly: true,
+        },
+        execute: ({ mode, targetTradeDate }) => this.syncAdjFactor(this.requireTradeDate(targetTradeDate), mode),
+      },
+      {
+        task: TushareSyncTaskName.INDEX_DAILY,
+        label: '核心指数日线',
+        category: 'market',
+        order: 160,
+        bootstrapEnabled: true,
+        supportsManual: true,
+        supportsFullSync: true,
+        requiresTradeDate: true,
+        schedule: {
+          cron: '0 55 18 * * 1-5',
+          timeZone: this.helper.syncTimeZone,
+          description: '交易日盘后同步核心指数日线',
+          tradingDayOnly: true,
+        },
+        execute: ({ mode, targetTradeDate }) => this.syncIndexDaily(this.requireTradeDate(targetTradeDate), mode),
+      },
+    ]
+  }
+
   // ─── 日线 ──────────────────────────────────────────────────────────────────
 
-  async syncDaily(targetTradeDate: string): Promise<void> {
+  async syncDaily(targetTradeDate: string, mode: TushareSyncMode = 'incremental'): Promise<void> {
     await this.syncByTradeDate({
       task: TushareSyncTaskName.DAILY,
       label: '日线',
       modelName: 'daily',
       targetTradeDate,
+      fullSync: mode === 'full',
       fetchAndMap: async (td) => {
         const rows = await this.api.getDailyByTradeDate(td)
         return rows.map(mapDailyRecord).filter((r): r is NonNullable<typeof r> => Boolean(r))
@@ -46,12 +154,13 @@ export class MarketSyncService {
 
   // ─── 周线 ──────────────────────────────────────────────────────────────────
 
-  async syncWeekly(targetTradeDate: string): Promise<void> {
+  async syncWeekly(targetTradeDate: string, mode: TushareSyncMode = 'incremental'): Promise<void> {
     await this.syncByTradeDate({
       task: TushareSyncTaskName.WEEKLY,
       label: '周线',
       modelName: 'weekly',
       targetTradeDate,
+      fullSync: mode === 'full',
       fetchAndMap: async (td) => {
         const rows = await this.api.getWeeklyByTradeDate(td)
         return rows.map(mapWeeklyRecord).filter((r): r is NonNullable<typeof r> => Boolean(r))
@@ -62,12 +171,13 @@ export class MarketSyncService {
 
   // ─── 月线 ──────────────────────────────────────────────────────────────────
 
-  async syncMonthly(targetTradeDate: string): Promise<void> {
+  async syncMonthly(targetTradeDate: string, mode: TushareSyncMode = 'incremental'): Promise<void> {
     await this.syncByTradeDate({
       task: TushareSyncTaskName.MONTHLY,
       label: '月线',
       modelName: 'monthly',
       targetTradeDate,
+      fullSync: mode === 'full',
       fetchAndMap: async (td) => {
         const rows = await this.api.getMonthlyByTradeDate(td)
         return rows.map(mapMonthlyRecord).filter((r): r is NonNullable<typeof r> => Boolean(r))
@@ -78,12 +188,13 @@ export class MarketSyncService {
 
   // ─── 每日指标 ──────────────────────────────────────────────────────────────
 
-  async syncDailyBasic(targetTradeDate: string): Promise<void> {
+  async syncDailyBasic(targetTradeDate: string, mode: TushareSyncMode = 'incremental'): Promise<void> {
     await this.syncByTradeDate({
       task: TushareSyncTaskName.DAILY_BASIC,
       label: '每日指标',
       modelName: 'dailyBasic',
       targetTradeDate,
+      fullSync: mode === 'full',
       fetchAndMap: async (td) => {
         const rows = await this.api.getDailyBasicByTradeDate(td)
         return rows.map(mapDailyBasicRecord).filter((r): r is NonNullable<typeof r> => Boolean(r))
@@ -94,12 +205,13 @@ export class MarketSyncService {
 
   // ─── 复权因子 ──────────────────────────────────────────────────────────────
 
-  async syncAdjFactor(targetTradeDate: string): Promise<void> {
+  async syncAdjFactor(targetTradeDate: string, mode: TushareSyncMode = 'incremental'): Promise<void> {
     await this.syncByTradeDate({
       task: TushareSyncTaskName.ADJ_FACTOR,
       label: '复权因子',
       modelName: 'adjFactor',
       targetTradeDate,
+      fullSync: mode === 'full',
       fetchAndMap: async (td) => {
         const rows = await this.api.getAdjFactorByTradeDate(td)
         return rows.map(mapAdjFactorRecord).filter((r): r is NonNullable<typeof r> => Boolean(r))
@@ -111,8 +223,11 @@ export class MarketSyncService {
   // ─── 核心指数日线 ──────────────────────────────────────────────────────────
   // 只保留最近 2 年数据，不做历史全量同步
 
-  async syncIndexDaily(targetTradeDate: string): Promise<void> {
-    if (await this.helper.isTaskSyncedForTradeDate(TushareSyncTaskName.INDEX_DAILY, targetTradeDate)) {
+  async syncIndexDaily(targetTradeDate: string, mode: TushareSyncMode = 'incremental'): Promise<void> {
+    if (
+      mode !== 'full' &&
+      (await this.helper.isTaskSyncedForTradeDate(TushareSyncTaskName.INDEX_DAILY, targetTradeDate))
+    ) {
       this.logger.log('[核心指数日线] 目标交易日已同步，跳过')
       return
     }
@@ -124,7 +239,7 @@ export class MarketSyncService {
     twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2)
     const earliestStart = this.helper.formatDate(twoYearsAgo)
 
-    const latestDate = await this.helper.getLatestDateString('indexDaily')
+    const latestDate = mode === 'full' ? null : await this.helper.getLatestDateString('indexDaily')
     const rawStart = latestDate ? this.helper.addDays(latestDate, 1) : earliestStart
     // 不允许起始日期早于 2 年前
     const startDate = this.helper.compareDateString(rawStart, earliestStart) < 0 ? earliestStart : rawStart
@@ -188,13 +303,14 @@ export class MarketSyncService {
     label: string
     modelName: string
     targetTradeDate: string
+    fullSync?: boolean
     fetchAndMap: (tradeDate: string) => Promise<unknown[]>
     resolveDates: (startDate: string) => Promise<string[]>
   }): Promise<void> {
-    const { task, label, modelName, targetTradeDate, fetchAndMap, resolveDates } = opts
+    const { task, label, modelName, targetTradeDate, fullSync = false, fetchAndMap, resolveDates } = opts
 
     // 1. 目标交易日已同步则跳过（避免“今天已经跑过一次 25 号数据”导致 26 号盘后被误跳过）
-    if (await this.helper.isTaskSyncedForTradeDate(task, targetTradeDate)) {
+    if (!fullSync && (await this.helper.isTaskSyncedForTradeDate(task, targetTradeDate))) {
       this.logger.log(`[${label}] 目标交易日 ${targetTradeDate} 已同步，跳过`)
       return
     }
@@ -202,7 +318,7 @@ export class MarketSyncService {
     const startedAt = new Date()
 
     // 2. 计算起始日期
-    const latestDate = await this.helper.getLatestDateString(modelName)
+    const latestDate = fullSync ? null : await this.helper.getLatestDateString(modelName)
     const startDate = latestDate ? this.helper.addDays(latestDate, 1) : this.helper.syncStartDate
 
     if (this.helper.compareDateString(startDate, targetTradeDate) > 0) {
@@ -282,5 +398,12 @@ export class MarketSyncService {
       },
       startedAt,
     )
+  }
+
+  private requireTradeDate(targetTradeDate?: string): string {
+    if (!targetTradeDate) {
+      throw new Error('targetTradeDate is required for market sync plan')
+    }
+    return targetTradeDate
   }
 }

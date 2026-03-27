@@ -17,6 +17,7 @@ import {
 } from '../tushare-sync.mapper'
 import { TushareApiError } from '../api/tushare-client.service'
 import { SyncHelperService } from './sync-helper.service'
+import { TushareSyncMode, TushareSyncPlan } from './sync-plan.types'
 
 /**
  * MoneyflowSyncService — 资金流向同步
@@ -47,14 +48,88 @@ export class MoneyflowSyncService {
     }
   }
 
+  getSyncPlans(): TushareSyncPlan[] {
+    return [
+      {
+        task: TushareSyncTaskName.MONEYFLOW_DC,
+        label: '个股资金流',
+        category: 'moneyflow',
+        order: 410,
+        bootstrapEnabled: true,
+        supportsManual: true,
+        supportsFullSync: true,
+        requiresTradeDate: true,
+        schedule: {
+          cron: '0 5 19 * * 1-5',
+          timeZone: this.helper.syncTimeZone,
+          description: '交易日盘后同步个股资金流',
+          tradingDayOnly: true,
+        },
+        execute: ({ mode, targetTradeDate }) => this.syncMoneyflowDc(this.requireTradeDate(targetTradeDate), mode),
+      },
+      {
+        task: TushareSyncTaskName.MONEYFLOW_IND_DC,
+        label: '行业资金流',
+        category: 'moneyflow',
+        order: 420,
+        bootstrapEnabled: true,
+        supportsManual: true,
+        supportsFullSync: true,
+        requiresTradeDate: true,
+        schedule: {
+          cron: '0 10 19 * * 1-5',
+          timeZone: this.helper.syncTimeZone,
+          description: '交易日盘后同步行业资金流',
+          tradingDayOnly: true,
+        },
+        execute: ({ mode, targetTradeDate }) => this.syncMoneyflowIndDc(this.requireTradeDate(targetTradeDate), mode),
+      },
+      {
+        task: TushareSyncTaskName.MONEYFLOW_MKT_DC,
+        label: '大盘资金流',
+        category: 'moneyflow',
+        order: 430,
+        bootstrapEnabled: true,
+        supportsManual: true,
+        supportsFullSync: true,
+        requiresTradeDate: true,
+        schedule: {
+          cron: '0 15 19 * * 1-5',
+          timeZone: this.helper.syncTimeZone,
+          description: '交易日盘后同步大盘资金流',
+          tradingDayOnly: true,
+        },
+        execute: ({ mode, targetTradeDate }) => this.syncMoneyflowMktDc(this.requireTradeDate(targetTradeDate), mode),
+      },
+      {
+        task: TushareSyncTaskName.MONEYFLOW_HSGT,
+        label: '沪深港通资金流',
+        category: 'moneyflow',
+        order: 440,
+        bootstrapEnabled: true,
+        supportsManual: true,
+        supportsFullSync: true,
+        requiresTradeDate: true,
+        schedule: {
+          cron: '0 20 19 * * 1-5',
+          timeZone: this.helper.syncTimeZone,
+          description: '交易日盘后同步沪深港通资金流',
+          tradingDayOnly: true,
+        },
+        execute: ({ mode, targetTradeDate }) => this.syncMoneyflowHsgt(this.requireTradeDate(targetTradeDate), mode),
+      },
+    ]
+  }
+
   // ─── 个股资金流 ────────────────────────────────────────────────────────────
 
-  async syncMoneyflowDc(targetTradeDate: string): Promise<void> {
+  async syncMoneyflowDc(targetTradeDate: string, mode: TushareSyncMode = 'incremental'): Promise<void> {
     await this.syncMoneyflow({
       task: TushareSyncTaskName.MONEYFLOW_DC,
       label: '个股资金流',
       modelName: 'moneyflowDc',
       targetTradeDate,
+      fullHistoryOverride: mode === 'full' ? true : undefined,
       fetchAndMap: async (td) => {
         const rows = await this.api.getMoneyflowDcByTradeDate(td)
         return rows.map(mapMoneyflowDcRecord).filter((r): r is NonNullable<typeof r> => Boolean(r))
@@ -64,12 +139,13 @@ export class MoneyflowSyncService {
 
   // ─── 行业/概念/地域资金流 ──────────────────────────────────────────────────
 
-  async syncMoneyflowIndDc(targetTradeDate: string): Promise<void> {
+  async syncMoneyflowIndDc(targetTradeDate: string, mode: TushareSyncMode = 'incremental'): Promise<void> {
     await this.syncMoneyflow({
       task: TushareSyncTaskName.MONEYFLOW_IND_DC,
       label: '行业资金流',
       modelName: 'moneyflowIndDc',
       targetTradeDate,
+      fullHistoryOverride: mode === 'full' ? true : undefined,
       fetchAndMap: async (td) => {
         let all: unknown[] = []
         for (const ct of TUSHARE_MONEYFLOW_CONTENT_TYPES) {
@@ -84,12 +160,13 @@ export class MoneyflowSyncService {
 
   // ─── 大盘资金流 ────────────────────────────────────────────────────────────
 
-  async syncMoneyflowMktDc(targetTradeDate: string): Promise<void> {
+  async syncMoneyflowMktDc(targetTradeDate: string, mode: TushareSyncMode = 'incremental'): Promise<void> {
     await this.syncMoneyflow({
       task: TushareSyncTaskName.MONEYFLOW_MKT_DC,
       label: '大盘资金流',
       modelName: 'moneyflowMktDc',
       targetTradeDate,
+      fullHistoryOverride: mode === 'full' ? true : undefined,
       fetchAndMap: async (td) => {
         const rows = await this.api.getMoneyflowMktDcByTradeDate(td)
         return rows.map(mapMoneyflowMktDcRecord).filter((r): r is NonNullable<typeof r> => Boolean(r))
@@ -106,11 +183,13 @@ export class MoneyflowSyncService {
     label: string
     modelName: string
     targetTradeDate: string
+    fullHistoryOverride?: boolean
     fetchAndMap: (tradeDate: string) => Promise<unknown[]>
   }): Promise<void> {
-    const { task, label, modelName, targetTradeDate, fetchAndMap } = opts
+    const { task, label, modelName, targetTradeDate, fullHistoryOverride, fetchAndMap } = opts
+    const useFullHistory = fullHistoryOverride ?? this.fullHistory
 
-    if (await this.helper.isTaskSyncedForTradeDate(task, targetTradeDate)) {
+    if (!useFullHistory && (await this.helper.isTaskSyncedForTradeDate(task, targetTradeDate))) {
       this.logger.log(`[${label}] 目标交易日 ${targetTradeDate} 已同步，跳过`)
       return
     }
@@ -121,7 +200,7 @@ export class MoneyflowSyncService {
     let tradeDates: string[]
     let retentionCutoff: Date | null = null
 
-    if (this.fullHistory) {
+    if (useFullHistory) {
       // 全量模式：从本地最新日期 +1 开始
       const latestDate = await this.helper.getLatestDateString(modelName)
       const startDate = latestDate ? this.helper.addDays(latestDate, 1) : this.helper.syncStartDate
@@ -197,7 +276,7 @@ export class MoneyflowSyncService {
         payload: {
           rowCount: totalRows,
           dateCount: tradeDates.length,
-          fullHistory: this.fullHistory,
+          fullHistory: useFullHistory,
           failedDates: failed.length > 0 ? failed : undefined,
         },
       },
@@ -211,14 +290,17 @@ export class MoneyflowSyncService {
 
   // ─── 沪深港通资金流向（北向/南向）─────────────────────────────────────────
 
-  async syncMoneyflowHsgt(targetTradeDate: string): Promise<void> {
-    if (await this.helper.isTaskSyncedForTradeDate(TushareSyncTaskName.MONEYFLOW_HSGT, targetTradeDate)) {
+  async syncMoneyflowHsgt(targetTradeDate: string, mode: TushareSyncMode = 'incremental'): Promise<void> {
+    if (
+      mode !== 'full' &&
+      (await this.helper.isTaskSyncedForTradeDate(TushareSyncTaskName.MONEYFLOW_HSGT, targetTradeDate))
+    ) {
       this.logger.log(`[沪深港通资金流] 目标交易日 ${targetTradeDate} 已同步，跳过`)
       return
     }
 
     const startedAt = new Date()
-    const latestDate = await this.helper.getLatestDateString('moneyflowHsgt')
+    const latestDate = mode === 'full' ? null : await this.helper.getLatestDateString('moneyflowHsgt')
     const startDate = latestDate ? this.helper.addDays(latestDate, 1) : this.helper.syncStartDate
 
     if (this.helper.compareDateString(startDate, targetTradeDate) > 0) {
@@ -256,5 +338,12 @@ export class MoneyflowSyncService {
       },
       startedAt,
     )
+  }
+
+  private requireTradeDate(targetTradeDate?: string): string {
+    if (!targetTradeDate) {
+      throw new Error('targetTradeDate is required for moneyflow sync plan')
+    }
+    return targetTradeDate
   }
 }

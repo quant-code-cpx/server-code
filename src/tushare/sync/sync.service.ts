@@ -1,36 +1,42 @@
-import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common'
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  Logger,
+  OnApplicationBootstrap,
+} from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { SchedulerRegistry } from '@nestjs/schedule'
 import { CronJob } from 'cron'
-import { TUSHARE_SYNC_CRON } from 'src/constant/tushare.constant'
 import { ITushareConfig, TUSHARE_CONFIG_TOKEN } from 'src/config/tushare.config'
+import { TushareSyncTaskName } from 'src/constant/tushare.constant'
 import { SyncHelperService } from './sync-helper.service'
-import { BasicSyncService } from './basic-sync.service'
-import { MarketSyncService } from './market-sync.service'
-import { FinancialSyncService } from './financial-sync.service'
-import { MoneyflowSyncService } from './moneyflow-sync.service'
+import { TushareSyncRegistryService } from './sync-registry.service'
+import { TushareSyncCategory, TushareSyncMode, TushareSyncPlan, TushareSyncTrigger } from './sync-plan.types'
 
 interface FailedTask {
+  task: TushareSyncTaskName
   label: string
   fn: () => Promise<void>
   error: Error
 }
 
-/**
- * TushareSyncService — 同步流程编排器
- *
- * 职责：
- * - 应用启动时执行数据新鲜度检测
- * - 注册每日 18:30 定时同步任务
- * - 按顺序调度各分类同步服务
- * - 容错处理：单个任务失败不阻塞后续任务，全部执行完后兜底重试
- *
- * 同步顺序（按 Tushare 文档分类）：
- * 1. 基础数据：股票列表 → 交易日历 → 公司信息
- * 2. 行情数据：日线 → 周线 → 月线 → 每日指标 → 复权因子
- * 3. 财务数据：利润表 → 业绩快报 → 分红 → 财务指标 → 十大股东 → 十大流通股东
- * 4. 资金流向：个股 → 行业 → 大盘
- */
+interface RunPlansOptions {
+  trigger: TushareSyncTrigger
+  mode: TushareSyncMode
+  plans: TushareSyncPlan[]
+}
+
+export interface RunPlansResult {
+  trigger: TushareSyncTrigger
+  mode: TushareSyncMode
+  executedTasks: TushareSyncTaskName[]
+  skippedTasks: TushareSyncTaskName[]
+  failedTasks: TushareSyncTaskName[]
+  targetTradeDate: string | null
+  elapsedSeconds: number
+}
+
 @Injectable()
 export class TushareSyncService implements OnApplicationBootstrap {
   private readonly logger = new Logger(TushareSyncService.name)
@@ -42,10 +48,7 @@ export class TushareSyncService implements OnApplicationBootstrap {
     private readonly configService: ConfigService,
     private readonly schedulerRegistry: SchedulerRegistry,
     private readonly helper: SyncHelperService,
-    private readonly basicSync: BasicSyncService,
-    private readonly marketSync: MarketSyncService,
-    private readonly financialSync: FinancialSyncService,
-    private readonly moneyflowSync: MoneyflowSyncService,
+    private readonly registry: TushareSyncRegistryService,
   ) {
     const cfg = this.configService.get<ITushareConfig>(TUSHARE_CONFIG_TOKEN, { infer: true })
     if (!cfg) throw new Error('TushareConfig is not registered.')
@@ -59,106 +62,210 @@ export class TushareSyncService implements OnApplicationBootstrap {
       return
     }
 
-    this.registerDailySyncJob()
+    this.registerSyncJobs()
 
-    // 启动时异步执行同步，不阻塞应用启动
-    void this.runPipeline('bootstrap').catch((error) => {
+    void this.runPlans({
+      trigger: 'bootstrap',
+      mode: 'incremental',
+      plans: this.registry.getBootstrapPlans(),
+    }).catch((error) => {
       this.logger.error(`启动同步失败: ${(error as Error).message}`, (error as Error).stack)
     })
   }
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // 定时任务注册
-  // ═══════════════════════════════════════════════════════════════════════════
-
-  private registerDailySyncJob() {
-    if (this.schedulerRegistry.doesExist('cron', 'tushare-daily-sync')) return
-
-    const cfg = this.configService.get<ITushareConfig>(TUSHARE_CONFIG_TOKEN, { infer: true })
-    const cronExpr = cfg?.syncCron || TUSHARE_SYNC_CRON
-    const tz = cfg?.syncTimeZone || this.syncTimeZone
-
-    const job = CronJob.from({
-      cronTime: cronExpr,
-      timeZone: tz,
-      onTick: () => void this.runPipeline('schedule'),
-      start: false,
-    })
-
-    job.start()
-    this.schedulerRegistry.addCronJob('tushare-daily-sync', job)
-    this.logger.log(`已注册定时同步: ${cronExpr} [${tz}]`)
+  getAvailableSyncPlans() {
+    return this.registry.getPlans().map((plan) => ({
+      task: plan.task,
+      label: plan.label,
+      category: plan.category,
+      bootstrapEnabled: plan.bootstrapEnabled,
+      supportsManual: plan.supportsManual,
+      supportsFullSync: plan.supportsFullSync,
+      requiresTradeDate: plan.requiresTradeDate,
+      schedule: plan.schedule
+        ? {
+            cron: plan.schedule.cron,
+            timeZone: plan.schedule.timeZone,
+            description: plan.schedule.description,
+            tradingDayOnly: plan.schedule.tradingDayOnly ?? false,
+          }
+        : null,
+    }))
   }
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // 主同步流程
-  // ═══════════════════════════════════════════════════════════════════════════
+  async runManualSync(input: { tasks?: TushareSyncTaskName[]; mode: TushareSyncMode }): Promise<RunPlansResult> {
+    const requestedPlans = input.tasks?.length
+      ? this.registry.getPlansByTasks(input.tasks)
+      : this.registry.getManualPlans()
 
-  private async runPipeline(trigger: 'bootstrap' | 'schedule') {
-    if (this.running) {
-      this.logger.warn(`上一轮同步仍在执行，跳过本次 ${trigger} 触发`)
+    if (input.tasks?.length && requestedPlans.length !== input.tasks.length) {
+      const found = new Set(requestedPlans.map((plan) => plan.task))
+      const unknown = input.tasks.filter((task) => !found.has(task))
+      throw new BadRequestException(`未知的同步任务: ${unknown.join(', ')}`)
+    }
+
+    if (!requestedPlans.length) {
+      throw new BadRequestException('未找到可执行的同步任务')
+    }
+
+    const unsupportedManual = requestedPlans.filter((plan) => !plan.supportsManual)
+    if (unsupportedManual.length > 0) {
+      throw new BadRequestException(
+        `以下任务不支持手动同步: ${unsupportedManual.map((plan) => plan.task).join(', ')}`,
+      )
+    }
+
+    if (input.mode === 'full') {
+      const unsupportedFull = requestedPlans.filter((plan) => !plan.supportsFullSync)
+      if (unsupportedFull.length > 0) {
+        throw new BadRequestException(
+          `以下任务不支持全量同步: ${unsupportedFull.map((plan) => plan.task).join(', ')}`,
+        )
+      }
+    }
+
+    return this.runPlans({
+      trigger: 'manual',
+      mode: input.mode,
+      plans: requestedPlans,
+    })
+  }
+
+  private registerSyncJobs() {
+    for (const plan of this.registry.getScheduledPlans()) {
+      if (!plan.schedule) continue
+
+      const jobName = this.getJobName(plan.task)
+      if (this.schedulerRegistry.doesExist('cron', jobName)) {
+        continue
+      }
+
+      const job = CronJob.from({
+        cronTime: plan.schedule.cron,
+        timeZone: plan.schedule.timeZone || this.syncTimeZone,
+        onTick: () => void this.runScheduledTask(plan.task),
+        start: false,
+      })
+
+      job.start()
+      this.schedulerRegistry.addCronJob(jobName, job)
+      this.logger.log(
+        `已注册同步任务 ${plan.task}: ${plan.schedule.cron} [${plan.schedule.timeZone || this.syncTimeZone}]`,
+      )
+    }
+  }
+
+  private async runScheduledTask(task: TushareSyncTaskName) {
+    const plan = this.registry.getPlan(task)
+    if (!plan) {
+      this.logger.warn(`未找到定时同步任务定义: ${task}`)
       return
     }
 
+    await this.runPlans({
+      trigger: 'schedule',
+      mode: 'incremental',
+      plans: [plan],
+    })
+  }
+
+  private async runPlans({ trigger, mode, plans }: RunPlansOptions): Promise<RunPlansResult> {
+    if (plans.length === 0) {
+      return {
+        trigger,
+        mode,
+        executedTasks: [],
+        skippedTasks: [],
+        failedTasks: [],
+        targetTradeDate: null,
+        elapsedSeconds: 0,
+      }
+    }
+
+    if (this.running) {
+      const message = `上一轮同步仍在执行，跳过本次 ${trigger} 触发`
+      if (trigger === 'manual') {
+        throw new ConflictException(message)
+      }
+      this.logger.warn(message)
+      return {
+        trigger,
+        mode,
+        executedTasks: [],
+        skippedTasks: plans.map((plan) => plan.task),
+        failedTasks: [],
+        targetTradeDate: null,
+        elapsedSeconds: 0,
+      }
+    }
+
     this.running = true
-    const pipelineStart = Date.now()
-    this.logger.log(`═══════════════════════════════════════════════════`)
-    this.logger.log(`  Tushare ${trigger} 同步开始`)
-    this.logger.log(`═══════════════════════════════════════════════════`)
+    const startedAt = Date.now()
+    const executedTasks: TushareSyncTaskName[] = []
+    const skippedTasks: TushareSyncTaskName[] = []
+    const failedTasks: FailedTask[] = []
+    const sortedPlans = [...plans].sort((a, b) => a.order - b.order)
+    let isTradingDay: boolean | null = null
+    let targetTradeDate: string | null = null
+    let targetTradeDateResolved = false
+
+    this.logger.log('═══════════════════════════════════════════════════')
+    this.logger.log(`  Tushare ${trigger} 同步开始 (${mode})`)
+    this.logger.log('═══════════════════════════════════════════════════')
 
     try {
-      const failedTasks: FailedTask[] = []
+      for (const category of ['basic', 'market', 'financial', 'moneyflow'] as TushareSyncCategory[]) {
+        const categoryPlans = sortedPlans.filter((plan) => plan.category === category)
+        if (!categoryPlans.length) continue
 
-      // ── Phase 1: 基础数据 ──
-      this.logger.log('─── Phase 1: 基础数据 ───')
-      await this.safeRun('股票列表', () => this.basicSync.syncStockBasic(), failedTasks)
-      await this.safeRun('交易日历', () => this.basicSync.syncTradeCal(), failedTasks)
-      await this.safeRun('公司信息', () => this.basicSync.syncStockCompany(), failedTasks)
+        this.logger.log(`─── ${this.getCategoryLabel(category)} ───`)
 
-      // ── Phase 2: 行情数据（需要 targetTradeDate） ──
-      if (trigger === 'schedule') {
-        const isTradingDay = await this.helper.isTodayTradingDay()
-        if (!isTradingDay) {
-          this.logger.log('今天不是交易日，跳过盘后同步')
-          return
+        for (const plan of categoryPlans) {
+          if (trigger === 'schedule' && plan.schedule?.tradingDayOnly) {
+            if (isTradingDay === null) {
+              isTradingDay = await this.helper.isTodayTradingDay()
+            }
+
+            if (!isTradingDay) {
+              this.logger.log(`[${plan.label}] 今天不是交易日，跳过`)
+              skippedTasks.push(plan.task)
+              continue
+            }
+          }
+
+          let planTargetTradeDate: string | undefined
+          if (plan.requiresTradeDate) {
+            if (!targetTradeDateResolved) {
+              targetTradeDateResolved = true
+              targetTradeDate = await this.helper.resolveLatestCompletedTradeDate()
+            }
+
+            if (!targetTradeDate) {
+              this.logger.warn(`[${plan.label}] 未能解析最近已完成的交易日，跳过`)
+              skippedTasks.push(plan.task)
+              continue
+            }
+
+            planTargetTradeDate = targetTradeDate
+          }
+
+          await this.safeRun(
+            plan,
+            () =>
+              plan.execute({
+                trigger,
+                mode,
+                targetTradeDate: planTargetTradeDate,
+              }),
+            failedTasks,
+            executedTasks,
+          )
         }
       }
 
-      const targetTradeDate = await this.helper.resolveLatestCompletedTradeDate()
-      if (!targetTradeDate) {
-        this.logger.warn('未能解析最近已完成的交易日，跳过行情/财务/资金流向同步')
-        return
-      }
-      this.logger.log(`目标交易日: ${targetTradeDate}`)
-
-      this.logger.log('─── Phase 2: 行情数据 ───')
-      await this.safeRun('日线行情', () => this.marketSync.syncDaily(targetTradeDate), failedTasks)
-      await this.safeRun('周线行情', () => this.marketSync.syncWeekly(targetTradeDate), failedTasks)
-      await this.safeRun('月线行情', () => this.marketSync.syncMonthly(targetTradeDate), failedTasks)
-      await this.safeRun('每日指标', () => this.marketSync.syncDailyBasic(targetTradeDate), failedTasks)
-      await this.safeRun('复权因子', () => this.marketSync.syncAdjFactor(targetTradeDate), failedTasks)
-      await this.safeRun('核心指数日线', () => this.marketSync.syncIndexDaily(targetTradeDate), failedTasks)
-
-      // ── Phase 3: 财务数据 ──
-      this.logger.log('─── Phase 3: 财务数据 ───')
-      await this.safeRun('利润表', () => this.financialSync.syncIncome(), failedTasks)
-      await this.safeRun('业绩快报', () => this.financialSync.syncExpress(), failedTasks)
-      await this.safeRun('分红数据', () => this.financialSync.syncDividend(), failedTasks)
-      await this.safeRun('财务指标', () => this.financialSync.syncFinaIndicator(), failedTasks)
-      await this.safeRun('十大股东', () => this.financialSync.syncTop10Holders(), failedTasks)
-      await this.safeRun('十大流通股东', () => this.financialSync.syncTop10FloatHolders(), failedTasks)
-
-      // ── Phase 4: 资金流向 ──
-      this.logger.log('─── Phase 4: 资金流向 ───')
-      await this.safeRun('个股资金流', () => this.moneyflowSync.syncMoneyflowDc(targetTradeDate), failedTasks)
-      await this.safeRun('行业资金流', () => this.moneyflowSync.syncMoneyflowIndDc(targetTradeDate), failedTasks)
-      await this.safeRun('大盘资金流', () => this.moneyflowSync.syncMoneyflowMktDc(targetTradeDate), failedTasks)
-      await this.safeRun('沪深港通资金流', () => this.moneyflowSync.syncMoneyflowHsgt(targetTradeDate), failedTasks)
-
-      // ── Phase 5: 兜底重试 ──
       if (failedTasks.length > 0) {
         this.logger.warn(`═══ ${failedTasks.length} 个任务失败，开始兜底重试 ═══`)
-        const stillFailed: string[] = []
+        const stillFailed: TushareSyncTaskName[] = []
 
         for (const task of failedTasks) {
           try {
@@ -167,38 +274,84 @@ export class TushareSyncService implements OnApplicationBootstrap {
             this.logger.log(`重试成功: ${task.label}`)
           } catch (error) {
             this.logger.error(`重试仍失败: ${task.label} - ${(error as Error).message}`)
-            stillFailed.push(task.label)
+            stillFailed.push(task.task)
           }
         }
 
+        const elapsedSeconds = Number(((Date.now() - startedAt) / 1000).toFixed(1))
         if (stillFailed.length > 0) {
           this.logger.error(`兜底重试后仍有 ${stillFailed.length} 个任务失败: ${stillFailed.join(', ')}`)
         } else {
           this.logger.log('兜底重试全部成功')
         }
+
+        this.logger.log('═══════════════════════════════════════════════════')
+        this.logger.log(`  Tushare ${trigger} 同步完成 (耗时 ${elapsedSeconds}s)`)
+        this.logger.log('═══════════════════════════════════════════════════')
+
+        return {
+          trigger,
+          mode,
+          executedTasks,
+          skippedTasks,
+          failedTasks: stillFailed,
+          targetTradeDate,
+          elapsedSeconds,
+        }
       }
 
-      const elapsed = ((Date.now() - pipelineStart) / 1000).toFixed(1)
-      this.logger.log(`═══════════════════════════════════════════════════`)
-      this.logger.log(`  Tushare ${trigger} 同步完成 (耗时 ${elapsed}s)`)
-      this.logger.log(`═══════════════════════════════════════════════════`)
+      const elapsedSeconds = Number(((Date.now() - startedAt) / 1000).toFixed(1))
+      this.logger.log('═══════════════════════════════════════════════════')
+      this.logger.log(`  Tushare ${trigger} 同步完成 (耗时 ${elapsedSeconds}s)`)
+      this.logger.log('═══════════════════════════════════════════════════')
+
+      return {
+        trigger,
+        mode,
+        executedTasks,
+        skippedTasks,
+        failedTasks: [],
+        targetTradeDate,
+        elapsedSeconds,
+      }
     } catch (error) {
       this.logger.error(`同步流程异常: ${(error as Error).message}`, (error as Error).stack)
+      throw error
     } finally {
       this.running = false
     }
   }
 
-  /**
-   * 安全执行一个同步任务：捕获异常并记录，不阻断后续任务
-   */
-  private async safeRun(label: string, fn: () => Promise<void>, failedTasks: FailedTask[]) {
+  private async safeRun(
+    plan: TushareSyncPlan,
+    fn: () => Promise<void>,
+    failedTasks: FailedTask[],
+    executedTasks: TushareSyncTaskName[],
+  ) {
     try {
-      this.logger.log(`▶ ${label}`)
+      this.logger.log(`▶ ${plan.label}`)
       await fn()
+      executedTasks.push(plan.task)
     } catch (error) {
-      this.logger.error(`✗ ${label} 失败: ${(error as Error).message}`)
-      failedTasks.push({ label, fn, error: error as Error })
+      this.logger.error(`✗ ${plan.label} 失败: ${(error as Error).message}`)
+      failedTasks.push({ task: plan.task, label: plan.label, fn, error: error as Error })
     }
+  }
+
+  private getCategoryLabel(category: TushareSyncCategory): string {
+    switch (category) {
+      case 'basic':
+        return '基础数据'
+      case 'market':
+        return '行情数据'
+      case 'financial':
+        return '财务数据'
+      case 'moneyflow':
+        return '资金流向'
+    }
+  }
+
+  private getJobName(task: TushareSyncTaskName): string {
+    return `tushare-sync:${task}`
   }
 }

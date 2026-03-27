@@ -1,5 +1,5 @@
-import { IsInt, IsOptional, IsPositive, IsString, MinLength } from 'class-validator'
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
+import { IsInt, IsNotEmpty, IsPositive, IsString, MinLength } from 'class-validator'
+import { ApiProperty } from '@nestjs/swagger'
 
 export class ResetPasswordDto {
   @ApiProperty({ example: 1, description: '用户 ID' })
@@ -7,9 +7,9 @@ export class ResetPasswordDto {
   @IsPositive()
   id: number
 
-  @ApiPropertyOptional({ example: 'NewPass88', description: '新密码（至少8位，不传则自动生成随机密码）' })
+  @ApiProperty({ example: 'NewPass88', description: '新密码（至少8位）' })
   @IsString()
+  @IsNotEmpty()
   @MinLength(8)
-  @IsOptional()
-  newPassword?: string
+  newPassword: string
 }

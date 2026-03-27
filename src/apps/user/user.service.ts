@@ -97,8 +97,8 @@ export class UserService implements OnApplicationBootstrap {
     const exists = await this.prisma.user.findUnique({ where: { account: dto.account } })
     if (exists) throw new BusinessException(ErrorEnum.USER_ALREADY_EXISTS)
 
-    // 生成或使用指定密码
-    const rawPassword = dto.password ?? this.generateRandomPassword(RANDOM_PASSWORD_LENGTH)
+    // 生成密码哈希
+    const rawPassword = dto.password
     const hashedPassword = await bcrypt.hash(rawPassword, 10)
 
     const user = await this.prisma.user.create({
@@ -214,7 +214,7 @@ export class UserService implements OnApplicationBootstrap {
     this.assertNotSuperAdmin(target.role)
     this.assertHigherRole(operator, target.role, dto.id)
 
-    const rawPassword = dto.newPassword ?? this.generateRandomPassword(RANDOM_PASSWORD_LENGTH)
+    const rawPassword = dto.newPassword
     const hashedPassword = await bcrypt.hash(rawPassword, 10)
     await this.prisma.user.update({ where: { id: dto.id }, data: { password: hashedPassword } })
 
@@ -257,11 +257,5 @@ export class UserService implements OnApplicationBootstrap {
   /** 判断 operatorRole 是否严格高于 targetRole */
   private hasHigherRole(operatorRole: UserRole, targetRole: UserRole): boolean {
     return ROLE_LEVEL[operatorRole] > ROLE_LEVEL[targetRole]
-  }
-
-  /** 生成随机数字+字母密码 */
-  private generateRandomPassword(length: number): string {
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789'
-    return Array.from({ length }, () => chars[Math.floor(Math.random() * chars.length)]).join('')
   }
 }

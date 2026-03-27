@@ -1,5 +1,6 @@
 import { IsNotEmpty, IsString, MaxLength, IsEnum, IsOptional, MinLength, IsInt, Min } from 'class-validator'
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
+
 import { UserRole } from '@prisma/client'
 
 export class CreateUserDto {
@@ -20,11 +21,11 @@ export class CreateUserDto {
   @IsOptional()
   role?: UserRole
 
-  @ApiPropertyOptional({ example: 'Abc12345', description: '初始密码（至少8位，不传则自动生成）' })
+  @ApiProperty({ example: 'Abc12345', description: '初始密码（至少8位）' })
   @IsString()
+  @IsNotEmpty()
   @MinLength(8)
-  @IsOptional()
-  password?: string
+  password: string
 
   @ApiPropertyOptional({ example: 5, description: '回测任务数量限制（-1 为不限）' })
   @IsInt()

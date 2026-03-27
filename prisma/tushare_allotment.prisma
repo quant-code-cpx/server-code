@@ -1,0 +1,18 @@
+// 配股数据（来自 Tushare allotment 接口）
+model Allotment {
+  id              BigInt    @id @default(autoincrement())
+  tsCode          String    @map("ts_code") @db.VarChar(16)
+  annDate         DateTime? @map("ann_date") @db.Date         // 预案公告日
+  baseDate        DateTime? @map("base_date") @db.Date        // 配股基准日（股权登记日）
+  baseEnddate     DateTime? @map("base_enddate") @db.Date     // 基准截止日
+  raiseFonds      Float?    @map("raise_fonds")               // 实际募集资金净额（元）
+  allotmentRatio  Float?    @map("allotment_ratio")           // 配股比例（每股配股数）
+  allotmentPrice  Float?    @map("allotment_price")           // 配股价格（元）
+  allotmentVol    Float?    @map("allotment_vol")             // 配股数量（万股）
+  marketDate      DateTime? @map("market_date") @db.Date      // 上市日期
+  stateDesc       String?   @map("state_desc") @db.VarChar(64) // 状态描述
+  syncedAt        DateTime  @default(now()) @map("synced_at")
+
+  @@index([tsCode, annDate(sort: Desc)])
+  @@map("stock_allotment_events")
+}

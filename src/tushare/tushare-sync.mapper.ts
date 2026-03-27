@@ -632,3 +632,24 @@ export function mapMoneyflowHsgtRecord(record: TushareRecord): Prisma.MoneyflowH
     southMoney: readNumber(record, 'south_money'),
   }
 }
+
+
+export function mapAllotmentRecord(record: TushareRecord): Prisma.AllotmentCreateManyInput | null {
+  const tsCode = readString(record, 'ts_code')
+  if (!tsCode) {
+    return null
+  }
+
+  return {
+    tsCode,
+    annDate: readDate(record, 'ann_date'),
+    baseDate: readDate(record, 'base_date'),
+    baseEnddate: readDate(record, 'base_enddate'),
+    raiseFonds: readNumber(record, 'raise_fonds'),
+    allotmentRatio: readNumber(record, 'allotment_ratio'),
+    allotmentPrice: readNumber(record, 'allotment_price'),
+    allotmentVol: readNumber(record, 'allotment_vol'),
+    marketDate: readDate(record, 'market_date'),
+    stateDesc: readString(record, 'state_desc'),
+  }
+}

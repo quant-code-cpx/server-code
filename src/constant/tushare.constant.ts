@@ -19,6 +19,7 @@ export enum TushareApiName {
   DIVIDEND = 'dividend',
   TOP10_HOLDERS = 'top10_holders',
   TOP10_FLOAT_HOLDERS = 'top10_floatholders',
+  ALLOTMENT = 'allotment',
 }
 
 /** A 股常用交易所代码 */
@@ -491,4 +492,17 @@ export const CORE_INDEX_CODES = [
   '000300.SH', // 沪深 300
   '000905.SH', // 中证 500
   '000852.SH', // 中证 1000
+] as const
+
+export const TUSHARE_ALLOTMENT_FIELDS = [
+  'ts_code',
+  'ann_date',
+  'base_date',
+  'base_enddate',
+  'raise_fonds',
+  'allotment_ratio',
+  'allotment_price',
+  'allotment_vol',
+  'market_date',
+  'state_desc',
 ] as const

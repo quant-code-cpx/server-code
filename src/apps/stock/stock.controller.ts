@@ -10,12 +10,14 @@ import { StockDetailFinancialsDto } from './dto/stock-detail-financials.dto'
 import { StockDetailShareholdersDto } from './dto/stock-detail-shareholders.dto'
 import { StockDetailShareCapitalDto } from './dto/stock-detail-share-capital.dto'
 import { StockDetailFinancingDto } from './dto/stock-detail-financing.dto'
+import { StockDetailFinancialStatementsDto } from './dto/stock-detail-financial-statements.dto'
 import { ApiSuccessResponse } from 'src/common/decorators/api-success-response.decorator'
 import {
   StockChartDataDto,
   StockDetailLegacyDataDto,
   StockDetailOverviewDataDto,
   StockFinancialsDataDto,
+  StockFinancialStatementsDataDto,
   StockFinancingDataDto,
   StockListDataDto,
   StockMainMoneyFlowDataDto,
@@ -23,6 +25,7 @@ import {
   StockSearchItemDto,
   StockShareCapitalDataDto,
   StockShareholdersDataDto,
+  StockTodayFlowDataDto,
 } from './dto/stock-response.dto'
 
 @ApiTags('Stock - 股票')
@@ -80,11 +83,13 @@ export class StockController {
   }
 
   @Post('detail/shareholders')
-  @ApiOperation({ summary: '股票详情 - 股东与分红（前十大 + 分红历史）' })
+  @ApiOperation({ summary: '股票详情 - 十大股东（前十大股东 + 前十大流通股东，按持股数量降序）' })
   @ApiSuccessResponse(StockShareholdersDataDto)
   detailShareholders(@Body() dto: StockDetailShareholdersDto) {
     return this.stockService.getDetailShareholders(dto)
   }
+
+  // dividend-financing endpoint removed (allotment logic deleted)
 
   @Post('detail/main-money-flow')
   @ApiOperation({ summary: '股票详情 - 主力资金流向（超大单+大单净流入 vs 散户净流入）' })
@@ -105,5 +110,19 @@ export class StockController {
   @ApiSuccessResponse(StockFinancingDataDto)
   detailFinancing(@Body() dto: StockDetailFinancingDto) {
     return this.stockService.getDetailFinancing(dto)
+  }
+
+  @Post('detail/today-flow')
+  @ApiOperation({ summary: '股票详情 - 今日资金流（超大单/大单/中单/小单/主力合计）' })
+  @ApiSuccessResponse(StockTodayFlowDataDto)
+  detailTodayFlow(@Body() { code }: StockDetailDto) {
+    return this.stockService.getDetailTodayFlow(code)
+  }
+
+  @Post('detail/financial-statements')
+  @ApiOperation({ summary: '股票详情 - 三大财务报表（利润表/资产负债表/现金流量表，含同比）' })
+  @ApiSuccessResponse(StockFinancialStatementsDataDto)
+  detailFinancialStatements(@Body() dto: StockDetailFinancialStatementsDto) {
+    return this.stockService.getDetailFinancialStatements(dto)
   }
 }

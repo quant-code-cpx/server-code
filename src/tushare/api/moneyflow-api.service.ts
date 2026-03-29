@@ -15,7 +15,7 @@ export class MoneyflowApiService {
   constructor(private readonly client: TushareClient) {}
 
   /** 按交易日获取个股资金流向 */
-  getMoneyflowDcByTradeDate(tradeDate: string) {
+  getMoneyflowByTradeDate(tradeDate: string) {
     return this.client.call({
       api_name: TushareApiName.MONEYFLOW_DC,
       params: { trade_date: tradeDate },

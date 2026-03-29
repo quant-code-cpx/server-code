@@ -5,7 +5,7 @@ import { RedisClientType } from 'redis'
 import { nanoid } from 'nanoid'
 import { ITokenConfig, TOKEN_CONFIG_TOKEN } from 'src/config/token.config'
 import { REDIS_CLIENT } from './redis.provider'
-import { REDIS_KEY } from 'src/constant/auth.constant'
+import { REDIS_KEY, REFRESH_TOKEN_GRACE } from 'src/constant/auth.constant'
 import { TokenPayload } from './token.interface'
 
 /**
@@ -82,13 +82,21 @@ export class TokenService {
   }
 
   /** 验证 Refresh Token 是否在 Redis 中有效（未被撤销） */
-  async isRefreshTokenValid(userId: number, jti: string): Promise<boolean> {
+  /** 校验 Refresh Token 状态：'valid' 首次使用 | 'grace' 宽限期内重复 | 'invalid' 已失效或不存在 */
+  async isRefreshTokenValid(userId: number, jti: string): Promise<'valid' | 'grace' | 'invalid'> {
     const val = await this.redis.get(REDIS_KEY.REFRESH_TOKEN(userId, jti))
-    return val === '1'
+    if (val === '1') return 'valid'
+    if (val === 'used') return 'grace'
+    return 'invalid'
   }
 
-  /** 删除 Refresh Token（用于登出或 Token 轮换） */
+  /** 将 Refresh Token 标记为已使用（保留宽限期后自动过期，防止双 useEffect 误杀） */
   async revokeRefreshToken(userId: number, jti: string): Promise<void> {
+    await this.redis.set(REDIS_KEY.REFRESH_TOKEN(userId, jti), 'used', { EX: REFRESH_TOKEN_GRACE })
+  }
+
+  /** 立即删除 Refresh Token（用于登出，确保无法再次使用） */
+  async deleteRefreshToken(userId: number, jti: string): Promise<void> {
     await this.redis.del(REDIS_KEY.REFRESH_TOKEN(userId, jti))
   }
 

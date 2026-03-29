@@ -24,7 +24,7 @@ async function main() {
   }
 
   const [stockByDate, dailyByDate, marketByDate, industryByCombo] = await Promise.all([
-    prisma.moneyflowDc.groupBy({ by: ['tradeDate'], _count: { _all: true }, orderBy: { tradeDate: 'asc' } }),
+    prisma.moneyflow.groupBy({ by: ['tradeDate'], _count: { _all: true }, orderBy: { tradeDate: 'asc' } }),
     prisma.daily.groupBy({ by: ['tradeDate'], _count: { _all: true }, orderBy: { tradeDate: 'asc' } }),
     prisma.moneyflowMktDc.groupBy({ by: ['tradeDate'], _count: { _all: true }, orderBy: { tradeDate: 'asc' } }),
     prisma.moneyflowIndDc.groupBy({

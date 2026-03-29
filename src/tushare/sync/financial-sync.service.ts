@@ -2,7 +2,8 @@ import { Injectable, Logger } from '@nestjs/common'
 import { TushareSyncExecutionStatus, TushareSyncTaskName } from 'src/constant/tushare.constant'
 import { FinancialApiService } from '../api/financial-api.service'
 import {
-  mapAllotmentRecord,
+  mapBalanceSheetRecord,
+  mapCashflowRecord,
   mapDividendRecord,
   mapExpressRecord,
   mapFinaIndicatorRecord,
@@ -51,6 +52,38 @@ export class FinancialSyncService {
           description: '每日晚间同步利润表',
         },
         execute: ({ mode }) => this.syncIncome(mode),
+      },
+      {
+        task: TushareSyncTaskName.BALANCE_SHEET,
+        label: '资产负债表',
+        category: 'financial',
+        order: 315,
+        bootstrapEnabled: true,
+        supportsManual: true,
+        supportsFullSync: true,
+        requiresTradeDate: false,
+        schedule: {
+          cron: '0 5 21 * * *',
+          timeZone: this.helper.syncTimeZone,
+          description: '每日晚间同步资产负债表',
+        },
+        execute: ({ mode }) => this.syncBalanceSheet(mode),
+      },
+      {
+        task: TushareSyncTaskName.CASHFLOW,
+        label: '现金流量表',
+        category: 'financial',
+        order: 316,
+        bootstrapEnabled: true,
+        supportsManual: true,
+        supportsFullSync: true,
+        requiresTradeDate: false,
+        schedule: {
+          cron: '0 6 21 * * *',
+          timeZone: this.helper.syncTimeZone,
+          description: '每日晚间同步现金流量表',
+        },
+        execute: ({ mode }) => this.syncCashflow(mode),
       },
       {
         task: TushareSyncTaskName.EXPRESS,
@@ -228,6 +261,204 @@ export class FinancialSyncService {
       {
         status: TushareSyncExecutionStatus.SUCCESS,
         message: `利润表重建完成，最近 ${years} 年，共 ${totalRows} 条`,
+        payload: { years, stockCount: stocks.length, periodCount: periods.length, rowCount: totalRows },
+      },
+      startedAt,
+    )
+  }
+
+  // ─── 资产负债表 ────────────────────────────────────────────────────────────
+
+  async syncBalanceSheet(mode: TushareSyncMode = 'incremental'): Promise<void> {
+    if (mode === 'full') {
+      await this.rebuildBalanceSheetRecentYears(this.recentFinancialRebuildYears)
+      return
+    }
+
+    if (await this.shouldRebuildRecentYears('balanceSheet', '资产负债表')) {
+      await this.rebuildBalanceSheetRecentYears(this.recentFinancialRebuildYears)
+      return
+    }
+
+    if (await this.helper.isTaskSyncedToday(TushareSyncTaskName.BALANCE_SHEET)) {
+      this.logger.log('[资产负债表] 今日已同步，跳过')
+      return
+    }
+
+    this.logger.log('[资产负债表] 当前自动同步仅在空表时触发近15年重建；现有数据非空，跳过本轮')
+  }
+
+  async rebuildBalanceSheetRecentYears(years = 15): Promise<void> {
+    const startedAt = new Date()
+    const periods = this.helper.buildRecentQuarterPeriods(years)
+    const periodSet = new Set(periods)
+    const stocks = await this.getAllStockCodes()
+
+    if (!stocks.length) {
+      this.logger.warn('[资产负债表] 股票列表为空，跳过重建')
+      return
+    }
+
+    await (this.helper.prisma as any).balanceSheet.deleteMany({})
+    this.logger.log(`[资产负债表] 已清空旧数据，开始按股票重建最近 ${years} 年（${stocks.length} 只股票）`)
+
+    let totalRows = 0
+    const failedStocks: string[] = []
+
+    for (const [i, tsCode] of stocks.entries()) {
+      try {
+        const rows = await this.api.getBalanceSheetByTsCode(tsCode)
+        const mapped = rows
+          .map(mapBalanceSheetRecord)
+          .filter((row): row is NonNullable<typeof row> => Boolean(row))
+          .filter((row) => {
+            const endDateKey = this.normalizeDateKey(row.endDate)
+            return endDateKey ? periodSet.has(endDateKey) : false
+          })
+
+        if (mapped.length > 0) {
+          const result = await (this.helper.prisma as any).balanceSheet.createMany({
+            data: mapped,
+            skipDuplicates: true,
+          })
+          totalRows += result.count
+        }
+
+        if (i === 0 || (i + 1) % 200 === 0 || i === stocks.length - 1) {
+          this.logger.log(`[资产负债表] 进度 ${i + 1}/${stocks.length}，当前 ${tsCode}，累计 ${totalRows} 条`)
+        }
+      } catch (error) {
+        failedStocks.push(tsCode)
+        this.logger.error(`[资产负债表] ${tsCode} 失败: ${(error as Error).message}`)
+      }
+    }
+
+    if (failedStocks.length > 0) {
+      this.logger.warn(`[资产负债表] ${failedStocks.length} 只股票失败，开始兜底重试...`)
+      for (const tsCode of failedStocks) {
+        try {
+          const rows = await this.api.getBalanceSheetByTsCode(tsCode)
+          const mapped = rows
+            .map(mapBalanceSheetRecord)
+            .filter((row): row is NonNullable<typeof row> => Boolean(row))
+            .filter((row) => {
+              const endDateKey = this.normalizeDateKey(row.endDate)
+              return endDateKey ? periodSet.has(endDateKey) : false
+            })
+          if (mapped.length > 0) {
+            totalRows += (
+              await (this.helper.prisma as any).balanceSheet.createMany({ data: mapped, skipDuplicates: true })
+            ).count
+          }
+          this.logger.log(`[资产负债表] ${tsCode} 重试成功`)
+        } catch (error) {
+          this.logger.error(`[资产负债表] ${tsCode} 重试仍失败: ${(error as Error).message}`)
+        }
+      }
+    }
+
+    await this.helper.writeSyncLog(
+      TushareSyncTaskName.BALANCE_SHEET,
+      {
+        status: TushareSyncExecutionStatus.SUCCESS,
+        message: `资产负债表重建完成，最近 ${years} 年，共 ${totalRows} 条`,
+        payload: { years, stockCount: stocks.length, periodCount: periods.length, rowCount: totalRows },
+      },
+      startedAt,
+    )
+  }
+
+  // ─── 现金流量表 ────────────────────────────────────────────────────────────
+
+  async syncCashflow(mode: TushareSyncMode = 'incremental'): Promise<void> {
+    if (mode === 'full') {
+      await this.rebuildCashflowRecentYears(this.recentFinancialRebuildYears)
+      return
+    }
+
+    if (await this.shouldRebuildRecentYears('cashflow', '现金流量表')) {
+      await this.rebuildCashflowRecentYears(this.recentFinancialRebuildYears)
+      return
+    }
+
+    if (await this.helper.isTaskSyncedToday(TushareSyncTaskName.CASHFLOW)) {
+      this.logger.log('[现金流量表] 今日已同步，跳过')
+      return
+    }
+
+    this.logger.log('[现金流量表] 当前自动同步仅在空表时触发近15年重建；现有数据非空，跳过本轮')
+  }
+
+  async rebuildCashflowRecentYears(years = 15): Promise<void> {
+    const startedAt = new Date()
+    const periods = this.helper.buildRecentQuarterPeriods(years)
+    const periodSet = new Set(periods)
+    const stocks = await this.getAllStockCodes()
+
+    if (!stocks.length) {
+      this.logger.warn('[现金流量表] 股票列表为空，跳过重建')
+      return
+    }
+
+    await (this.helper.prisma as any).cashflow.deleteMany({})
+    this.logger.log(`[现金流量表] 已清空旧数据，开始按股票重建最近 ${years} 年（${stocks.length} 只股票）`)
+
+    let totalRows = 0
+    const failedStocks: string[] = []
+
+    for (const [i, tsCode] of stocks.entries()) {
+      try {
+        const rows = await this.api.getCashflowByTsCode(tsCode)
+        const mapped = rows
+          .map(mapCashflowRecord)
+          .filter((row): row is NonNullable<typeof row> => Boolean(row))
+          .filter((row) => {
+            const endDateKey = this.normalizeDateKey(row.endDate)
+            return endDateKey ? periodSet.has(endDateKey) : false
+          })
+
+        if (mapped.length > 0) {
+          const result = await (this.helper.prisma as any).cashflow.createMany({ data: mapped, skipDuplicates: true })
+          totalRows += result.count
+        }
+
+        if (i === 0 || (i + 1) % 200 === 0 || i === stocks.length - 1) {
+          this.logger.log(`[现金流量表] 进度 ${i + 1}/${stocks.length}，当前 ${tsCode}，累计 ${totalRows} 条`)
+        }
+      } catch (error) {
+        failedStocks.push(tsCode)
+        this.logger.error(`[现金流量表] ${tsCode} 失败: ${(error as Error).message}`)
+      }
+    }
+
+    if (failedStocks.length > 0) {
+      this.logger.warn(`[现金流量表] ${failedStocks.length} 只股票失败，开始兜底重试...`)
+      for (const tsCode of failedStocks) {
+        try {
+          const rows = await this.api.getCashflowByTsCode(tsCode)
+          const mapped = rows
+            .map(mapCashflowRecord)
+            .filter((row): row is NonNullable<typeof row> => Boolean(row))
+            .filter((row) => {
+              const endDateKey = this.normalizeDateKey(row.endDate)
+              return endDateKey ? periodSet.has(endDateKey) : false
+            })
+          if (mapped.length > 0) {
+            totalRows += (await (this.helper.prisma as any).cashflow.createMany({ data: mapped, skipDuplicates: true }))
+              .count
+          }
+          this.logger.log(`[现金流量表] ${tsCode} 重试成功`)
+        } catch (error) {
+          this.logger.error(`[现金流量表] ${tsCode} 重试仍失败: ${(error as Error).message}`)
+        }
+      }
+    }
+
+    await this.helper.writeSyncLog(
+      TushareSyncTaskName.CASHFLOW,
+      {
+        status: TushareSyncExecutionStatus.SUCCESS,
+        message: `现金流量表重建完成，最近 ${years} 年，共 ${totalRows} 条`,
         payload: { years, stockCount: stocks.length, periodCount: periods.length, rowCount: totalRows },
       },
       startedAt,
@@ -512,18 +743,6 @@ export class FinancialSyncService {
 
     await this.helper.prisma.dividend.deleteMany({ where: { tsCode } })
     const result = await this.helper.prisma.dividend.createMany({ data: mapped, skipDuplicates: true })
-    return result.count
-  }
-
-  /** 供 stock.service.ts 按需拉取指定股票的全部配股记录 */
-  async syncAllotmentsForStock(tsCode: string): Promise<number> {
-    const rows = await this.api.getAllotmentByTsCode(tsCode)
-    const mapped = rows.map(mapAllotmentRecord).filter((r): r is NonNullable<typeof r> => Boolean(r))
-
-    await this.helper.prisma.allotment.deleteMany({ where: { tsCode } })
-    if (!mapped.length) return 0
-
-    const result = await this.helper.prisma.allotment.createMany({ data: mapped, skipDuplicates: true })
     return result.count
   }
 

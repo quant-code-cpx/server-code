@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common'
 import {
-  TUSHARE_ALLOTMENT_FIELDS,
+  TUSHARE_BALANCE_SHEET_FIELDS,
+  TUSHARE_CASHFLOW_FIELDS,
   TUSHARE_DIVIDEND_FIELDS,
   TUSHARE_EXPRESS_FIELDS,
   TUSHARE_FINA_INDICATOR_FIELDS,
@@ -115,12 +116,21 @@ export class FinancialApiService {
     })
   }
 
-  /** 获取指定股票的全部配股记录 */
-  getAllotmentByTsCode(tsCode: string) {
+  /** 获取指定股票的全部资产负债表历史 */
+  getBalanceSheetByTsCode(tsCode: string) {
     return this.client.call({
-      api_name: TushareApiName.ALLOTMENT,
+      api_name: TushareApiName.BALANCE_SHEET,
       params: { ts_code: tsCode },
-      fields: [...TUSHARE_ALLOTMENT_FIELDS],
+      fields: [...TUSHARE_BALANCE_SHEET_FIELDS],
+    })
+  }
+
+  /** 获取指定股票的全部现金流量表历史 */
+  getCashflowByTsCode(tsCode: string) {
+    return this.client.call({
+      api_name: TushareApiName.CASHFLOW,
+      params: { ts_code: tsCode },
+      fields: [...TUSHARE_CASHFLOW_FIELDS],
     })
   }
 }

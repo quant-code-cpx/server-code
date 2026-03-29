@@ -1,0 +1,35 @@
+// 个股资金流向（来自 Tushare moneyflow 接口，doc_id=170）
+// 字段统计规则：小单 <5万元，中单 5~20万，大单 20~100万，特大单 ≥100万
+model Moneyflow {
+  tsCode        String   @map("ts_code") @db.VarChar(16)
+  tradeDate     DateTime @map("trade_date") @db.Date
+
+  buySmVol      Int?     @map("buy_sm_vol")
+  buySmAmount   Float?   @map("buy_sm_amount")
+  sellSmVol     Int?     @map("sell_sm_vol")
+  sellSmAmount  Float?   @map("sell_sm_amount")
+
+  buyMdVol      Int?     @map("buy_md_vol")
+  buyMdAmount   Float?   @map("buy_md_amount")
+  sellMdVol     Int?     @map("sell_md_vol")
+  sellMdAmount  Float?   @map("sell_md_amount")
+
+  buyLgVol      Int?     @map("buy_lg_vol")
+  buyLgAmount   Float?   @map("buy_lg_amount")
+  sellLgVol     Int?     @map("sell_lg_vol")
+  sellLgAmount  Float?   @map("sell_lg_amount")
+
+  buyElgVol     Int?     @map("buy_elg_vol")
+  buyElgAmount  Float?   @map("buy_elg_amount")
+  sellElgVol    Int?     @map("sell_elg_vol")
+  sellElgAmount Float?   @map("sell_elg_amount")
+
+  netMfVol      Int?     @map("net_mf_vol")
+  netMfAmount   Float?   @map("net_mf_amount")
+
+  syncedAt      DateTime @default(now()) @map("synced_at")
+
+  @@id([tsCode, tradeDate])
+  @@index([tradeDate])
+  @@map("stock_capital_flows")
+}

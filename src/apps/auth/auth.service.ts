@@ -148,19 +148,16 @@ export class AuthService {
    */
   async refreshToken(
     refreshToken: string,
-  ): Promise<{ accessToken: string; refreshToken: string; refreshTokenTTL: number }> {
+  ): Promise<{ accessToken: string; refreshToken: string | null; refreshTokenTTL: number }> {
     const payload = await this.tokenService.verifyRefreshToken(refreshToken).catch(() => {
       throw new BusinessException(ErrorEnum.INVALID_REFRESH_TOKEN)
     })
 
-    // 校验 Redis 中是否存在该 Refresh Token（防止重放攻击）
-    const valid = await this.tokenService.isRefreshTokenValid(payload.id, payload.jti)
-    if (!valid) {
+    // 校验 Redis 中该 Refresh Token 的状态
+    const validity = await this.tokenService.isRefreshTokenValid(payload.id, payload.jti)
+    if (validity === 'invalid') {
       throw new BusinessException(ErrorEnum.INVALID_REFRESH_TOKEN)
     }
-
-    // Token 轮换：撤销旧 Refresh Token
-    await this.tokenService.revokeRefreshToken(payload.id, payload.jti)
 
     // 从数据库获取最新用户信息（角色可能已更新）
     const user = await this.prisma.user.findUnique({ where: { id: payload.id } })
@@ -168,7 +165,19 @@ export class AuthService {
       throw new BusinessException(ErrorEnum.USER_DISABLED)
     }
 
-    // 签发新的 Token 对
+    // 宽限期内的重复请求（如 React StrictMode 双 useEffect）：只发新 AT，不轮换 RT，Cookie 保持不变
+    if (validity === 'grace') {
+      const accessToken = await this.tokenService.generateAccessToken({
+        id: user.id,
+        account: user.account,
+        nickname: user.nickname,
+        role: user.role,
+      })
+      return { accessToken, refreshToken: null, refreshTokenTTL: 0 }
+    }
+
+    // 首次使用：Token 轮换，旧 RT 标记为 used（宽限期内保留），签发新 Token 对
+    await this.tokenService.revokeRefreshToken(payload.id, payload.jti)
     return this.tokenService.generateTokens({
       id: user.id,
       account: user.account,
@@ -195,7 +204,7 @@ export class AuthService {
         return null
       })
       if (payload) {
-        await this.tokenService.revokeRefreshToken(payload.id, payload.jti)
+        await this.tokenService.deleteRefreshToken(payload.id, payload.jti)
       }
     }
   }

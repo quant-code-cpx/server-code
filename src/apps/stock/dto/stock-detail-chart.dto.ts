@@ -1,4 +1,4 @@
-import { IsEnum, IsIn, IsOptional, IsString, MaxLength } from 'class-validator'
+import { IsEnum, IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator'
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
 
 export enum ChartPeriod {
@@ -48,4 +48,14 @@ export class StockDetailChartDto {
   @IsString()
   @MaxLength(8)
   endDate?: string
+
+  @ApiPropertyOptional({
+    description: '返回条数上限（按 tradeDate 倒序截取最新 N 条）。传入时启用分页模式，响应包含 hasMore 字段。',
+    example: 150,
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(1000)
+  limit?: number
 }

@@ -10,7 +10,7 @@ import {
 import { ITushareConfig, TUSHARE_CONFIG_TOKEN } from 'src/config/tushare.config'
 import { MoneyflowApiService } from '../api/moneyflow-api.service'
 import {
-  mapMoneyflowDcRecord,
+  mapMoneyflowRecord,
   mapMoneyflowHsgtRecord,
   mapMoneyflowIndDcRecord,
   mapMoneyflowMktDcRecord,
@@ -65,7 +65,7 @@ export class MoneyflowSyncService {
           description: '交易日盘后同步个股资金流',
           tradingDayOnly: true,
         },
-        execute: ({ mode, targetTradeDate }) => this.syncMoneyflowDc(this.requireTradeDate(targetTradeDate), mode),
+        execute: ({ mode, targetTradeDate }) => this.syncMoneyflow(this.requireTradeDate(targetTradeDate), mode),
       },
       {
         task: TushareSyncTaskName.MONEYFLOW_IND_DC,
@@ -123,16 +123,16 @@ export class MoneyflowSyncService {
 
   // ─── 个股资金流 ────────────────────────────────────────────────────────────
 
-  async syncMoneyflowDc(targetTradeDate: string, mode: TushareSyncMode = 'incremental'): Promise<void> {
-    await this.syncMoneyflow({
+  async syncMoneyflow(targetTradeDate: string, mode: TushareSyncMode = 'incremental'): Promise<void> {
+    await this.runSyncTemplate({
       task: TushareSyncTaskName.MONEYFLOW_DC,
       label: '个股资金流',
-      modelName: 'moneyflowDc',
+      modelName: 'moneyflow',
       targetTradeDate,
       fullHistoryOverride: mode === 'full' ? true : undefined,
       fetchAndMap: async (td) => {
-        const rows = await this.api.getMoneyflowDcByTradeDate(td)
-        return rows.map(mapMoneyflowDcRecord).filter((r): r is NonNullable<typeof r> => Boolean(r))
+        const rows = await this.api.getMoneyflowByTradeDate(td)
+        return rows.map(mapMoneyflowRecord).filter((r): r is NonNullable<typeof r> => Boolean(r))
       },
     })
   }
@@ -140,7 +140,7 @@ export class MoneyflowSyncService {
   // ─── 行业/概念/地域资金流 ──────────────────────────────────────────────────
 
   async syncMoneyflowIndDc(targetTradeDate: string, mode: TushareSyncMode = 'incremental'): Promise<void> {
-    await this.syncMoneyflow({
+    await this.runSyncTemplate({
       task: TushareSyncTaskName.MONEYFLOW_IND_DC,
       label: '行业资金流',
       modelName: 'moneyflowIndDc',
@@ -161,7 +161,7 @@ export class MoneyflowSyncService {
   // ─── 大盘资金流 ────────────────────────────────────────────────────────────
 
   async syncMoneyflowMktDc(targetTradeDate: string, mode: TushareSyncMode = 'incremental'): Promise<void> {
-    await this.syncMoneyflow({
+    await this.runSyncTemplate({
       task: TushareSyncTaskName.MONEYFLOW_MKT_DC,
       label: '大盘资金流',
       modelName: 'moneyflowMktDc',
@@ -178,7 +178,7 @@ export class MoneyflowSyncService {
   // 通用资金流向同步模板
   // ═══════════════════════════════════════════════════════════════════════════
 
-  private async syncMoneyflow(opts: {
+  private async runSyncTemplate(opts: {
     task: TushareSyncTaskName
     label: string
     modelName: string

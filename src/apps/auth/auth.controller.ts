@@ -68,7 +68,10 @@ export class AuthController {
       throw new BusinessException(ErrorEnum.INVALID_REFRESH_TOKEN)
     }
     const result = await this.authService.refreshToken(refreshToken)
-    this.setRefreshTokenCookie(res, result.refreshToken, result.refreshTokenTTL)
+    // 宽限期内的重复请求不更新 Cookie（新 RT 已由首次请求写入）
+    if (result.refreshToken) {
+      this.setRefreshTokenCookie(res, result.refreshToken, result.refreshTokenTTL)
+    }
     return { accessToken: result.accessToken }
   }
 

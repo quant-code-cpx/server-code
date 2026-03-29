@@ -11,6 +11,7 @@ import { StockDetailFinancialsDto } from './dto/stock-detail-financials.dto'
 import { StockDetailShareholdersDto } from './dto/stock-detail-shareholders.dto'
 import { StockDetailShareCapitalDto } from './dto/stock-detail-share-capital.dto'
 import { StockDetailFinancingDto } from './dto/stock-detail-financing.dto'
+import { StockDetailFinancialStatementsDto } from './dto/stock-detail-financial-statements.dto'
 
 // 排序字段到 SQL 列名的安全映射（value 来自受控枚举，不直接来自用户输入）
 const SORT_COLUMN_MAP: Record<StockSortBy, string> = {
@@ -22,6 +23,14 @@ const SORT_COLUMN_MAP: Record<StockSortBy, string> = {
   [StockSortBy.PB]: 'db.pb',
   [StockSortBy.DV_TTM]: 'db.dv_ttm',
   [StockSortBy.LIST_DATE]: 'sb.list_date',
+}
+
+// 交易所代码 → 中文名映射
+const EXCHANGE_LABEL: Record<string, string> = {
+  SSE: '上交所',
+  SZSE: '深交所',
+  BSE: '北交所',
+  HKEX: '港交所',
 }
 
 export interface StockListRow {
@@ -206,6 +215,7 @@ export class StockService {
         tsCode: basic.tsCode,
         symbol: basic.symbol,
         name: basic.name,
+        exchange: EXCHANGE_LABEL[basic.exchange as string] ?? basic.exchange,
         industry: basic.industry,
         market: basic.market,
         area: basic.area,
@@ -244,13 +254,20 @@ export class StockService {
         ? {
             tradeDate: latestValuation.tradeDate,
             turnoverRate: latestValuation.turnoverRate,
+            turnoverRateF: latestValuation.turnoverRateF,
+            volumeRatio: latestValuation.volumeRatio,
+            pe: latestValuation.pe,
             peTtm: latestValuation.peTtm,
             pb: latestValuation.pb,
             ps: latestValuation.ps,
+            psTtm: latestValuation.psTtm,
+            dvRatio: latestValuation.dvRatio,
             dvTtm: latestValuation.dvTtm,
+            totalShare: latestValuation.totalShare,
+            floatShare: latestValuation.floatShare,
+            freeShare: latestValuation.freeShare,
             totalMv: latestValuation.totalMv,
             circMv: latestValuation.circMv,
-            volumeRatio: latestValuation.volumeRatio,
             limitStatus: latestValuation.limitStatus,
           }
         : null,
@@ -275,13 +292,6 @@ export class StockService {
   async getDetailChart(dto: StockDetailChartDto) {
     const { tsCode, period = ChartPeriod.DAILY, adjustType = AdjustType.QFQ } = dto
 
-    // 默认时间范围：最近 2 年（日线），最近 5 年（周/月线）
-    const defaultDays = period === ChartPeriod.DAILY ? 730 : 1825
-    const startDate = dto.startDate
-      ? dayjs(dto.startDate, 'YYYYMMDD').toDate()
-      : dayjs().subtract(defaultDays, 'day').toDate()
-    const endDate = dto.endDate ? dayjs(dto.endDate, 'YYYYMMDD').toDate() : new Date()
-
     // 选择表名（日/周/月）
     const tableMap: Record<ChartPeriod, string> = {
       [ChartPeriod.DAILY]: 'stock_daily_prices',
@@ -302,27 +312,56 @@ export class StockService {
       adjFactor: number | null
     }
 
-    // 查询 OHLCV + 复权因子
-    const rows = await this.prisma.$queryRaw<ChartRow[]>`
-      SELECT
-        t.trade_date  AS "tradeDate",
-        t.open, t.high, t.low, t.close, t.vol, t.amount,
-        t.pct_chg     AS "pctChg",
-        af.adj_factor AS "adjFactor"
-      FROM ${tableName} t
-      LEFT JOIN stock_adjustment_factors af
-        ON af.ts_code = t.ts_code AND af.trade_date = t.trade_date
-      WHERE t.ts_code = ${tsCode}
-        AND t.trade_date >= ${startDate}
-        AND t.trade_date <= ${endDate}
-      ORDER BY t.trade_date ASC
-    `
+    let rows: ChartRow[]
 
-    if (!rows.length) {
-      return { tsCode, period, adjustType, items: [] }
+    if (dto.limit) {
+      // 分页模式：按 tradeDate 倒序取最新 N 条，再翻转为升序供 MA 计算
+      const cutoff = dto.endDate ? dayjs(dto.endDate, 'YYYYMMDD').toDate() : new Date()
+      const lim = dto.limit
+      rows = (
+        await this.prisma.$queryRaw<ChartRow[]>`
+          SELECT
+            t.trade_date  AS "tradeDate",
+            t.open, t.high, t.low, t.close, t.vol, t.amount,
+            t.pct_chg     AS "pctChg",
+            af.adj_factor AS "adjFactor"
+          FROM ${tableName} t
+          LEFT JOIN stock_adjustment_factors af
+            ON af.ts_code = t.ts_code AND af.trade_date = t.trade_date
+          WHERE t.ts_code = ${tsCode}
+            AND t.trade_date <= ${cutoff}
+          ORDER BY t.trade_date DESC
+          LIMIT ${lim}
+        `
+      ).reverse()
+    } else {
+      // 范围模式：指定起止日期（默认最近 2 年/5 年）
+      const defaultDays = period === ChartPeriod.DAILY ? 730 : 1825
+      const startDate = dto.startDate
+        ? dayjs(dto.startDate, 'YYYYMMDD').toDate()
+        : dayjs().subtract(defaultDays, 'day').toDate()
+      const endDate = dto.endDate ? dayjs(dto.endDate, 'YYYYMMDD').toDate() : new Date()
+      rows = await this.prisma.$queryRaw<ChartRow[]>`
+        SELECT
+          t.trade_date  AS "tradeDate",
+          t.open, t.high, t.low, t.close, t.vol, t.amount,
+          t.pct_chg     AS "pctChg",
+          af.adj_factor AS "adjFactor"
+        FROM ${tableName} t
+        LEFT JOIN stock_adjustment_factors af
+          ON af.ts_code = t.ts_code AND af.trade_date = t.trade_date
+        WHERE t.ts_code = ${tsCode}
+          AND t.trade_date >= ${startDate}
+          AND t.trade_date <= ${endDate}
+        ORDER BY t.trade_date ASC
+      `
     }
 
-    // 计算复权价格
+    if (!rows.length) {
+      return { tsCode, period, adjustType, hasMore: false, items: [] }
+    }
+
+    // 计算复权价格（rows 此时为升序）
     const latestAdj = rows[rows.length - 1]?.adjFactor ?? 1
 
     const items = rows.map((row) => {
@@ -349,48 +388,129 @@ export class StockService {
       }
     })
 
-    // 计算 MA 指标（仅在 close 可用时）
+    // 计算 MA 指标（close 不足时返回 null）
     const closes = items.map((r) => r.close)
     const seriesWithMa = items.map((row, i) => ({
       ...row,
       ma5: calcMa(closes, i, 5),
       ma10: calcMa(closes, i, 10),
       ma20: calcMa(closes, i, 20),
+      ma60: calcMa(closes, i, 60),
     }))
 
-    return { tsCode, period, adjustType, items: seriesWithMa }
+    // 判断是否还有更早的历史数据
+    const oldestDate = rows[0].tradeDate
+    const earlierCheck = await this.prisma.$queryRaw<[{ count: bigint }]>`
+      SELECT COUNT(*)::bigint AS count FROM ${tableName}
+      WHERE ts_code = ${tsCode} AND trade_date < ${oldestDate}
+    `
+    const hasMore = Number(earlierCheck[0]?.count ?? 0) > 0
+
+    return { tsCode, period, adjustType, hasMore, items: seriesWithMa }
+  }
+
+  // ─── 股票详情：今日资金流（分级别拆分）────────────────────────────────────────
+
+  async getDetailTodayFlow(tsCode: string) {
+    const record = await this.prisma.moneyflow.findFirst({
+      where: { tsCode },
+      orderBy: { tradeDate: 'desc' },
+    })
+
+    if (!record) return null
+
+    const r2 = (v: number | null | undefined) => (v != null ? Math.round(v * 100) / 100 : null)
+
+    const buyElg = r2(record.buyElgAmount)
+    const sellElg = r2(record.sellElgAmount)
+    const buyLg = r2(record.buyLgAmount)
+    const sellLg = r2(record.sellLgAmount)
+    const buyMd = r2(record.buyMdAmount)
+    const sellMd = r2(record.sellMdAmount)
+    const buySm = r2(record.buySmAmount)
+    const sellSm = r2(record.sellSmAmount)
+
+    const net = (buy: number | null, sell: number | null) => (buy != null && sell != null ? r2(buy - sell) : null)
+
+    const mainBuy = buyElg != null && buyLg != null ? r2(buyElg + buyLg) : null
+    const mainSell = sellElg != null && sellLg != null ? r2(sellElg + sellLg) : null
+
+    return {
+      tsCode,
+      tradeDate: record.tradeDate,
+      superLarge: { buyAmount: buyElg, sellAmount: sellElg, netAmount: net(buyElg, sellElg) },
+      large: { buyAmount: buyLg, sellAmount: sellLg, netAmount: net(buyLg, sellLg) },
+      medium: { buyAmount: buyMd, sellAmount: sellMd, netAmount: net(buyMd, sellMd) },
+      small: { buyAmount: buySm, sellAmount: sellSm, netAmount: net(buySm, sellSm) },
+      mainForce: { buyAmount: mainBuy, sellAmount: mainSell, netAmount: net(mainBuy, mainSell) },
+      netMfAmount: r2(record.netMfAmount),
+    }
   }
 
   // ─── 股票详情：资金流 ─────────────────────────────────────────────────────────
 
   async getDetailMoneyFlow({ tsCode, days = 60 }: StockDetailMoneyFlowDto) {
-    const records = await this.prisma.moneyflowDc.findMany({
-      where: { tsCode },
-      orderBy: { tradeDate: 'desc' },
-      take: days,
-    })
+    interface MoneyFlowRow {
+      tradeDate: Date
+      close: number | null
+      pctChg: number | null
+      netMfAmount: number | null
+      buyElgAmount: number | null
+      sellElgAmount: number | null
+      buyLgAmount: number | null
+      sellLgAmount: number | null
+      buyMdAmount: number | null
+      sellMdAmount: number | null
+      buySmAmount: number | null
+      sellSmAmount: number | null
+    }
+
+    const records = await this.prisma.$queryRaw<MoneyFlowRow[]>`
+      SELECT
+        mf.trade_date        AS "tradeDate",
+        d.close,
+        d.pct_chg            AS "pctChg",
+        mf.net_mf_amount     AS "netMfAmount",
+        mf.buy_elg_amount    AS "buyElgAmount",
+        mf.sell_elg_amount   AS "sellElgAmount",
+        mf.buy_lg_amount     AS "buyLgAmount",
+        mf.sell_lg_amount    AS "sellLgAmount",
+        mf.buy_md_amount     AS "buyMdAmount",
+        mf.sell_md_amount    AS "sellMdAmount",
+        mf.buy_sm_amount     AS "buySmAmount",
+        mf.sell_sm_amount    AS "sellSmAmount"
+      FROM stock_capital_flows mf
+      LEFT JOIN stock_daily_prices d
+        ON d.ts_code = mf.ts_code AND d.trade_date = mf.trade_date
+      WHERE mf.ts_code = ${tsCode}
+      ORDER BY mf.trade_date DESC
+      LIMIT ${days}
+    `
 
     // 汇总 5 / 20 / 60 日净流入
-    const summarize = (n: number) => records.slice(0, n).reduce((acc, r) => acc + (r.netAmount ?? 0), 0)
+    const summarize = (n: number) => records.slice(0, n).reduce((acc, r) => acc + (r.netMfAmount ?? 0), 0)
 
     const items = [...records].reverse().map((r) => ({
       tradeDate: r.tradeDate,
       close: r.close,
-      pctChange: r.pctChange,
-      netAmount: r.netAmount,
-      netAmountRate: r.netAmountRate,
+      pctChg: r.pctChg,
+      netMfAmount: r.netMfAmount,
       buyElgAmount: r.buyElgAmount,
+      sellElgAmount: r.sellElgAmount,
       buyLgAmount: r.buyLgAmount,
+      sellLgAmount: r.sellLgAmount,
       buyMdAmount: r.buyMdAmount,
+      sellMdAmount: r.sellMdAmount,
       buySmAmount: r.buySmAmount,
+      sellSmAmount: r.sellSmAmount,
     }))
 
     return {
       tsCode,
       summary: {
-        netAmount5d: Math.round(summarize(5) * 100) / 100,
-        netAmount20d: Math.round(summarize(20) * 100) / 100,
-        netAmount60d: Math.round(summarize(Math.min(60, records.length)) * 100) / 100,
+        netMfAmount5d: Math.round(summarize(5) * 100) / 100,
+        netMfAmount20d: Math.round(summarize(20) * 100) / 100,
+        netMfAmount60d: Math.round(summarize(Math.min(60, records.length)) * 100) / 100,
       },
       items,
     }
@@ -453,20 +573,7 @@ export class StockService {
   // ─── 股票详情：股东与分红 ─────────────────────────────────────────────────────
 
   async getDetailShareholders({ tsCode }: StockDetailShareholdersDto) {
-    // 如果本地没有该股票的分红数据，触发按需同步
-    const localDividendCount = await this.prisma.dividend.count({ where: { tsCode } })
-    if (localDividendCount === 0) {
-      await this.financialSyncService.syncDividendsForStock(tsCode).catch(() => {
-        // 同步失败不阻断查询，直接返回空
-      })
-    }
-
-    const [dividends, top10, top10Float] = await Promise.all([
-      this.prisma.dividend.findMany({
-        where: { tsCode },
-        orderBy: { annDate: 'desc' },
-        take: 20,
-      }),
+    const [top10, top10Float] = await Promise.all([
       // 取最近 4 个报告期的前十大股东
       this.prisma.top10Holders.findMany({
         where: { tsCode },
@@ -480,36 +587,33 @@ export class StockService {
       }),
     ])
 
-    // 将 top10Holders 按 endDate 分组，返回最新一期
+    // 将 top10Holders 按 endDate 分组，返回最新一期，按持股数量降序
     const latestHolderPeriod = top10[0]?.endDate ?? null
     const latestHolders = latestHolderPeriod
-      ? top10.filter((h) => h.endDate.getTime() === latestHolderPeriod.getTime())
+      ? top10
+          .filter((h) => h.endDate.getTime() === latestHolderPeriod.getTime())
+          .sort((a, b) => (b.holdAmount ?? 0) - (a.holdAmount ?? 0))
       : []
 
     const latestFloatPeriod = top10Float[0]?.endDate ?? null
     const latestFloatHolders = latestFloatPeriod
-      ? top10Float.filter((h) => h.endDate.getTime() === latestFloatPeriod.getTime())
+      ? top10Float
+          .filter((h) => h.endDate.getTime() === latestFloatPeriod.getTime())
+          .sort((a, b) => (b.holdAmount ?? 0) - (a.holdAmount ?? 0))
       : []
 
     return {
       tsCode,
-      dividendHistory: dividends.map((d) => ({
-        annDate: d.annDate,
-        endDate: d.endDate,
-        divProc: d.divProc,
-        cashDiv: d.cashDiv,
-        cashDivTax: d.cashDivTax,
-        stkDiv: d.stkDiv,
-        exDate: d.exDate,
-        payDate: d.payDate,
-      })),
       top10Holders: {
         endDate: latestHolderPeriod,
         holders: latestHolders.map((h) => ({
           holderName: h.holderName,
           holdAmount: h.holdAmount,
           holdRatio: h.holdRatio,
+          holdFloatRatio: h.holdFloatRatio,
+          holdChange: h.holdChange,
           holderType: h.holderType,
+          annDate: h.annDate,
         })),
       },
       top10FloatHolders: {
@@ -518,44 +622,109 @@ export class StockService {
           holderName: h.holderName,
           holdAmount: h.holdAmount,
           holdRatio: h.holdRatio,
+          holdFloatRatio: h.holdFloatRatio,
+          holdChange: h.holdChange,
           holderType: h.holderType,
+          annDate: h.annDate,
         })),
       },
+    }
+  }
+
+  // ─── 股票详情：分红融资 ────────────────────────────────────────────────────────
+
+  async getDetailDividendFinancing({ tsCode }: StockDetailFinancingDto) {
+    // 仅返回分红历史（配股逻辑已移除）
+    const localDividendCount = await this.prisma.dividend.count({ where: { tsCode } })
+    if (localDividendCount === 0) {
+      await this.financialSyncService.syncDividendsForStock(tsCode).catch(() => {})
+    }
+
+    const dividends = await this.prisma.dividend.findMany({
+      where: { tsCode },
+      orderBy: { annDate: 'desc' },
+    })
+
+    return {
+      tsCode,
+      dividends: dividends.map((d) => ({
+        annDate: d.annDate,
+        endDate: d.endDate,
+        divProc: d.divProc,
+        stkDiv: d.stkDiv,
+        stkBoRate: d.stkBoRate,
+        stkCoRate: d.stkCoRate,
+        cashDiv: d.cashDiv,
+        cashDivTax: d.cashDivTax,
+        recordDate: d.recordDate,
+        exDate: d.exDate,
+        payDate: d.payDate,
+        divListdate: d.divListdate,
+        impAnnDate: d.impAnnDate,
+        baseDate: d.baseDate,
+        baseShare: d.baseShare,
+      })),
     }
   }
 
   // ─── 股票详情：主力资金流向 ──────────────────────────────────────────────────
 
   async getDetailMainMoneyFlow({ tsCode, days = 60 }: StockDetailMoneyFlowDto) {
-    const records = await this.prisma.moneyflowDc.findMany({
-      where: { tsCode },
-      orderBy: { tradeDate: 'desc' },
-      take: days,
-    })
+    interface MainFlowRow {
+      tradeDate: Date
+      close: number | null
+      buyElgAmount: number | null
+      sellElgAmount: number | null
+      buyLgAmount: number | null
+      sellLgAmount: number | null
+      buyMdAmount: number | null
+      sellMdAmount: number | null
+      buySmAmount: number | null
+      sellSmAmount: number | null
+    }
 
-    // 在 DC 数据中，buy_elg/lg/md/sm_amount 代表各档净流入（正为净买入，负为净卖出）
-    const calculateMainNetFlow = (r: (typeof records)[0]) =>
-      (r.buyElgAmount ?? 0) + (r.buyLgAmount ?? 0)
-    const calculateRetailNetFlow = (r: (typeof records)[0]) =>
-      (r.buyMdAmount ?? 0) + (r.buySmAmount ?? 0)
+    const records = await this.prisma.$queryRaw<MainFlowRow[]>`
+      SELECT
+        mf.trade_date        AS "tradeDate",
+        d.close,
+        mf.buy_elg_amount    AS "buyElgAmount",
+        mf.sell_elg_amount   AS "sellElgAmount",
+        mf.buy_lg_amount     AS "buyLgAmount",
+        mf.sell_lg_amount    AS "sellLgAmount",
+        mf.buy_md_amount     AS "buyMdAmount",
+        mf.sell_md_amount    AS "sellMdAmount",
+        mf.buy_sm_amount     AS "buySmAmount",
+        mf.sell_sm_amount    AS "sellSmAmount"
+      FROM stock_capital_flows mf
+      LEFT JOIN stock_daily_prices d
+        ON d.ts_code = mf.ts_code AND d.trade_date = mf.trade_date
+      WHERE mf.ts_code = ${tsCode}
+      ORDER BY mf.trade_date DESC
+      LIMIT ${days}
+    `
+
+    // 主力 = 特大单 + 大单；散户 = 中单 + 小单
+    const calcMainNet = (r: MainFlowRow) =>
+      (r.buyElgAmount ?? 0) + (r.buyLgAmount ?? 0) - (r.sellElgAmount ?? 0) - (r.sellLgAmount ?? 0)
+    const calcRetailNet = (r: MainFlowRow) =>
+      (r.buyMdAmount ?? 0) + (r.buySmAmount ?? 0) - (r.sellMdAmount ?? 0) - (r.sellSmAmount ?? 0)
 
     const calculateMainNetFlowSum = (n: number) =>
-      Math.round(records.slice(0, n).reduce((acc, r) => acc + calculateMainNetFlow(r), 0) * 100) / 100
+      Math.round(records.slice(0, n).reduce((acc, r) => acc + calcMainNet(r), 0) * 100) / 100
 
     const items = [...records].reverse().map((r) => {
-      const mainNetAmount = r.buyElgAmount !== null || r.buyLgAmount !== null ? calculateMainNetFlow(r) : null
-      const retailNetAmount = r.buyMdAmount !== null || r.buySmAmount !== null ? calculateRetailNetFlow(r) : null
-      // 主力净流入占比：超大单+大单占比之和
-      const mainNetAmountRate =
-        r.buyElgAmountRate !== null || r.buyLgAmountRate !== null
-          ? Math.round(((r.buyElgAmountRate ?? 0) + (r.buyLgAmountRate ?? 0)) * 100) / 100
-          : null
+      const mainNetAmount = calcMainNet(r)
+      const retailNetAmount = calcRetailNet(r)
+      const mainBuy = (r.buyElgAmount ?? 0) + (r.buyLgAmount ?? 0)
+      const mainSell = (r.sellElgAmount ?? 0) + (r.sellLgAmount ?? 0)
+      const mainTotal = mainBuy + mainSell
+      const mainNetAmountRate = mainTotal > 0 ? Math.round((mainNetAmount / mainTotal) * 10000) / 100 : null
       return {
         tradeDate: r.tradeDate,
         close: r.close,
-        mainNetAmount: mainNetAmount !== null ? Math.round(mainNetAmount * 100) / 100 : null,
+        mainNetAmount: Math.round(mainNetAmount * 100) / 100,
         mainNetAmountRate,
-        retailNetAmount: retailNetAmount !== null ? Math.round(retailNetAmount * 100) / 100 : null,
+        retailNetAmount: Math.round(retailNetAmount * 100) / 100,
       }
     })
 
@@ -598,7 +767,10 @@ export class StockService {
     })
 
     // 按年分组，保留每年最后一个交易日记录
-    const yearEndSnapshots = new Map<number, { tradeDate: Date; totalShare: number | null; floatShare: number | null }>()
+    const yearEndSnapshots = new Map<
+      number,
+      { tradeDate: Date; totalShare: number | null; floatShare: number | null }
+    >()
     for (const r of allRecords) {
       const year = r.tradeDate.getFullYear()
       if (!yearEndSnapshots.has(year)) {
@@ -619,32 +791,43 @@ export class StockService {
     return { tsCode, latest, history }
   }
 
+  // ─── 股票详情：三大财务报表（利润表/资产负债表/现金流量表） ────────────────────
+
+  async getDetailFinancialStatements({ tsCode, periods = 8 }: StockDetailFinancialStatementsDto) {
+    // 多取 4 期以便计算最早一期的同比
+    const fetchLimit = periods + 4
+
+    const [incomeRows, balanceRows, cashflowRows] = await Promise.all([
+      (this.prisma as any).income.findMany({
+        where: { tsCode, reportType: '1' },
+        orderBy: { endDate: 'desc' },
+        take: fetchLimit,
+      }),
+      (this.prisma as any).balanceSheet.findMany({
+        where: { tsCode, reportType: '1' },
+        orderBy: { endDate: 'desc' },
+        take: fetchLimit,
+      }),
+      (this.prisma as any).cashflow.findMany({
+        where: { tsCode, reportType: '1' },
+        orderBy: { endDate: 'desc' },
+        take: fetchLimit,
+      }),
+    ])
+
+    return {
+      tsCode,
+      income: buildIncomeItems(incomeRows, periods),
+      balanceSheet: buildBalanceSheetItems(balanceRows, periods),
+      cashflow: buildCashflowItems(cashflowRows, periods),
+    }
+  }
+
   // ─── 股票详情：融资记录 ────────────────────────────────────────────────────────
 
   async getDetailFinancing({ tsCode }: StockDetailFinancingDto) {
-    // 本地无数据时按需从 Tushare 拉取并缓存
-    const localCount = await this.prisma.allotment.count({ where: { tsCode } })
-    if (localCount === 0) {
-      await this.financialSyncService.syncAllotmentsForStock(tsCode).catch(() => {
-        // 同步失败不阻断查询，返回空列表
-      })
-    }
-
-    const allotments = await this.prisma.allotment.findMany({
-      where: { tsCode },
-      orderBy: { annDate: 'desc' },
-    })
-
-    const items = allotments.map((a) => ({
-      eventType: '配股',
-      announceDate: a.annDate,
-      amount: a.raiseFonds,
-      price: a.allotmentPrice,
-      shares: a.allotmentVol,
-      status: a.stateDesc,
-    }))
-
-    return { tsCode, items }
+    // 配股表已移除：返回空列表（保留接口兼容）
+    return { tsCode, items: [] }
   }
 
   // ─── 旧接口（兼容保留） ───────────────────────────────────────────────────────
@@ -672,6 +855,113 @@ function calcMa(closes: (number | null)[], currentIndex: number, period: number)
   if (slice.some((v) => v === null)) return null
   const sum = (slice as number[]).reduce((a, b) => a + b, 0)
   return Math.round((sum / period) * 100) / 100
+}
+
+// ─── 三大财务报表工具函数 ──────────────────────────────────────────────────────
+
+/** 将 Date 格式化为 YYYYMMDD 字符串，用于查找同比期 */
+function fmtPeriodKey(date: Date): string {
+  const y = date.getUTCFullYear()
+  const m = String(date.getUTCMonth() + 1).padStart(2, '0')
+  const d = String(date.getUTCDate()).padStart(2, '0')
+  return `${y}${m}${d}`
+}
+
+/** 返回同比期 key（上一年同季度，YYYYMMDD） */
+function prevYearKey(date: Date): string {
+  const y = date.getUTCFullYear() - 1
+  const m = String(date.getUTCMonth() + 1).padStart(2, '0')
+  const d = String(date.getUTCDate()).padStart(2, '0')
+  return `${y}${m}${d}`
+}
+
+/** 计算同比变动率（%），若上年值为零或空则返回 null */
+function yoy(curr: number | null, prev: number | null): number | null {
+  if (curr === null || prev === null || prev === 0) return null
+  return Math.round(((curr - prev) / Math.abs(prev)) * 10000) / 100
+}
+
+function buildIncomeItems(rows: any[], limit: number) {
+  // rows 已按 endDate desc 排序
+  const byKey = new Map<string, any>()
+  for (const r of rows) byKey.set(fmtPeriodKey(r.endDate), r)
+
+  return rows.slice(0, limit).map((r) => {
+    const prev = byKey.get(prevYearKey(r.endDate)) ?? null
+    return {
+      endDate: r.endDate,
+      annDate: r.annDate,
+      reportType: r.reportType,
+      totalRevenue: r.totalRevenue,
+      revenue: r.revenue,
+      operateProfit: r.operateProfit,
+      totalProfit: r.totalProfit,
+      nIncome: r.nIncome,
+      nIncomeAttrP: r.nIncomeAttrP,
+      basicEps: r.basicEps,
+      sellExp: r.sellExp,
+      adminExp: r.adminExp,
+      finExp: r.finExp,
+      rdExp: r.rdExp,
+      ebit: r.ebit,
+      ebitda: r.ebitda,
+      totalRevenueYoy: prev ? yoy(r.totalRevenue, prev.totalRevenue) : null,
+      nIncomeYoy: prev ? yoy(r.nIncome, prev.nIncome) : null,
+      operateProfitYoy: prev ? yoy(r.operateProfit, prev.operateProfit) : null,
+    }
+  })
+}
+
+function buildBalanceSheetItems(rows: any[], limit: number) {
+  const byKey = new Map<string, any>()
+  for (const r of rows) byKey.set(fmtPeriodKey(r.endDate), r)
+
+  return rows.slice(0, limit).map((r) => {
+    const prev = byKey.get(prevYearKey(r.endDate)) ?? null
+    return {
+      endDate: r.endDate,
+      annDate: r.annDate,
+      reportType: r.reportType,
+      totalAssets: r.totalAssets,
+      totalCurAssets: r.totalCurAssets,
+      totalNca: r.totalNca,
+      moneyCap: r.moneyCap,
+      inventories: r.inventories,
+      accountsReceiv: r.accountsReceiv,
+      totalLiab: r.totalLiab,
+      totalCurLiab: r.totalCurLiab,
+      totalNcl: r.totalNcl,
+      stBorr: r.stBorr,
+      ltBorr: r.ltBorr,
+      totalHldrEqyExcMinInt: r.totalHldrEqyExcMinInt,
+      totalHldrEqyIncMinInt: r.totalHldrEqyIncMinInt,
+      totalAssetsYoy: prev ? yoy(r.totalAssets, prev.totalAssets) : null,
+      equityYoy: prev ? yoy(r.totalHldrEqyExcMinInt, prev.totalHldrEqyExcMinInt) : null,
+    }
+  })
+}
+
+function buildCashflowItems(rows: any[], limit: number) {
+  const byKey = new Map<string, any>()
+  for (const r of rows) byKey.set(fmtPeriodKey(r.endDate), r)
+
+  return rows.slice(0, limit).map((r) => {
+    const prev = byKey.get(prevYearKey(r.endDate)) ?? null
+    return {
+      endDate: r.endDate,
+      annDate: r.annDate,
+      reportType: r.reportType,
+      nCashflowAct: r.nCashflowAct,
+      nCashflowInvAct: r.nCashflowInvAct,
+      nCashFlowsFncAct: r.nCashFlowsFncAct,
+      freeCashflow: r.freeCashflow,
+      nIncrCashCashEqu: r.nIncrCashCashEqu,
+      cFrSaleSg: r.cFrSaleSg,
+      cPaidGoodsS: r.cPaidGoodsS,
+      nCashflowActYoy: prev ? yoy(r.nCashflowAct, prev.nCashflowAct) : null,
+      freeCashflowYoy: prev ? yoy(r.freeCashflow, prev.freeCashflow) : null,
+    }
+  })
 }
 
 // 排序字段到 SQL 列名的安全映射（value 来自受控枚举，不直接来自用户输入）

@@ -24,3 +24,5 @@ export const LOGIN_LOCK_DURATION = 600
 export const CAPTCHA_TTL = 60
 /** Refresh Token cookie 名称 */
 export const REFRESH_TOKEN_COOKIE = 'refresh_token'
+/** Refresh Token 轮换宽限期（秒）。旧 Token 使用后短暂保留，防止 React StrictMode 双 useEffect 被误判为重放攻击 */
+export const REFRESH_TOKEN_GRACE = 10

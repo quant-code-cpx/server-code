@@ -184,7 +184,7 @@ async function verifyMoneyflow() {
   banner('资金流向')
 
   const [dcCount, indDcCount, mktDcCount] = await Promise.all([
-    prisma.moneyflowDc.count(),
+    prisma.moneyflow.count(),
     prisma.moneyflowIndDc.count(),
     prisma.moneyflowMktDc.count(),
   ])
@@ -194,7 +194,7 @@ async function verifyMoneyflow() {
   row('大盘资金流记录数', mktDcCount)
 
   // 个股资金流交易日数
-  const dcDates = await prisma.moneyflowDc.groupBy({ by: ['tradeDate'], _count: { _all: true } })
+  const dcDates = await prisma.moneyflow.groupBy({ by: ['tradeDate'], _count: { _all: true } })
   row('个股资金流交易日数', dcDates.length)
 
   // 行业资金流分类统计

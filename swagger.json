@@ -972,7 +972,222 @@
             }
           }
         },
-        "summary": "股票详情 - 股东与分红（前十大 + 分红历史）",
+        "summary": "股票详情 - 十大股东（前十大股东 + 前十大流通股东，按持股数量降序）",
+        "tags": [
+          "Stock - 股票"
+        ]
+      }
+    },
+    "/stock/detail/main-money-flow": {
+      "post": {
+        "operationId": "StockController_detailMainMoneyFlow",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StockDetailMoneyFlowDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ResponseModel"
+                    },
+                    {
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/StockMainMoneyFlowDataDto"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "summary": "股票详情 - 主力资金流向（超大单+大单净流入 vs 散户净流入）",
+        "tags": [
+          "Stock - 股票"
+        ]
+      }
+    },
+    "/stock/detail/share-capital": {
+      "post": {
+        "operationId": "StockController_detailShareCapital",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StockDetailShareCapitalDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ResponseModel"
+                    },
+                    {
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/StockShareCapitalDataDto"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "summary": "股票详情 - 股本结构（总股本/流通股本/限售股 + 历史变化）",
+        "tags": [
+          "Stock - 股票"
+        ]
+      }
+    },
+    "/stock/detail/financing": {
+      "post": {
+        "operationId": "StockController_detailFinancing",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StockDetailFinancingDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ResponseModel"
+                    },
+                    {
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/StockFinancingDataDto"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "summary": "股票详情 - 融资记录（配股等历史融资事件）",
+        "tags": [
+          "Stock - 股票"
+        ]
+      }
+    },
+    "/stock/detail/today-flow": {
+      "post": {
+        "operationId": "StockController_detailTodayFlow",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StockDetailDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ResponseModel"
+                    },
+                    {
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/StockTodayFlowDataDto"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "summary": "股票详情 - 今日资金流（超大单/大单/中单/小单/主力合计）",
+        "tags": [
+          "Stock - 股票"
+        ]
+      }
+    },
+    "/stock/detail/financial-statements": {
+      "post": {
+        "operationId": "StockController_detailFinancialStatements",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StockDetailFinancialStatementsDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ResponseModel"
+                    },
+                    {
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/StockFinancialStatementsDataDto"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "summary": "股票详情 - 三大财务报表（利润表/资产负债表/现金流量表，含同比）",
         "tags": [
           "Stock - 股票"
         ]
@@ -1288,6 +1503,95 @@
         ]
       }
     },
+    "/tushare/admin/plans": {
+      "get": {
+        "operationId": "TushareAdminController_getPlans",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ResponseModel"
+                    },
+                    {
+                      "properties": {
+                        "data": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/TushareSyncPlanDto"
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "获取可用的 Tushare 同步任务计划（仅超级管理员）",
+        "tags": [
+          "Tushare - 同步管理"
+        ]
+      }
+    },
+    "/tushare/admin/sync": {
+      "post": {
+        "operationId": "TushareAdminController_manualSync",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ManualSyncDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ResponseModel"
+                    },
+                    {
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/ManualSyncResultDto"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "手动执行 Tushare 同步（仅超级管理员）",
+        "tags": [
+          "Tushare - 同步管理"
+        ]
+      }
+    },
     "/backtesting/submit": {
       "post": {
         "operationId": "BacktestingController_submit",
@@ -1335,135 +1639,6 @@
         "summary": "查询回测任务状态",
         "tags": [
           "Backtesting - 回测任务"
-        ]
-      }
-    },
-    "/stock/detail/main-money-flow": {
-      "post": {
-        "operationId": "StockController_detailMainMoneyFlow",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/StockDetailMoneyFlowDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "allOf": [
-                    {
-                      "$ref": "#/components/schemas/ResponseModel"
-                    },
-                    {
-                      "properties": {
-                        "data": {
-                          "$ref": "#/components/schemas/StockMainMoneyFlowDataDto"
-                        }
-                      }
-                    }
-                  ]
-                }
-              }
-            }
-          }
-        },
-        "summary": "股票详情 - 主力资金流向（超大单+大单净流入 vs 散户净流入）",
-        "tags": [
-          "Stock - 股票"
-        ]
-      }
-    },
-    "/stock/detail/share-capital": {
-      "post": {
-        "operationId": "StockController_detailShareCapital",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/StockDetailShareCapitalDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "allOf": [
-                    {
-                      "$ref": "#/components/schemas/ResponseModel"
-                    },
-                    {
-                      "properties": {
-                        "data": {
-                          "$ref": "#/components/schemas/StockShareCapitalDataDto"
-                        }
-                      }
-                    }
-                  ]
-                }
-              }
-            }
-          }
-        },
-        "summary": "股票详情 - 股本结构（总股本/流通股本/限售股 + 历史变化）",
-        "tags": [
-          "Stock - 股票"
-        ]
-      }
-    },
-    "/stock/detail/financing": {
-      "post": {
-        "operationId": "StockController_detailFinancing",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/StockDetailFinancingDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "allOf": [
-                    {
-                      "$ref": "#/components/schemas/ResponseModel"
-                    },
-                    {
-                      "properties": {
-                        "data": {
-                          "$ref": "#/components/schemas/StockFinancingDataDto"
-                        }
-                      }
-                    }
-                  ]
-                }
-              }
-            }
-          }
-        },
-        "summary": "股票详情 - 融资记录（配股等历史融资事件）",
-        "tags": [
-          "Stock - 股票"
         ]
       }
     }
@@ -2466,6 +2641,11 @@
             "type": "string",
             "description": "结束日期（YYYYMMDD）",
             "example": "20260321"
+          },
+          "limit": {
+            "type": "number",
+            "description": "返回条数上限（按 tradeDate 倒序截取最新 N 条）。传入时启用分页模式，响应包含 hasMore 字段。",
+            "example": 150
           }
         },
         "required": [
@@ -2475,20 +2655,23 @@
       "StockMoneyFlowSummaryDto": {
         "type": "object",
         "properties": {
-          "netAmount5d": {
-            "type": "number"
+          "netMfAmount5d": {
+            "type": "number",
+            "description": "5日净流入额（万元）"
           },
-          "netAmount20d": {
-            "type": "number"
+          "netMfAmount20d": {
+            "type": "number",
+            "description": "20日净流入额（万元）"
           },
-          "netAmount60d": {
-            "type": "number"
+          "netMfAmount60d": {
+            "type": "number",
+            "description": "60日净流入额（万元）"
           }
         },
         "required": [
-          "netAmount5d",
-          "netAmount20d",
-          "netAmount60d"
+          "netMfAmount5d",
+          "netMfAmount20d",
+          "netMfAmount60d"
         ]
       },
       "StockMoneyFlowItemDto": {
@@ -2500,19 +2683,58 @@
           },
           "close": {
             "type": "number",
-            "nullable": true
+            "nullable": true,
+            "description": "收盘价"
           },
-          "pctChange": {
+          "pctChg": {
             "type": "number",
-            "nullable": true
+            "nullable": true,
+            "description": "涨跌幅（%）"
           },
-          "netAmount": {
+          "netMfAmount": {
             "type": "number",
-            "nullable": true
+            "nullable": true,
+            "description": "净流入额（万元）"
           },
-          "netAmountRate": {
+          "buyElgAmount": {
             "type": "number",
-            "nullable": true
+            "nullable": true,
+            "description": "特大单买入（万元）"
+          },
+          "sellElgAmount": {
+            "type": "number",
+            "nullable": true,
+            "description": "特大单卖出（万元）"
+          },
+          "buyLgAmount": {
+            "type": "number",
+            "nullable": true,
+            "description": "大单买入（万元）"
+          },
+          "sellLgAmount": {
+            "type": "number",
+            "nullable": true,
+            "description": "大单卖出（万元）"
+          },
+          "buyMdAmount": {
+            "type": "number",
+            "nullable": true,
+            "description": "中单买入（万元）"
+          },
+          "sellMdAmount": {
+            "type": "number",
+            "nullable": true,
+            "description": "中单卖出（万元）"
+          },
+          "buySmAmount": {
+            "type": "number",
+            "nullable": true,
+            "description": "小单买入（万元）"
+          },
+          "sellSmAmount": {
+            "type": "number",
+            "nullable": true,
+            "description": "小单卖出（万元）"
           }
         },
         "required": [
@@ -2612,31 +2834,83 @@
           "tsCode"
         ]
       },
+      "StockHolderItemDto": {
+        "type": "object",
+        "properties": {
+          "holderName": {
+            "type": "string"
+          },
+          "holdAmount": {
+            "type": "number",
+            "nullable": true,
+            "description": "持股数量（股）"
+          },
+          "holdRatio": {
+            "type": "number",
+            "nullable": true,
+            "description": "持股比例（%）"
+          },
+          "holdFloatRatio": {
+            "type": "number",
+            "nullable": true,
+            "description": "占流通股比例（%）"
+          },
+          "holdChange": {
+            "type": "number",
+            "nullable": true,
+            "description": "持股变动（股）"
+          },
+          "holderType": {
+            "type": "string",
+            "nullable": true,
+            "description": "股东类型"
+          },
+          "annDate": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true,
+            "description": "公告日"
+          }
+        },
+        "required": [
+          "holderName"
+        ]
+      },
+      "StockHolderGroupDto": {
+        "type": "object",
+        "properties": {
+          "endDate": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true,
+            "description": "报告期"
+          },
+          "holders": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StockHolderItemDto"
+            }
+          }
+        },
+        "required": [
+          "holders"
+        ]
+      },
       "StockShareholdersDataDto": {
         "type": "object",
         "properties": {
           "tsCode": {
             "type": "string"
           },
-          "dividendHistory": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "additionalProperties": true
-            }
-          },
           "top10Holders": {
-            "type": "object",
-            "additionalProperties": true
+            "$ref": "#/components/schemas/StockHolderGroupDto"
           },
           "top10FloatHolders": {
-            "type": "object",
-            "additionalProperties": true
+            "$ref": "#/components/schemas/StockHolderGroupDto"
           }
         },
         "required": [
           "tsCode",
-          "dividendHistory",
           "top10Holders",
           "top10FloatHolders"
         ]
@@ -2648,6 +2922,650 @@
             "type": "string",
             "example": "000001.SZ",
             "description": "股票代码（ts_code）"
+          }
+        },
+        "required": [
+          "tsCode"
+        ]
+      },
+      "StockMainMoneyFlowSummaryDto": {
+        "type": "object",
+        "properties": {
+          "mainNetAmount5d": {
+            "type": "number",
+            "description": "5日主力净流入（万元）"
+          },
+          "mainNetAmount10d": {
+            "type": "number",
+            "description": "10日主力净流入（万元）"
+          },
+          "mainNetAmount20d": {
+            "type": "number",
+            "description": "20日主力净流入（万元）"
+          }
+        },
+        "required": [
+          "mainNetAmount5d",
+          "mainNetAmount10d",
+          "mainNetAmount20d"
+        ]
+      },
+      "StockMainMoneyFlowItemDto": {
+        "type": "object",
+        "properties": {
+          "tradeDate": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "close": {
+            "type": "number",
+            "nullable": true
+          },
+          "mainNetAmount": {
+            "type": "number",
+            "nullable": true,
+            "description": "主力净流入（万元）"
+          },
+          "mainNetAmountRate": {
+            "type": "number",
+            "nullable": true,
+            "description": "主力净流入占比（%）"
+          },
+          "retailNetAmount": {
+            "type": "number",
+            "nullable": true,
+            "description": "散户净流入（万元）"
+          }
+        },
+        "required": [
+          "tradeDate"
+        ]
+      },
+      "StockMainMoneyFlowDataDto": {
+        "type": "object",
+        "properties": {
+          "tsCode": {
+            "type": "string"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/StockMainMoneyFlowSummaryDto"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StockMainMoneyFlowItemDto"
+            }
+          }
+        },
+        "required": [
+          "tsCode",
+          "summary",
+          "items"
+        ]
+      },
+      "StockShareCapitalLatestDto": {
+        "type": "object",
+        "properties": {
+          "totalShare": {
+            "type": "number",
+            "description": "总股本（万股）"
+          },
+          "floatShare": {
+            "type": "number",
+            "description": "流通股本（万股）"
+          },
+          "freeShare": {
+            "type": "number",
+            "description": "自由流通股（万股）"
+          },
+          "restrictedShare": {
+            "type": "number",
+            "description": "限售股（万股）"
+          },
+          "announceDate": {
+            "format": "date-time",
+            "type": "string",
+            "description": "数据日期"
+          }
+        },
+        "required": [
+          "totalShare",
+          "floatShare",
+          "freeShare",
+          "restrictedShare",
+          "announceDate"
+        ]
+      },
+      "StockShareCapitalHistoryItemDto": {
+        "type": "object",
+        "properties": {
+          "changeDate": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "totalShare": {
+            "type": "number",
+            "nullable": true
+          },
+          "floatShare": {
+            "type": "number",
+            "nullable": true
+          },
+          "changeReason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "changeDate",
+          "changeReason"
+        ]
+      },
+      "StockShareCapitalDataDto": {
+        "type": "object",
+        "properties": {
+          "tsCode": {
+            "type": "string"
+          },
+          "latest": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/StockShareCapitalLatestDto"
+              }
+            ]
+          },
+          "history": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StockShareCapitalHistoryItemDto"
+            }
+          }
+        },
+        "required": [
+          "tsCode",
+          "latest",
+          "history"
+        ]
+      },
+      "StockDetailShareCapitalDto": {
+        "type": "object",
+        "properties": {
+          "tsCode": {
+            "type": "string",
+            "example": "000001.SZ",
+            "description": "股票代码（ts_code）"
+          }
+        },
+        "required": [
+          "tsCode"
+        ]
+      },
+      "StockFinancingItemDto": {
+        "type": "object",
+        "properties": {
+          "eventType": {
+            "type": "string",
+            "description": "融资类型，如\"配股\""
+          },
+          "announceDate": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true,
+            "description": "公告日"
+          },
+          "amount": {
+            "type": "number",
+            "nullable": true,
+            "description": "融资金额（元）"
+          },
+          "price": {
+            "type": "number",
+            "nullable": true,
+            "description": "发行价（元）"
+          },
+          "shares": {
+            "type": "number",
+            "nullable": true,
+            "description": "发行股数（万股）"
+          },
+          "status": {
+            "type": "string",
+            "nullable": true,
+            "description": "状态描述"
+          }
+        },
+        "required": [
+          "eventType"
+        ]
+      },
+      "StockFinancingDataDto": {
+        "type": "object",
+        "properties": {
+          "tsCode": {
+            "type": "string"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StockFinancingItemDto"
+            }
+          }
+        },
+        "required": [
+          "tsCode",
+          "items"
+        ]
+      },
+      "StockDetailFinancingDto": {
+        "type": "object",
+        "properties": {
+          "tsCode": {
+            "type": "string",
+            "example": "000001.SZ",
+            "description": "股票代码（ts_code）"
+          }
+        },
+        "required": [
+          "tsCode"
+        ]
+      },
+      "MoneyFlowTierDto": {
+        "type": "object",
+        "properties": {
+          "buyAmount": {
+            "type": "number",
+            "nullable": true,
+            "description": "买入额（万元）"
+          },
+          "sellAmount": {
+            "type": "number",
+            "nullable": true,
+            "description": "卖出额（万元）"
+          },
+          "netAmount": {
+            "type": "number",
+            "nullable": true,
+            "description": "净流入额（万元）"
+          }
+        }
+      },
+      "StockTodayFlowDataDto": {
+        "type": "object",
+        "properties": {
+          "tsCode": {
+            "type": "string"
+          },
+          "tradeDate": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "superLarge": {
+            "description": "特大单（≥100万元）",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MoneyFlowTierDto"
+              }
+            ]
+          },
+          "large": {
+            "description": "大单（20~100万元）",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MoneyFlowTierDto"
+              }
+            ]
+          },
+          "medium": {
+            "description": "中单（5~20万元）",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MoneyFlowTierDto"
+              }
+            ]
+          },
+          "small": {
+            "description": "小单（<5万元）",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MoneyFlowTierDto"
+              }
+            ]
+          },
+          "mainForce": {
+            "description": "主力合计（特大单 + 大单）",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MoneyFlowTierDto"
+              }
+            ]
+          },
+          "netMfAmount": {
+            "type": "number",
+            "nullable": true,
+            "description": "全市场净流入额（万元，Tushare net_mf_amount）"
+          }
+        },
+        "required": [
+          "tsCode",
+          "tradeDate",
+          "superLarge",
+          "large",
+          "medium",
+          "small",
+          "mainForce"
+        ]
+      },
+      "IncomeStatementItemDto": {
+        "type": "object",
+        "properties": {
+          "endDate": {
+            "format": "date-time",
+            "type": "string",
+            "description": "报告期"
+          },
+          "annDate": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
+          },
+          "reportType": {
+            "type": "string",
+            "nullable": true
+          },
+          "totalRevenue": {
+            "type": "number",
+            "nullable": true,
+            "description": "营业总收入"
+          },
+          "revenue": {
+            "type": "number",
+            "nullable": true,
+            "description": "营业收入"
+          },
+          "operateProfit": {
+            "type": "number",
+            "nullable": true,
+            "description": "营业利润"
+          },
+          "totalProfit": {
+            "type": "number",
+            "nullable": true,
+            "description": "利润总额"
+          },
+          "nIncome": {
+            "type": "number",
+            "nullable": true,
+            "description": "净利润（含少数股东损益）"
+          },
+          "nIncomeAttrP": {
+            "type": "number",
+            "nullable": true,
+            "description": "净利润（不含少数股东损益）"
+          },
+          "basicEps": {
+            "type": "number",
+            "nullable": true,
+            "description": "基本每股收益"
+          },
+          "sellExp": {
+            "type": "number",
+            "nullable": true,
+            "description": "销售费用"
+          },
+          "adminExp": {
+            "type": "number",
+            "nullable": true,
+            "description": "管理费用"
+          },
+          "finExp": {
+            "type": "number",
+            "nullable": true,
+            "description": "财务费用"
+          },
+          "rdExp": {
+            "type": "number",
+            "nullable": true,
+            "description": "研发费用"
+          },
+          "ebit": {
+            "type": "number",
+            "nullable": true,
+            "description": "息税前利润"
+          },
+          "ebitda": {
+            "type": "number",
+            "nullable": true,
+            "description": "息税折旧摊销前利润"
+          },
+          "totalRevenueYoy": {
+            "type": "number",
+            "nullable": true,
+            "description": "营业总收入同比（%）"
+          },
+          "nIncomeYoy": {
+            "type": "number",
+            "nullable": true,
+            "description": "净利润同比（%）"
+          },
+          "operateProfitYoy": {
+            "type": "number",
+            "nullable": true,
+            "description": "营业利润同比（%）"
+          }
+        },
+        "required": [
+          "endDate"
+        ]
+      },
+      "BalanceSheetItemDto": {
+        "type": "object",
+        "properties": {
+          "endDate": {
+            "format": "date-time",
+            "type": "string",
+            "description": "报告期"
+          },
+          "annDate": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
+          },
+          "reportType": {
+            "type": "string",
+            "nullable": true
+          },
+          "totalAssets": {
+            "type": "number",
+            "nullable": true,
+            "description": "资产总计"
+          },
+          "totalCurAssets": {
+            "type": "number",
+            "nullable": true,
+            "description": "流动资产合计"
+          },
+          "totalNca": {
+            "type": "number",
+            "nullable": true,
+            "description": "非流动资产合计"
+          },
+          "moneyCap": {
+            "type": "number",
+            "nullable": true,
+            "description": "货币资金"
+          },
+          "inventories": {
+            "type": "number",
+            "nullable": true,
+            "description": "存货"
+          },
+          "accountsReceiv": {
+            "type": "number",
+            "nullable": true,
+            "description": "应收账款"
+          },
+          "totalLiab": {
+            "type": "number",
+            "nullable": true,
+            "description": "负债合计"
+          },
+          "totalCurLiab": {
+            "type": "number",
+            "nullable": true,
+            "description": "流动负债合计"
+          },
+          "totalNcl": {
+            "type": "number",
+            "nullable": true,
+            "description": "非流动负债合计"
+          },
+          "stBorr": {
+            "type": "number",
+            "nullable": true,
+            "description": "短期借款"
+          },
+          "ltBorr": {
+            "type": "number",
+            "nullable": true,
+            "description": "长期借款"
+          },
+          "totalHldrEqyExcMinInt": {
+            "type": "number",
+            "nullable": true,
+            "description": "股东权益合计（不含少数股东权益）"
+          },
+          "totalHldrEqyIncMinInt": {
+            "type": "number",
+            "nullable": true,
+            "description": "股东权益合计（含少数股东权益）"
+          },
+          "totalAssetsYoy": {
+            "type": "number",
+            "nullable": true,
+            "description": "资产总计同比（%）"
+          },
+          "equityYoy": {
+            "type": "number",
+            "nullable": true,
+            "description": "股东权益同比（%）"
+          }
+        },
+        "required": [
+          "endDate"
+        ]
+      },
+      "CashflowItemDto": {
+        "type": "object",
+        "properties": {
+          "endDate": {
+            "format": "date-time",
+            "type": "string",
+            "description": "报告期"
+          },
+          "annDate": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
+          },
+          "reportType": {
+            "type": "string",
+            "nullable": true
+          },
+          "nCashflowAct": {
+            "type": "number",
+            "nullable": true,
+            "description": "经营活动产生的现金流量净额"
+          },
+          "nCashflowInvAct": {
+            "type": "number",
+            "nullable": true,
+            "description": "投资活动产生的现金流量净额"
+          },
+          "nCashFlowsFncAct": {
+            "type": "number",
+            "nullable": true,
+            "description": "筹资活动产生的现金流量净额"
+          },
+          "freeCashflow": {
+            "type": "number",
+            "nullable": true,
+            "description": "企业自由现金流量"
+          },
+          "nIncrCashCashEqu": {
+            "type": "number",
+            "nullable": true,
+            "description": "现金及现金等价物净增加额"
+          },
+          "cFrSaleSg": {
+            "type": "number",
+            "nullable": true,
+            "description": "销售商品、提供劳务收到的现金"
+          },
+          "cPaidGoodsS": {
+            "type": "number",
+            "nullable": true,
+            "description": "购买商品、接受劳务支付的现金"
+          },
+          "nCashflowActYoy": {
+            "type": "number",
+            "nullable": true,
+            "description": "经营活动净现金流同比（%）"
+          },
+          "freeCashflowYoy": {
+            "type": "number",
+            "nullable": true,
+            "description": "自由现金流同比（%）"
+          }
+        },
+        "required": [
+          "endDate"
+        ]
+      },
+      "StockFinancialStatementsDataDto": {
+        "type": "object",
+        "properties": {
+          "tsCode": {
+            "type": "string"
+          },
+          "income": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IncomeStatementItemDto"
+            }
+          },
+          "balanceSheet": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BalanceSheetItemDto"
+            }
+          },
+          "cashflow": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CashflowItemDto"
+            }
+          }
+        },
+        "required": [
+          "tsCode",
+          "income",
+          "balanceSheet",
+          "cashflow"
+        ]
+      },
+      "StockDetailFinancialStatementsDto": {
+        "type": "object",
+        "properties": {
+          "tsCode": {
+            "type": "string",
+            "example": "000001.SZ",
+            "description": "股票代码（ts_code）"
+          },
+          "periods": {
+            "type": "number",
+            "description": "返回最近 N 个报告期（report_type=1 合并报表）",
+            "default": 8,
+            "maximum": 20
           }
         },
         "required": [
@@ -2982,6 +3900,269 @@
           }
         }
       },
+      "TushareSyncScheduleDto": {
+        "type": "object",
+        "properties": {
+          "cron": {
+            "type": "string"
+          },
+          "timeZone": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "tradingDayOnly": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "cron",
+          "timeZone",
+          "description",
+          "tradingDayOnly"
+        ]
+      },
+      "TushareSyncPlanDto": {
+        "type": "object",
+        "properties": {
+          "task": {
+            "type": "string",
+            "enum": [
+              "STOCK_BASIC",
+              "STOCK_COMPANY",
+              "TRADE_CAL",
+              "DAILY",
+              "WEEKLY",
+              "MONTHLY",
+              "ADJ_FACTOR",
+              "DAILY_BASIC",
+              "INDEX_DAILY",
+              "MONEYFLOW_DC",
+              "MONEYFLOW_IND_DC",
+              "MONEYFLOW_MKT_DC",
+              "MONEYFLOW_HSGT",
+              "INCOME",
+              "BALANCE_SHEET",
+              "CASHFLOW",
+              "EXPRESS",
+              "FINA_INDICATOR",
+              "DIVIDEND",
+              "TOP10_HOLDERS",
+              "TOP10_FLOAT_HOLDERS"
+            ]
+          },
+          "label": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "basic",
+              "market",
+              "financial",
+              "moneyflow"
+            ]
+          },
+          "bootstrapEnabled": {
+            "type": "boolean"
+          },
+          "supportsManual": {
+            "type": "boolean"
+          },
+          "supportsFullSync": {
+            "type": "boolean"
+          },
+          "requiresTradeDate": {
+            "type": "boolean"
+          },
+          "schedule": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/TushareSyncScheduleDto"
+              }
+            ]
+          }
+        },
+        "required": [
+          "task",
+          "label",
+          "category",
+          "bootstrapEnabled",
+          "supportsManual",
+          "supportsFullSync",
+          "requiresTradeDate"
+        ]
+      },
+      "ManualSyncResultDto": {
+        "type": "object",
+        "properties": {
+          "trigger": {
+            "type": "string",
+            "enum": [
+              "bootstrap",
+              "schedule",
+              "manual"
+            ]
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "incremental",
+              "full"
+            ]
+          },
+          "executedTasks": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "STOCK_BASIC",
+                "STOCK_COMPANY",
+                "TRADE_CAL",
+                "DAILY",
+                "WEEKLY",
+                "MONTHLY",
+                "ADJ_FACTOR",
+                "DAILY_BASIC",
+                "INDEX_DAILY",
+                "MONEYFLOW_DC",
+                "MONEYFLOW_IND_DC",
+                "MONEYFLOW_MKT_DC",
+                "MONEYFLOW_HSGT",
+                "INCOME",
+                "BALANCE_SHEET",
+                "CASHFLOW",
+                "EXPRESS",
+                "FINA_INDICATOR",
+                "DIVIDEND",
+                "TOP10_HOLDERS",
+                "TOP10_FLOAT_HOLDERS"
+              ]
+            }
+          },
+          "skippedTasks": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "STOCK_BASIC",
+                "STOCK_COMPANY",
+                "TRADE_CAL",
+                "DAILY",
+                "WEEKLY",
+                "MONTHLY",
+                "ADJ_FACTOR",
+                "DAILY_BASIC",
+                "INDEX_DAILY",
+                "MONEYFLOW_DC",
+                "MONEYFLOW_IND_DC",
+                "MONEYFLOW_MKT_DC",
+                "MONEYFLOW_HSGT",
+                "INCOME",
+                "BALANCE_SHEET",
+                "CASHFLOW",
+                "EXPRESS",
+                "FINA_INDICATOR",
+                "DIVIDEND",
+                "TOP10_HOLDERS",
+                "TOP10_FLOAT_HOLDERS"
+              ]
+            }
+          },
+          "failedTasks": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "STOCK_BASIC",
+                "STOCK_COMPANY",
+                "TRADE_CAL",
+                "DAILY",
+                "WEEKLY",
+                "MONTHLY",
+                "ADJ_FACTOR",
+                "DAILY_BASIC",
+                "INDEX_DAILY",
+                "MONEYFLOW_DC",
+                "MONEYFLOW_IND_DC",
+                "MONEYFLOW_MKT_DC",
+                "MONEYFLOW_HSGT",
+                "INCOME",
+                "BALANCE_SHEET",
+                "CASHFLOW",
+                "EXPRESS",
+                "FINA_INDICATOR",
+                "DIVIDEND",
+                "TOP10_HOLDERS",
+                "TOP10_FLOAT_HOLDERS"
+              ]
+            }
+          },
+          "targetTradeDate": {
+            "type": "string",
+            "nullable": true
+          },
+          "elapsedSeconds": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "trigger",
+          "mode",
+          "executedTasks",
+          "skippedTasks",
+          "failedTasks",
+          "elapsedSeconds"
+        ]
+      },
+      "ManualSyncDto": {
+        "type": "object",
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "incremental",
+              "full"
+            ],
+            "description": "同步模式：incremental 增量，full 全量"
+          },
+          "tasks": {
+            "type": "array",
+            "description": "指定要执行的同步任务；不传则执行全部支持手动同步的任务",
+            "items": {
+              "type": "string",
+              "enum": [
+                "STOCK_BASIC",
+                "STOCK_COMPANY",
+                "TRADE_CAL",
+                "DAILY",
+                "WEEKLY",
+                "MONTHLY",
+                "ADJ_FACTOR",
+                "DAILY_BASIC",
+                "INDEX_DAILY",
+                "MONEYFLOW_DC",
+                "MONEYFLOW_IND_DC",
+                "MONEYFLOW_MKT_DC",
+                "MONEYFLOW_HSGT",
+                "INCOME",
+                "BALANCE_SHEET",
+                "CASHFLOW",
+                "EXPRESS",
+                "FINA_INDICATOR",
+                "DIVIDEND",
+                "TOP10_HOLDERS",
+                "TOP10_FLOAT_HOLDERS"
+              ]
+            }
+          }
+        },
+        "required": [
+          "mode"
+        ]
+      },
       "SubmitBacktestingDto": {
         "type": "object",
         "properties": {
@@ -3028,249 +4209,6 @@
         },
         "required": [
           "jobId"
-        ]
-      },
-      "StockDetailShareCapitalDto": {
-        "type": "object",
-        "properties": {
-          "tsCode": {
-            "type": "string",
-            "example": "000001.SZ",
-            "description": "股票代码（ts_code）"
-          }
-        },
-        "required": [
-          "tsCode"
-        ]
-      },
-      "StockDetailFinancingDto": {
-        "type": "object",
-        "properties": {
-          "tsCode": {
-            "type": "string",
-            "example": "000001.SZ",
-            "description": "股票代码（ts_code）"
-          }
-        },
-        "required": [
-          "tsCode"
-        ]
-      },
-      "StockMainMoneyFlowSummaryDto": {
-        "type": "object",
-        "properties": {
-          "mainNetAmount5d": {
-            "type": "number",
-            "description": "5日主力净流入（万元）"
-          },
-          "mainNetAmount10d": {
-            "type": "number",
-            "description": "10日主力净流入（万元）"
-          },
-          "mainNetAmount20d": {
-            "type": "number",
-            "description": "20日主力净流入（万元）"
-          }
-        },
-        "required": [
-          "mainNetAmount5d",
-          "mainNetAmount10d",
-          "mainNetAmount20d"
-        ]
-      },
-      "StockMainMoneyFlowItemDto": {
-        "type": "object",
-        "properties": {
-          "tradeDate": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "close": {
-            "type": "number",
-            "nullable": true
-          },
-          "mainNetAmount": {
-            "type": "number",
-            "nullable": true,
-            "description": "主力净流入（万元）"
-          },
-          "mainNetAmountRate": {
-            "type": "number",
-            "nullable": true,
-            "description": "主力净流入占比（%）"
-          },
-          "retailNetAmount": {
-            "type": "number",
-            "nullable": true,
-            "description": "散户净流入（万元）"
-          }
-        },
-        "required": [
-          "tradeDate"
-        ]
-      },
-      "StockMainMoneyFlowDataDto": {
-        "type": "object",
-        "properties": {
-          "tsCode": {
-            "type": "string"
-          },
-          "summary": {
-            "$ref": "#/components/schemas/StockMainMoneyFlowSummaryDto"
-          },
-          "items": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/StockMainMoneyFlowItemDto"
-            }
-          }
-        },
-        "required": [
-          "tsCode",
-          "summary",
-          "items"
-        ]
-      },
-      "StockShareCapitalLatestDto": {
-        "type": "object",
-        "properties": {
-          "totalShare": {
-            "type": "number",
-            "description": "总股本（万股）"
-          },
-          "floatShare": {
-            "type": "number",
-            "description": "流通股本（万股）"
-          },
-          "freeShare": {
-            "type": "number",
-            "description": "自由流通股（万股）"
-          },
-          "restrictedShare": {
-            "type": "number",
-            "description": "限售股（万股）"
-          },
-          "announceDate": {
-            "type": "string",
-            "format": "date-time",
-            "description": "数据日期"
-          }
-        },
-        "required": [
-          "totalShare",
-          "floatShare",
-          "freeShare",
-          "restrictedShare",
-          "announceDate"
-        ]
-      },
-      "StockShareCapitalHistoryItemDto": {
-        "type": "object",
-        "properties": {
-          "changeDate": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "totalShare": {
-            "type": "number",
-            "nullable": true
-          },
-          "floatShare": {
-            "type": "number",
-            "nullable": true
-          },
-          "changeReason": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "changeDate",
-          "changeReason"
-        ]
-      },
-      "StockShareCapitalDataDto": {
-        "type": "object",
-        "properties": {
-          "tsCode": {
-            "type": "string"
-          },
-          "latest": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/StockShareCapitalLatestDto"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "history": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/StockShareCapitalHistoryItemDto"
-            }
-          }
-        },
-        "required": [
-          "tsCode",
-          "latest",
-          "history"
-        ]
-      },
-      "StockFinancingItemDto": {
-        "type": "object",
-        "properties": {
-          "eventType": {
-            "type": "string",
-            "description": "融资类型，如\"配股\""
-          },
-          "announceDate": {
-            "type": "string",
-            "format": "date-time",
-            "nullable": true,
-            "description": "公告日"
-          },
-          "amount": {
-            "type": "number",
-            "nullable": true,
-            "description": "融资金额（元）"
-          },
-          "price": {
-            "type": "number",
-            "nullable": true,
-            "description": "发行价（元）"
-          },
-          "shares": {
-            "type": "number",
-            "nullable": true,
-            "description": "发行股数（万股）"
-          },
-          "status": {
-            "type": "string",
-            "nullable": true,
-            "description": "状态描述"
-          }
-        },
-        "required": [
-          "eventType"
-        ]
-      },
-      "StockFinancingDataDto": {
-        "type": "object",
-        "properties": {
-          "tsCode": {
-            "type": "string"
-          },
-          "items": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/StockFinancingItemDto"
-            }
-          }
-        },
-        "required": [
-          "tsCode",
-          "items"
         ]
       }
     }

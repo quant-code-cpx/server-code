@@ -584,4 +584,126 @@ export class FactorComputeService {
       summary,
     }
   }
+
+  /**
+   * Get raw factor values for a given date without pagination.
+   * Used by analysis services for IC/quantile/correlation computations.
+   */
+  async getRawFactorValuesForDate(
+    factorName: string,
+    tradeDate: string,
+    universe?: string,
+  ): Promise<Array<{ tsCode: string; factorValue: number | null }>> {
+    interface RawRow {
+      ts_code: string
+      factor_value: number | null
+    }
+
+    const universeJoin = universe
+      ? Prisma.sql`INNER JOIN index_constituent_weights iw
+          ON iw.con_code = sb.ts_code
+          AND iw.index_code = ${universe}
+          AND iw.trade_date = (
+            SELECT MAX(trade_date) FROM index_constituent_weights
+            WHERE index_code = ${universe} AND trade_date <= ${tradeDate}
+          )`
+      : Prisma.sql``
+
+    // FIELD_REF: daily_basic
+    if (FIELD_REF_MAP[factorName]?.table === 'daily_basic') {
+      const col = Prisma.raw(FIELD_REF_MAP[factorName].column)
+      const rows = await this.prisma.$queryRaw<RawRow[]>(Prisma.sql`
+        SELECT db.ts_code, db.${col}::float AS factor_value
+        FROM stock_daily_valuation_metrics db
+        INNER JOIN stock_basic_profiles sb ON sb.ts_code = db.ts_code
+        ${universeJoin}
+        LEFT JOIN stock_suspend_events sp ON sp.ts_code = db.ts_code AND sp.trade_date = ${tradeDate}
+        WHERE db.trade_date = ${tradeDate}::date
+          AND sb.name NOT LIKE '%ST%'
+          AND sb.name NOT LIKE '%退%'
+          AND sp.ts_code IS NULL
+          AND (sb.list_date IS NULL OR sb.list_date <= (${tradeDate}::date - INTERVAL '${Prisma.raw(String(NEW_LISTING_EXCLUSION_DAYS))} days'))
+      `)
+      return rows.map((r) => ({ tsCode: r.ts_code, factorValue: r.factor_value != null ? Number(r.factor_value) : null }))
+    }
+
+    // FIELD_REF: fina_indicator (PIT)
+    if (FIELD_REF_MAP[factorName]?.table === 'fina_indicator') {
+      const col = Prisma.raw(FIELD_REF_MAP[factorName].column)
+      const rows = await this.prisma.$queryRaw<RawRow[]>(Prisma.sql`
+        WITH pit_fina AS (
+          SELECT DISTINCT ON (ts_code) ts_code, ${col}
+          FROM financial_indicator_snapshots
+          WHERE ann_date IS NOT NULL AND ann_date <= ${tradeDate}::date
+          ORDER BY ts_code, ann_date DESC
+        )
+        SELECT sb.ts_code, fi.${col}::float AS factor_value
+        FROM stock_basic_profiles sb
+        INNER JOIN pit_fina fi ON fi.ts_code = sb.ts_code
+        ${universeJoin}
+        LEFT JOIN stock_suspend_events sp ON sp.ts_code = sb.ts_code AND sp.trade_date = ${tradeDate}
+        WHERE sb.name NOT LIKE '%ST%'
+          AND sb.name NOT LIKE '%退%'
+          AND sp.ts_code IS NULL
+          AND (sb.list_date IS NULL OR sb.list_date <= (${tradeDate}::date - INTERVAL '${Prisma.raw(String(NEW_LISTING_EXCLUSION_DAYS))} days'))
+      `)
+      return rows.map((r) => ({ tsCode: r.ts_code, factorValue: r.factor_value != null ? Number(r.factor_value) : null }))
+    }
+
+    // FIELD_REF: moneyflow
+    if (FIELD_REF_MAP[factorName]?.table === 'moneyflow') {
+      const col = Prisma.raw(FIELD_REF_MAP[factorName].column)
+      const rows = await this.prisma.$queryRaw<RawRow[]>(Prisma.sql`
+        SELECT mf.ts_code, mf.${col}::float AS factor_value
+        FROM stock_capital_flows mf
+        INNER JOIN stock_basic_profiles sb ON sb.ts_code = mf.ts_code
+        ${universeJoin}
+        LEFT JOIN stock_suspend_events sp ON sp.ts_code = mf.ts_code AND sp.trade_date = ${tradeDate}
+        WHERE mf.trade_date = ${tradeDate}::date
+          AND sb.name NOT LIKE '%ST%'
+          AND sb.name NOT LIKE '%退%'
+          AND sp.ts_code IS NULL
+          AND (sb.list_date IS NULL OR sb.list_date <= (${tradeDate}::date - INTERVAL '${Prisma.raw(String(NEW_LISTING_EXCLUSION_DAYS))} days'))
+      `)
+      return rows.map((r) => ({ tsCode: r.ts_code, factorValue: r.factor_value != null ? Number(r.factor_value) : null }))
+    }
+
+    // DERIVED: daily_basic
+    if (DERIVED_DAILY_BASIC_MAP[factorName]) {
+      const exprRaw = Prisma.raw(DERIVED_DAILY_BASIC_MAP[factorName])
+      const rows = await this.prisma.$queryRaw<RawRow[]>(Prisma.sql`
+        SELECT db.ts_code, (${exprRaw})::float AS factor_value
+        FROM stock_daily_valuation_metrics db
+        INNER JOIN stock_basic_profiles sb ON sb.ts_code = db.ts_code
+        ${universeJoin}
+        LEFT JOIN stock_suspend_events sp ON sp.ts_code = db.ts_code AND sp.trade_date = ${tradeDate}
+        WHERE db.trade_date = ${tradeDate}::date
+          AND sb.name NOT LIKE '%ST%'
+          AND sb.name NOT LIKE '%退%'
+          AND sp.ts_code IS NULL
+          AND (sb.list_date IS NULL OR sb.list_date <= (${tradeDate}::date - INTERVAL '${Prisma.raw(String(NEW_LISTING_EXCLUSION_DAYS))} days'))
+      `)
+      return rows.map((r) => ({ tsCode: r.ts_code, factorValue: r.factor_value != null ? Number(r.factor_value) : null }))
+    }
+
+    // DERIVED: moneyflow
+    if (DERIVED_MONEYFLOW_MAP[factorName]) {
+      const exprRaw = Prisma.raw(DERIVED_MONEYFLOW_MAP[factorName])
+      const rows = await this.prisma.$queryRaw<RawRow[]>(Prisma.sql`
+        SELECT mf.ts_code, (${exprRaw})::float AS factor_value
+        FROM stock_capital_flows mf
+        INNER JOIN stock_basic_profiles sb ON sb.ts_code = mf.ts_code
+        ${universeJoin}
+        LEFT JOIN stock_suspend_events sp ON sp.ts_code = mf.ts_code AND sp.trade_date = ${tradeDate}
+        WHERE mf.trade_date = ${tradeDate}::date
+          AND sb.name NOT LIKE '%ST%'
+          AND sb.name NOT LIKE '%退%'
+          AND sp.ts_code IS NULL
+          AND (sb.list_date IS NULL OR sb.list_date <= (${tradeDate}::date - INTERVAL '${Prisma.raw(String(NEW_LISTING_EXCLUSION_DAYS))} days'))
+      `)
+      return rows.map((r) => ({ tsCode: r.ts_code, factorValue: r.factor_value != null ? Number(r.factor_value) : null }))
+    }
+
+    return []
+  }
 }

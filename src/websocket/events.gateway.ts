@@ -20,10 +20,13 @@ import { Server, Socket } from 'socket.io'
  *   - unsubscribe_backtest 取消订阅
  *
  * 服务端主动推送事件:
- *   - backtest_progress   回测进度 { jobId, progress, state }
- *   - backtest_completed  回测完成 { jobId, result }
- *   - backtest_failed     回测失败 { jobId, reason }
- *   - notification        通用通知消息
+ *   - backtest_progress      回测进度 { jobId, progress, state }
+ *   - backtest_completed     回测完成 { jobId, result }
+ *   - backtest_failed        回测失败 { jobId, reason }
+ *   - tushare_sync_started   Tushare 同步开始 { trigger, mode }
+ *   - tushare_sync_completed Tushare 同步完成 { trigger, mode, executedTasks, skippedTasks, failedTasks, targetTradeDate, elapsedSeconds }
+ *   - tushare_sync_failed    Tushare 同步异常 { trigger, mode, reason }
+ *   - notification           通用通知消息
  */
 @WebSocketGateway({
   namespace: '/ws',
@@ -88,5 +91,28 @@ export class EventsGateway implements OnGatewayInit, OnGatewayConnection, OnGate
   /** 向所有在线客户端广播通知 */
   broadcastNotification(message: string, data?: any) {
     this.server.emit('notification', { message, data })
+  }
+
+  /** 广播 Tushare 同步已开始 */
+  broadcastSyncStarted(trigger: string, mode: string) {
+    this.server.emit('tushare_sync_started', { trigger, mode })
+  }
+
+  /** 广播 Tushare 同步已完成 */
+  broadcastSyncCompleted(result: {
+    trigger: string
+    mode: string
+    executedTasks: string[]
+    skippedTasks: string[]
+    failedTasks: string[]
+    targetTradeDate: string | null
+    elapsedSeconds: number
+  }) {
+    this.server.emit('tushare_sync_completed', result)
+  }
+
+  /** 广播 Tushare 同步异常终止 */
+  broadcastSyncFailed(trigger: string, mode: string, reason: string) {
+    this.server.emit('tushare_sync_failed', { trigger, mode, reason })
   }
 }

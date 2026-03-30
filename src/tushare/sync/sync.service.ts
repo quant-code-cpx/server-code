@@ -10,6 +10,7 @@ import { SchedulerRegistry } from '@nestjs/schedule'
 import { CronJob } from 'cron'
 import { ITushareConfig, TUSHARE_CONFIG_TOKEN } from 'src/config/tushare.config'
 import { TushareSyncTaskName } from 'src/constant/tushare.constant'
+import { EventsGateway } from 'src/websocket/events.gateway'
 import { SyncHelperService } from './sync-helper.service'
 import { TushareSyncRegistryService } from './sync-registry.service'
 import { TushareSyncCategory, TushareSyncMode, TushareSyncPlan, TushareSyncTrigger } from './sync-plan.types'
@@ -49,6 +50,7 @@ export class TushareSyncService implements OnApplicationBootstrap {
     private readonly schedulerRegistry: SchedulerRegistry,
     private readonly helper: SyncHelperService,
     private readonly registry: TushareSyncRegistryService,
+    private readonly eventsGateway: EventsGateway,
   ) {
     const cfg = this.configService.get<ITushareConfig>(TUSHARE_CONFIG_TOKEN, { infer: true })
     if (!cfg) throw new Error('TushareConfig is not registered.')
@@ -94,6 +96,40 @@ export class TushareSyncService implements OnApplicationBootstrap {
   }
 
   async runManualSync(input: { tasks?: TushareSyncTaskName[]; mode: TushareSyncMode }): Promise<RunPlansResult> {
+    const requestedPlans = this.buildManualPlans(input)
+
+    return this.runPlans({
+      trigger: 'manual',
+      mode: input.mode,
+      plans: requestedPlans,
+    })
+  }
+
+  /**
+   * 异步触发手动同步：同步验证参数后立即返回，实际同步在后台执行。
+   * 同步开始、完成、异常均通过 WebSocket 广播通知前端。
+   */
+  triggerManualSyncAsync(input: { tasks?: TushareSyncTaskName[]; mode: TushareSyncMode }): void {
+    const requestedPlans = this.buildManualPlans(input)
+
+    if (this.running) {
+      throw new ConflictException('上一轮同步仍在执行，请稍后再试')
+    }
+
+    void this.runPlans({
+      trigger: 'manual',
+      mode: input.mode,
+      plans: requestedPlans,
+    }).catch((error) => {
+      // runPlans emits broadcastSyncFailed in its own catch before re-throwing.
+      // This catch handles any edge case where runPlans throws before its try block
+      // (e.g. an unexpected error after the running flag is set).
+      this.logger.error(`手动同步后台执行异常: ${(error as Error).message}`, (error as Error).stack)
+      this.eventsGateway.broadcastSyncFailed('manual', input.mode, (error as Error).message)
+    })
+  }
+
+  private buildManualPlans(input: { tasks?: TushareSyncTaskName[]; mode: TushareSyncMode }): TushareSyncPlan[] {
     const requestedPlans = input.tasks?.length
       ? this.registry.getPlansByTasks(input.tasks)
       : this.registry.getManualPlans()
@@ -124,11 +160,7 @@ export class TushareSyncService implements OnApplicationBootstrap {
       }
     }
 
-    return this.runPlans({
-      trigger: 'manual',
-      mode: input.mode,
-      plans: requestedPlans,
-    })
+    return requestedPlans
   }
 
   private registerSyncJobs() {
@@ -213,6 +245,8 @@ export class TushareSyncService implements OnApplicationBootstrap {
     this.logger.log(`  Tushare ${trigger} 同步开始 (${mode})`)
     this.logger.log('═══════════════════════════════════════════════════')
 
+    this.eventsGateway.broadcastSyncStarted(trigger, mode)
+
     try {
       for (const category of ['basic', 'market', 'financial', 'moneyflow'] as TushareSyncCategory[]) {
         const categoryPlans = sortedPlans.filter((plan) => plan.category === category)
@@ -289,7 +323,7 @@ export class TushareSyncService implements OnApplicationBootstrap {
         this.logger.log(`  Tushare ${trigger} 同步完成 (耗时 ${elapsedSeconds}s)`)
         this.logger.log('═══════════════════════════════════════════════════')
 
-        return {
+        const result1: RunPlansResult = {
           trigger,
           mode,
           executedTasks,
@@ -298,6 +332,8 @@ export class TushareSyncService implements OnApplicationBootstrap {
           targetTradeDate,
           elapsedSeconds,
         }
+        this.eventsGateway.broadcastSyncCompleted(result1)
+        return result1
       }
 
       const elapsedSeconds = Number(((Date.now() - startedAt) / 1000).toFixed(1))
@@ -305,7 +341,7 @@ export class TushareSyncService implements OnApplicationBootstrap {
       this.logger.log(`  Tushare ${trigger} 同步完成 (耗时 ${elapsedSeconds}s)`)
       this.logger.log('═══════════════════════════════════════════════════')
 
-      return {
+      const result2: RunPlansResult = {
         trigger,
         mode,
         executedTasks,
@@ -314,8 +350,11 @@ export class TushareSyncService implements OnApplicationBootstrap {
         targetTradeDate,
         elapsedSeconds,
       }
+      this.eventsGateway.broadcastSyncCompleted(result2)
+      return result2
     } catch (error) {
       this.logger.error(`同步流程异常: ${(error as Error).message}`, (error as Error).stack)
+      this.eventsGateway.broadcastSyncFailed(trigger, mode, (error as Error).message)
       throw error
     } finally {
       this.running = false

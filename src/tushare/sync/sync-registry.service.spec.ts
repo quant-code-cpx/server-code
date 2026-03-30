@@ -23,6 +23,7 @@ describe('TushareSyncRegistryService', () => {
       { getSyncPlans: () => [createPlan(TushareSyncTaskName.DAILY, 10)] } as never,
       { getSyncPlans: () => [] } as never,
       { getSyncPlans: () => [] } as never,
+      { getSyncPlans: () => [] } as never,
     )
 
     expect(registry.getPlans().map((plan) => plan.task)).toEqual([
@@ -37,6 +38,7 @@ describe('TushareSyncRegistryService', () => {
         new TushareSyncRegistryService(
           { getSyncPlans: () => [createPlan(TushareSyncTaskName.DAILY, 10)] } as never,
           { getSyncPlans: () => [createPlan(TushareSyncTaskName.DAILY, 20)] } as never,
+          { getSyncPlans: () => [] } as never,
           { getSyncPlans: () => [] } as never,
           { getSyncPlans: () => [] } as never,
         ),

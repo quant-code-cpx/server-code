@@ -21,6 +21,9 @@ export enum TushareApiName {
   DIVIDEND = 'dividend',
   TOP10_HOLDERS = 'top10_holders',
   TOP10_FLOAT_HOLDERS = 'top10_floatholders',
+  STK_LIMIT = 'stk_limit',
+  SUSPEND_D = 'suspend_d',
+  INDEX_WEIGHT = 'index_weight',
 }
 
 /** A 股常用交易所代码 */
@@ -74,6 +77,9 @@ export enum TushareSyncTaskName {
   DIVIDEND = 'DIVIDEND',
   TOP10_HOLDERS = 'TOP10_HOLDERS',
   TOP10_FLOAT_HOLDERS = 'TOP10_FLOAT_HOLDERS',
+  STK_LIMIT = 'STK_LIMIT',
+  SUSPEND_D = 'SUSPEND_D',
+  INDEX_WEIGHT = 'INDEX_WEIGHT',
 }
 
 /** 同步执行状态 */
@@ -762,3 +768,18 @@ export const CORE_INDEX_CODES = [
   '000905.SH', // 中证 500
   '000852.SH', // 中证 1000
 ] as const
+
+export const TUSHARE_STK_LIMIT_FIELDS = ['ts_code', 'trade_date', 'up_limit', 'down_limit'] as const
+
+export const TUSHARE_SUSPEND_D_FIELDS = ['ts_code', 'trade_date', 'suspend_timing', 'suspend_type'] as const
+
+export const TUSHARE_INDEX_WEIGHT_FIELDS = ['index_code', 'con_code', 'trade_date', 'weight'] as const
+
+/** 因子分析需要跟踪成分权重的核心指数 */
+export const FACTOR_UNIVERSE_INDEX_CODES = [
+  '000300.SH', // 沪深300
+  '000905.SH', // 中证500
+  '000852.SH', // 中证1000
+  '000016.SH', // 上证50
+] as const
+

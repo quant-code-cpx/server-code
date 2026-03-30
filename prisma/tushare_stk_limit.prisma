@@ -1,0 +1,11 @@
+model StkLimit {
+  tsCode    String   @map("ts_code")
+  tradeDate String   @map("trade_date")
+  upLimit   Decimal? @map("up_limit")   @db.Decimal(20, 4)
+  downLimit Decimal? @map("down_limit") @db.Decimal(20, 4)
+  syncedAt  DateTime @default(now()) @map("synced_at")
+
+  @@id([tsCode, tradeDate])
+  @@index([tradeDate])
+  @@map("stock_limit_prices")
+}

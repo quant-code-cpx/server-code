@@ -914,3 +914,40 @@ export function mapCashflowRecord(record: TushareRecord): Prisma.CashflowCreateM
     updateFlag: readString(record, 'update_flag'),
   }
 }
+
+export function mapStkLimitRecord(record: TushareRecord): Prisma.StkLimitCreateManyInput | null {
+  const tsCode = readString(record, 'ts_code')
+  const tradeDate = readString(record, 'trade_date')
+  if (!tsCode || !tradeDate) return null
+  return {
+    tsCode,
+    tradeDate,
+    upLimit: readNumber(record, 'up_limit'),
+    downLimit: readNumber(record, 'down_limit'),
+  }
+}
+
+export function mapSuspendDRecord(record: TushareRecord): Prisma.SuspendDCreateManyInput | null {
+  const tsCode = readString(record, 'ts_code')
+  const tradeDate = readString(record, 'trade_date')
+  if (!tsCode || !tradeDate) return null
+  return {
+    tsCode,
+    tradeDate,
+    suspendTiming: readString(record, 'suspend_timing'),
+    suspendType: readString(record, 'suspend_type'),
+  }
+}
+
+export function mapIndexWeightRecord(record: TushareRecord): Prisma.IndexWeightCreateManyInput | null {
+  const indexCode = readString(record, 'index_code')
+  const conCode = readString(record, 'con_code')
+  const tradeDate = readString(record, 'trade_date')
+  if (!indexCode || !conCode || !tradeDate) return null
+  return {
+    indexCode,
+    conCode,
+    tradeDate,
+    weight: readNumber(record, 'weight'),
+  }
+}

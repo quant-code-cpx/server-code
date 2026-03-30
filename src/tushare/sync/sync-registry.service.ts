@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common'
 import { TushareSyncTaskName } from 'src/constant/tushare.constant'
 import { BasicSyncService } from './basic-sync.service'
+import { FactorDataSyncService } from './factor-data-sync.service'
 import { FinancialSyncService } from './financial-sync.service'
 import { MarketSyncService } from './market-sync.service'
 import { MoneyflowSyncService } from './moneyflow-sync.service'
@@ -16,6 +17,7 @@ export class TushareSyncRegistryService {
     private readonly marketSync: MarketSyncService,
     private readonly financialSync: FinancialSyncService,
     private readonly moneyflowSync: MoneyflowSyncService,
+    private readonly factorDataSync: FactorDataSyncService,
   ) {
     this.plans = this.collectPlans()
     this.planMap = new Map(this.plans.map((plan) => [plan.task, plan]))
@@ -53,6 +55,7 @@ export class TushareSyncRegistryService {
       ...this.marketSync.getSyncPlans(),
       ...this.financialSync.getSyncPlans(),
       ...this.moneyflowSync.getSyncPlans(),
+      ...this.factorDataSync.getSyncPlans(),
     ].sort((a, b) => a.order - b.order)
 
     const seen = new Set<TushareSyncTaskName>()

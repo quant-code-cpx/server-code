@@ -1,0 +1,11 @@
+model SuspendD {
+  tsCode        String   @map("ts_code")
+  tradeDate     String   @map("trade_date")
+  suspendTiming String?  @map("suspend_timing")
+  suspendType   String?  @map("suspend_type")
+  syncedAt      DateTime @default(now()) @map("synced_at")
+
+  @@id([tsCode, tradeDate])
+  @@index([tradeDate])
+  @@map("stock_suspend_events")
+}

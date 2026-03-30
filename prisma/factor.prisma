@@ -1,0 +1,49 @@
+/// 因子分类枚举
+enum FactorCategory {
+  VALUATION    @map("valuation")
+  SIZE         @map("size")
+  MOMENTUM     @map("momentum")
+  VOLATILITY   @map("volatility")
+  LIQUIDITY    @map("liquidity")
+  QUALITY      @map("quality")
+  GROWTH       @map("growth")
+  CAPITAL_FLOW @map("capital_flow")
+  TECHNICAL    @map("technical")
+  LEVERAGE     @map("leverage")
+  DIVIDEND     @map("dividend")
+  CUSTOM       @map("custom")
+
+  @@map("factor_category")
+}
+
+/// 因子来源类型
+enum FactorSourceType {
+  FIELD_REF  @map("field_ref")
+  DERIVED    @map("derived")
+  CUSTOM_SQL @map("custom_sql")
+
+  @@map("factor_source_type")
+}
+
+/// 因子定义（内置 + 自定义）
+model FactorDefinition {
+  id          String           @id @default(cuid())
+  name        String           @unique
+  label       String
+  description String?
+  category    FactorCategory
+  sourceType  FactorSourceType @map("source_type")
+  expression  String?
+  sourceTable String?          @map("source_table")
+  sourceField String?          @map("source_field")
+  params      Json?
+  isBuiltin   Boolean          @default(true) @map("is_builtin")
+  isEnabled   Boolean          @default(true) @map("is_enabled")
+  sortOrder   Int              @default(0) @map("sort_order")
+  createdAt   DateTime         @default(now()) @map("created_at")
+  updatedAt   DateTime         @updatedAt @map("updated_at")
+
+  @@index([category])
+  @@index([isBuiltin, isEnabled])
+  @@map("factor_definitions")
+}

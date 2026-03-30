@@ -1,0 +1,12 @@
+model IndexWeight {
+  indexCode String   @map("index_code")
+  conCode   String   @map("con_code")
+  tradeDate String   @map("trade_date")
+  weight    Decimal? @map("weight") @db.Decimal(10, 6)
+  syncedAt  DateTime @default(now()) @map("synced_at")
+
+  @@id([indexCode, conCode, tradeDate])
+  @@index([indexCode, tradeDate])
+  @@index([conCode])
+  @@map("index_constituent_weights")
+}

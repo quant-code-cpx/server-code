@@ -622,7 +622,7 @@ export class FactorComputeService {
           AND sb.name NOT LIKE '%ST%'
           AND sb.name NOT LIKE '%退%'
           AND sp.ts_code IS NULL
-          AND (sb.list_date IS NULL OR sb.list_date <= (${tradeDate}::date - INTERVAL '${Prisma.raw(String(NEW_LISTING_EXCLUSION_DAYS))} days'))
+          AND (sb.list_date IS NULL OR sb.list_date <= (${tradeDate}::date - INTERVAL '60 days'))
       `)
       return rows.map((r) => ({ tsCode: r.ts_code, factorValue: r.factor_value != null ? Number(r.factor_value) : null }))
     }
@@ -645,7 +645,7 @@ export class FactorComputeService {
         WHERE sb.name NOT LIKE '%ST%'
           AND sb.name NOT LIKE '%退%'
           AND sp.ts_code IS NULL
-          AND (sb.list_date IS NULL OR sb.list_date <= (${tradeDate}::date - INTERVAL '${Prisma.raw(String(NEW_LISTING_EXCLUSION_DAYS))} days'))
+          AND (sb.list_date IS NULL OR sb.list_date <= (${tradeDate}::date - INTERVAL '60 days'))
       `)
       return rows.map((r) => ({ tsCode: r.ts_code, factorValue: r.factor_value != null ? Number(r.factor_value) : null }))
     }
@@ -663,7 +663,7 @@ export class FactorComputeService {
           AND sb.name NOT LIKE '%ST%'
           AND sb.name NOT LIKE '%退%'
           AND sp.ts_code IS NULL
-          AND (sb.list_date IS NULL OR sb.list_date <= (${tradeDate}::date - INTERVAL '${Prisma.raw(String(NEW_LISTING_EXCLUSION_DAYS))} days'))
+          AND (sb.list_date IS NULL OR sb.list_date <= (${tradeDate}::date - INTERVAL '60 days'))
       `)
       return rows.map((r) => ({ tsCode: r.ts_code, factorValue: r.factor_value != null ? Number(r.factor_value) : null }))
     }
@@ -681,7 +681,7 @@ export class FactorComputeService {
           AND sb.name NOT LIKE '%ST%'
           AND sb.name NOT LIKE '%退%'
           AND sp.ts_code IS NULL
-          AND (sb.list_date IS NULL OR sb.list_date <= (${tradeDate}::date - INTERVAL '${Prisma.raw(String(NEW_LISTING_EXCLUSION_DAYS))} days'))
+          AND (sb.list_date IS NULL OR sb.list_date <= (${tradeDate}::date - INTERVAL '60 days'))
       `)
       return rows.map((r) => ({ tsCode: r.ts_code, factorValue: r.factor_value != null ? Number(r.factor_value) : null }))
     }
@@ -699,7 +699,7 @@ export class FactorComputeService {
           AND sb.name NOT LIKE '%ST%'
           AND sb.name NOT LIKE '%退%'
           AND sp.ts_code IS NULL
-          AND (sb.list_date IS NULL OR sb.list_date <= (${tradeDate}::date - INTERVAL '${Prisma.raw(String(NEW_LISTING_EXCLUSION_DAYS))} days'))
+          AND (sb.list_date IS NULL OR sb.list_date <= (${tradeDate}::date - INTERVAL '60 days'))
       `)
       return rows.map((r) => ({ tsCode: r.ts_code, factorValue: r.factor_value != null ? Number(r.factor_value) : null }))
     }

@@ -1,8 +1,18 @@
 import { Injectable, NotFoundException } from '@nestjs/common'
 import { FactorLibraryQueryDto, FactorDetailQueryDto } from './dto/factor-library.dto'
 import { FactorValuesQueryDto } from './dto/factor-values.dto'
+import {
+  FactorCorrelationDto,
+  FactorDecayAnalysisDto,
+  FactorDistributionDto,
+  FactorIcAnalysisDto,
+  FactorQuantileAnalysisDto,
+} from './dto/factor-analysis.dto'
+import { FactorScreeningDto } from './dto/factor-screening.dto'
 import { FactorLibraryService } from './services/factor-library.service'
 import { FactorComputeService } from './services/factor-compute.service'
+import { FactorAnalysisService } from './services/factor-analysis.service'
+import { FactorScreeningService } from './services/factor-screening.service'
 import { PrismaService } from 'src/shared/prisma.service'
 
 @Injectable()
@@ -10,6 +20,8 @@ export class FactorService {
   constructor(
     private readonly library: FactorLibraryService,
     private readonly compute: FactorComputeService,
+    private readonly analysis: FactorAnalysisService,
+    private readonly screeningSvc: FactorScreeningService,
     private readonly prisma: PrismaService,
   ) {}
 
@@ -35,5 +47,33 @@ export class FactorService {
     }
 
     return this.compute.getFactorValues(dto, factor.sourceType, factor.name)
+  }
+
+  // ── Phase 2: Analysis ────────────────────────────────────────────────────
+
+  getIcAnalysis(dto: FactorIcAnalysisDto) {
+    return this.analysis.getIcAnalysis(dto)
+  }
+
+  getQuantileAnalysis(dto: FactorQuantileAnalysisDto) {
+    return this.analysis.getQuantileAnalysis(dto)
+  }
+
+  getDecayAnalysis(dto: FactorDecayAnalysisDto) {
+    return this.analysis.getDecayAnalysis(dto)
+  }
+
+  getDistribution(dto: FactorDistributionDto) {
+    return this.analysis.getDistribution(dto)
+  }
+
+  getCorrelation(dto: FactorCorrelationDto) {
+    return this.analysis.getCorrelation(dto)
+  }
+
+  // ── Phase 3: Screening ───────────────────────────────────────────────────
+
+  screening(dto: FactorScreeningDto) {
+    return this.screeningSvc.screening(dto)
   }
 }

@@ -110,8 +110,8 @@
 
 | 参数 | 控件 | 默认值 | 说明 |
 |------|------|--------|------|
-| 分析起始日期 | DatePicker（YYYYMMDD） | 1年前 | 分析区间开始 |
-| 分析结束日期 | DatePicker（YYYYMMDD） | 今天 | 分析区间结束 |
+| 分析起始日期 | DatePicker（YYYYMMDD） | 250个交易日前（约1自然年） | 分析区间开始。精确计算方式：从 TradeCal 中取当前日期往前第 250 个交易日 |
+| 分析结束日期 | DatePicker（YYYYMMDD） | 最新交易日 | 分析区间结束。从 TradeCal 中取最近一个 isOpen=1 的日期 |
 | 股票池 | Select 下拉框 | 全市场 | 选项：全市场 / 沪深300 / 中证500 / 中证1000 / 上证50 |
 | 开始分析 | 按钮 | — | 点击后触发当前 Tab 的数据请求 |
 
@@ -502,6 +502,7 @@ const OPTIONS = [
 - 基于 Ant Design DatePicker 封装
 - 非交易日灰显不可选（需从后端 TradeCal 数据判断）
 - 日期格式统一为 `YYYYMMDD` 字符串
+- **性能优化**：组件挂载时一次性预加载最近 5 年 + 未来 1 年的交易日历数据，存入 Zustand store 或 TanStack Query 缓存（`staleTime: 24h`）。后续所有 TradeDatePicker 实例共享同一份缓存，避免重复请求。交易日历数据量约 1500 条记录（5 年 × ~250 交易日/年），体积很小适合全量缓存。
 
 ### 6.3 FactorSelect（单因子选择器）
 

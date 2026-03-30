@@ -290,21 +290,31 @@ export const FACTOR_UNIVERSE_INDEX_CODES = [
 
 | name | label | sourceType | 计算方式 |
 |------|-------|------------|---------|
-| `ret_5d` | 5日收益率 | DERIVED | `(close_adj_today / close_adj_5d_ago) - 1` |
-| `ret_20d` | 20日收益率 | DERIVED | `(close_adj_today / close_adj_20d_ago) - 1` |
-| `ret_60d` | 60日收益率 | DERIVED | `(close_adj_today / close_adj_60d_ago) - 1` |
-| `ret_120d` | 半年动量 | DERIVED | `(close_adj_today / close_adj_120d_ago) - 1` |
-| `ret_250d` | 年动量 | DERIVED | `(close_adj_today / close_adj_250d_ago) - 1` |
+| `ret_5d` | 5日收益率 | DERIVED | 见下方计算说明 |
+| `ret_20d` | 20日收益率 | DERIVED | 见下方计算说明 |
+| `ret_60d` | 60日收益率 | DERIVED | 见下方计算说明 |
+| `ret_120d` | 半年动量 | DERIVED | 见下方计算说明 |
+| `ret_250d` | 年动量 | DERIVED | 见下方计算说明 |
 
-> 注意：动量因子必须使用**后复权价格**（`close * adjFactor`）计算。
+> **动量因子计算说明**：
+> 1. 使用**后复权价格**：`adj_close = Daily.close * AdjFactor.adjFactor`
+> 2. 获取 N 个交易日前的日期：从 `TradeCal` 表中取当前 `tradeDate` 往前数第 N 个 `isOpen = 1` 的交易日
+> 3. 公式：`ret_Nd = (adj_close_today / adj_close_Nd_ago) - 1`
+> 4. SQL 实现建议：使用 PostgreSQL `LAG(adj_close, N) OVER (PARTITION BY ts_code ORDER BY trade_date)` 窗口函数；或先用 `TradeCal` 表计算目标日期，再 JOIN `Daily` 表取对应日的收盘价
+> 5. 若 N 个交易日前该股票无数据（如新股上市不足 N 天），因子值设为 `null`
 
 #### 波动率因子（VOLATILITY）
 
 | name | label | sourceType | 计算方式 |
 |------|-------|------------|---------|
-| `volatility_20d` | 20日波动率 | DERIVED | 最近20个交易日日收益率的标准差 |
-| `volatility_60d` | 60日波动率 | DERIVED | 最近60个交易日日收益率的标准差 |
+| `volatility_20d` | 20日波动率 | DERIVED | 最近20个交易日日收益率的**样本标准差**（除以 N-1），再乘以 `√252` 年化 |
+| `volatility_60d` | 60日波动率 | DERIVED | 最近60个交易日日收益率的样本标准差，再乘以 `√252` 年化 |
 | `amplitude_20d` | 20日平均振幅 | DERIVED | 最近20日 `(high - low) / preClose` 的均值 |
+
+> **波动率计算说明**：
+> - 日收益率 = `(close_today - close_yesterday) / close_yesterday`（使用后复权价格）
+> - 使用**样本标准差**（ddof=1，即除以 N-1）
+> - **年化公式**：`annualized_vol = daily_std * sqrt(252)`，252 为 A 股年交易日数
 
 #### 流动性因子（LIQUIDITY）
 
@@ -370,10 +380,13 @@ export const FACTOR_UNIVERSE_INDEX_CODES = [
 5. 返回: [{ tsCode, stockName, factorValue }]
 ```
 
-**财务因子的日期对齐规则**：
+**财务因子的日期对齐规则（Point-in-Time，避免前视偏差）**：
 - 财务指标（FinaIndicator/Income/BalanceSheet/Cashflow）是按报告期发布的，不是每日更新
-- 对于某个交易日，使用该日期之前已公告的最新一期财报数据（Point-in-Time）
-- 具体实现：`WHERE annDate <= tradeDate ORDER BY annDate DESC LIMIT 1`
+- **必须使用公告日期 `annDate`（即数据对外披露的日期），而非报告期末日 `endDate`**
+- 这是因为在 `annDate` 之前，该期报告尚未公开，使用 `endDate` 会导致**前视偏差（look-ahead bias）**，即使用了现实中尚未可知的信息
+- 对于某个交易日 `T`，取该日期之前已公告的最新一期财报数据：
+  - SQL: `WHERE ann_date <= T ORDER BY ann_date DESC LIMIT 1`
+- 如果同一报告期有多次更正公告（`fAnnDate` 首次公告日 vs `annDate` 最新公告日），以 `annDate` 为准
 
 ### 5.3 FactorComputeService 结构
 

@@ -1,6 +1,7 @@
 import { SchedulerRegistry } from '@nestjs/schedule'
 import { CronJob } from 'cron'
 import { TushareSyncTaskName } from 'src/constant/tushare.constant'
+import { EventsGateway } from 'src/websocket/events.gateway'
 import { TushareSyncRegistryService } from './sync-registry.service'
 import { TushareSyncPlan } from './sync-plan.types'
 import { TushareSyncService } from './sync.service'
@@ -44,6 +45,12 @@ describe('TushareSyncService', () => {
     addCronJob: jest.fn(),
   }
 
+  const eventsGateway: Pick<EventsGateway, 'broadcastSyncStarted' | 'broadcastSyncCompleted' | 'broadcastSyncFailed'> = {
+    broadcastSyncStarted: jest.fn(),
+    broadcastSyncCompleted: jest.fn(),
+    broadcastSyncFailed: jest.fn(),
+  }
+
   beforeEach(() => {
     jest.clearAllMocks()
     jest.spyOn(CronJob, 'from').mockReturnValue({
@@ -69,6 +76,7 @@ describe('TushareSyncService', () => {
       schedulerRegistry as SchedulerRegistry,
       helper as never,
       registry as TushareSyncRegistryService,
+      eventsGateway as EventsGateway,
     )
 
     await service.onApplicationBootstrap()
@@ -90,6 +98,7 @@ describe('TushareSyncService', () => {
       schedulerRegistry as SchedulerRegistry,
       helper as never,
       registry as TushareSyncRegistryService,
+      eventsGateway as EventsGateway,
     )
 
     const result = await service.runManualSync({

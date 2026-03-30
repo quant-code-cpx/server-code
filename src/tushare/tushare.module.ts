@@ -15,6 +15,7 @@ import { FinancialSyncService } from './sync/financial-sync.service'
 import { MoneyflowSyncService } from './sync/moneyflow-sync.service'
 import { TushareSyncRegistryService } from './sync/sync-registry.service'
 import { TushareSyncService } from './sync/sync.service'
+import { WebsocketModule } from 'src/websocket/websocket.module'
 
 /**
  * TushareModule
@@ -23,6 +24,7 @@ import { TushareSyncService } from './sync/sync.service'
  * 同步层按分类独立维护，由 TushareSyncService 统一编排
  */
 @Module({
+  imports: [WebsocketModule],
   providers: [
     // API
     TushareClient,

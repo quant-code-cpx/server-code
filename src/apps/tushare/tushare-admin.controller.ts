@@ -1,12 +1,13 @@
-import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common'
+import { Body, Controller, Get, HttpCode, HttpStatus, Post, UseGuards } from '@nestjs/common'
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger'
 import { UserRole } from '@prisma/client'
-import { ApiSuccessResponse } from 'src/common/decorators/api-success-response.decorator'
+import { ApiSuccessRawResponse, ApiSuccessResponse } from 'src/common/decorators/api-success-response.decorator'
+import { ResponseModel } from 'src/common/models/response.model'
 import { Roles } from 'src/common/decorators/roles.decorator'
 import { RolesGuard } from 'src/lifecycle/guard/roles.guard'
 import { TushareSyncService } from 'src/tushare/sync/sync.service'
 import { ManualSyncDto } from './dto/manual-sync.dto'
-import { ManualSyncResultDto, TushareSyncPlanDto } from './dto/tushare-sync-response.dto'
+import { TushareSyncPlanDto } from './dto/tushare-sync-response.dto'
 
 @ApiBearerAuth()
 @ApiTags('Tushare - 同步管理')
@@ -24,9 +25,14 @@ export class TushareAdminController {
   }
 
   @Post('sync')
-  @ApiOperation({ summary: '手动执行 Tushare 同步（仅超级管理员）' })
-  @ApiSuccessResponse(ManualSyncResultDto)
-  async manualSync(@Body() dto: ManualSyncDto) {
-    return this.tushareSyncService.runManualSync(dto)
+  @HttpCode(HttpStatus.ACCEPTED)
+  @ApiOperation({
+    summary: '手动触发 Tushare 同步（仅超级管理员）',
+    description: '同步任务在后台异步执行，结果通过 WebSocket 事件 tushare_sync_completed / tushare_sync_failed 通知前端。',
+  })
+  @ApiSuccessRawResponse({ type: 'null', nullable: true })
+  manualSync(@Body() dto: ManualSyncDto): ResponseModel {
+    this.tushareSyncService.triggerManualSyncAsync(dto)
+    return ResponseModel.success({ message: '同步任务已提交，请通过 WebSocket 获取进度通知' })
   }
 }

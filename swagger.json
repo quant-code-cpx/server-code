@@ -1546,6 +1546,7 @@
     },
     "/tushare/admin/sync": {
       "post": {
+        "description": "同步任务在后台异步执行，结果通过 WebSocket 事件 tushare_sync_completed / tushare_sync_failed 通知前端。",
         "operationId": "TushareAdminController_manualSync",
         "parameters": [],
         "requestBody": {
@@ -1571,7 +1572,8 @@
                     {
                       "properties": {
                         "data": {
-                          "$ref": "#/components/schemas/ManualSyncResultDto"
+                          "type": "null",
+                          "nullable": true
                         }
                       }
                     }
@@ -1586,7 +1588,7 @@
             "bearer": []
           }
         ],
-        "summary": "手动执行 Tushare 同步（仅超级管理员）",
+        "summary": "手动触发 Tushare 同步（仅超级管理员）",
         "tags": [
           "Tushare - 同步管理"
         ]
@@ -3993,128 +3995,6 @@
           "supportsManual",
           "supportsFullSync",
           "requiresTradeDate"
-        ]
-      },
-      "ManualSyncResultDto": {
-        "type": "object",
-        "properties": {
-          "trigger": {
-            "type": "string",
-            "enum": [
-              "bootstrap",
-              "schedule",
-              "manual"
-            ]
-          },
-          "mode": {
-            "type": "string",
-            "enum": [
-              "incremental",
-              "full"
-            ]
-          },
-          "executedTasks": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "enum": [
-                "STOCK_BASIC",
-                "STOCK_COMPANY",
-                "TRADE_CAL",
-                "DAILY",
-                "WEEKLY",
-                "MONTHLY",
-                "ADJ_FACTOR",
-                "DAILY_BASIC",
-                "INDEX_DAILY",
-                "MONEYFLOW_DC",
-                "MONEYFLOW_IND_DC",
-                "MONEYFLOW_MKT_DC",
-                "MONEYFLOW_HSGT",
-                "INCOME",
-                "BALANCE_SHEET",
-                "CASHFLOW",
-                "EXPRESS",
-                "FINA_INDICATOR",
-                "DIVIDEND",
-                "TOP10_HOLDERS",
-                "TOP10_FLOAT_HOLDERS"
-              ]
-            }
-          },
-          "skippedTasks": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "enum": [
-                "STOCK_BASIC",
-                "STOCK_COMPANY",
-                "TRADE_CAL",
-                "DAILY",
-                "WEEKLY",
-                "MONTHLY",
-                "ADJ_FACTOR",
-                "DAILY_BASIC",
-                "INDEX_DAILY",
-                "MONEYFLOW_DC",
-                "MONEYFLOW_IND_DC",
-                "MONEYFLOW_MKT_DC",
-                "MONEYFLOW_HSGT",
-                "INCOME",
-                "BALANCE_SHEET",
-                "CASHFLOW",
-                "EXPRESS",
-                "FINA_INDICATOR",
-                "DIVIDEND",
-                "TOP10_HOLDERS",
-                "TOP10_FLOAT_HOLDERS"
-              ]
-            }
-          },
-          "failedTasks": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "enum": [
-                "STOCK_BASIC",
-                "STOCK_COMPANY",
-                "TRADE_CAL",
-                "DAILY",
-                "WEEKLY",
-                "MONTHLY",
-                "ADJ_FACTOR",
-                "DAILY_BASIC",
-                "INDEX_DAILY",
-                "MONEYFLOW_DC",
-                "MONEYFLOW_IND_DC",
-                "MONEYFLOW_MKT_DC",
-                "MONEYFLOW_HSGT",
-                "INCOME",
-                "BALANCE_SHEET",
-                "CASHFLOW",
-                "EXPRESS",
-                "FINA_INDICATOR",
-                "DIVIDEND",
-                "TOP10_HOLDERS",
-                "TOP10_FLOAT_HOLDERS"
-              ]
-            }
-          },
-          "targetTradeDate": {
-            "type": "string",
-            "nullable": true
-          },
-          "elapsedSeconds": {
-            "type": "number"
-          }
-        },
-        "required": [
-          "trigger",
-          "mode",
-          "executedTasks",
-          "skippedTasks",
-          "failedTasks",
-          "elapsedSeconds"
         ]
       },
       "ManualSyncDto": {

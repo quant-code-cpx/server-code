@@ -1,4 +1,4 @@
-import { IsBoolean, IsEnum, IsOptional } from 'class-validator'
+import { IsBoolean, IsEnum, IsNotEmpty, IsOptional, IsString } from 'class-validator'
 import { FactorCategory } from '@prisma/client'
 import { ApiProperty } from '@nestjs/swagger'
 
@@ -16,5 +16,7 @@ export class FactorLibraryQueryDto {
 
 export class FactorDetailQueryDto {
   @ApiProperty({ description: '因子名称标识，如 pe_ttm' })
+  @IsString()
+  @IsNotEmpty()
   factorName: string
 }

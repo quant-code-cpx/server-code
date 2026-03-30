@@ -28,14 +28,17 @@ function stdDev(arr: number[], mu?: number): number {
 function rankArray(arr: number[]): number[] {
   const indexed = arr.map((v, i) => ({ v, i })).sort((a, b) => a.v - b.v)
   const ranks = new Array<number>(arr.length)
-  indexed.forEach(({ i }, rank) => { ranks[i] = rank + 1 })
+  indexed.forEach(({ i }, rank) => {
+    ranks[i] = rank + 1
+  })
   return ranks
 }
 
 function pearsonCorr(xs: number[], ys: number[]): number | null {
   const n = xs.length
   if (n < 3) return null
-  const mx = mean(xs), my = mean(ys)
+  const mx = mean(xs),
+    my = mean(ys)
   const num = xs.reduce((s, x, i) => s + (x - mx) * (ys[i] - my), 0)
   const dx = Math.sqrt(xs.reduce((s, x) => s + (x - mx) ** 2, 0))
   const dy = Math.sqrt(ys.reduce((s, y) => s + (y - my) ** 2, 0))
@@ -80,7 +83,7 @@ interface AdjReturnRow {
 }
 
 interface TradeCalRow {
-  trade_date: Date
+  cal_date: Date
 }
 
 @Injectable()
@@ -95,38 +98,35 @@ export class FactorAnalysisService {
 
   private async getTradeDates(startDate: string, endDate: string): Promise<string[]> {
     const rows = await this.prisma.$queryRaw<TradeCalRow[]>(Prisma.sql`
-      SELECT trade_date FROM exchange_trade_calendars
+      SELECT cal_date FROM exchange_trade_calendars
       WHERE exchange = 'SSE' AND is_open = '1'
-        AND trade_date >= ${startDate}::date
-        AND trade_date <= ${endDate}::date
-      ORDER BY trade_date ASC
+        AND cal_date >= ${startDate}::date
+        AND cal_date <= ${endDate}::date
+      ORDER BY cal_date ASC
     `)
     return rows.map((r) => {
-      const d = r.trade_date instanceof Date ? r.trade_date : new Date(r.trade_date)
+      const d = r.cal_date instanceof Date ? r.cal_date : new Date(r.cal_date)
       return `${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, '0')}${String(d.getUTCDate()).padStart(2, '0')}`
     })
   }
 
   private async getNthTradingDayAfter(tradeDate: string, n: number): Promise<string | null> {
     const rows = await this.prisma.$queryRaw<TradeCalRow[]>(Prisma.sql`
-      SELECT trade_date FROM exchange_trade_calendars
+      SELECT cal_date FROM exchange_trade_calendars
       WHERE exchange = 'SSE' AND is_open = '1'
-        AND trade_date > ${tradeDate}::date
-      ORDER BY trade_date ASC
+        AND cal_date > ${tradeDate}::date
+      ORDER BY cal_date ASC
       LIMIT ${n}
     `)
     if (rows.length < n) return null
-    const d = rows[rows.length - 1].trade_date instanceof Date
-      ? rows[rows.length - 1].trade_date
-      : new Date(rows[rows.length - 1].trade_date)
+    const d =
+      rows[rows.length - 1].cal_date instanceof Date
+        ? rows[rows.length - 1].cal_date
+        : new Date(rows[rows.length - 1].cal_date)
     return `${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, '0')}${String(d.getUTCDate()).padStart(2, '0')}`
   }
 
-  private async getAdjReturns(
-    fromDate: string,
-    toDate: string,
-    tsCodes: string[],
-  ): Promise<Record<string, number>> {
+  private async getAdjReturns(fromDate: string, toDate: string, tsCodes: string[]): Promise<Record<string, number>> {
     if (!tsCodes.length) return {}
     const rows = await this.prisma.$queryRaw<AdjReturnRow[]>(Prisma.sql`
       SELECT
@@ -172,7 +172,11 @@ export class FactorAnalysisService {
       const valid = factorValues.filter((v) => v.factorValue != null)
       if (!valid.length) continue
 
-      const returnMap = await this.getAdjReturns(tradeDate, forwardDate, valid.map((v) => v.tsCode))
+      const returnMap = await this.getAdjReturns(
+        tradeDate,
+        forwardDate,
+        valid.map((v) => v.tsCode),
+      )
 
       const pairs: Array<{ f: number; r: number }> = []
       for (const { tsCode, factorValue } of valid) {
@@ -482,9 +486,7 @@ export class FactorAnalysisService {
     for (let i = 0; i < nFactors; i++) {
       matrix[i][i] = 1
       for (let j = i + 1; j < nFactors; j++) {
-        const corr = method === 'spearman'
-          ? spearmanCorr(vectors[i], vectors[j])
-          : pearsonCorr(vectors[i], vectors[j])
+        const corr = method === 'spearman' ? spearmanCorr(vectors[i], vectors[j]) : pearsonCorr(vectors[i], vectors[j])
         const val = corr != null ? Math.round(corr * 1e3) / 1e3 : 0
         matrix[i][j] = val
         matrix[j][i] = val

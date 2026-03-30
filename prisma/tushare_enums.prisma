@@ -43,6 +43,9 @@ enum TushareSyncTask {
   DIVIDEND
   TOP10_HOLDERS
   TOP10_FLOAT_HOLDERS
+  STK_LIMIT
+  SUSPEND_D
+  INDEX_WEIGHT
 }
 
 // 同步任务执行结果

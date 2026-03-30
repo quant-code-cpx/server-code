@@ -6,6 +6,7 @@ import { BasicApiService } from './api/basic-api.service'
 import { MarketApiService } from './api/market-api.service'
 import { FinancialApiService } from './api/financial-api.service'
 import { MoneyflowApiService } from './api/moneyflow-api.service'
+import { FactorDataApiService } from './api/factor-data-api.service'
 
 // 同步层
 import { SyncHelperService } from './sync/sync-helper.service'
@@ -13,6 +14,7 @@ import { BasicSyncService } from './sync/basic-sync.service'
 import { MarketSyncService } from './sync/market-sync.service'
 import { FinancialSyncService } from './sync/financial-sync.service'
 import { MoneyflowSyncService } from './sync/moneyflow-sync.service'
+import { FactorDataSyncService } from './sync/factor-data-sync.service'
 import { TushareSyncRegistryService } from './sync/sync-registry.service'
 import { TushareSyncService } from './sync/sync.service'
 import { WebsocketModule } from 'src/websocket/websocket.module'
@@ -32,12 +34,14 @@ import { WebsocketModule } from 'src/websocket/websocket.module'
     MarketApiService,
     FinancialApiService,
     MoneyflowApiService,
+    FactorDataApiService,
     // Sync
     SyncHelperService,
     BasicSyncService,
     MarketSyncService,
     FinancialSyncService,
     MoneyflowSyncService,
+    FactorDataSyncService,
     TushareSyncRegistryService,
     TushareSyncService,
   ],

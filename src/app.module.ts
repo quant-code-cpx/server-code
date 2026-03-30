@@ -11,6 +11,7 @@ import { StockModule } from './apps/stock/stock.module'
 import { MarketModule } from './apps/market/market.module'
 import { HeatmapModule } from './apps/heatmap/heatmap.module'
 import { TushareAdminModule } from './apps/tushare/tushare-admin.module'
+import { FactorModule } from './apps/factor/factor.module'
 import { QueueModule } from './queue/queue.module'
 import { WebsocketModule } from './websocket/websocket.module'
 import { JwtAuthGuard } from './lifecycle/guard/jwt-auth.guard'
@@ -49,6 +50,7 @@ import { TushareModule } from './tushare/tushare.module'
     MarketModule,
     HeatmapModule,
     TushareAdminModule,
+    FactorModule,
 
     // ── 队列模块（BullMQ 回测任务） ──
     QueueModule,

@@ -1,0 +1,365 @@
+import { FactorCategory, FactorSourceType } from '@prisma/client'
+
+export interface BuiltinFactorDef {
+  name: string
+  label: string
+  description: string
+  category: FactorCategory
+  sourceType: FactorSourceType
+  expression?: string
+  sourceTable?: string
+  sourceField?: string
+  params?: Record<string, unknown>
+  sortOrder: number
+}
+
+export const BUILTIN_FACTORS: BuiltinFactorDef[] = [
+  // ── 估值因子（VALUATION）────────────────────────────────────────────────────
+  {
+    name: 'pe_ttm',
+    label: '市盈率TTM',
+    description: '过去12个月滚动市盈率（Price / EPS_TTM）',
+    category: FactorCategory.VALUATION,
+    sourceType: FactorSourceType.FIELD_REF,
+    sourceTable: 'DailyBasic',
+    sourceField: 'pe_ttm',
+    sortOrder: 10,
+  },
+  {
+    name: 'pb',
+    label: '市净率',
+    description: '市净率（Price / Book Value per Share）',
+    category: FactorCategory.VALUATION,
+    sourceType: FactorSourceType.FIELD_REF,
+    sourceTable: 'DailyBasic',
+    sourceField: 'pb',
+    sortOrder: 11,
+  },
+  {
+    name: 'ps_ttm',
+    label: '市销率TTM',
+    description: '过去12个月滚动市销率（Price / Revenue per Share TTM）',
+    category: FactorCategory.VALUATION,
+    sourceType: FactorSourceType.FIELD_REF,
+    sourceTable: 'DailyBasic',
+    sourceField: 'ps_ttm',
+    sortOrder: 12,
+  },
+  {
+    name: 'dv_ttm',
+    label: '股息率TTM',
+    description: '过去12个月滚动股息率（Dividend / Price）',
+    category: FactorCategory.VALUATION,
+    sourceType: FactorSourceType.FIELD_REF,
+    sourceTable: 'DailyBasic',
+    sourceField: 'dv_ttm',
+    sortOrder: 13,
+  },
+  {
+    name: 'ep',
+    label: '盈利收益率',
+    description: '盈利收益率（1 / PE_TTM），PE_TTM ≤ 0 时为 null',
+    category: FactorCategory.VALUATION,
+    sourceType: FactorSourceType.DERIVED,
+    expression: 'CASE WHEN pe_ttm > 0 THEN 1.0 / pe_ttm ELSE NULL END',
+    sortOrder: 14,
+  },
+  {
+    name: 'bp',
+    label: '账面市值比',
+    description: '账面市值比（1 / PB），PB ≤ 0 时为 null',
+    category: FactorCategory.VALUATION,
+    sourceType: FactorSourceType.DERIVED,
+    expression: 'CASE WHEN pb > 0 THEN 1.0 / pb ELSE NULL END',
+    sortOrder: 15,
+  },
+
+  // ── 规模因子（SIZE）─────────────────────────────────────────────────────────
+  {
+    name: 'ln_market_cap',
+    label: '对数总市值',
+    description: '总市值的自然对数（LN(total_mv * 10000)，单位转为元后取对数）',
+    category: FactorCategory.SIZE,
+    sourceType: FactorSourceType.DERIVED,
+    expression: 'LN(total_mv * 10000)',
+    sortOrder: 20,
+  },
+  {
+    name: 'ln_circ_mv',
+    label: '对数流通市值',
+    description: '流通市值的自然对数（LN(circ_mv * 10000)）',
+    category: FactorCategory.SIZE,
+    sourceType: FactorSourceType.DERIVED,
+    expression: 'LN(circ_mv * 10000)',
+    sortOrder: 21,
+  },
+
+  // ── 动量因子（MOMENTUM）─────────────────────────────────────────────────────
+  {
+    name: 'ret_5d',
+    label: '5日收益率',
+    description: '过去5个交易日的后复权累计收益率',
+    category: FactorCategory.MOMENTUM,
+    sourceType: FactorSourceType.DERIVED,
+    params: { window: 5 },
+    sortOrder: 30,
+  },
+  {
+    name: 'ret_20d',
+    label: '20日收益率',
+    description: '过去20个交易日的后复权累计收益率',
+    category: FactorCategory.MOMENTUM,
+    sourceType: FactorSourceType.DERIVED,
+    params: { window: 20 },
+    sortOrder: 31,
+  },
+  {
+    name: 'ret_60d',
+    label: '60日收益率',
+    description: '过去60个交易日的后复权累计收益率',
+    category: FactorCategory.MOMENTUM,
+    sourceType: FactorSourceType.DERIVED,
+    params: { window: 60 },
+    sortOrder: 32,
+  },
+  {
+    name: 'ret_120d',
+    label: '半年动量',
+    description: '过去120个交易日的后复权累计收益率',
+    category: FactorCategory.MOMENTUM,
+    sourceType: FactorSourceType.DERIVED,
+    params: { window: 120 },
+    sortOrder: 33,
+  },
+  {
+    name: 'ret_250d',
+    label: '年动量',
+    description: '过去250个交易日的后复权累计收益率',
+    category: FactorCategory.MOMENTUM,
+    sourceType: FactorSourceType.DERIVED,
+    params: { window: 250 },
+    sortOrder: 34,
+  },
+
+  // ── 波动率因子（VOLATILITY）─────────────────────────────────────────────────
+  {
+    name: 'volatility_20d',
+    label: '20日波动率',
+    description: '最近20个交易日日收益率样本标准差（年化，乘以√252）',
+    category: FactorCategory.VOLATILITY,
+    sourceType: FactorSourceType.DERIVED,
+    params: { window: 20 },
+    sortOrder: 40,
+  },
+  {
+    name: 'volatility_60d',
+    label: '60日波动率',
+    description: '最近60个交易日日收益率样本标准差（年化，乘以√252）',
+    category: FactorCategory.VOLATILITY,
+    sourceType: FactorSourceType.DERIVED,
+    params: { window: 60 },
+    sortOrder: 41,
+  },
+  {
+    name: 'amplitude_20d',
+    label: '20日平均振幅',
+    description: '最近20日（high - low）/ pre_close 的均值',
+    category: FactorCategory.VOLATILITY,
+    sourceType: FactorSourceType.DERIVED,
+    params: { window: 20 },
+    sortOrder: 42,
+  },
+
+  // ── 流动性因子（LIQUIDITY）──────────────────────────────────────────────────
+  {
+    name: 'turnover_rate_f',
+    label: '自由流通换手率',
+    description: '以自由流通股本为基础计算的换手率（%）',
+    category: FactorCategory.LIQUIDITY,
+    sourceType: FactorSourceType.FIELD_REF,
+    sourceTable: 'DailyBasic',
+    sourceField: 'turnover_rate_f',
+    sortOrder: 50,
+  },
+  {
+    name: 'volume_ratio',
+    label: '量比',
+    description: '现量（手）/ 均量（手），均量为近5日平均每分钟成交量',
+    category: FactorCategory.LIQUIDITY,
+    sourceType: FactorSourceType.FIELD_REF,
+    sourceTable: 'DailyBasic',
+    sourceField: 'volume_ratio',
+    sortOrder: 51,
+  },
+  {
+    name: 'avg_amount_20d',
+    label: '20日平均成交额',
+    description: '最近20个交易日日成交额的均值（万元）',
+    category: FactorCategory.LIQUIDITY,
+    sourceType: FactorSourceType.DERIVED,
+    params: { window: 20 },
+    sortOrder: 52,
+  },
+  {
+    name: 'ln_avg_amount_20d',
+    label: '对数20日平均成交额',
+    description: '20日平均成交额的自然对数',
+    category: FactorCategory.LIQUIDITY,
+    sourceType: FactorSourceType.DERIVED,
+    params: { window: 20 },
+    sortOrder: 53,
+  },
+
+  // ── 质量因子（QUALITY）──────────────────────────────────────────────────────
+  {
+    name: 'roe',
+    label: '净资产收益率',
+    description: '净资产收益率（ROE，最新已公告报告期，Point-in-Time）',
+    category: FactorCategory.QUALITY,
+    sourceType: FactorSourceType.FIELD_REF,
+    sourceTable: 'FinaIndicator',
+    sourceField: 'roe',
+    sortOrder: 60,
+  },
+  {
+    name: 'roe_dt',
+    label: '扣非ROE',
+    description: '扣除非经常性损益后的净资产收益率（最新已公告报告期）',
+    category: FactorCategory.QUALITY,
+    sourceType: FactorSourceType.FIELD_REF,
+    sourceTable: 'FinaIndicator',
+    sourceField: 'dt_roe',
+    sortOrder: 61,
+  },
+  {
+    name: 'roa',
+    label: '总资产收益率',
+    description: '总资产收益率（ROA，最新已公告报告期）',
+    category: FactorCategory.QUALITY,
+    sourceType: FactorSourceType.FIELD_REF,
+    sourceTable: 'FinaIndicator',
+    sourceField: 'roa',
+    sortOrder: 62,
+  },
+  {
+    name: 'gross_profit_margin',
+    label: '毛利率',
+    description: '销售毛利率（最新已公告报告期）',
+    category: FactorCategory.QUALITY,
+    sourceType: FactorSourceType.FIELD_REF,
+    sourceTable: 'FinaIndicator',
+    sourceField: 'grossprofit_margin',
+    sortOrder: 63,
+  },
+  {
+    name: 'net_profit_margin',
+    label: '净利率',
+    description: '销售净利率（最新已公告报告期）',
+    category: FactorCategory.QUALITY,
+    sourceType: FactorSourceType.FIELD_REF,
+    sourceTable: 'FinaIndicator',
+    sourceField: 'netprofit_margin',
+    sortOrder: 64,
+  },
+
+  // ── 成长因子（GROWTH）───────────────────────────────────────────────────────
+  {
+    name: 'revenue_yoy',
+    label: '营收同比增长',
+    description: '营业收入同比增长率（%，最新已公告报告期）',
+    category: FactorCategory.GROWTH,
+    sourceType: FactorSourceType.FIELD_REF,
+    sourceTable: 'FinaIndicator',
+    sourceField: 'revenue_yoy',
+    sortOrder: 70,
+  },
+  {
+    name: 'net_profit_yoy',
+    label: '净利润同比增长',
+    description: '净利润同比增长率（%，最新已公告报告期）',
+    category: FactorCategory.GROWTH,
+    sourceType: FactorSourceType.FIELD_REF,
+    sourceTable: 'FinaIndicator',
+    sourceField: 'netprofit_yoy',
+    sortOrder: 71,
+  },
+
+  // ── 资金流因子（CAPITAL_FLOW）────────────────────────────────────────────────
+  {
+    name: 'net_mf_amount',
+    label: '净流入金额',
+    description: '当日全市场净流入金额（万元），正数为净流入，负数为净流出',
+    category: FactorCategory.CAPITAL_FLOW,
+    sourceType: FactorSourceType.FIELD_REF,
+    sourceTable: 'Moneyflow',
+    sourceField: 'net_mf_amount',
+    sortOrder: 80,
+  },
+  {
+    name: 'main_net_inflow',
+    label: '主力净流入',
+    description: '大单+超大单净流入金额（买入 - 卖出，万元）',
+    category: FactorCategory.CAPITAL_FLOW,
+    sourceType: FactorSourceType.DERIVED,
+    expression: '(buy_lg_amount + buy_elg_amount) - (sell_lg_amount + sell_elg_amount)',
+    sortOrder: 81,
+  },
+  {
+    name: 'main_net_inflow_pct',
+    label: '主力净流入占比',
+    description: '主力净流入金额占总成交额的比例',
+    category: FactorCategory.CAPITAL_FLOW,
+    sourceType: FactorSourceType.DERIVED,
+    expression:
+      'CASE WHEN (buy_sm_amount + buy_md_amount + buy_lg_amount + buy_elg_amount) > 0 THEN ((buy_lg_amount + buy_elg_amount) - (sell_lg_amount + sell_elg_amount)) / (buy_sm_amount + buy_md_amount + buy_lg_amount + buy_elg_amount) ELSE NULL END',
+    sortOrder: 82,
+  },
+
+  // ── 杠杆因子（LEVERAGE）─────────────────────────────────────────────────────
+  {
+    name: 'debt_to_assets',
+    label: '资产负债率',
+    description: '资产负债率（总负债 / 总资产，%，最新已公告报告期）',
+    category: FactorCategory.LEVERAGE,
+    sourceType: FactorSourceType.FIELD_REF,
+    sourceTable: 'FinaIndicator',
+    sourceField: 'debt_to_assets',
+    sortOrder: 90,
+  },
+  {
+    name: 'current_ratio',
+    label: '流动比率',
+    description: '流动资产 / 流动负债（最新已公告报告期）',
+    category: FactorCategory.LEVERAGE,
+    sourceType: FactorSourceType.FIELD_REF,
+    sourceTable: 'FinaIndicator',
+    sourceField: 'current_ratio',
+    sortOrder: 91,
+  },
+  {
+    name: 'quick_ratio',
+    label: '速动比率',
+    description: '（流动资产 - 存货）/ 流动负债（最新已公告报告期）',
+    category: FactorCategory.LEVERAGE,
+    sourceType: FactorSourceType.FIELD_REF,
+    sourceTable: 'FinaIndicator',
+    sourceField: 'quick_ratio',
+    sortOrder: 92,
+  },
+]
+
+/** 分类中文标签映射 */
+export const CATEGORY_LABEL_MAP: Record<FactorCategory, string> = {
+  [FactorCategory.VALUATION]: '估值因子',
+  [FactorCategory.SIZE]: '规模因子',
+  [FactorCategory.MOMENTUM]: '动量因子',
+  [FactorCategory.VOLATILITY]: '波动率因子',
+  [FactorCategory.LIQUIDITY]: '流动性因子',
+  [FactorCategory.QUALITY]: '质量因子',
+  [FactorCategory.GROWTH]: '成长因子',
+  [FactorCategory.CAPITAL_FLOW]: '资金流因子',
+  [FactorCategory.TECHNICAL]: '技术因子',
+  [FactorCategory.LEVERAGE]: '杠杆因子',
+  [FactorCategory.DIVIDEND]: '红利因子',
+  [FactorCategory.CUSTOM]: '自定义因子',
+}

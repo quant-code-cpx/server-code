@@ -42,11 +42,6 @@ export class TushareSyncPlanDto {
   schedule!: TushareSyncScheduleDto | null
 }
 
-export class ManualSyncAcceptedDto {
-  @ApiProperty({ example: '同步任务已提交，请通过 WebSocket 获取进度通知' })
-  message!: string
-}
-
 export class ManualSyncResultDto {
   @ApiProperty({ enum: ['bootstrap', 'schedule', 'manual'] })
   trigger!: TushareSyncTrigger

@@ -1572,7 +1572,8 @@
                     {
                       "properties": {
                         "data": {
-                          "$ref": "#/components/schemas/ManualSyncAcceptedDto"
+                          "type": "null",
+                          "nullable": true
                         }
                       }
                     }
@@ -3994,18 +3995,6 @@
           "supportsManual",
           "supportsFullSync",
           "requiresTradeDate"
-        ]
-      },
-      "ManualSyncAcceptedDto": {
-        "type": "object",
-        "properties": {
-          "message": {
-            "type": "string",
-            "example": "同步任务已提交，请通过 WebSocket 获取进度通知"
-          }
-        },
-        "required": [
-          "message"
         ]
       },
       "ManualSyncDto": {

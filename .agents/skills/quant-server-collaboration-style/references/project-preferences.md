@@ -7,6 +7,18 @@
 - 调试时偏好看真实日志与运行行为，不喜欢只靠猜测。
 - 只要代理能继续推进，就尽量减少来回确认式对话。
 
+## 统一响应格式
+
+- 项目统一使用 `src/common/models/response.model.ts` 中的 `ResponseModel` 封装响应。
+- **`TransformInterceptor`（全局注册）会自动将控制器返回的原始数据包装为 `ResponseModel.success({ data })`**，因此大多数控制器方法只需返回原始数据即可，无需手动构造 `ResponseModel`。
+- **`data` 字段**：存放业务数据对象。
+- **`message` 字段**：存放状态说明/人类可读提示。若接口只需返回提示无实际数据，应在控制器中显式返回 `ResponseModel.success({ message: '...' })`，此时 `data` 为 `undefined`。不要把纯提示信息放在 `data.message` 里。
+- **Swagger 标注规范**：
+  - 有具体数据返回：使用 `@ApiSuccessResponse(SomeDtoClass)` 或 `@ApiSuccessResponse(SomeDtoClass, { isArray: true })`。
+  - 无数据只有提示/操作确认：使用 `@ApiSuccessRawResponse({ type: 'null', nullable: true })`。
+- **错误响应**：由 `GlobalExceptionsFilter` 统一处理，调用 `ResponseModel.error({ code, message })`，控制器无需干预。
+- 避免在 `data` 字段里放只属于 `message` 字段的内容，也避免创建只有 `message` 属性的冗余 DTO。
+
 ## 基础设施
 
 - 首次启动时应尽量自动准备数据库结构。

@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common'
-import { MoneyflowContentType } from '@prisma/client'
+import { MoneyflowContentType, Prisma } from '@prisma/client'
 import * as dayjs from 'dayjs'
 // use require for plugins to ensure compatibility with commonjs output
 const timezone = require('dayjs/plugin/timezone')
@@ -8,11 +8,19 @@ import type { RedisClientType } from 'redis'
 import { PrismaService } from 'src/shared/prisma.service'
 import { REDIS_CLIENT } from 'src/shared/redis.provider'
 import { MoneyFlowQueryDto } from './dto/money-flow-query.dto'
+import { SectorFlowQueryDto } from './dto/sector-flow-query.dto'
+import { HsgtFlowQueryDto } from './dto/hsgt-flow-query.dto'
 import { IndexTrendQueryDto, IndexTrendPeriod } from './dto/index-trend-query.dto'
 import { SectorRankingQueryDto } from './dto/sector-ranking-query.dto'
 import { VolOverviewQueryDto } from './dto/vol-overview-query.dto'
 import { SentimentTrendQueryDto } from './dto/sentiment-trend-query.dto'
 import { ValuationTrendQueryDto, ValuationTrendPeriod } from './dto/valuation-trend-query.dto'
+import { MoneyFlowTrendQueryDto } from './dto/money-flow-trend-query.dto'
+import { SectorFlowRankingQueryDto } from './dto/sector-flow-ranking-query.dto'
+import { SectorFlowTrendQueryDto } from './dto/sector-flow-trend-query.dto'
+import { HsgtTrendQueryDto } from './dto/hsgt-trend-query.dto'
+import { MainFlowRankingQueryDto } from './dto/main-flow-ranking-query.dto'
+import { StockFlowDetailQueryDto } from './dto/stock-flow-detail-query.dto'
 
 dayjs.extend(utc)
 dayjs.extend(timezone)
@@ -51,7 +59,7 @@ export class MarketService {
 
   // ─── 行业板块资金流向 ──────────────────────────────────────────────────────
 
-  async getSectorFlow(query: MoneyFlowQueryDto) {
+  async getSectorFlow(query: SectorFlowQueryDto) {
     const tradeDate = query.trade_date ? this.parseDate(query.trade_date) : await this.resolveLatestSectorTradeDate()
     if (!tradeDate) {
       return {
@@ -62,16 +70,23 @@ export class MarketService {
       }
     }
 
+    const contentTypeFilter = query.content_type
+      ? (query.content_type as MoneyflowContentType)
+      : undefined
+
     const rows = await this.prisma.moneyflowIndDc.findMany({
-      where: { tradeDate },
+      where: { tradeDate, ...(contentTypeFilter ? { contentType: contentTypeFilter } : {}) },
       orderBy: [{ contentType: 'asc' }, { rank: 'asc' }, { netAmount: 'desc' }],
     })
 
+    const applyLimit = (items: typeof rows) =>
+      query.limit ? items.slice(0, query.limit) : items
+
     return {
       tradeDate,
-      industry: rows.filter((item) => item.contentType === MoneyflowContentType.INDUSTRY),
-      concept: rows.filter((item) => item.contentType === MoneyflowContentType.CONCEPT),
-      region: rows.filter((item) => item.contentType === MoneyflowContentType.REGION),
+      industry: applyLimit(rows.filter((item) => item.contentType === MoneyflowContentType.INDUSTRY)),
+      concept: applyLimit(rows.filter((item) => item.contentType === MoneyflowContentType.CONCEPT)),
+      region: applyLimit(rows.filter((item) => item.contentType === MoneyflowContentType.REGION)),
     }
   }
 
@@ -156,17 +171,19 @@ export class MarketService {
 
   // ─── 沪深港通（北向/南向）资金流向 ────────────────────────────────────────
 
-  async getHsgtFlow(query: MoneyFlowQueryDto) {
+  async getHsgtFlow(query: HsgtFlowQueryDto) {
     const tradeDate = query.trade_date ? this.parseDate(query.trade_date) : await this.resolveLatestHsgtTradeDate()
     if (!tradeDate) {
       return { tradeDate: null, history: [] }
     }
 
-    // 返回最近 20 个交易日的沪深港通数据用于趋势展示
+    const days = query.days ?? 20
+
+    // 返回最近 N 个交易日的沪深港通数据用于趋势展示
     const history = await this.prisma.moneyflowHsgt.findMany({
       where: { tradeDate: { lte: tradeDate } },
       orderBy: { tradeDate: 'desc' },
-      take: 20,
+      take: days,
     })
 
     return {
@@ -465,6 +482,302 @@ export class MarketService {
     return result
   }
 
+  // ─── 大盘资金流向趋势 ──────────────────────────────────────────────────────
+
+  async getMoneyFlowTrend(query: MoneyFlowTrendQueryDto) {
+    const tradeDate = query.trade_date ? this.parseDate(query.trade_date) : await this.resolveLatestMarketTradeDate()
+    if (!tradeDate) return { data: [] }
+
+    const days = query.days ?? 20
+    const tradeDateStr = dayjs(tradeDate).format('YYYYMMDD')
+    const cacheKey = `market:mf-trend:${tradeDateStr}:${days}`
+
+    const cached = await this.redis.get(cacheKey)
+    if (cached) return JSON.parse(cached)
+
+    const rows = await this.prisma.moneyflowMktDc.findMany({
+      where: { tradeDate: { lte: tradeDate } },
+      orderBy: { tradeDate: 'desc' },
+      take: days,
+    })
+
+    // 倒序（时间升序）再计算累计净流入
+    const sorted = rows.reverse()
+    let cumulative = 0
+    const data = sorted.map((r) => {
+      cumulative += r.netAmount ?? 0
+      return {
+        tradeDate: dayjs(r.tradeDate).format('YYYY-MM-DD'),
+        netAmount: r.netAmount,
+        cumulativeNet: Number(cumulative.toFixed(2)),
+        buyElgAmount: r.buyElgAmount,
+        buyLgAmount: r.buyLgAmount,
+        buyMdAmount: r.buyMdAmount,
+        buySmAmount: r.buySmAmount,
+      }
+    })
+
+    const result = { data }
+    await this.redis.setEx(cacheKey, 4 * 3600, JSON.stringify(result))
+    return result
+  }
+
+  // ─── 板块资金流向排行 ──────────────────────────────────────────────────────
+
+  async getSectorFlowRanking(query: SectorFlowRankingQueryDto) {
+    const tradeDate = query.trade_date ? this.parseDate(query.trade_date) : await this.resolveLatestSectorTradeDate()
+    if (!tradeDate) return { tradeDate: null, contentType: query.content_type ?? 'INDUSTRY', sectors: [] }
+
+    const contentType = (query.content_type ?? 'INDUSTRY') as MoneyflowContentType
+    const sortBy = query.sort_by ?? 'net_amount'
+    const order = (query.order ?? 'desc') as 'asc' | 'desc'
+    const limit = query.limit ?? 20
+
+    const tradeDateStr = dayjs(tradeDate).format('YYYYMMDD')
+    const cacheKey = `market:sector-rank:${tradeDateStr}:${contentType}:${sortBy}:${order}:${limit}`
+
+    const cached = await this.redis.get(cacheKey)
+    if (cached) return JSON.parse(cached)
+
+    const orderByMap = {
+      net_amount: { netAmount: order },
+      pct_change: { pctChange: order },
+      buy_elg_amount: { buyElgAmount: order },
+    } as const
+
+    const rows = await this.prisma.moneyflowIndDc.findMany({
+      where: { tradeDate, contentType },
+      orderBy: orderByMap[sortBy],
+      take: limit,
+      select: {
+        tsCode: true,
+        name: true,
+        pctChange: true,
+        close: true,
+        netAmount: true,
+        netAmountRate: true,
+        buyElgAmount: true,
+        buyLgAmount: true,
+        buyMdAmount: true,
+        buySmAmount: true,
+      },
+    })
+
+    const result = {
+      tradeDate,
+      contentType,
+      sectors: rows.map((r) => ({
+        tsCode: r.tsCode,
+        name: r.name,
+        pctChange: r.pctChange,
+        close: r.close,
+        netAmount: r.netAmount,
+        netAmountRate: r.netAmountRate,
+        buyElgAmount: r.buyElgAmount,
+        buyLgAmount: r.buyLgAmount,
+        buyMdAmount: r.buyMdAmount,
+        buySmAmount: r.buySmAmount,
+      })),
+    }
+
+    await this.redis.setEx(cacheKey, 4 * 3600, JSON.stringify(result))
+    return result
+  }
+
+  // ─── 板块资金流向趋势 ──────────────────────────────────────────────────────
+
+  async getSectorFlowTrend(query: SectorFlowTrendQueryDto) {
+    const tsCode = query.ts_code
+    const contentType = (query.content_type ?? 'INDUSTRY') as MoneyflowContentType
+    const days = query.days ?? 20
+    const cacheKey = `market:sector-trend:${tsCode}:${contentType}:${days}`
+
+    const cached = await this.redis.get(cacheKey)
+    if (cached) return JSON.parse(cached)
+
+    const rows = await this.prisma.moneyflowIndDc.findMany({
+      where: { tsCode, contentType },
+      orderBy: { tradeDate: 'desc' },
+      take: days,
+      select: { tradeDate: true, name: true, pctChange: true, netAmount: true },
+    })
+
+    if (rows.length === 0) {
+      return { tsCode, name: null, data: [] }
+    }
+
+    const name = rows[0].name ?? null
+    const sorted = rows.reverse()
+    let cumulative = 0
+    const data = sorted.map((r) => {
+      cumulative += r.netAmount ?? 0
+      return {
+        tradeDate: dayjs(r.tradeDate).format('YYYY-MM-DD'),
+        pctChange: r.pctChange,
+        netAmount: r.netAmount,
+        cumulativeNet: Number(cumulative.toFixed(2)),
+      }
+    })
+
+    const result = { tsCode, name, data }
+    await this.redis.setEx(cacheKey, 4 * 3600, JSON.stringify(result))
+    return result
+  }
+
+  // ─── 沪深港通趋势（扩展）─────────────────────────────────────────────────
+
+  async getHsgtTrend(query: HsgtTrendQueryDto) {
+    const period = query.period ?? '3m'
+    const cacheKey = `market:hsgt-trend:${period}`
+
+    const cached = await this.redis.get(cacheKey)
+    if (cached) return JSON.parse(cached)
+
+    const latestDate = await this.resolveLatestHsgtTradeDate()
+    if (!latestDate) return { period, data: [] }
+
+    const startDate = this.periodToStartDate(latestDate, period)
+
+    const rows = await this.prisma.moneyflowHsgt.findMany({
+      where: { tradeDate: { gte: startDate } },
+      orderBy: { tradeDate: 'asc' },
+    })
+
+    let cumulativeNorth = 0
+    let cumulativeSouth = 0
+    const data = rows.map((r) => {
+      cumulativeNorth += r.northMoney ?? 0
+      cumulativeSouth += r.southMoney ?? 0
+      return {
+        tradeDate: dayjs(r.tradeDate).format('YYYY-MM-DD'),
+        northMoney: r.northMoney,
+        southMoney: r.southMoney,
+        hgt: r.hgt,
+        sgt: r.sgt,
+        ggtSs: r.ggtSs,
+        ggtSz: r.ggtSz,
+        cumulativeNorth: Number(cumulativeNorth.toFixed(2)),
+        cumulativeSouth: Number(cumulativeSouth.toFixed(2)),
+      }
+    })
+
+    const result = { period, data }
+    await this.redis.setEx(cacheKey, 4 * 3600, JSON.stringify(result))
+    return result
+  }
+
+  // ─── 主力资金净流入 Top N ──────────────────────────────────────────────────
+
+  async getMainFlowRanking(query: MainFlowRankingQueryDto) {
+    const tradeDate = query.trade_date
+      ? this.parseDate(query.trade_date)
+      : await this.resolveLatestStockFlowTradeDate()
+    if (!tradeDate) return { tradeDate: null, data: [] }
+
+    const order = query.order ?? 'desc'
+    const limit = query.limit ?? 20
+
+    const tradeDateStr = dayjs(tradeDate).format('YYYYMMDD')
+    const cacheKey = `market:main-flow-rank:${tradeDateStr}:${order}:${limit}`
+
+    const cached = await this.redis.get(cacheKey)
+    if (cached) return JSON.parse(cached)
+
+    const rows = await this.prisma.$queryRaw<
+      {
+        ts_code: string
+        name: string | null
+        industry: string | null
+        main_net_inflow: string
+        elg_net_inflow: string
+        lg_net_inflow: string
+        pct_chg: number | null
+        amount: number | null
+      }[]
+    >`
+      SELECT
+        mf.ts_code,
+        sb.name,
+        sb.industry,
+        (COALESCE(mf.buy_elg_amount, 0) - COALESCE(mf.sell_elg_amount, 0)
+         + COALESCE(mf.buy_lg_amount, 0)  - COALESCE(mf.sell_lg_amount, 0))  AS main_net_inflow,
+        (COALESCE(mf.buy_elg_amount, 0) - COALESCE(mf.sell_elg_amount, 0))   AS elg_net_inflow,
+        (COALESCE(mf.buy_lg_amount, 0)  - COALESCE(mf.sell_lg_amount, 0))    AS lg_net_inflow,
+        d.pct_chg,
+        d.amount
+      FROM stock_capital_flows mf
+      JOIN stock_basic_profiles sb ON sb.ts_code = mf.ts_code
+      LEFT JOIN stock_daily_prices d ON d.ts_code = mf.ts_code AND d.trade_date = mf.trade_date
+      WHERE mf.trade_date = ${tradeDate}
+      ORDER BY main_net_inflow ${order === 'desc' ? Prisma.sql`DESC` : Prisma.sql`ASC`}
+      LIMIT ${limit}
+    `
+
+    const data = rows.map((r) => ({
+      tsCode: r.ts_code,
+      name: r.name,
+      industry: r.industry,
+      mainNetInflow: Number(r.main_net_inflow),
+      elgNetInflow: Number(r.elg_net_inflow),
+      lgNetInflow: Number(r.lg_net_inflow),
+      pctChg: r.pct_chg !== null ? Number(r.pct_chg) : null,
+      amount: r.amount !== null ? Number(r.amount) : null,
+    }))
+
+    const result = { tradeDate, data }
+    await this.redis.setEx(cacheKey, 4 * 3600, JSON.stringify(result))
+    return result
+  }
+
+  // ─── 个股资金流动明细 ──────────────────────────────────────────────────────
+
+  async getStockFlowDetail(query: StockFlowDetailQueryDto) {
+    const tsCode = query.ts_code
+    const days = query.days ?? 20
+    const cacheKey = `market:stock-flow:${tsCode}:${days}`
+
+    const cached = await this.redis.get(cacheKey)
+    if (cached) return JSON.parse(cached)
+
+    const [flowRows, stockBasic] = await Promise.all([
+      this.prisma.moneyflow.findMany({
+        where: { tsCode },
+        orderBy: { tradeDate: 'desc' },
+        take: days,
+      }),
+      this.prisma.stockBasic.findUnique({
+        where: { tsCode },
+        select: { name: true },
+      }),
+    ])
+
+    const name = stockBasic?.name ?? null
+    const data = flowRows.reverse().map((r) => {
+      const elgNet = (r.buyElgAmount ?? 0) - (r.sellElgAmount ?? 0)
+      const lgNet = (r.buyLgAmount ?? 0) - (r.sellLgAmount ?? 0)
+      const mdNet = (r.buyMdAmount ?? 0) - (r.sellMdAmount ?? 0)
+      const smNet = (r.buySmAmount ?? 0) - (r.sellSmAmount ?? 0)
+      return {
+        tradeDate: dayjs(r.tradeDate).format('YYYY-MM-DD'),
+        mainNetInflow: Number((elgNet + lgNet).toFixed(2)),
+        retailNetInflow: Number((mdNet + smNet).toFixed(2)),
+        buyElgAmount: r.buyElgAmount,
+        sellElgAmount: r.sellElgAmount,
+        buyLgAmount: r.buyLgAmount,
+        sellLgAmount: r.sellLgAmount,
+        buyMdAmount: r.buyMdAmount,
+        sellMdAmount: r.sellMdAmount,
+        buySmAmount: r.buySmAmount,
+        sellSmAmount: r.sellSmAmount,
+        netMfAmount: r.netMfAmount,
+      }
+    })
+
+    const result = { tsCode, name, data }
+    await this.redis.setEx(cacheKey, 4 * 3600, JSON.stringify(result))
+    return result
+  }
+
   // ═══════════════════════════════════════════════════════════════════════════
   // 私有辅助方法
   // ═══════════════════════════════════════════════════════════════════════════
@@ -556,6 +869,14 @@ export class MarketService {
 
   private async resolveLatestHsgtTradeDate() {
     const record = await this.prisma.moneyflowHsgt.findFirst({
+      orderBy: { tradeDate: 'desc' },
+      select: { tradeDate: true },
+    })
+    return record?.tradeDate ?? null
+  }
+
+  private async resolveLatestStockFlowTradeDate() {
+    const record = await this.prisma.moneyflow.findFirst({
       orderBy: { tradeDate: 'desc' },
       select: { tradeDate: true },
     })

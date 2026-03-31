@@ -1599,6 +1599,264 @@
         ]
       }
     },
+    "/market/index-trend": {
+      "post": {
+        "operationId": "MarketController_getIndexTrend",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IndexTrendQueryDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ResponseModel"
+                    },
+                    {
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/IndexTrendResponseDto"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "summary": "获取核心指数走势（收盘价/涨跌幅序列）",
+        "tags": [
+          "Market - 市场与行业"
+        ]
+      }
+    },
+    "/market/change-distribution": {
+      "post": {
+        "operationId": "MarketController_getChangeDistribution",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MoneyFlowQueryDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ResponseModel"
+                    },
+                    {
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/ChangeDistributionResponseDto"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "summary": "获取全A股涨跌幅直方图分布",
+        "tags": [
+          "Market - 市场与行业"
+        ]
+      }
+    },
+    "/market/sector-ranking": {
+      "post": {
+        "operationId": "MarketController_getSectorRanking",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SectorRankingQueryDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ResponseModel"
+                    },
+                    {
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/SectorRankingResponseDto"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "summary": "获取行业板块涨跌排行（按涨跌幅或净流入排序）",
+        "tags": [
+          "Market - 市场与行业"
+        ]
+      }
+    },
+    "/market/volume-overview": {
+      "post": {
+        "operationId": "MarketController_getVolumeOverview",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VolOverviewQueryDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ResponseModel"
+                    },
+                    {
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/VolumeOverviewResponseDto"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "summary": "获取近N日市场成交额概况（全A/上证/深证）",
+        "tags": [
+          "Market - 市场与行业"
+        ]
+      }
+    },
+    "/market/sentiment-trend": {
+      "post": {
+        "operationId": "MarketController_getSentimentTrend",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SentimentTrendQueryDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ResponseModel"
+                    },
+                    {
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/SentimentTrendResponseDto"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "summary": "获取近N日涨跌家数趋势",
+        "tags": [
+          "Market - 市场与行业"
+        ]
+      }
+    },
+    "/market/valuation-trend": {
+      "post": {
+        "operationId": "MarketController_getValuationTrend",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ValuationTrendQueryDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ResponseModel"
+                    },
+                    {
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/ValuationTrendResponseDto"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "summary": "获取全A市场PE/PB估值趋势",
+        "tags": [
+          "Market - 市场与行业"
+        ]
+      }
+    },
     "/heatmap/data": {
       "post": {
         "operationId": "HeatmapController_getHeatmap",
@@ -4676,6 +4934,389 @@
         "required": [
           "history"
         ]
+      },
+      "IndexTrendItemDto": {
+        "type": "object",
+        "properties": {
+          "tradeDate": {
+            "type": "string",
+            "description": "交易日期 YYYY-MM-DD"
+          },
+          "close": {
+            "type": "number",
+            "nullable": true
+          },
+          "pctChg": {
+            "type": "number",
+            "nullable": true
+          },
+          "vol": {
+            "type": "number",
+            "nullable": true
+          },
+          "amount": {
+            "type": "number",
+            "nullable": true
+          }
+        },
+        "required": [
+          "tradeDate"
+        ]
+      },
+      "IndexTrendResponseDto": {
+        "type": "object",
+        "properties": {
+          "tsCode": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "period": {
+            "type": "string"
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IndexTrendItemDto"
+            }
+          }
+        },
+        "required": [
+          "tsCode",
+          "name",
+          "period",
+          "data"
+        ]
+      },
+      "IndexTrendQueryDto": {
+        "type": "object",
+        "properties": {
+          "ts_code": {
+            "type": "string",
+            "description": "指数代码，默认上证指数",
+            "default": "000001.SH",
+            "example": "000001.SH"
+          },
+          "period": {
+            "type": "string",
+            "description": "时间周期",
+            "enum": [
+              "1m",
+              "3m",
+              "6m",
+              "1y",
+              "3y"
+            ],
+            "default": "3m"
+          }
+        }
+      },
+      "ChangeDistributionBucketDto": {
+        "type": "object",
+        "properties": {
+          "label": {
+            "type": "string",
+            "description": "涨跌幅区间标签，如 \"-10~-9\""
+          },
+          "count": {
+            "type": "number",
+            "description": "该区间内股票数量"
+          }
+        },
+        "required": [
+          "label",
+          "count"
+        ]
+      },
+      "ChangeDistributionResponseDto": {
+        "type": "object",
+        "properties": {
+          "tradeDate": {
+            "format": "date-time",
+            "type": "string",
+            "description": "交易日期"
+          },
+          "limitUp": {
+            "type": "number",
+            "description": "涨停家数（pct_chg >= 9.5）"
+          },
+          "limitDown": {
+            "type": "number",
+            "description": "跌停家数（pct_chg <= -9.5）"
+          },
+          "distribution": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ChangeDistributionBucketDto"
+            }
+          }
+        },
+        "required": [
+          "tradeDate",
+          "limitUp",
+          "limitDown",
+          "distribution"
+        ]
+      },
+      "SectorRankingItemDto": {
+        "type": "object",
+        "properties": {
+          "tsCode": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string",
+            "nullable": true
+          },
+          "pctChange": {
+            "type": "number",
+            "description": "板块涨跌幅 %",
+            "nullable": true
+          },
+          "netAmount": {
+            "type": "number",
+            "description": "净流入金额（万元）",
+            "nullable": true
+          },
+          "netAmountRate": {
+            "type": "number",
+            "description": "净流入率 %",
+            "nullable": true
+          }
+        },
+        "required": [
+          "tsCode"
+        ]
+      },
+      "SectorRankingResponseDto": {
+        "type": "object",
+        "properties": {
+          "tradeDate": {
+            "format": "date-time",
+            "type": "string",
+            "description": "交易日期"
+          },
+          "sectors": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SectorRankingItemDto"
+            }
+          }
+        },
+        "required": [
+          "tradeDate",
+          "sectors"
+        ]
+      },
+      "SectorRankingQueryDto": {
+        "type": "object",
+        "properties": {
+          "trade_date": {
+            "type": "string",
+            "description": "查询日期（YYYYMMDD），默认最新交易日",
+            "example": "20240101"
+          },
+          "sort_by": {
+            "type": "string",
+            "description": "排序方式",
+            "enum": [
+              "pct_change",
+              "net_amount"
+            ],
+            "default": "pct_change"
+          },
+          "limit": {
+            "type": "number",
+            "description": "Top N 返回数量，默认全量",
+            "minimum": 1,
+            "maximum": 100
+          }
+        }
+      },
+      "VolumeOverviewItemDto": {
+        "type": "object",
+        "properties": {
+          "tradeDate": {
+            "type": "string",
+            "description": "交易日期 YYYY-MM-DD"
+          },
+          "totalAmount": {
+            "type": "number",
+            "description": "全A股合计成交额（亿元）"
+          },
+          "shAmount": {
+            "type": "number",
+            "description": "上证指数成交额（亿元）"
+          },
+          "szAmount": {
+            "type": "number",
+            "description": "深证成指成交额（亿元）"
+          }
+        },
+        "required": [
+          "tradeDate",
+          "totalAmount",
+          "shAmount",
+          "szAmount"
+        ]
+      },
+      "VolumeOverviewResponseDto": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VolumeOverviewItemDto"
+            }
+          }
+        },
+        "required": [
+          "data"
+        ]
+      },
+      "VolOverviewQueryDto": {
+        "type": "object",
+        "properties": {
+          "trade_date": {
+            "type": "string",
+            "description": "查询日期（YYYYMMDD），默认最新交易日",
+            "example": "20240101"
+          },
+          "days": {
+            "type": "number",
+            "description": "历史天数，默认 20",
+            "default": 20,
+            "minimum": 5,
+            "maximum": 120
+          }
+        }
+      },
+      "SentimentTrendItemDto": {
+        "type": "object",
+        "properties": {
+          "tradeDate": {
+            "type": "string",
+            "description": "交易日期 YYYY-MM-DD"
+          },
+          "rise": {
+            "type": "number",
+            "description": "上涨家数"
+          },
+          "flat": {
+            "type": "number",
+            "description": "平盘家数"
+          },
+          "fall": {
+            "type": "number",
+            "description": "下跌家数"
+          },
+          "limitUp": {
+            "type": "number",
+            "description": "涨停家数（pct_chg >= 9.5）"
+          },
+          "limitDown": {
+            "type": "number",
+            "description": "跌停家数（pct_chg <= -9.5）"
+          }
+        },
+        "required": [
+          "tradeDate",
+          "rise",
+          "flat",
+          "fall",
+          "limitUp",
+          "limitDown"
+        ]
+      },
+      "SentimentTrendResponseDto": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SentimentTrendItemDto"
+            }
+          }
+        },
+        "required": [
+          "data"
+        ]
+      },
+      "SentimentTrendQueryDto": {
+        "type": "object",
+        "properties": {
+          "trade_date": {
+            "type": "string",
+            "description": "查询日期（YYYYMMDD），默认最新交易日",
+            "example": "20240101"
+          },
+          "days": {
+            "type": "number",
+            "description": "历史天数，默认 20",
+            "default": 20,
+            "minimum": 5,
+            "maximum": 120
+          }
+        }
+      },
+      "ValuationTrendItemDto": {
+        "type": "object",
+        "properties": {
+          "tradeDate": {
+            "type": "string",
+            "description": "交易日期 YYYY-MM-DD"
+          },
+          "peTtmMedian": {
+            "type": "number",
+            "description": "当日全A PE_TTM 中位数"
+          },
+          "pbMedian": {
+            "type": "number",
+            "description": "当日全A PB 中位数"
+          }
+        },
+        "required": [
+          "tradeDate",
+          "peTtmMedian",
+          "pbMedian"
+        ]
+      },
+      "ValuationTrendResponseDto": {
+        "type": "object",
+        "properties": {
+          "period": {
+            "type": "string",
+            "description": "查询周期"
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ValuationTrendItemDto"
+            }
+          }
+        },
+        "required": [
+          "period",
+          "data"
+        ]
+      },
+      "ValuationTrendQueryDto": {
+        "type": "object",
+        "properties": {
+          "period": {
+            "type": "string",
+            "description": "时间周期，默认 1y",
+            "enum": [
+              "3m",
+              "6m",
+              "1y",
+              "3y",
+              "5y"
+            ],
+            "default": "1y"
+          }
+        }
       },
       "HeatmapItemDto": {
         "type": "object",

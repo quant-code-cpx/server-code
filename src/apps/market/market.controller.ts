@@ -2,23 +2,37 @@ import { Body, Controller, Post } from '@nestjs/common'
 import { ApiOperation, ApiTags } from '@nestjs/swagger'
 import { MarketService } from './market.service'
 import { MoneyFlowQueryDto } from './dto/money-flow-query.dto'
+import { SectorFlowQueryDto } from './dto/sector-flow-query.dto'
+import { HsgtFlowQueryDto } from './dto/hsgt-flow-query.dto'
 import { IndexTrendQueryDto } from './dto/index-trend-query.dto'
 import { SectorRankingQueryDto } from './dto/sector-ranking-query.dto'
 import { VolOverviewQueryDto } from './dto/vol-overview-query.dto'
 import { SentimentTrendQueryDto } from './dto/sentiment-trend-query.dto'
 import { ValuationTrendQueryDto } from './dto/valuation-trend-query.dto'
+import { MoneyFlowTrendQueryDto } from './dto/money-flow-trend-query.dto'
+import { SectorFlowRankingQueryDto } from './dto/sector-flow-ranking-query.dto'
+import { SectorFlowTrendQueryDto } from './dto/sector-flow-trend-query.dto'
+import { HsgtTrendQueryDto } from './dto/hsgt-trend-query.dto'
+import { MainFlowRankingQueryDto } from './dto/main-flow-ranking-query.dto'
+import { StockFlowDetailQueryDto } from './dto/stock-flow-detail-query.dto'
 import { ApiSuccessResponse } from 'src/common/decorators/api-success-response.decorator'
 import {
   ChangeDistributionResponseDto,
   HsgtFlowHistoryDto,
+  HsgtTrendResponseDto,
   IndexQuoteItemDto,
   IndexTrendResponseDto,
+  MainFlowRankingResponseDto,
   MarketMoneyFlowItemDto,
   MarketSentimentDto,
   MarketValuationDto,
+  MoneyFlowTrendResponseDto,
   SectorFlowDataDto,
+  SectorFlowRankingResponseDto,
+  SectorFlowTrendResponseDto,
   SectorRankingResponseDto,
   SentimentTrendResponseDto,
+  StockFlowDetailResponseDto,
   ValuationTrendResponseDto,
   VolumeOverviewResponseDto,
 } from './dto/market-response.dto'
@@ -29,16 +43,16 @@ export class MarketController {
   constructor(private readonly marketService: MarketService) {}
 
   @Post('money-flow')
-  @ApiOperation({ summary: '获取市场整体资金流入流出' })
+  @ApiOperation({ summary: '获取市场整体资金流入流出（含各级别拆分）' })
   @ApiSuccessResponse(MarketMoneyFlowItemDto, { isArray: true })
   getMarketMoneyFlow(@Body() query: MoneyFlowQueryDto) {
     return this.marketService.getMarketMoneyFlow(query)
   }
 
   @Post('sector-flow')
-  @ApiOperation({ summary: '获取行业板块涨跌及资金流向' })
+  @ApiOperation({ summary: '获取行业板块涨跌及资金流向（支持类型筛选与 Top N）' })
   @ApiSuccessResponse(SectorFlowDataDto)
-  getSectorFlow(@Body() query: MoneyFlowQueryDto) {
+  getSectorFlow(@Body() query: SectorFlowQueryDto) {
     return this.marketService.getSectorFlow(query)
   }
 
@@ -64,9 +78,9 @@ export class MarketController {
   }
 
   @Post('hsgt-flow')
-  @ApiOperation({ summary: '获取沪深港通北向/南向资金流向（近 20 日趋势）' })
+  @ApiOperation({ summary: '获取沪深港通北向/南向资金流向（支持自定义天数）' })
   @ApiSuccessResponse(HsgtFlowHistoryDto)
-  getHsgtFlow(@Body() query: MoneyFlowQueryDto) {
+  getHsgtFlow(@Body() query: HsgtFlowQueryDto) {
     return this.marketService.getHsgtFlow(query)
   }
 
@@ -110,5 +124,47 @@ export class MarketController {
   @ApiSuccessResponse(ValuationTrendResponseDto)
   getValuationTrend(@Body() query: ValuationTrendQueryDto) {
     return this.marketService.getValuationTrend(query)
+  }
+
+  @Post('money-flow-trend')
+  @ApiOperation({ summary: '获取大盘资金流向趋势（近N日各级别净流入序列）' })
+  @ApiSuccessResponse(MoneyFlowTrendResponseDto)
+  getMoneyFlowTrend(@Body() query: MoneyFlowTrendQueryDto) {
+    return this.marketService.getMoneyFlowTrend(query)
+  }
+
+  @Post('sector-flow-ranking')
+  @ApiOperation({ summary: '获取板块资金流向排行（按类型与排序维度）' })
+  @ApiSuccessResponse(SectorFlowRankingResponseDto)
+  getSectorFlowRanking(@Body() query: SectorFlowRankingQueryDto) {
+    return this.marketService.getSectorFlowRanking(query)
+  }
+
+  @Post('sector-flow-trend')
+  @ApiOperation({ summary: '获取指定板块资金流向趋势' })
+  @ApiSuccessResponse(SectorFlowTrendResponseDto)
+  getSectorFlowTrend(@Body() query: SectorFlowTrendQueryDto) {
+    return this.marketService.getSectorFlowTrend(query)
+  }
+
+  @Post('hsgt-trend')
+  @ApiOperation({ summary: '获取沪深港通长周期北向/南向资金趋势' })
+  @ApiSuccessResponse(HsgtTrendResponseDto)
+  getHsgtTrend(@Body() query: HsgtTrendQueryDto) {
+    return this.marketService.getHsgtTrend(query)
+  }
+
+  @Post('main-flow-ranking')
+  @ApiOperation({ summary: '获取主力资金净流入 Top N 个股排行' })
+  @ApiSuccessResponse(MainFlowRankingResponseDto)
+  getMainFlowRanking(@Body() query: MainFlowRankingQueryDto) {
+    return this.marketService.getMainFlowRanking(query)
+  }
+
+  @Post('stock-flow-detail')
+  @ApiOperation({ summary: '获取个股资金流动明细（近N日各级别拆分趋势）' })
+  @ApiSuccessResponse(StockFlowDetailResponseDto)
+  getStockFlowDetail(@Body() query: StockFlowDetailQueryDto) {
+    return this.marketService.getStockFlowDetail(query)
   }
 }

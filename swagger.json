@@ -1484,6 +1484,192 @@
         ]
       }
     },
+    "/stock/screener/strategies": {
+      "get": {
+        "operationId": "StockController_getScreenerStrategies",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ResponseModel"
+                    },
+                    {
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/ScreenerStrategyListDataDto"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "选股器 - 获取当前用户自定义策略列表",
+        "tags": [
+          "Stock - 股票"
+        ]
+      },
+      "post": {
+        "operationId": "StockController_createScreenerStrategy",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateScreenerStrategyDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ResponseModel"
+                    },
+                    {
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/ScreenerStrategyDataDto"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "选股器 - 创建自定义策略",
+        "tags": [
+          "Stock - 股票"
+        ]
+      }
+    },
+    "/stock/screener/strategies/{id}": {
+      "put": {
+        "operationId": "StockController_updateScreenerStrategy",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateScreenerStrategyDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ResponseModel"
+                    },
+                    {
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/ScreenerStrategyDataDto"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "选股器 - 更新自定义策略",
+        "tags": [
+          "Stock - 股票"
+        ]
+      },
+      "delete": {
+        "operationId": "StockController_deleteScreenerStrategy",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ResponseModel"
+                    },
+                    {
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/ScreenerStrategyDeleteDataDto"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "选股器 - 删除自定义策略",
+        "tags": [
+          "Stock - 股票"
+        ]
+      }
+    },
     "/stock/industries": {
       "get": {
         "operationId": "StockController_getIndustries",
@@ -5800,17 +5986,6 @@
       "StockScreenerQueryDto": {
         "type": "object",
         "properties": {
-          "page": {
-            "type": "number",
-            "description": "页码，从 1 开始",
-            "default": 1
-          },
-          "pageSize": {
-            "type": "number",
-            "description": "每页条数",
-            "default": 20,
-            "maximum": 100
-          },
           "exchange": {
             "type": "string",
             "description": "交易所：SSE / SZSE / BSE"
@@ -5955,6 +6130,17 @@
             "type": "number",
             "description": "近20日主力净流入最小值（万元）"
           },
+          "page": {
+            "type": "number",
+            "description": "页码，从 1 开始",
+            "default": 1
+          },
+          "pageSize": {
+            "type": "number",
+            "description": "每页条数",
+            "default": 20,
+            "maximum": 100
+          },
           "sortBy": {
             "type": "string",
             "enum": [
@@ -6004,13 +6190,21 @@
           "filters": {
             "type": "object",
             "additionalProperties": true
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "builtin"
+            ],
+            "description": "策略类型：内置预设"
           }
         },
         "required": [
           "id",
           "name",
           "description",
-          "filters"
+          "filters",
+          "type"
         ]
       },
       "ScreenerPresetDataDto": {
@@ -6025,6 +6219,426 @@
         },
         "required": [
           "presets"
+        ]
+      },
+      "ScreenerStrategyListItemDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "number"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          },
+          "filters": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "sortBy": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "totalMv",
+              "circMv",
+              "peTtm",
+              "pb",
+              "dvTtm",
+              "pctChg",
+              "turnoverRate",
+              "amount",
+              "roe",
+              "revenueYoy",
+              "netprofitYoy",
+              "grossMargin",
+              "netMargin",
+              "debtToAssets",
+              "mainNetInflow5d",
+              "listDate"
+            ]
+          },
+          "sortOrder": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "asc",
+              "desc"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "description": "创建时间（ISO 8601）"
+          },
+          "updatedAt": {
+            "type": "string",
+            "description": "更新时间（ISO 8601）"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "user"
+            ],
+            "description": "策略类型：用户自定义策略"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "filters",
+          "createdAt",
+          "updatedAt",
+          "type"
+        ]
+      },
+      "ScreenerStrategyListDataDto": {
+        "type": "object",
+        "properties": {
+          "strategies": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ScreenerStrategyListItemDto"
+            }
+          }
+        },
+        "required": [
+          "strategies"
+        ]
+      },
+      "ScreenerStrategyDataDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "number"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          },
+          "filters": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "sortBy": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "totalMv",
+              "circMv",
+              "peTtm",
+              "pb",
+              "dvTtm",
+              "pctChg",
+              "turnoverRate",
+              "amount",
+              "roe",
+              "revenueYoy",
+              "netprofitYoy",
+              "grossMargin",
+              "netMargin",
+              "debtToAssets",
+              "mainNetInflow5d",
+              "listDate"
+            ]
+          },
+          "sortOrder": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "asc",
+              "desc"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "description": "创建时间（ISO 8601）"
+          },
+          "updatedAt": {
+            "type": "string",
+            "description": "更新时间（ISO 8601）"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "filters",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "ScreenerFiltersDto": {
+        "type": "object",
+        "properties": {
+          "exchange": {
+            "type": "string",
+            "description": "交易所：SSE / SZSE / BSE"
+          },
+          "market": {
+            "type": "string",
+            "description": "市场板块（主板 / 创业板 / 科创板 等，精确匹配）"
+          },
+          "industry": {
+            "type": "string",
+            "description": "行业（精确匹配，从 /stock/industries 返回的列表中选择）"
+          },
+          "area": {
+            "type": "string",
+            "description": "地域（精确匹配，从 /stock/areas 返回的列表中选择）"
+          },
+          "isHs": {
+            "type": "string",
+            "description": "是否沪深港通标的：N / H / S"
+          },
+          "minPeTtm": {
+            "type": "number",
+            "description": "最小市盈率 TTM"
+          },
+          "maxPeTtm": {
+            "type": "number",
+            "description": "最大市盈率 TTM"
+          },
+          "minPb": {
+            "type": "number",
+            "description": "最小市净率 PB"
+          },
+          "maxPb": {
+            "type": "number",
+            "description": "最大市净率 PB"
+          },
+          "minDvTtm": {
+            "type": "number",
+            "description": "最小股息率 TTM（%）"
+          },
+          "minTotalMv": {
+            "type": "number",
+            "description": "最小总市值（万元）"
+          },
+          "maxTotalMv": {
+            "type": "number",
+            "description": "最大总市值（万元）"
+          },
+          "minCircMv": {
+            "type": "number",
+            "description": "最小流通市值（万元）"
+          },
+          "maxCircMv": {
+            "type": "number",
+            "description": "最大流通市值（万元）"
+          },
+          "minPctChg": {
+            "type": "number",
+            "description": "最小涨跌幅（%）"
+          },
+          "maxPctChg": {
+            "type": "number",
+            "description": "最大涨跌幅（%）"
+          },
+          "minTurnoverRate": {
+            "type": "number",
+            "description": "最小换手率（%）"
+          },
+          "maxTurnoverRate": {
+            "type": "number",
+            "description": "最大换手率（%）"
+          },
+          "minAmount": {
+            "type": "number",
+            "description": "最小成交额（千元）"
+          },
+          "maxAmount": {
+            "type": "number",
+            "description": "最大成交额（千元）"
+          },
+          "minRevenueYoy": {
+            "type": "number",
+            "description": "最小营收同比增长（%）"
+          },
+          "maxRevenueYoy": {
+            "type": "number",
+            "description": "最大营收同比增长（%）"
+          },
+          "minNetprofitYoy": {
+            "type": "number",
+            "description": "最小净利润同比增长（%）"
+          },
+          "maxNetprofitYoy": {
+            "type": "number",
+            "description": "最大净利润同比增长（%）"
+          },
+          "minRoe": {
+            "type": "number",
+            "description": "最小 ROE（%）"
+          },
+          "maxRoe": {
+            "type": "number",
+            "description": "最大 ROE（%）"
+          },
+          "minGrossMargin": {
+            "type": "number",
+            "description": "最小毛利率（%）"
+          },
+          "maxGrossMargin": {
+            "type": "number",
+            "description": "最大毛利率（%）"
+          },
+          "minNetMargin": {
+            "type": "number",
+            "description": "最小净利率（%）"
+          },
+          "maxNetMargin": {
+            "type": "number",
+            "description": "最大净利率（%）"
+          },
+          "maxDebtToAssets": {
+            "type": "number",
+            "description": "最大资产负债率（%）"
+          },
+          "minCurrentRatio": {
+            "type": "number",
+            "description": "最小流动比率"
+          },
+          "minQuickRatio": {
+            "type": "number",
+            "description": "最小速动比率"
+          },
+          "minOcfToNetprofit": {
+            "type": "number",
+            "description": "最小经营现金流/净利润比率（如 0.8 表示 80%）"
+          },
+          "minMainNetInflow5d": {
+            "type": "number",
+            "description": "近5日主力净流入最小值（万元）"
+          },
+          "minMainNetInflow20d": {
+            "type": "number",
+            "description": "近20日主力净流入最小值（万元）"
+          }
+        }
+      },
+      "CreateScreenerStrategyDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "策略名称",
+            "maxLength": 50
+          },
+          "description": {
+            "type": "string",
+            "description": "策略描述",
+            "maxLength": 200
+          },
+          "filters": {
+            "description": "选股过滤条件（不含分页与排序字段）",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ScreenerFiltersDto"
+              }
+            ]
+          },
+          "sortBy": {
+            "type": "string",
+            "enum": [
+              "totalMv",
+              "circMv",
+              "peTtm",
+              "pb",
+              "dvTtm",
+              "pctChg",
+              "turnoverRate",
+              "amount",
+              "roe",
+              "revenueYoy",
+              "netprofitYoy",
+              "grossMargin",
+              "netMargin",
+              "debtToAssets",
+              "mainNetInflow5d",
+              "listDate"
+            ],
+            "description": "默认排序字段"
+          },
+          "sortOrder": {
+            "type": "string",
+            "enum": [
+              "asc",
+              "desc"
+            ],
+            "description": "默认排序方向"
+          }
+        },
+        "required": [
+          "name",
+          "filters"
+        ]
+      },
+      "UpdateScreenerStrategyDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "策略名称",
+            "maxLength": 50
+          },
+          "description": {
+            "type": "string",
+            "description": "策略描述",
+            "maxLength": 200
+          },
+          "filters": {
+            "description": "选股过滤条件（不含分页与排序字段）",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ScreenerFiltersDto"
+              }
+            ]
+          },
+          "sortBy": {
+            "type": "string",
+            "enum": [
+              "totalMv",
+              "circMv",
+              "peTtm",
+              "pb",
+              "dvTtm",
+              "pctChg",
+              "turnoverRate",
+              "amount",
+              "roe",
+              "revenueYoy",
+              "netprofitYoy",
+              "grossMargin",
+              "netMargin",
+              "debtToAssets",
+              "mainNetInflow5d",
+              "listDate"
+            ],
+            "description": "默认排序字段"
+          },
+          "sortOrder": {
+            "type": "string",
+            "enum": [
+              "asc",
+              "desc"
+            ],
+            "description": "默认排序方向"
+          }
+        }
+      },
+      "ScreenerStrategyDeleteDataDto": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "message"
         ]
       },
       "IndustryItemDto": {

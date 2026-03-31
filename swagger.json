@@ -1193,6 +1193,148 @@
         ]
       }
     },
+    "/stock/screener": {
+      "post": {
+        "operationId": "StockController_screener",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StockScreenerQueryDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ResponseModel"
+                    },
+                    {
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/StockScreenerDataDto"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "summary": "选股器 - 多维度条件筛选",
+        "tags": [
+          "Stock - 股票"
+        ]
+      }
+    },
+    "/stock/screener/presets": {
+      "post": {
+        "operationId": "StockController_screenerPresets",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ResponseModel"
+                    },
+                    {
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/ScreenerPresetDataDto"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "summary": "选股器 - 内置筛选条件预设列表",
+        "tags": [
+          "Stock - 股票"
+        ]
+      }
+    },
+    "/stock/industries": {
+      "get": {
+        "operationId": "StockController_getIndustries",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ResponseModel"
+                    },
+                    {
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/IndustryListDataDto"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "summary": "行业列表（含股票数量，按数量降序）",
+        "tags": [
+          "Stock - 股票"
+        ]
+      }
+    },
+    "/stock/areas": {
+      "get": {
+        "operationId": "StockController_getAreas",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ResponseModel"
+                    },
+                    {
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/AreaListDataDto"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "summary": "地域列表（含股票数量，按数量降序）",
+        "tags": [
+          "Stock - 股票"
+        ]
+      }
+    },
     "/market/money-flow": {
       "post": {
         "operationId": "MarketController_getMarketMoneyFlow",
@@ -1591,6 +1733,231 @@
         "summary": "手动触发 Tushare 同步（仅超级管理员）",
         "tags": [
           "Tushare - 同步管理"
+        ]
+      }
+    },
+    "/factor/library": {
+      "post": {
+        "operationId": "FactorController_getLibrary",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FactorLibraryQueryDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "因子库列表（按分类分组）",
+        "tags": [
+          "Factor - 因子市场"
+        ]
+      }
+    },
+    "/factor/detail": {
+      "post": {
+        "operationId": "FactorController_getDetail",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FactorDetailQueryDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "因子详情",
+        "tags": [
+          "Factor - 因子市场"
+        ]
+      }
+    },
+    "/factor/values": {
+      "post": {
+        "operationId": "FactorController_getFactorValues",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FactorValuesQueryDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "因子截面值查询（指定因子在指定交易日的全市场值）",
+        "tags": [
+          "Factor - 因子市场"
+        ]
+      }
+    },
+    "/factor/analysis/ic": {
+      "post": {
+        "operationId": "FactorController_getIcAnalysis",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FactorIcAnalysisDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "IC 时间序列分析（Spearman/Pearson 相关系数）",
+        "tags": [
+          "Factor - 因子市场"
+        ]
+      }
+    },
+    "/factor/analysis/quantile": {
+      "post": {
+        "operationId": "FactorController_getQuantileAnalysis",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FactorQuantileAnalysisDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "因子分层回测（各分位组累计收益）",
+        "tags": [
+          "Factor - 因子市场"
+        ]
+      }
+    },
+    "/factor/analysis/decay": {
+      "post": {
+        "operationId": "FactorController_getDecayAnalysis",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FactorDecayAnalysisDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "因子衰减分析（不同持有期 IC 对比）",
+        "tags": [
+          "Factor - 因子市场"
+        ]
+      }
+    },
+    "/factor/analysis/distribution": {
+      "post": {
+        "operationId": "FactorController_getDistribution",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FactorDistributionDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "因子截面分布统计与直方图",
+        "tags": [
+          "Factor - 因子市场"
+        ]
+      }
+    },
+    "/factor/analysis/correlation": {
+      "post": {
+        "operationId": "FactorController_getCorrelation",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FactorCorrelationDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "多因子相关性矩阵",
+        "tags": [
+          "Factor - 因子市场"
+        ]
+      }
+    },
+    "/factor/screening": {
+      "post": {
+        "operationId": "FactorController_screening",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FactorScreeningDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "多因子选股（条件组合筛选）",
+        "tags": [
+          "Factor - 因子市场"
         ]
       }
     },
@@ -3574,6 +3941,456 @@
           "tsCode"
         ]
       },
+      "StockScreenerItemDto": {
+        "type": "object",
+        "properties": {
+          "tsCode": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string",
+            "nullable": true
+          },
+          "industry": {
+            "type": "string",
+            "nullable": true
+          },
+          "market": {
+            "type": "string",
+            "nullable": true
+          },
+          "listDate": {
+            "type": "string",
+            "nullable": true
+          },
+          "close": {
+            "type": "number",
+            "nullable": true,
+            "description": "收盘价"
+          },
+          "pctChg": {
+            "type": "number",
+            "nullable": true,
+            "description": "涨跌幅（%）"
+          },
+          "amount": {
+            "type": "number",
+            "nullable": true,
+            "description": "成交额（千元）"
+          },
+          "turnoverRate": {
+            "type": "number",
+            "nullable": true,
+            "description": "换手率（%）"
+          },
+          "peTtm": {
+            "type": "number",
+            "nullable": true,
+            "description": "市盈率 TTM"
+          },
+          "pb": {
+            "type": "number",
+            "nullable": true,
+            "description": "市净率 PB"
+          },
+          "dvTtm": {
+            "type": "number",
+            "nullable": true,
+            "description": "股息率 TTM（%）"
+          },
+          "totalMv": {
+            "type": "number",
+            "nullable": true,
+            "description": "总市值（万元）"
+          },
+          "circMv": {
+            "type": "number",
+            "nullable": true,
+            "description": "流通市值（万元）"
+          },
+          "revenueYoy": {
+            "type": "number",
+            "nullable": true,
+            "description": "营收同比增速（%）"
+          },
+          "netprofitYoy": {
+            "type": "number",
+            "nullable": true,
+            "description": "净利润同比增速（%）"
+          },
+          "roe": {
+            "type": "number",
+            "nullable": true,
+            "description": "ROE（%）"
+          },
+          "grossMargin": {
+            "type": "number",
+            "nullable": true,
+            "description": "毛利率（%）"
+          },
+          "netMargin": {
+            "type": "number",
+            "nullable": true,
+            "description": "净利率（%）"
+          },
+          "debtToAssets": {
+            "type": "number",
+            "nullable": true,
+            "description": "资产负债率（%）"
+          },
+          "currentRatio": {
+            "type": "number",
+            "nullable": true,
+            "description": "流动比率"
+          },
+          "quickRatio": {
+            "type": "number",
+            "nullable": true,
+            "description": "速动比率"
+          },
+          "ocfToNetprofit": {
+            "type": "number",
+            "nullable": true,
+            "description": "经营现金流/净利润"
+          },
+          "mainNetInflow5d": {
+            "type": "number",
+            "nullable": true,
+            "description": "近5日主力净流入（万元）"
+          },
+          "mainNetInflow20d": {
+            "type": "number",
+            "nullable": true,
+            "description": "近20日主力净流入（万元）"
+          },
+          "latestFinDate": {
+            "type": "string",
+            "nullable": true,
+            "description": "最新财报期（如 2025-09-30）"
+          }
+        },
+        "required": [
+          "tsCode"
+        ]
+      },
+      "StockScreenerDataDto": {
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": "number"
+          },
+          "pageSize": {
+            "type": "number"
+          },
+          "total": {
+            "type": "number"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StockScreenerItemDto"
+            }
+          }
+        },
+        "required": [
+          "page",
+          "pageSize",
+          "total",
+          "items"
+        ]
+      },
+      "StockScreenerQueryDto": {
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": "number",
+            "description": "页码，从 1 开始",
+            "default": 1
+          },
+          "pageSize": {
+            "type": "number",
+            "description": "每页条数",
+            "default": 20,
+            "maximum": 100
+          },
+          "exchange": {
+            "type": "string",
+            "description": "交易所：SSE / SZSE / BSE"
+          },
+          "market": {
+            "type": "string",
+            "description": "市场板块（主板 / 创业板 / 科创板 等，精确匹配）"
+          },
+          "industry": {
+            "type": "string",
+            "description": "行业（精确匹配，从 /stock/industries 返回的列表中选择）"
+          },
+          "area": {
+            "type": "string",
+            "description": "地域（精确匹配，从 /stock/areas 返回的列表中选择）"
+          },
+          "isHs": {
+            "type": "string",
+            "description": "是否沪深港通标的：N / H / S"
+          },
+          "minPeTtm": {
+            "type": "number",
+            "description": "最小市盈率 TTM"
+          },
+          "maxPeTtm": {
+            "type": "number",
+            "description": "最大市盈率 TTM"
+          },
+          "minPb": {
+            "type": "number",
+            "description": "最小市净率 PB"
+          },
+          "maxPb": {
+            "type": "number",
+            "description": "最大市净率 PB"
+          },
+          "minDvTtm": {
+            "type": "number",
+            "description": "最小股息率 TTM（%）"
+          },
+          "minTotalMv": {
+            "type": "number",
+            "description": "最小总市值（万元）"
+          },
+          "maxTotalMv": {
+            "type": "number",
+            "description": "最大总市值（万元）"
+          },
+          "minCircMv": {
+            "type": "number",
+            "description": "最小流通市值（万元）"
+          },
+          "maxCircMv": {
+            "type": "number",
+            "description": "最大流通市值（万元）"
+          },
+          "minPctChg": {
+            "type": "number",
+            "description": "最小涨跌幅（%）"
+          },
+          "maxPctChg": {
+            "type": "number",
+            "description": "最大涨跌幅（%）"
+          },
+          "minTurnoverRate": {
+            "type": "number",
+            "description": "最小换手率（%）"
+          },
+          "maxTurnoverRate": {
+            "type": "number",
+            "description": "最大换手率（%）"
+          },
+          "minAmount": {
+            "type": "number",
+            "description": "最小成交额（千元）"
+          },
+          "maxAmount": {
+            "type": "number",
+            "description": "最大成交额（千元）"
+          },
+          "minRevenueYoy": {
+            "type": "number",
+            "description": "最小营收同比增长（%）"
+          },
+          "maxRevenueYoy": {
+            "type": "number",
+            "description": "最大营收同比增长（%）"
+          },
+          "minNetprofitYoy": {
+            "type": "number",
+            "description": "最小净利润同比增长（%）"
+          },
+          "maxNetprofitYoy": {
+            "type": "number",
+            "description": "最大净利润同比增长（%）"
+          },
+          "minRoe": {
+            "type": "number",
+            "description": "最小 ROE（%）"
+          },
+          "maxRoe": {
+            "type": "number",
+            "description": "最大 ROE（%）"
+          },
+          "minGrossMargin": {
+            "type": "number",
+            "description": "最小毛利率（%）"
+          },
+          "maxGrossMargin": {
+            "type": "number",
+            "description": "最大毛利率（%）"
+          },
+          "minNetMargin": {
+            "type": "number",
+            "description": "最小净利率（%）"
+          },
+          "maxNetMargin": {
+            "type": "number",
+            "description": "最大净利率（%）"
+          },
+          "maxDebtToAssets": {
+            "type": "number",
+            "description": "最大资产负债率（%）"
+          },
+          "minCurrentRatio": {
+            "type": "number",
+            "description": "最小流动比率"
+          },
+          "minQuickRatio": {
+            "type": "number",
+            "description": "最小速动比率"
+          },
+          "minOcfToNetprofit": {
+            "type": "number",
+            "description": "最小经营现金流/净利润比率（如 0.8 表示 80%）"
+          },
+          "minMainNetInflow5d": {
+            "type": "number",
+            "description": "近5日主力净流入最小值（万元）"
+          },
+          "minMainNetInflow20d": {
+            "type": "number",
+            "description": "近20日主力净流入最小值（万元）"
+          },
+          "sortBy": {
+            "type": "string",
+            "enum": [
+              "totalMv",
+              "circMv",
+              "peTtm",
+              "pb",
+              "dvTtm",
+              "pctChg",
+              "turnoverRate",
+              "amount",
+              "roe",
+              "revenueYoy",
+              "netprofitYoy",
+              "grossMargin",
+              "netMargin",
+              "debtToAssets",
+              "mainNetInflow5d",
+              "listDate"
+            ],
+            "description": "排序字段",
+            "default": "totalMv"
+          },
+          "sortOrder": {
+            "type": "string",
+            "enum": [
+              "asc",
+              "desc"
+            ],
+            "description": "排序方向",
+            "default": "desc"
+          }
+        }
+      },
+      "ScreenerPresetItemDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "filters": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "filters"
+        ]
+      },
+      "ScreenerPresetDataDto": {
+        "type": "object",
+        "properties": {
+          "presets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ScreenerPresetItemDto"
+            }
+          }
+        },
+        "required": [
+          "presets"
+        ]
+      },
+      "IndustryItemDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "行业名称"
+          },
+          "count": {
+            "type": "number",
+            "description": "该行业上市股票数"
+          }
+        },
+        "required": [
+          "name",
+          "count"
+        ]
+      },
+      "IndustryListDataDto": {
+        "type": "object",
+        "properties": {
+          "industries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IndustryItemDto"
+            }
+          }
+        },
+        "required": [
+          "industries"
+        ]
+      },
+      "AreaItemDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "地域名称"
+          },
+          "count": {
+            "type": "number",
+            "description": "该地域上市股票数"
+          }
+        },
+        "required": [
+          "name",
+          "count"
+        ]
+      },
+      "AreaListDataDto": {
+        "type": "object",
+        "properties": {
+          "areas": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AreaItemDto"
+            }
+          }
+        },
+        "required": [
+          "areas"
+        ]
+      },
       "MarketMoneyFlowItemDto": {
         "type": "object",
         "properties": {
@@ -3951,7 +4768,10 @@
               "FINA_INDICATOR",
               "DIVIDEND",
               "TOP10_HOLDERS",
-              "TOP10_FLOAT_HOLDERS"
+              "TOP10_FLOAT_HOLDERS",
+              "STK_LIMIT",
+              "SUSPEND_D",
+              "INDEX_WEIGHT"
             ]
           },
           "label": {
@@ -4034,13 +4854,353 @@
                 "FINA_INDICATOR",
                 "DIVIDEND",
                 "TOP10_HOLDERS",
-                "TOP10_FLOAT_HOLDERS"
+                "TOP10_FLOAT_HOLDERS",
+                "STK_LIMIT",
+                "SUSPEND_D",
+                "INDEX_WEIGHT"
               ]
             }
           }
         },
         "required": [
           "mode"
+        ]
+      },
+      "FactorLibraryQueryDto": {
+        "type": "object",
+        "properties": {
+          "category": {
+            "type": "string",
+            "enum": [
+              "VALUATION",
+              "SIZE",
+              "MOMENTUM",
+              "VOLATILITY",
+              "LIQUIDITY",
+              "QUALITY",
+              "GROWTH",
+              "CAPITAL_FLOW",
+              "TECHNICAL",
+              "LEVERAGE",
+              "DIVIDEND",
+              "CUSTOM"
+            ],
+            "description": "按分类筛选"
+          },
+          "enabledOnly": {
+            "type": "boolean",
+            "default": true,
+            "description": "仅返回已启用的因子"
+          }
+        }
+      },
+      "FactorDetailQueryDto": {
+        "type": "object",
+        "properties": {
+          "factorName": {
+            "type": "string",
+            "description": "因子名称标识，如 pe_ttm"
+          }
+        },
+        "required": [
+          "factorName"
+        ]
+      },
+      "FactorValuesQueryDto": {
+        "type": "object",
+        "properties": {
+          "factorName": {
+            "type": "string",
+            "description": "因子名称，如 pe_ttm"
+          },
+          "tradeDate": {
+            "type": "string",
+            "description": "交易日 YYYYMMDD"
+          },
+          "universe": {
+            "type": "string",
+            "description": "股票池，如 000300.SH（沪深300），不传则全市场"
+          },
+          "page": {
+            "type": "number",
+            "default": 1
+          },
+          "pageSize": {
+            "type": "number",
+            "default": 50
+          },
+          "sortOrder": {
+            "type": "string",
+            "enum": [
+              "asc",
+              "desc"
+            ],
+            "default": "desc"
+          }
+        },
+        "required": [
+          "factorName",
+          "tradeDate"
+        ]
+      },
+      "FactorIcAnalysisDto": {
+        "type": "object",
+        "properties": {
+          "factorName": {
+            "type": "string",
+            "description": "因子名称"
+          },
+          "startDate": {
+            "type": "string",
+            "description": "分析起始日期 YYYYMMDD"
+          },
+          "endDate": {
+            "type": "string",
+            "description": "分析结束日期 YYYYMMDD"
+          },
+          "universe": {
+            "type": "string",
+            "description": "股票池，如 000300.SH（沪深300）"
+          },
+          "forwardDays": {
+            "type": "number",
+            "default": 5,
+            "description": "未来N日收益率（默认5日）"
+          },
+          "icMethod": {
+            "type": "string",
+            "enum": [
+              "rank",
+              "normal"
+            ],
+            "default": "rank",
+            "description": "Rank IC (Spearman) 或 Normal IC (Pearson)"
+          }
+        },
+        "required": [
+          "factorName",
+          "startDate",
+          "endDate"
+        ]
+      },
+      "FactorQuantileAnalysisDto": {
+        "type": "object",
+        "properties": {
+          "factorName": {
+            "type": "string",
+            "description": "因子名称"
+          },
+          "startDate": {
+            "type": "string",
+            "description": "分析起始日期 YYYYMMDD"
+          },
+          "endDate": {
+            "type": "string",
+            "description": "分析结束日期 YYYYMMDD"
+          },
+          "universe": {
+            "type": "string",
+            "description": "股票池"
+          },
+          "quantiles": {
+            "type": "number",
+            "default": 5,
+            "description": "分几组（默认5组）"
+          },
+          "rebalanceDays": {
+            "type": "number",
+            "default": 5,
+            "description": "调仓周期（交易日）"
+          }
+        },
+        "required": [
+          "factorName",
+          "startDate",
+          "endDate"
+        ]
+      },
+      "FactorDecayAnalysisDto": {
+        "type": "object",
+        "properties": {
+          "factorName": {
+            "type": "string",
+            "description": "因子名称"
+          },
+          "startDate": {
+            "type": "string",
+            "description": "分析起始日期 YYYYMMDD"
+          },
+          "endDate": {
+            "type": "string",
+            "description": "分析结束日期 YYYYMMDD"
+          },
+          "universe": {
+            "type": "string",
+            "description": "股票池"
+          },
+          "periods": {
+            "description": "持有期列表（交易日）",
+            "default": [
+              1,
+              3,
+              5,
+              10,
+              20
+            ],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "factorName",
+          "startDate",
+          "endDate"
+        ]
+      },
+      "FactorDistributionDto": {
+        "type": "object",
+        "properties": {
+          "factorName": {
+            "type": "string",
+            "description": "因子名称"
+          },
+          "tradeDate": {
+            "type": "string",
+            "description": "交易日 YYYYMMDD"
+          },
+          "universe": {
+            "type": "string",
+            "description": "股票池"
+          },
+          "bins": {
+            "type": "number",
+            "default": 50,
+            "description": "直方图的柱数"
+          }
+        },
+        "required": [
+          "factorName",
+          "tradeDate"
+        ]
+      },
+      "FactorCorrelationDto": {
+        "type": "object",
+        "properties": {
+          "factorNames": {
+            "description": "因子名称列表（2~20个）",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "tradeDate": {
+            "type": "string",
+            "description": "计算日期 YYYYMMDD"
+          },
+          "universe": {
+            "type": "string",
+            "description": "股票池"
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "spearman",
+              "pearson"
+            ],
+            "default": "spearman"
+          }
+        },
+        "required": [
+          "factorNames",
+          "tradeDate"
+        ]
+      },
+      "FactorCondition": {
+        "type": "object",
+        "properties": {
+          "factorName": {
+            "type": "string",
+            "description": "因子名称"
+          },
+          "operator": {
+            "type": "string",
+            "description": "比较方式",
+            "enum": [
+              "gt",
+              "gte",
+              "lt",
+              "lte",
+              "between",
+              "top_pct",
+              "bottom_pct"
+            ]
+          },
+          "value": {
+            "type": "number",
+            "description": "阈值（gt/gte/lt/lte 使用）"
+          },
+          "min": {
+            "type": "number",
+            "description": "范围下界（between 使用）"
+          },
+          "max": {
+            "type": "number",
+            "description": "范围上界（between 使用）"
+          },
+          "percent": {
+            "type": "number",
+            "description": "百分位（top_pct/bottom_pct 使用，0~100）"
+          }
+        },
+        "required": [
+          "factorName",
+          "operator"
+        ]
+      },
+      "FactorScreeningDto": {
+        "type": "object",
+        "properties": {
+          "conditions": {
+            "description": "筛选条件列表",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FactorCondition"
+            }
+          },
+          "tradeDate": {
+            "type": "string",
+            "description": "选股日期 YYYYMMDD"
+          },
+          "universe": {
+            "type": "string",
+            "description": "股票池，如 000300.SH"
+          },
+          "sortBy": {
+            "type": "string",
+            "description": "按哪个因子排序"
+          },
+          "sortOrder": {
+            "type": "string",
+            "enum": [
+              "asc",
+              "desc"
+            ],
+            "default": "desc"
+          },
+          "page": {
+            "type": "number",
+            "default": 1
+          },
+          "pageSize": {
+            "type": "number",
+            "default": 50
+          }
+        },
+        "required": [
+          "conditions",
+          "tradeDate"
         ]
       },
       "SubmitBacktestingDto": {

@@ -6,6 +6,7 @@ import {
   mapDailyBasicRecord,
   mapDailyRecord,
   mapIndexDailyRecord,
+  mapMarginDetailRecord,
   mapMonthlyRecord,
   mapWeeklyRecord,
 } from '../tushare-sync.mapper'
@@ -131,6 +132,23 @@ export class MarketSyncService {
           tradingDayOnly: true,
         },
         execute: ({ mode, targetTradeDate }) => this.syncIndexDaily(this.requireTradeDate(targetTradeDate), mode),
+      },
+      {
+        task: TushareSyncTaskName.MARGIN_DETAIL,
+        label: '融资融券明细',
+        category: 'market',
+        order: 170,
+        bootstrapEnabled: false, // 需 2000 积分，默认不启用
+        supportsManual: true,
+        supportsFullSync: true,
+        requiresTradeDate: true,
+        schedule: {
+          cron: '0 5 19 * * 1-5',
+          timeZone: this.helper.syncTimeZone,
+          description: '交易日盘后同步融资融券明细（需 Tushare 2000 积分）',
+          tradingDayOnly: true,
+        },
+        execute: ({ mode, targetTradeDate }) => this.syncMarginDetail(this.requireTradeDate(targetTradeDate), mode),
       },
     ]
   }
@@ -398,6 +416,28 @@ export class MarketSyncService {
       },
       startedAt,
     )
+  }
+
+  // ─── 融资融券明细 ──────────────────────────────────────────────────────────
+  // 只保留近 120 个交易日数据，需 Tushare 2000 积分
+
+  async syncMarginDetail(targetTradeDate: string, mode: TushareSyncMode = 'incremental'): Promise<void> {
+    await this.syncByTradeDate({
+      task: TushareSyncTaskName.MARGIN_DETAIL,
+      label: '融资融券明细',
+      modelName: 'marginDetail',
+      targetTradeDate,
+      fullSync: mode === 'full',
+      fetchAndMap: async (td) => {
+        const rows = await this.api.getMarginDetailByTradeDate(td)
+        return rows.map(mapMarginDetailRecord).filter((r): r is NonNullable<typeof r> => Boolean(r))
+      },
+      resolveDates: async (start) => {
+        const allDates = await this.helper.getOpenTradeDatesBetween(start, targetTradeDate)
+        // 只保留近 120 个交易日
+        return allDates.slice(-120)
+      },
+    })
   }
 
   private requireTradeDate(targetTradeDate?: string): string {

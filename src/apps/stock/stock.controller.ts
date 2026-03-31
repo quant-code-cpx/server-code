@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Post } from '@nestjs/common'
 import { ApiOperation, ApiTags } from '@nestjs/swagger'
 import { StockService } from './stock.service'
+import { StockAnalysisService } from './stock-analysis.service'
 import { StockListQueryDto } from './dto/stock-list-query.dto'
 import { StockDetailDto } from './dto/stock-detail.dto'
 import { StockSearchDto } from './dto/stock-search.dto'
@@ -12,6 +13,13 @@ import { StockDetailShareCapitalDto } from './dto/stock-detail-share-capital.dto
 import { StockDetailFinancingDto } from './dto/stock-detail-financing.dto'
 import { StockDetailFinancialStatementsDto } from './dto/stock-detail-financial-statements.dto'
 import { StockScreenerQueryDto } from './dto/stock-screener-query.dto'
+import {
+  StockTechnicalIndicatorsDto,
+  StockTimingSignalsDto,
+  StockChipDistributionDto,
+  StockMarginQueryDto,
+  StockRelativeStrengthDto,
+} from './dto/stock-analysis-request.dto'
 import { ApiSuccessResponse } from 'src/common/decorators/api-success-response.decorator'
 import {
   StockChartDataDto,
@@ -31,12 +39,20 @@ import {
   StockShareCapitalDataDto,
   StockShareholdersDataDto,
   StockTodayFlowDataDto,
+  StockTechnicalDataDto,
+  StockTimingSignalsDataDto,
+  ChipDistributionDataDto,
+  StockMarginDataResponseDto,
+  StockRelativeStrengthDataDto,
 } from './dto/stock-response.dto'
 
 @ApiTags('Stock - 股票')
 @Controller('stock')
 export class StockController {
-  constructor(private readonly stockService: StockService) {}
+  constructor(
+    private readonly stockService: StockService,
+    private readonly stockAnalysisService: StockAnalysisService,
+  ) {}
 
   @Post('list')
   @ApiOperation({ summary: '股票列表（分页 + 多维筛选 + 排序）' })
@@ -129,6 +145,43 @@ export class StockController {
   @ApiSuccessResponse(StockFinancialStatementsDataDto)
   detailFinancialStatements(@Body() dto: StockDetailFinancialStatementsDto) {
     return this.stockService.getDetailFinancialStatements(dto)
+  }
+
+  // ─── 分析 Tab ────────────────────────────────────────────────────────────────
+
+  @Post('detail/analysis/technical')
+  @ApiOperation({ summary: '股票详情 - 分析 Tab：技术指标（MACD/KDJ/RSI/BOLL 等全套指标历史序列）' })
+  @ApiSuccessResponse(StockTechnicalDataDto)
+  getTechnicalIndicators(@Body() dto: StockTechnicalIndicatorsDto) {
+    return this.stockAnalysisService.getTechnicalIndicators(dto)
+  }
+
+  @Post('detail/analysis/timing-signals')
+  @ApiOperation({ summary: '股票详情 - 分析 Tab：择时信号（综合多指标买卖信号 + 评分）' })
+  @ApiSuccessResponse(StockTimingSignalsDataDto)
+  getTimingSignals(@Body() dto: StockTimingSignalsDto) {
+    return this.stockAnalysisService.getTimingSignals(dto)
+  }
+
+  @Post('detail/analysis/chip-distribution')
+  @ApiOperation({ summary: '股票详情 - 分析 Tab：筹码分布（真实 cyq 数据或估算）' })
+  @ApiSuccessResponse(ChipDistributionDataDto)
+  getChipDistribution(@Body() dto: StockChipDistributionDto) {
+    return this.stockAnalysisService.getChipDistribution(dto)
+  }
+
+  @Post('detail/analysis/margin')
+  @ApiOperation({ summary: '股票详情 - 分析 Tab：融资融券余额趋势（需 Tushare 2000 积分）' })
+  @ApiSuccessResponse(StockMarginDataResponseDto)
+  getMarginData(@Body() dto: StockMarginQueryDto) {
+    return this.stockAnalysisService.getMarginData(dto)
+  }
+
+  @Post('detail/analysis/relative-strength')
+  @ApiOperation({ summary: '股票详情 - 分析 Tab：相对强弱（个股 vs 大盘/行业指数）' })
+  @ApiSuccessResponse(StockRelativeStrengthDataDto)
+  getRelativeStrength(@Body() dto: StockRelativeStrengthDto) {
+    return this.stockAnalysisService.getRelativeStrength(dto)
   }
 
   // ─── 选股器 ─────────────────────────────────────────────────────────────────

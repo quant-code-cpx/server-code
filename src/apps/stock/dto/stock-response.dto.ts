@@ -402,3 +402,274 @@ export class ScreenerPresetItemDto {
 export class ScreenerPresetDataDto {
   @ApiProperty({ type: [ScreenerPresetItemDto] }) presets: ScreenerPresetItemDto[]
 }
+
+// ─── 分析 Tab — 技术指标 ──────────────────────────────────────────────────────
+
+export class TechnicalDataPointDto {
+  @ApiProperty() tradeDate: string
+  @ApiProperty({ required: false, nullable: true }) open: number | null
+  @ApiProperty({ required: false, nullable: true }) high: number | null
+  @ApiProperty({ required: false, nullable: true }) low: number | null
+  @ApiProperty({ required: false, nullable: true }) close: number | null
+  @ApiProperty({ required: false, nullable: true }) vol: number | null
+  @ApiProperty({ required: false, nullable: true }) amount: number | null
+  @ApiProperty({ required: false, nullable: true }) pctChg: number | null
+
+  // 均线
+  @ApiProperty({ required: false, nullable: true }) ma5: number | null
+  @ApiProperty({ required: false, nullable: true }) ma10: number | null
+  @ApiProperty({ required: false, nullable: true }) ma20: number | null
+  @ApiProperty({ required: false, nullable: true }) ma60: number | null
+  @ApiProperty({ required: false, nullable: true }) ma120: number | null
+  @ApiProperty({ required: false, nullable: true }) ma250: number | null
+  @ApiProperty({ required: false, nullable: true }) ema12: number | null
+  @ApiProperty({ required: false, nullable: true }) ema26: number | null
+
+  // MACD
+  @ApiProperty({ required: false, nullable: true }) macdDif: number | null
+  @ApiProperty({ required: false, nullable: true }) macdDea: number | null
+  @ApiProperty({ required: false, nullable: true }) macdHist: number | null
+
+  // KDJ
+  @ApiProperty({ required: false, nullable: true }) kdjK: number | null
+  @ApiProperty({ required: false, nullable: true }) kdjD: number | null
+  @ApiProperty({ required: false, nullable: true }) kdjJ: number | null
+
+  // RSI
+  @ApiProperty({ required: false, nullable: true }) rsi6: number | null
+  @ApiProperty({ required: false, nullable: true }) rsi12: number | null
+  @ApiProperty({ required: false, nullable: true }) rsi24: number | null
+
+  // BOLL
+  @ApiProperty({ required: false, nullable: true }) bollUpper: number | null
+  @ApiProperty({ required: false, nullable: true }) bollMid: number | null
+  @ApiProperty({ required: false, nullable: true }) bollLower: number | null
+
+  // WR
+  @ApiProperty({ required: false, nullable: true }) wr6: number | null
+  @ApiProperty({ required: false, nullable: true }) wr10: number | null
+
+  // CCI
+  @ApiProperty({ required: false, nullable: true }) cci: number | null
+
+  // DMI
+  @ApiProperty({ required: false, nullable: true }) dmiPdi: number | null
+  @ApiProperty({ required: false, nullable: true }) dmiMdi: number | null
+  @ApiProperty({ required: false, nullable: true }) dmiAdx: number | null
+  @ApiProperty({ required: false, nullable: true }) dmiAdxr: number | null
+
+  // TRIX
+  @ApiProperty({ required: false, nullable: true }) trix: number | null
+  @ApiProperty({ required: false, nullable: true }) trixMa: number | null
+
+  // DMA
+  @ApiProperty({ required: false, nullable: true }) dma: number | null
+  @ApiProperty({ required: false, nullable: true }) dmaMa: number | null
+
+  // BIAS
+  @ApiProperty({ required: false, nullable: true }) bias6: number | null
+  @ApiProperty({ required: false, nullable: true }) bias12: number | null
+  @ApiProperty({ required: false, nullable: true }) bias24: number | null
+
+  // OBV
+  @ApiProperty({ required: false, nullable: true }) obv: number | null
+  @ApiProperty({ required: false, nullable: true }) obvMa: number | null
+
+  // VR
+  @ApiProperty({ required: false, nullable: true }) vr: number | null
+
+  // EMV
+  @ApiProperty({ required: false, nullable: true }) emv: number | null
+  @ApiProperty({ required: false, nullable: true }) emvMa: number | null
+
+  // ROC
+  @ApiProperty({ required: false, nullable: true }) roc: number | null
+  @ApiProperty({ required: false, nullable: true }) rocMa: number | null
+
+  // PSY
+  @ApiProperty({ required: false, nullable: true }) psy: number | null
+  @ApiProperty({ required: false, nullable: true }) psyMa: number | null
+
+  // BRAR
+  @ApiProperty({ required: false, nullable: true }) br: number | null
+  @ApiProperty({ required: false, nullable: true }) ar: number | null
+
+  // CR
+  @ApiProperty({ required: false, nullable: true }) cr: number | null
+
+  // SAR
+  @ApiProperty({ required: false, nullable: true }) sar: number | null
+  @ApiProperty({ required: false, nullable: true }) sarBullish: boolean | null
+
+  // 量价
+  @ApiProperty({ required: false, nullable: true }) volMa5: number | null
+  @ApiProperty({ required: false, nullable: true }) volMa10: number | null
+  @ApiProperty({ required: false, nullable: true }) volMa20: number | null
+  @ApiProperty({ required: false, nullable: true }) volumeRatio: number | null
+
+  // 波动率
+  @ApiProperty({ required: false, nullable: true }) atr14: number | null
+  @ApiProperty({ required: false, nullable: true }) hv20: number | null
+}
+
+export class MaStatusSummaryDto {
+  @ApiProperty({ required: false, nullable: true, description: 'MA5>MA10>MA20>MA60 多头排列' }) bullishAlign: boolean | null
+  @ApiProperty({ required: false, nullable: true, description: 'MA5<MA10<MA20<MA60 空头排列' }) bearishAlign: boolean | null
+  @ApiProperty({ required: false, nullable: true, description: '价格站上 MA20' }) aboveMa20: boolean | null
+  @ApiProperty({ required: false, nullable: true, description: '价格站上 MA60' }) aboveMa60: boolean | null
+  @ApiProperty({ required: false, nullable: true, description: '价格站上 MA250（年线）' }) aboveMa250: boolean | null
+  @ApiProperty({ required: false, nullable: true, description: '最近均线金叉/死叉事件' }) latestCross: string | null
+}
+
+export class SignalSummaryDto {
+  @ApiProperty({ required: false, nullable: true }) macd: string | null
+  @ApiProperty({ required: false, nullable: true }) kdj: string | null
+  @ApiProperty({ required: false, nullable: true }) rsi: string | null
+  @ApiProperty({ required: false, nullable: true }) boll: string | null
+  @ApiProperty({ required: false, nullable: true }) wr: string | null
+  @ApiProperty({ required: false, nullable: true }) cci: string | null
+  @ApiProperty({ required: false, nullable: true }) dmi: string | null
+  @ApiProperty({ required: false, nullable: true }) sar: string | null
+  @ApiProperty({ required: false, nullable: true }) volumePrice: string | null
+}
+
+export class StockTechnicalDataDto {
+  @ApiProperty() tsCode: string
+  @ApiProperty() period: string
+  @ApiProperty({ required: false, nullable: true }) dataDate: string | null
+  @ApiProperty({ type: MaStatusSummaryDto }) maStatus: MaStatusSummaryDto
+  @ApiProperty({ type: SignalSummaryDto }) signals: SignalSummaryDto
+  @ApiProperty({ type: [TechnicalDataPointDto] }) history: TechnicalDataPointDto[]
+}
+
+// ─── 分析 Tab — 择时信号 ──────────────────────────────────────────────────────
+
+export class TimingSignalItemDto {
+  @ApiProperty() tradeDate: string
+  @ApiProperty({ enum: ['buy', 'sell', 'warning'] }) type: string
+  @ApiProperty({ description: '信号强度 1-5' }) strength: number
+  @ApiProperty({ description: '信号来源指标' }) source: string
+  @ApiProperty({ description: '信号描述（中文）' }) description: string
+  @ApiProperty({ required: false, nullable: true }) closePrice: number | null
+}
+
+export class TimingScoreDetailDto {
+  @ApiProperty() indicator: string
+  @ApiProperty({ enum: ['bullish', 'bearish', 'neutral'] }) signal: string
+  @ApiProperty({ description: '分数 0-100' }) score: number
+  @ApiProperty() reason: string
+}
+
+export class TimingScoreSummaryDto {
+  @ApiProperty({ description: '综合择时评分 0-100' }) score: number
+  @ApiProperty({ description: '评级' }) rating: string
+  @ApiProperty() bullishCount: number
+  @ApiProperty() bearishCount: number
+  @ApiProperty() neutralCount: number
+  @ApiProperty({ type: [TimingScoreDetailDto] }) details: TimingScoreDetailDto[]
+}
+
+export class StockTimingSignalsDataDto {
+  @ApiProperty() tsCode: string
+  @ApiProperty({ type: TimingScoreSummaryDto }) scoreSummary: TimingScoreSummaryDto
+  @ApiProperty({ type: [TimingSignalItemDto] }) signals: TimingSignalItemDto[]
+}
+
+// ─── 分析 Tab — 筹码分布 ──────────────────────────────────────────────────────
+
+export class ChipConcentrationDto {
+  @ApiProperty({ required: false, nullable: true }) range90Low: number | null
+  @ApiProperty({ required: false, nullable: true }) range90High: number | null
+  @ApiProperty({ required: false, nullable: true }) range70Low: number | null
+  @ApiProperty({ required: false, nullable: true }) range70High: number | null
+  @ApiProperty({ required: false, nullable: true, description: '集中度评分 0-100' }) score: number | null
+  @ApiProperty({ required: false, nullable: true, description: '获利比例 (%)' }) profitRatio: number | null
+  @ApiProperty({ required: false, nullable: true, description: '平均成本' }) avgCost: number | null
+}
+
+export class ChipDistributionBinDto {
+  @ApiProperty() priceLow: number
+  @ApiProperty() priceHigh: number
+  @ApiProperty({ description: '筹码占比 (0-100%)' }) percent: number
+  @ApiProperty({ description: '是否在当前价格之下（获利盘）' }) isProfit: boolean
+}
+
+export class ChipKeyLevelsDto {
+  @ApiProperty({ required: false, nullable: true }) peakPrice: number | null
+  @ApiProperty({ required: false, nullable: true }) resistanceHigh: number | null
+  @ApiProperty({ required: false, nullable: true }) resistanceLow: number | null
+  @ApiProperty({ required: false, nullable: true }) supportHigh: number | null
+  @ApiProperty({ required: false, nullable: true }) supportLow: number | null
+}
+
+export class ChipDistributionDataDto {
+  @ApiProperty() tsCode: string
+  @ApiProperty() tradeDate: string
+  @ApiProperty({ required: false, nullable: true }) currentPrice: number | null
+  @ApiProperty({ type: ChipConcentrationDto }) concentration: ChipConcentrationDto
+  @ApiProperty({ type: [ChipDistributionBinDto] }) distribution: ChipDistributionBinDto[]
+  @ApiProperty({ type: ChipKeyLevelsDto }) keyLevels: ChipKeyLevelsDto
+  @ApiProperty({ description: '是否为估算数据（非 Tushare cyq 真实数据）' }) isEstimated: boolean
+}
+
+// ─── 分析 Tab — 融资融券 ──────────────────────────────────────────────────────
+
+export class MarginDailyItemDto {
+  @ApiProperty() tradeDate: string
+  @ApiProperty({ required: false, nullable: true, description: '融资余额（元）' }) rzye: number | null
+  @ApiProperty({ required: false, nullable: true, description: '融资买入额（元）' }) rzmre: number | null
+  @ApiProperty({ required: false, nullable: true, description: '融资偿还额（元）' }) rzche: number | null
+  @ApiProperty({ required: false, nullable: true, description: '融资净买入（元）' }) rzjmre: number | null
+  @ApiProperty({ required: false, nullable: true, description: '融券余额（元）' }) rqye: number | null
+  @ApiProperty({ required: false, nullable: true, description: '融券卖出量（股）' }) rqmcl: number | null
+  @ApiProperty({ required: false, nullable: true, description: '融券偿还量（股）' }) rqchl: number | null
+  @ApiProperty({ required: false, nullable: true, description: '融资融券余额合计（元）' }) rzrqye: number | null
+  @ApiProperty({ required: false, nullable: true, description: '收盘价' }) close: number | null
+}
+
+export class MarginSummaryDto {
+  @ApiProperty({ required: false, nullable: true }) latestRzye: number | null
+  @ApiProperty({ required: false, nullable: true }) latestRqye: number | null
+  @ApiProperty({ required: false, nullable: true }) latestRzrqye: number | null
+  @ApiProperty({ required: false, nullable: true, description: '5日融资净买入累计（元）' }) rzNetBuy5d: number | null
+  @ApiProperty({ required: false, nullable: true, description: '20日融资净买入累计（元）' }) rzNetBuy20d: number | null
+  @ApiProperty({ required: false, nullable: true, description: '融资余额5日变化率(%)' }) rzye5dChgPct: number | null
+  @ApiProperty({ required: false, nullable: true, description: '融资余额20日变化率(%)' }) rzye20dChgPct: number | null
+  @ApiProperty({ enum: ['increasing', 'decreasing', 'stable'] }) trend: string
+}
+
+export class StockMarginDataResponseDto {
+  @ApiProperty() tsCode: string
+  @ApiProperty({ type: MarginSummaryDto }) summary: MarginSummaryDto
+  @ApiProperty({ type: [MarginDailyItemDto] }) history: MarginDailyItemDto[]
+  @ApiProperty({ description: '数据是否可用（Tushare 积分不足时为 false）' }) available: boolean
+}
+
+// ─── 分析 Tab — 相对强弱 ──────────────────────────────────────────────────────
+
+export class RelativeStrengthPointDto {
+  @ApiProperty() tradeDate: string
+  @ApiProperty({ description: '个股累计涨跌幅 (%)' }) stockCumReturn: number
+  @ApiProperty({ description: '基准指数累计涨跌幅 (%)' }) benchmarkCumReturn: number
+  @ApiProperty({ description: '超额收益 = stock - benchmark' }) excessReturn: number
+  @ApiProperty({ description: '相对强弱比率（归一化）' }) rsRatio: number
+}
+
+export class RelativeStrengthSummaryDto {
+  @ApiProperty({ required: false, nullable: true, description: '期间个股累计涨跌幅 (%)' }) stockTotalReturn: number | null
+  @ApiProperty({ required: false, nullable: true, description: '期间基准累计涨跌幅 (%)' }) benchmarkTotalReturn: number | null
+  @ApiProperty({ required: false, nullable: true, description: '超额收益 (%)' }) excessReturn: number | null
+  @ApiProperty({ required: false, nullable: true, description: '最近20日超额收益 (%)' }) excess20d: number | null
+  @ApiProperty({ required: false, nullable: true, description: '年化波动率 (%)' }) annualizedVol: number | null
+  @ApiProperty({ required: false, nullable: true, description: '最大回撤 (%)' }) maxDrawdown: number | null
+  @ApiProperty({ required: false, nullable: true, description: 'Beta（相对基准）' }) beta: number | null
+  @ApiProperty({ required: false, nullable: true, description: '信息比率' }) informationRatio: number | null
+}
+
+export class StockRelativeStrengthDataDto {
+  @ApiProperty() tsCode: string
+  @ApiProperty() benchmarkCode: string
+  @ApiProperty() benchmarkName: string
+  @ApiProperty({ type: RelativeStrengthSummaryDto }) summary: RelativeStrengthSummaryDto
+  @ApiProperty({ type: [RelativeStrengthPointDto] }) history: RelativeStrengthPointDto[]
+}

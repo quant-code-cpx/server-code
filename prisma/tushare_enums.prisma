@@ -38,6 +38,8 @@ enum TushareSyncTask {
   MONEYFLOW_MKT_DC
   MONEYFLOW_HSGT
   INCOME
+  BALANCE_SHEET
+  CASHFLOW
   EXPRESS
   FINA_INDICATOR
   DIVIDEND
@@ -46,6 +48,7 @@ enum TushareSyncTask {
   STK_LIMIT
   SUSPEND_D
   INDEX_WEIGHT
+  MARGIN_DETAIL
 }
 
 // 同步任务执行结果

@@ -77,4 +77,13 @@ export class MarketApiService {
     }
     return allRows
   }
+
+  /** 按交易日获取融资融券明细（需 Tushare 2000 积分） */
+  getMarginDetailByTradeDate(tradeDate: string) {
+    return this.client.call({
+      api_name: 'margin_detail',
+      params: { trade_date: tradeDate },
+      fields: ['ts_code', 'trade_date', 'rzye', 'rzmre', 'rzche', 'rzjmre', 'rqye', 'rqmcl', 'rqchl', 'rqyl', 'rzrqye', 'rzrqyl'],
+    })
+  }
 }

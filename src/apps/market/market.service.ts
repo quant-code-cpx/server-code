@@ -636,7 +636,7 @@ export class MarketService {
     const latestDate = await this.resolveLatestHsgtTradeDate()
     if (!latestDate) return { period, data: [] }
 
-    const startDate = this.periodToStartDate(latestDate, period as IndexTrendPeriod)
+    const startDate = this.periodToStartDate(latestDate, period)
 
     const rows = await this.prisma.moneyflowHsgt.findMany({
       where: { tradeDate: { gte: startDate } },

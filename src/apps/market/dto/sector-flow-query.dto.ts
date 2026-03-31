@@ -1,4 +1,4 @@
-import { IsEnum, IsInt, IsOptional, Matches, Max, Min } from 'class-validator'
+import { IsEnum, IsInt, IsOptional, Max, Min } from 'class-validator'
 import { ApiPropertyOptional } from '@nestjs/swagger'
 import { Type } from 'class-transformer'
 import { MoneyFlowQueryDto } from './money-flow-query.dto'

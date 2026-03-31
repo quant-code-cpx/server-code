@@ -323,3 +323,82 @@ export class StockFinancialStatementsDataDto {
   @ApiProperty({ type: [BalanceSheetItemDto] }) balanceSheet: BalanceSheetItemDto[]
   @ApiProperty({ type: [CashflowItemDto] }) cashflow: CashflowItemDto[]
 }
+
+// ─── 选股器 ───────────────────────────────────────────────────────────────────
+
+export class StockScreenerItemDto {
+  @ApiProperty() tsCode: string
+  @ApiProperty({ required: false, nullable: true }) name: string | null
+  @ApiProperty({ required: false, nullable: true }) industry: string | null
+  @ApiProperty({ required: false, nullable: true }) market: string | null
+  @ApiProperty({ required: false, nullable: true }) listDate: string | null
+
+  @ApiProperty({ required: false, nullable: true, description: '收盘价' }) close: number | null
+  @ApiProperty({ required: false, nullable: true, description: '涨跌幅（%）' }) pctChg: number | null
+  @ApiProperty({ required: false, nullable: true, description: '成交额（千元）' }) amount: number | null
+  @ApiProperty({ required: false, nullable: true, description: '换手率（%）' }) turnoverRate: number | null
+
+  @ApiProperty({ required: false, nullable: true, description: '市盈率 TTM' }) peTtm: number | null
+  @ApiProperty({ required: false, nullable: true, description: '市净率 PB' }) pb: number | null
+  @ApiProperty({ required: false, nullable: true, description: '股息率 TTM（%）' }) dvTtm: number | null
+  @ApiProperty({ required: false, nullable: true, description: '总市值（万元）' }) totalMv: number | null
+  @ApiProperty({ required: false, nullable: true, description: '流通市值（万元）' }) circMv: number | null
+
+  @ApiProperty({ required: false, nullable: true, description: '营收同比增速（%）' }) revenueYoy: number | null
+  @ApiProperty({ required: false, nullable: true, description: '净利润同比增速（%）' }) netprofitYoy: number | null
+
+  @ApiProperty({ required: false, nullable: true, description: 'ROE（%）' }) roe: number | null
+  @ApiProperty({ required: false, nullable: true, description: '毛利率（%）' }) grossMargin: number | null
+  @ApiProperty({ required: false, nullable: true, description: '净利率（%）' }) netMargin: number | null
+
+  @ApiProperty({ required: false, nullable: true, description: '资产负债率（%）' }) debtToAssets: number | null
+  @ApiProperty({ required: false, nullable: true, description: '流动比率' }) currentRatio: number | null
+  @ApiProperty({ required: false, nullable: true, description: '速动比率' }) quickRatio: number | null
+
+  @ApiProperty({ required: false, nullable: true, description: '经营现金流/净利润' }) ocfToNetprofit: number | null
+
+  @ApiProperty({ required: false, nullable: true, description: '近5日主力净流入（万元）' }) mainNetInflow5d: number | null
+  @ApiProperty({ required: false, nullable: true, description: '近20日主力净流入（万元）' }) mainNetInflow20d: number | null
+
+  @ApiProperty({ required: false, nullable: true, description: '最新财报期（如 2025-09-30）' }) latestFinDate: string | null
+}
+
+export class StockScreenerDataDto {
+  @ApiProperty() page: number
+  @ApiProperty() pageSize: number
+  @ApiProperty() total: number
+  @ApiProperty({ type: [StockScreenerItemDto] }) items: StockScreenerItemDto[]
+}
+
+export class IndustryItemDto {
+  @ApiProperty({ description: '行业名称' }) name: string
+  @ApiProperty({ description: '该行业上市股票数' }) count: number
+}
+
+export class IndustryListDataDto {
+  @ApiProperty({ type: [IndustryItemDto] }) industries: IndustryItemDto[]
+}
+
+export class AreaItemDto {
+  @ApiProperty({ description: '地域名称' }) name: string
+  @ApiProperty({ description: '该地域上市股票数' }) count: number
+}
+
+export class AreaListDataDto {
+  @ApiProperty({ type: [AreaItemDto] }) areas: AreaItemDto[]
+}
+
+export class ScreenerPresetFilterDto {
+  @ApiProperty({ type: 'object', additionalProperties: true }) filters: Record<string, unknown>
+}
+
+export class ScreenerPresetItemDto {
+  @ApiProperty() id: string
+  @ApiProperty() name: string
+  @ApiProperty() description: string
+  @ApiProperty({ type: 'object', additionalProperties: true }) filters: Record<string, unknown>
+}
+
+export class ScreenerPresetDataDto {
+  @ApiProperty({ type: [ScreenerPresetItemDto] }) presets: ScreenerPresetItemDto[]
+}

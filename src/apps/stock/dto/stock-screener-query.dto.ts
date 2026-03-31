@@ -1,6 +1,6 @@
-import { IsEnum, IsIn, IsInt, IsNumber, IsOptional, IsString, Max, Min } from 'class-validator'
 import { ApiPropertyOptional } from '@nestjs/swagger'
 import { Type } from 'class-transformer'
+import { IsEnum, IsIn, IsInt, IsNumber, IsOptional, IsString, Max, Min } from 'class-validator'
 
 export enum ScreenerSortBy {
   TOTAL_MV = 'totalMv',
@@ -21,23 +21,9 @@ export enum ScreenerSortBy {
   LIST_DATE = 'listDate',
 }
 
-export class StockScreenerQueryDto {
-  // ─── 分页 ───
-  @ApiPropertyOptional({ description: '页码，从 1 开始', default: 1 })
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  page?: number = 1
+export type ScreenerSortOrder = 'asc' | 'desc'
 
-  @ApiPropertyOptional({ description: '每页条数', default: 20, maximum: 100 })
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  @Max(100)
-  pageSize?: number = 20
-
+export class ScreenerFiltersDto {
   // ─── 基本面筛选 ───
   @ApiPropertyOptional({ description: '交易所：SSE / SZSE / BSE' })
   @IsOptional()
@@ -270,6 +256,24 @@ export class StockScreenerQueryDto {
   @Type(() => Number)
   @IsNumber()
   minMainNetInflow20d?: number
+}
+
+export class StockScreenerQueryDto extends ScreenerFiltersDto {
+  // ─── 分页 ───
+  @ApiPropertyOptional({ description: '页码，从 1 开始', default: 1 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  page?: number = 1
+
+  @ApiPropertyOptional({ description: '每页条数', default: 20, maximum: 100 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  pageSize?: number = 20
 
   // ─── 排序 ───
   @ApiPropertyOptional({ enum: ScreenerSortBy, description: '排序字段', default: ScreenerSortBy.TOTAL_MV })
@@ -280,5 +284,5 @@ export class StockScreenerQueryDto {
   @ApiPropertyOptional({ enum: ['asc', 'desc'], description: '排序方向', default: 'desc' })
   @IsOptional()
   @IsIn(['asc', 'desc'])
-  sortOrder?: 'asc' | 'desc' = 'desc'
+  sortOrder?: ScreenerSortOrder = 'desc'
 }

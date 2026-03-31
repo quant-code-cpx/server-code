@@ -1,4 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger'
+import { ScreenerSortBy } from './stock-screener-query.dto'
 
 export class StockListItemDto {
   @ApiProperty() tsCode: string
@@ -357,10 +358,16 @@ export class StockScreenerItemDto {
 
   @ApiProperty({ required: false, nullable: true, description: '经营现金流/净利润' }) ocfToNetprofit: number | null
 
-  @ApiProperty({ required: false, nullable: true, description: '近5日主力净流入（万元）' }) mainNetInflow5d: number | null
-  @ApiProperty({ required: false, nullable: true, description: '近20日主力净流入（万元）' }) mainNetInflow20d: number | null
+  @ApiProperty({ required: false, nullable: true, description: '近5日主力净流入（万元）' }) mainNetInflow5d:
+    | number
+    | null
+  @ApiProperty({ required: false, nullable: true, description: '近20日主力净流入（万元）' }) mainNetInflow20d:
+    | number
+    | null
 
-  @ApiProperty({ required: false, nullable: true, description: '最新财报期（如 2025-09-30）' }) latestFinDate: string | null
+  @ApiProperty({ required: false, nullable: true, description: '最新财报期（如 2025-09-30）' }) latestFinDate:
+    | string
+    | null
 }
 
 export class StockScreenerDataDto {
@@ -397,10 +404,36 @@ export class ScreenerPresetItemDto {
   @ApiProperty() name: string
   @ApiProperty() description: string
   @ApiProperty({ type: 'object', additionalProperties: true }) filters: Record<string, unknown>
+  @ApiProperty({ enum: ['builtin'], description: '策略类型：内置预设' }) type: 'builtin'
 }
 
 export class ScreenerPresetDataDto {
   @ApiProperty({ type: [ScreenerPresetItemDto] }) presets: ScreenerPresetItemDto[]
+}
+
+export class ScreenerStrategyDto {
+  @ApiProperty() id: number
+  @ApiProperty() name: string
+  @ApiProperty({ required: false, nullable: true }) description: string | null
+  @ApiProperty({ type: 'object', additionalProperties: true }) filters: Record<string, unknown>
+  @ApiProperty({ required: false, nullable: true, enum: ScreenerSortBy }) sortBy: ScreenerSortBy | null
+  @ApiProperty({ required: false, nullable: true, enum: ['asc', 'desc'] }) sortOrder: 'asc' | 'desc' | null
+  @ApiProperty({ description: '创建时间（ISO 8601）' }) createdAt: string
+  @ApiProperty({ description: '更新时间（ISO 8601）' }) updatedAt: string
+}
+
+export class ScreenerStrategyListItemDto extends ScreenerStrategyDto {
+  @ApiProperty({ enum: ['user'], description: '策略类型：用户自定义策略' }) type: 'user'
+}
+
+export class ScreenerStrategyDataDto extends ScreenerStrategyDto {}
+
+export class ScreenerStrategyListDataDto {
+  @ApiProperty({ type: [ScreenerStrategyListItemDto] }) strategies: ScreenerStrategyListItemDto[]
+}
+
+export class ScreenerStrategyDeleteDataDto {
+  @ApiProperty() message: string
 }
 
 // ─── 分析 Tab — 技术指标 ──────────────────────────────────────────────────────
@@ -513,8 +546,12 @@ export class TechnicalDataPointDto {
 }
 
 export class MaStatusSummaryDto {
-  @ApiProperty({ required: false, nullable: true, description: 'MA5>MA10>MA20>MA60 多头排列' }) bullishAlign: boolean | null
-  @ApiProperty({ required: false, nullable: true, description: 'MA5<MA10<MA20<MA60 空头排列' }) bearishAlign: boolean | null
+  @ApiProperty({ required: false, nullable: true, description: 'MA5>MA10>MA20>MA60 多头排列' }) bullishAlign:
+    | boolean
+    | null
+  @ApiProperty({ required: false, nullable: true, description: 'MA5<MA10<MA20<MA60 空头排列' }) bearishAlign:
+    | boolean
+    | null
   @ApiProperty({ required: false, nullable: true, description: '价格站上 MA20' }) aboveMa20: boolean | null
   @ApiProperty({ required: false, nullable: true, description: '价格站上 MA60' }) aboveMa60: boolean | null
   @ApiProperty({ required: false, nullable: true, description: '价格站上 MA250（年线）' }) aboveMa250: boolean | null
@@ -656,8 +693,12 @@ export class RelativeStrengthPointDto {
 }
 
 export class RelativeStrengthSummaryDto {
-  @ApiProperty({ required: false, nullable: true, description: '期间个股累计涨跌幅 (%)' }) stockTotalReturn: number | null
-  @ApiProperty({ required: false, nullable: true, description: '期间基准累计涨跌幅 (%)' }) benchmarkTotalReturn: number | null
+  @ApiProperty({ required: false, nullable: true, description: '期间个股累计涨跌幅 (%)' }) stockTotalReturn:
+    | number
+    | null
+  @ApiProperty({ required: false, nullable: true, description: '期间基准累计涨跌幅 (%)' }) benchmarkTotalReturn:
+    | number
+    | null
   @ApiProperty({ required: false, nullable: true, description: '超额收益 (%)' }) excessReturn: number | null
   @ApiProperty({ required: false, nullable: true, description: '最近20日超额收益 (%)' }) excess20d: number | null
   @ApiProperty({ required: false, nullable: true, description: '年化波动率 (%)' }) annualizedVol: number | null

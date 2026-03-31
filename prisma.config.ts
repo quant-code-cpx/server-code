@@ -1,5 +1,18 @@
+import fs from 'node:fs'
 import path from 'node:path'
 import { defineConfig } from 'prisma/config'
+
+const envPath = path.join(__dirname, '.env')
+
+if (!process.env.DATABASE_URL && fs.existsSync(envPath)) {
+  const envContent = fs.readFileSync(envPath, 'utf8')
+  const databaseUrlMatch = envContent.match(/^DATABASE_URL=(?:"([^"]+)"|([^#\r\n]+))/m)
+  const databaseUrl = databaseUrlMatch?.[1] ?? databaseUrlMatch?.[2]?.trim()
+
+  if (databaseUrl) {
+    process.env.DATABASE_URL = databaseUrl
+  }
+}
 
 /**
  * Prisma 配置文件（Prisma >= 6.6 支持）。

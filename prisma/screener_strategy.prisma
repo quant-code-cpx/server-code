@@ -1,0 +1,17 @@
+model ScreenerStrategy {
+  id          Int      @id @default(autoincrement())
+  userId      Int      @map("user_id")
+  name        String   @db.VarChar(50)
+  description String?  @db.VarChar(200)
+  filters     Json     @db.JsonB
+  sortBy      String?  @map("sort_by") @db.VarChar(30)
+  sortOrder   String?  @map("sort_order") @db.VarChar(4)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("screener_strategies")
+  @@index([userId])
+  @@unique([userId, name])
+}

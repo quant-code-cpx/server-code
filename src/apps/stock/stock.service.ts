@@ -1,5 +1,5 @@
-import { Inject, Injectable } from '@nestjs/common'
-import { Prisma } from '@prisma/client'
+import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common'
+import { Prisma, ScreenerStrategy } from '@prisma/client'
 import * as dayjs from 'dayjs'
 import { PrismaService } from 'src/shared/prisma.service'
 import { REDIS_CLIENT } from 'src/shared/redis.provider'
@@ -14,7 +14,8 @@ import { StockDetailShareholdersDto } from './dto/stock-detail-shareholders.dto'
 import { StockDetailShareCapitalDto } from './dto/stock-detail-share-capital.dto'
 import { StockDetailFinancingDto } from './dto/stock-detail-financing.dto'
 import { StockDetailFinancialStatementsDto } from './dto/stock-detail-financial-statements.dto'
-import { StockScreenerQueryDto, ScreenerSortBy } from './dto/stock-screener-query.dto'
+import { CreateScreenerStrategyDto, UpdateScreenerStrategyDto } from './dto/stock-screener-strategy.dto'
+import { ScreenerFiltersDto, StockScreenerQueryDto, ScreenerSortBy } from './dto/stock-screener-query.dto'
 
 // 排序字段到 SQL 列名的安全映射（value 来自受控枚举，不直接来自用户输入）
 const SORT_COLUMN_MAP: Record<StockSortBy, string> = {
@@ -131,6 +132,8 @@ const BUILT_IN_PRESETS: ScreenerPreset[] = [
     },
   },
 ]
+
+const MAX_SCREENER_STRATEGIES = 20
 
 // 交易所代码 → 中文名映射
 const EXCHANGE_LABEL: Record<string, string> = {
@@ -1000,8 +1003,10 @@ export class StockService {
     // 盈利
     if (query.minRoe !== undefined) conditions.push(Prisma.sql`fi.roe >= ${query.minRoe}`)
     if (query.maxRoe !== undefined) conditions.push(Prisma.sql`fi.roe <= ${query.maxRoe}`)
-    if (query.minGrossMargin !== undefined) conditions.push(Prisma.sql`fi.grossprofit_margin >= ${query.minGrossMargin}`)
-    if (query.maxGrossMargin !== undefined) conditions.push(Prisma.sql`fi.grossprofit_margin <= ${query.maxGrossMargin}`)
+    if (query.minGrossMargin !== undefined)
+      conditions.push(Prisma.sql`fi.grossprofit_margin >= ${query.minGrossMargin}`)
+    if (query.maxGrossMargin !== undefined)
+      conditions.push(Prisma.sql`fi.grossprofit_margin <= ${query.maxGrossMargin}`)
     if (query.minNetMargin !== undefined) conditions.push(Prisma.sql`fi.netprofit_margin >= ${query.minNetMargin}`)
     if (query.maxNetMargin !== undefined) conditions.push(Prisma.sql`fi.netprofit_margin <= ${query.maxNetMargin}`)
 
@@ -1251,8 +1256,134 @@ export class StockService {
 
   // ─── 选股预设 ─────────────────────────────────────────────────────────────────
 
-  getScreenerPresets(): { presets: { id: string; name: string; description: string; filters: Record<string, unknown> }[] } {
-    return { presets: BUILT_IN_PRESETS }
+  getScreenerPresets(): {
+    presets: { id: string; name: string; description: string; filters: Record<string, unknown>; type: 'builtin' }[]
+  } {
+    return {
+      presets: BUILT_IN_PRESETS.map((preset) => ({
+        ...preset,
+        type: 'builtin' as const,
+      })),
+    }
+  }
+
+  async getStrategies(userId: number) {
+    const strategies = await this.prisma.screenerStrategy.findMany({
+      where: { userId },
+      orderBy: { updatedAt: 'desc' },
+    })
+
+    return {
+      strategies: strategies.map((strategy) => ({
+        ...this.serializeStrategy(strategy),
+        type: 'user' as const,
+      })),
+    }
+  }
+
+  async createStrategy(userId: number, dto: CreateScreenerStrategyDto) {
+    const count = await this.prisma.screenerStrategy.count({ where: { userId } })
+    if (count >= MAX_SCREENER_STRATEGIES) {
+      throw new BadRequestException(`策略数量已达上限（最多 ${MAX_SCREENER_STRATEGIES} 条）`)
+    }
+
+    try {
+      const strategy = await this.prisma.screenerStrategy.create({
+        data: {
+          userId,
+          name: dto.name,
+          description: dto.description ?? null,
+          filters: this.serializeStrategyFilters(dto.filters),
+          sortBy: dto.sortBy ?? null,
+          sortOrder: dto.sortOrder ?? null,
+        },
+      })
+
+      return this.serializeStrategy(strategy)
+    } catch (error) {
+      if (this.isStrategyNameConflict(error)) {
+        throw new ConflictException('同名策略已存在')
+      }
+
+      throw error
+    }
+  }
+
+  async updateStrategy(userId: number, id: number, dto: UpdateScreenerStrategyDto) {
+    const existing = await this.prisma.screenerStrategy.findFirst({
+      where: { id, userId },
+      select: { id: true },
+    })
+
+    if (!existing) {
+      throw new NotFoundException('策略不存在')
+    }
+
+    try {
+      const strategy = await this.prisma.screenerStrategy.update({
+        where: { id },
+        data: {
+          ...(dto.name !== undefined ? { name: dto.name } : {}),
+          ...(dto.description !== undefined ? { description: dto.description } : {}),
+          ...(dto.filters !== undefined ? { filters: this.serializeStrategyFilters(dto.filters) } : {}),
+          ...(dto.sortBy !== undefined ? { sortBy: dto.sortBy } : {}),
+          ...(dto.sortOrder !== undefined ? { sortOrder: dto.sortOrder } : {}),
+        },
+      })
+
+      return this.serializeStrategy(strategy)
+    } catch (error) {
+      if (this.isStrategyNameConflict(error)) {
+        throw new ConflictException('同名策略已存在')
+      }
+
+      throw error
+    }
+  }
+
+  async deleteStrategy(userId: number, id: number) {
+    const existing = await this.prisma.screenerStrategy.findFirst({
+      where: { id, userId },
+      select: { id: true },
+    })
+
+    if (!existing) {
+      throw new NotFoundException('策略不存在')
+    }
+
+    await this.prisma.screenerStrategy.delete({ where: { id } })
+    return { message: '删除成功' }
+  }
+
+  private serializeStrategy(strategy: ScreenerStrategy) {
+    return {
+      id: strategy.id,
+      name: strategy.name,
+      description: strategy.description,
+      filters: this.deserializeStrategyFilters(strategy.filters),
+      sortBy: strategy.sortBy,
+      sortOrder: strategy.sortOrder as 'asc' | 'desc' | null,
+      createdAt: strategy.createdAt.toISOString(),
+      updatedAt: strategy.updatedAt.toISOString(),
+    }
+  }
+
+  private serializeStrategyFilters(filters: ScreenerFiltersDto): Prisma.InputJsonObject {
+    return Object.fromEntries(
+      Object.entries(filters).filter(([, value]) => value !== undefined),
+    ) as Prisma.InputJsonObject
+  }
+
+  private deserializeStrategyFilters(filters: Prisma.JsonValue): Record<string, unknown> {
+    if (!filters || typeof filters !== 'object' || Array.isArray(filters)) {
+      return {}
+    }
+
+    return filters as Record<string, unknown>
+  }
+
+  private isStrategyNameConflict(error: unknown) {
+    return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002'
   }
 }
 

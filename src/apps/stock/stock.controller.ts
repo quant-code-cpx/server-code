@@ -1,5 +1,5 @@
-import { Body, Controller, Get, Post } from '@nestjs/common'
-import { ApiOperation, ApiTags } from '@nestjs/swagger'
+import { Body, Controller, Delete, Get, Param, ParseIntPipe, Post, Put } from '@nestjs/common'
+import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger'
 import { StockService } from './stock.service'
 import { StockAnalysisService } from './stock-analysis.service'
 import { StockListQueryDto } from './dto/stock-list-query.dto'
@@ -13,6 +13,7 @@ import { StockDetailShareCapitalDto } from './dto/stock-detail-share-capital.dto
 import { StockDetailFinancingDto } from './dto/stock-detail-financing.dto'
 import { StockDetailFinancialStatementsDto } from './dto/stock-detail-financial-statements.dto'
 import { StockScreenerQueryDto } from './dto/stock-screener-query.dto'
+import { CreateScreenerStrategyDto, UpdateScreenerStrategyDto } from './dto/stock-screener-strategy.dto'
 import {
   StockTechnicalIndicatorsDto,
   StockTimingSignalsDto,
@@ -35,6 +36,9 @@ import {
   IndustryListDataDto,
   AreaListDataDto,
   ScreenerPresetDataDto,
+  ScreenerStrategyDataDto,
+  ScreenerStrategyDeleteDataDto,
+  ScreenerStrategyListDataDto,
   StockSearchItemDto,
   StockShareCapitalDataDto,
   StockShareholdersDataDto,
@@ -45,6 +49,8 @@ import {
   StockMarginDataResponseDto,
   StockRelativeStrengthDataDto,
 } from './dto/stock-response.dto'
+import { CurrentUser } from 'src/common/decorators/current-user.decorator'
+import { TokenPayload } from 'src/shared/token.interface'
 
 @ApiTags('Stock - 股票')
 @Controller('stock')
@@ -198,6 +204,42 @@ export class StockController {
   @ApiSuccessResponse(ScreenerPresetDataDto)
   screenerPresets() {
     return this.stockService.getScreenerPresets()
+  }
+
+  @Get('screener/strategies')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: '选股器 - 获取当前用户自定义策略列表' })
+  @ApiSuccessResponse(ScreenerStrategyListDataDto)
+  getScreenerStrategies(@CurrentUser() currentUser: TokenPayload) {
+    return this.stockService.getStrategies(currentUser.id)
+  }
+
+  @Post('screener/strategies')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: '选股器 - 创建自定义策略' })
+  @ApiSuccessResponse(ScreenerStrategyDataDto)
+  createScreenerStrategy(@CurrentUser() currentUser: TokenPayload, @Body() dto: CreateScreenerStrategyDto) {
+    return this.stockService.createStrategy(currentUser.id, dto)
+  }
+
+  @Put('screener/strategies/:id')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: '选股器 - 更新自定义策略' })
+  @ApiSuccessResponse(ScreenerStrategyDataDto)
+  updateScreenerStrategy(
+    @CurrentUser() currentUser: TokenPayload,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateScreenerStrategyDto,
+  ) {
+    return this.stockService.updateStrategy(currentUser.id, id, dto)
+  }
+
+  @Delete('screener/strategies/:id')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: '选股器 - 删除自定义策略' })
+  @ApiSuccessResponse(ScreenerStrategyDeleteDataDto)
+  deleteScreenerStrategy(@CurrentUser() currentUser: TokenPayload, @Param('id', ParseIntPipe) id: number) {
+    return this.stockService.deleteStrategy(currentUser.id, id)
   }
 
   @Get('industries')

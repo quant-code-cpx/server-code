@@ -380,7 +380,7 @@ export function calcTimingScore(points: TechnicalDataPoint[]): TimingScoreSummar
     const bullishTrend = p.dmiPdi > p.dmiMdi && p.dmiAdx > 25
     const bearishTrend = p.dmiPdi < p.dmiMdi && p.dmiAdx > 25
     if (bullishTrend) {
-      details.push({ indicator: 'DMI', signal: 'bullish', score: 75, reason: `+DI>${p.dmiPdi.toFixed(1)} > -DI=${p.dmiMdi.toFixed(1)}，ADX=${p.dmiAdx.toFixed(1)}，多头趋势` })
+      details.push({ indicator: 'DMI', signal: 'bullish', score: 75, reason: `+DI=${p.dmiPdi.toFixed(1)} > -DI=${p.dmiMdi.toFixed(1)}，ADX=${p.dmiAdx.toFixed(1)}，多头趋势` })
     } else if (bearishTrend) {
       details.push({ indicator: 'DMI', signal: 'bearish', score: 25, reason: `+DI=${p.dmiPdi.toFixed(1)} < -DI=${p.dmiMdi.toFixed(1)}，ADX=${p.dmiAdx.toFixed(1)}，空头趋势` })
     } else {

@@ -517,22 +517,24 @@ export class StockAnalysisService {
 
     const latestAdj = rows[rows.length - 1]?.adjFactor ?? 1
 
-    return rows.map((row) => {
-      const factor = row.adjFactor ?? 1
-      const multiplier = factor > 0 ? latestAdj / factor : 1
-      const adj = (v: number | null) => (v !== null ? Math.round(v * multiplier * 10000) / 10000 : 0)
+    return rows
+      .filter((row) => row.close !== null && row.open !== null && row.high !== null && row.low !== null)
+      .map((row) => {
+        const factor = row.adjFactor ?? 1
+        const multiplier = factor > 0 ? latestAdj / factor : 1
+        const adj = (v: number | null) => (v !== null ? Math.round(v * multiplier * 10000) / 10000 : 0)
 
-      return {
-        tradeDate: dayjs(row.tradeDate).format('YYYYMMDD'),
-        open: adj(row.open),
-        high: adj(row.high),
-        low: adj(row.low),
-        close: adj(row.close),
-        preClose: adj(row.preClose),
-        vol: row.vol ?? 0,
-        amount: row.amount ?? 0,
-      }
-    })
+        return {
+          tradeDate: dayjs(row.tradeDate).format('YYYYMMDD'),
+          open: adj(row.open),
+          high: adj(row.high),
+          low: adj(row.low),
+          close: adj(row.close),
+          preClose: adj(row.preClose),
+          vol: row.vol ?? 0,
+          amount: row.amount ?? 0,
+        }
+      })
   }
 
   /** 均线状态摘要 */
@@ -597,9 +599,9 @@ export class StockAnalysisService {
     let boll: string | null = null
     if (p.close !== null && p.bollUpper !== null && p.bollMid !== null && p.bollLower !== null) {
       if (p.close > p.bollUpper) boll = 'above_upper'
-      else if (p.close > p.bollMid && p.close <= p.bollUpper && p.close > p.bollMid * 1.005) boll = 'near_upper'
+      else if (p.close > p.bollMid * 1.005) boll = 'near_upper'
       else if (p.close < p.bollLower) boll = 'below_lower'
-      else if (p.close < p.bollMid && p.close >= p.bollLower && p.close < p.bollMid * 0.995) boll = 'near_lower'
+      else if (p.close < p.bollMid * 0.995) boll = 'near_lower'
       else boll = 'middle'
     }
 
@@ -665,11 +667,15 @@ export class StockAnalysisService {
 
     // 5日融资净买入
     const last5 = history.slice(-5)
-    const rzNetBuy5d = last5.reduce((a, b) => a + (b.rzjmre ?? 0), 0) || null
+    const rzNetBuy5d = last5.some((r) => r.rzjmre !== null)
+      ? last5.reduce((a, b) => a + (b.rzjmre ?? 0), 0)
+      : null
 
     // 20日融资净买入
     const last20 = history.slice(-20)
-    const rzNetBuy20d = last20.reduce((a, b) => a + (b.rzjmre ?? 0), 0) || null
+    const rzNetBuy20d = last20.some((r) => r.rzjmre !== null)
+      ? last20.reduce((a, b) => a + (b.rzjmre ?? 0), 0)
+      : null
 
     // 5日融资余额变化率
     const rzye5dAgo = history.length >= 5 ? history[history.length - 5]?.rzye : null
@@ -726,7 +732,9 @@ export class StockAnalysisService {
       : excessReturn
 
     // 年化波动率（个股）
-    const stockReturns = stockRows.map((r) => (r.pctChg ?? 0) / 100).filter((v) => v !== 0)
+    const stockReturns = stockRows
+      .map((r) => (r.pctChg !== null && r.pctChg !== undefined ? r.pctChg / 100 : null))
+      .filter((v): v is number => v !== null)
     let annualizedVol: number | null = null
     if (stockReturns.length > 5) {
       const mean = stockReturns.reduce((a, b) => a + b, 0) / stockReturns.length

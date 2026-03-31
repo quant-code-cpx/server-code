@@ -951,3 +951,23 @@ export function mapIndexWeightRecord(record: TushareRecord): Prisma.IndexWeightC
     weight: readNumber(record, 'weight'),
   }
 }
+
+export function mapMarginDetailRecord(record: TushareRecord): Prisma.MarginDetailCreateManyInput | null {
+  const tsCode = readString(record, 'ts_code')
+  const tradeDate = readDate(record, 'trade_date')
+  if (!tsCode || !tradeDate) return null
+  return {
+    tsCode,
+    tradeDate,
+    rzye: readNumber(record, 'rzye'),
+    rzmre: readNumber(record, 'rzmre'),
+    rzche: readNumber(record, 'rzche'),
+    rzjmre: readNumber(record, 'rzjmre'),
+    rqye: readNumber(record, 'rqye'),
+    rqmcl: readNumber(record, 'rqmcl'),
+    rqchl: readNumber(record, 'rqchl'),
+    rqyl: readNumber(record, 'rqyl'),
+    rzrqye: readNumber(record, 'rzrqye'),
+    rzrqyl: readNumber(record, 'rzrqyl'),
+  }
+}

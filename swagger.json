@@ -1193,6 +1193,221 @@
         ]
       }
     },
+    "/stock/detail/analysis/technical": {
+      "post": {
+        "operationId": "StockController_getTechnicalIndicators",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StockTechnicalIndicatorsDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ResponseModel"
+                    },
+                    {
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/StockTechnicalDataDto"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "summary": "股票详情 - 分析 Tab：技术指标（MACD/KDJ/RSI/BOLL 等全套指标历史序列）",
+        "tags": [
+          "Stock - 股票"
+        ]
+      }
+    },
+    "/stock/detail/analysis/timing-signals": {
+      "post": {
+        "operationId": "StockController_getTimingSignals",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StockTimingSignalsDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ResponseModel"
+                    },
+                    {
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/StockTimingSignalsDataDto"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "summary": "股票详情 - 分析 Tab：择时信号（综合多指标买卖信号 + 评分）",
+        "tags": [
+          "Stock - 股票"
+        ]
+      }
+    },
+    "/stock/detail/analysis/chip-distribution": {
+      "post": {
+        "operationId": "StockController_getChipDistribution",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StockChipDistributionDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ResponseModel"
+                    },
+                    {
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/ChipDistributionDataDto"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "summary": "股票详情 - 分析 Tab：筹码分布（真实 cyq 数据或估算）",
+        "tags": [
+          "Stock - 股票"
+        ]
+      }
+    },
+    "/stock/detail/analysis/margin": {
+      "post": {
+        "operationId": "StockController_getMarginData",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StockMarginQueryDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ResponseModel"
+                    },
+                    {
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/StockMarginDataResponseDto"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "summary": "股票详情 - 分析 Tab：融资融券余额趋势（需 Tushare 2000 积分）",
+        "tags": [
+          "Stock - 股票"
+        ]
+      }
+    },
+    "/stock/detail/analysis/relative-strength": {
+      "post": {
+        "operationId": "StockController_getRelativeStrength",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StockRelativeStrengthDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ResponseModel"
+                    },
+                    {
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/StockRelativeStrengthDataDto"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "summary": "股票详情 - 分析 Tab：相对强弱（个股 vs 大盘/行业指数）",
+        "tags": [
+          "Stock - 股票"
+        ]
+      }
+    },
     "/stock/screener": {
       "post": {
         "operationId": "StockController_screener",
@@ -4457,6 +4672,973 @@
           "tsCode"
         ]
       },
+      "MaStatusSummaryDto": {
+        "type": "object",
+        "properties": {
+          "bullishAlign": {
+            "type": "boolean",
+            "nullable": true,
+            "description": "MA5>MA10>MA20>MA60 多头排列"
+          },
+          "bearishAlign": {
+            "type": "boolean",
+            "nullable": true,
+            "description": "MA5<MA10<MA20<MA60 空头排列"
+          },
+          "aboveMa20": {
+            "type": "boolean",
+            "nullable": true,
+            "description": "价格站上 MA20"
+          },
+          "aboveMa60": {
+            "type": "boolean",
+            "nullable": true,
+            "description": "价格站上 MA60"
+          },
+          "aboveMa250": {
+            "type": "boolean",
+            "nullable": true,
+            "description": "价格站上 MA250（年线）"
+          },
+          "latestCross": {
+            "type": "string",
+            "nullable": true,
+            "description": "最近均线金叉/死叉事件"
+          }
+        }
+      },
+      "SignalSummaryDto": {
+        "type": "object",
+        "properties": {
+          "macd": {
+            "type": "string",
+            "nullable": true
+          },
+          "kdj": {
+            "type": "string",
+            "nullable": true
+          },
+          "rsi": {
+            "type": "string",
+            "nullable": true
+          },
+          "boll": {
+            "type": "string",
+            "nullable": true
+          },
+          "wr": {
+            "type": "string",
+            "nullable": true
+          },
+          "cci": {
+            "type": "string",
+            "nullable": true
+          },
+          "dmi": {
+            "type": "string",
+            "nullable": true
+          },
+          "sar": {
+            "type": "string",
+            "nullable": true
+          },
+          "volumePrice": {
+            "type": "string",
+            "nullable": true
+          }
+        }
+      },
+      "TechnicalDataPointDto": {
+        "type": "object",
+        "properties": {
+          "tradeDate": {
+            "type": "string"
+          },
+          "open": {
+            "type": "number",
+            "nullable": true
+          },
+          "high": {
+            "type": "number",
+            "nullable": true
+          },
+          "low": {
+            "type": "number",
+            "nullable": true
+          },
+          "close": {
+            "type": "number",
+            "nullable": true
+          },
+          "vol": {
+            "type": "number",
+            "nullable": true
+          },
+          "amount": {
+            "type": "number",
+            "nullable": true
+          },
+          "pctChg": {
+            "type": "number",
+            "nullable": true
+          },
+          "ma5": {
+            "type": "number",
+            "nullable": true
+          },
+          "ma10": {
+            "type": "number",
+            "nullable": true
+          },
+          "ma20": {
+            "type": "number",
+            "nullable": true
+          },
+          "ma60": {
+            "type": "number",
+            "nullable": true
+          },
+          "ma120": {
+            "type": "number",
+            "nullable": true
+          },
+          "ma250": {
+            "type": "number",
+            "nullable": true
+          },
+          "ema12": {
+            "type": "number",
+            "nullable": true
+          },
+          "ema26": {
+            "type": "number",
+            "nullable": true
+          },
+          "macdDif": {
+            "type": "number",
+            "nullable": true
+          },
+          "macdDea": {
+            "type": "number",
+            "nullable": true
+          },
+          "macdHist": {
+            "type": "number",
+            "nullable": true
+          },
+          "kdjK": {
+            "type": "number",
+            "nullable": true
+          },
+          "kdjD": {
+            "type": "number",
+            "nullable": true
+          },
+          "kdjJ": {
+            "type": "number",
+            "nullable": true
+          },
+          "rsi6": {
+            "type": "number",
+            "nullable": true
+          },
+          "rsi12": {
+            "type": "number",
+            "nullable": true
+          },
+          "rsi24": {
+            "type": "number",
+            "nullable": true
+          },
+          "bollUpper": {
+            "type": "number",
+            "nullable": true
+          },
+          "bollMid": {
+            "type": "number",
+            "nullable": true
+          },
+          "bollLower": {
+            "type": "number",
+            "nullable": true
+          },
+          "wr6": {
+            "type": "number",
+            "nullable": true
+          },
+          "wr10": {
+            "type": "number",
+            "nullable": true
+          },
+          "cci": {
+            "type": "number",
+            "nullable": true
+          },
+          "dmiPdi": {
+            "type": "number",
+            "nullable": true
+          },
+          "dmiMdi": {
+            "type": "number",
+            "nullable": true
+          },
+          "dmiAdx": {
+            "type": "number",
+            "nullable": true
+          },
+          "dmiAdxr": {
+            "type": "number",
+            "nullable": true
+          },
+          "trix": {
+            "type": "number",
+            "nullable": true
+          },
+          "trixMa": {
+            "type": "number",
+            "nullable": true
+          },
+          "dma": {
+            "type": "number",
+            "nullable": true
+          },
+          "dmaMa": {
+            "type": "number",
+            "nullable": true
+          },
+          "bias6": {
+            "type": "number",
+            "nullable": true
+          },
+          "bias12": {
+            "type": "number",
+            "nullable": true
+          },
+          "bias24": {
+            "type": "number",
+            "nullable": true
+          },
+          "obv": {
+            "type": "number",
+            "nullable": true
+          },
+          "obvMa": {
+            "type": "number",
+            "nullable": true
+          },
+          "vr": {
+            "type": "number",
+            "nullable": true
+          },
+          "emv": {
+            "type": "number",
+            "nullable": true
+          },
+          "emvMa": {
+            "type": "number",
+            "nullable": true
+          },
+          "roc": {
+            "type": "number",
+            "nullable": true
+          },
+          "rocMa": {
+            "type": "number",
+            "nullable": true
+          },
+          "psy": {
+            "type": "number",
+            "nullable": true
+          },
+          "psyMa": {
+            "type": "number",
+            "nullable": true
+          },
+          "br": {
+            "type": "number",
+            "nullable": true
+          },
+          "ar": {
+            "type": "number",
+            "nullable": true
+          },
+          "cr": {
+            "type": "number",
+            "nullable": true
+          },
+          "sar": {
+            "type": "number",
+            "nullable": true
+          },
+          "sarBullish": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "volMa5": {
+            "type": "number",
+            "nullable": true
+          },
+          "volMa10": {
+            "type": "number",
+            "nullable": true
+          },
+          "volMa20": {
+            "type": "number",
+            "nullable": true
+          },
+          "volumeRatio": {
+            "type": "number",
+            "nullable": true
+          },
+          "atr14": {
+            "type": "number",
+            "nullable": true
+          },
+          "hv20": {
+            "type": "number",
+            "nullable": true
+          }
+        },
+        "required": [
+          "tradeDate"
+        ]
+      },
+      "StockTechnicalDataDto": {
+        "type": "object",
+        "properties": {
+          "tsCode": {
+            "type": "string"
+          },
+          "period": {
+            "type": "string"
+          },
+          "dataDate": {
+            "type": "string",
+            "nullable": true
+          },
+          "maStatus": {
+            "$ref": "#/components/schemas/MaStatusSummaryDto"
+          },
+          "signals": {
+            "$ref": "#/components/schemas/SignalSummaryDto"
+          },
+          "history": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TechnicalDataPointDto"
+            }
+          }
+        },
+        "required": [
+          "tsCode",
+          "period",
+          "maStatus",
+          "signals",
+          "history"
+        ]
+      },
+      "StockTechnicalIndicatorsDto": {
+        "type": "object",
+        "properties": {
+          "tsCode": {
+            "type": "string",
+            "example": "000001.SZ",
+            "description": "股票代码（ts_code）"
+          },
+          "period": {
+            "type": "string",
+            "description": "K线周期：D=日线, W=周线, M=月线",
+            "enum": [
+              "D",
+              "W",
+              "M"
+            ],
+            "default": "D"
+          },
+          "days": {
+            "type": "number",
+            "description": "返回最近多少个交易日的历史序列，默认 120，最大 500",
+            "default": 120,
+            "minimum": 30,
+            "maximum": 500
+          }
+        },
+        "required": [
+          "tsCode"
+        ]
+      },
+      "TimingScoreDetailDto": {
+        "type": "object",
+        "properties": {
+          "indicator": {
+            "type": "string"
+          },
+          "signal": {
+            "type": "string",
+            "enum": [
+              "bullish",
+              "bearish",
+              "neutral"
+            ]
+          },
+          "score": {
+            "type": "number",
+            "description": "分数 0-100"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "indicator",
+          "signal",
+          "score",
+          "reason"
+        ]
+      },
+      "TimingScoreSummaryDto": {
+        "type": "object",
+        "properties": {
+          "score": {
+            "type": "number",
+            "description": "综合择时评分 0-100"
+          },
+          "rating": {
+            "type": "string",
+            "description": "评级"
+          },
+          "bullishCount": {
+            "type": "number"
+          },
+          "bearishCount": {
+            "type": "number"
+          },
+          "neutralCount": {
+            "type": "number"
+          },
+          "details": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TimingScoreDetailDto"
+            }
+          }
+        },
+        "required": [
+          "score",
+          "rating",
+          "bullishCount",
+          "bearishCount",
+          "neutralCount",
+          "details"
+        ]
+      },
+      "TimingSignalItemDto": {
+        "type": "object",
+        "properties": {
+          "tradeDate": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "buy",
+              "sell",
+              "warning"
+            ]
+          },
+          "strength": {
+            "type": "number",
+            "description": "信号强度 1-5"
+          },
+          "source": {
+            "type": "string",
+            "description": "信号来源指标"
+          },
+          "description": {
+            "type": "string",
+            "description": "信号描述（中文）"
+          },
+          "closePrice": {
+            "type": "number",
+            "nullable": true
+          }
+        },
+        "required": [
+          "tradeDate",
+          "type",
+          "strength",
+          "source",
+          "description"
+        ]
+      },
+      "StockTimingSignalsDataDto": {
+        "type": "object",
+        "properties": {
+          "tsCode": {
+            "type": "string"
+          },
+          "scoreSummary": {
+            "$ref": "#/components/schemas/TimingScoreSummaryDto"
+          },
+          "signals": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TimingSignalItemDto"
+            }
+          }
+        },
+        "required": [
+          "tsCode",
+          "scoreSummary",
+          "signals"
+        ]
+      },
+      "StockTimingSignalsDto": {
+        "type": "object",
+        "properties": {
+          "tsCode": {
+            "type": "string",
+            "example": "000001.SZ",
+            "description": "股票代码（ts_code）"
+          },
+          "days": {
+            "type": "number",
+            "description": "回看天数，默认 60",
+            "default": 60,
+            "minimum": 20,
+            "maximum": 250
+          }
+        },
+        "required": [
+          "tsCode"
+        ]
+      },
+      "ChipConcentrationDto": {
+        "type": "object",
+        "properties": {
+          "range90Low": {
+            "type": "number",
+            "nullable": true
+          },
+          "range90High": {
+            "type": "number",
+            "nullable": true
+          },
+          "range70Low": {
+            "type": "number",
+            "nullable": true
+          },
+          "range70High": {
+            "type": "number",
+            "nullable": true
+          },
+          "score": {
+            "type": "number",
+            "nullable": true,
+            "description": "集中度评分 0-100"
+          },
+          "profitRatio": {
+            "type": "number",
+            "nullable": true,
+            "description": "获利比例 (%)"
+          },
+          "avgCost": {
+            "type": "number",
+            "nullable": true,
+            "description": "平均成本"
+          }
+        }
+      },
+      "ChipDistributionBinDto": {
+        "type": "object",
+        "properties": {
+          "priceLow": {
+            "type": "number"
+          },
+          "priceHigh": {
+            "type": "number"
+          },
+          "percent": {
+            "type": "number",
+            "description": "筹码占比 (0-100%)"
+          },
+          "isProfit": {
+            "type": "boolean",
+            "description": "是否在当前价格之下（获利盘）"
+          }
+        },
+        "required": [
+          "priceLow",
+          "priceHigh",
+          "percent",
+          "isProfit"
+        ]
+      },
+      "ChipKeyLevelsDto": {
+        "type": "object",
+        "properties": {
+          "peakPrice": {
+            "type": "number",
+            "nullable": true
+          },
+          "resistanceHigh": {
+            "type": "number",
+            "nullable": true
+          },
+          "resistanceLow": {
+            "type": "number",
+            "nullable": true
+          },
+          "supportHigh": {
+            "type": "number",
+            "nullable": true
+          },
+          "supportLow": {
+            "type": "number",
+            "nullable": true
+          }
+        }
+      },
+      "ChipDistributionDataDto": {
+        "type": "object",
+        "properties": {
+          "tsCode": {
+            "type": "string"
+          },
+          "tradeDate": {
+            "type": "string"
+          },
+          "currentPrice": {
+            "type": "number",
+            "nullable": true
+          },
+          "concentration": {
+            "$ref": "#/components/schemas/ChipConcentrationDto"
+          },
+          "distribution": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ChipDistributionBinDto"
+            }
+          },
+          "keyLevels": {
+            "$ref": "#/components/schemas/ChipKeyLevelsDto"
+          },
+          "isEstimated": {
+            "type": "boolean",
+            "description": "是否为估算数据（非 Tushare cyq 真实数据）"
+          }
+        },
+        "required": [
+          "tsCode",
+          "tradeDate",
+          "concentration",
+          "distribution",
+          "keyLevels",
+          "isEstimated"
+        ]
+      },
+      "StockChipDistributionDto": {
+        "type": "object",
+        "properties": {
+          "tsCode": {
+            "type": "string",
+            "example": "000001.SZ",
+            "description": "股票代码（ts_code）"
+          },
+          "tradeDate": {
+            "type": "string",
+            "description": "指定某个交易日的筹码分布（YYYYMMDD），不传则使用最新交易日",
+            "example": "20260101"
+          }
+        },
+        "required": [
+          "tsCode"
+        ]
+      },
+      "MarginSummaryDto": {
+        "type": "object",
+        "properties": {
+          "latestRzye": {
+            "type": "number",
+            "nullable": true
+          },
+          "latestRqye": {
+            "type": "number",
+            "nullable": true
+          },
+          "latestRzrqye": {
+            "type": "number",
+            "nullable": true
+          },
+          "rzNetBuy5d": {
+            "type": "number",
+            "nullable": true,
+            "description": "5日融资净买入累计（元）"
+          },
+          "rzNetBuy20d": {
+            "type": "number",
+            "nullable": true,
+            "description": "20日融资净买入累计（元）"
+          },
+          "rzye5dChgPct": {
+            "type": "number",
+            "nullable": true,
+            "description": "融资余额5日变化率(%)"
+          },
+          "rzye20dChgPct": {
+            "type": "number",
+            "nullable": true,
+            "description": "融资余额20日变化率(%)"
+          },
+          "trend": {
+            "type": "string",
+            "enum": [
+              "increasing",
+              "decreasing",
+              "stable"
+            ]
+          }
+        },
+        "required": [
+          "trend"
+        ]
+      },
+      "MarginDailyItemDto": {
+        "type": "object",
+        "properties": {
+          "tradeDate": {
+            "type": "string"
+          },
+          "rzye": {
+            "type": "number",
+            "nullable": true,
+            "description": "融资余额（元）"
+          },
+          "rzmre": {
+            "type": "number",
+            "nullable": true,
+            "description": "融资买入额（元）"
+          },
+          "rzche": {
+            "type": "number",
+            "nullable": true,
+            "description": "融资偿还额（元）"
+          },
+          "rzjmre": {
+            "type": "number",
+            "nullable": true,
+            "description": "融资净买入（元）"
+          },
+          "rqye": {
+            "type": "number",
+            "nullable": true,
+            "description": "融券余额（元）"
+          },
+          "rqmcl": {
+            "type": "number",
+            "nullable": true,
+            "description": "融券卖出量（股）"
+          },
+          "rqchl": {
+            "type": "number",
+            "nullable": true,
+            "description": "融券偿还量（股）"
+          },
+          "rzrqye": {
+            "type": "number",
+            "nullable": true,
+            "description": "融资融券余额合计（元）"
+          },
+          "close": {
+            "type": "number",
+            "nullable": true,
+            "description": "收盘价"
+          }
+        },
+        "required": [
+          "tradeDate"
+        ]
+      },
+      "StockMarginDataResponseDto": {
+        "type": "object",
+        "properties": {
+          "tsCode": {
+            "type": "string"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/MarginSummaryDto"
+          },
+          "history": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MarginDailyItemDto"
+            }
+          },
+          "available": {
+            "type": "boolean",
+            "description": "数据是否可用（Tushare 积分不足时为 false）"
+          }
+        },
+        "required": [
+          "tsCode",
+          "summary",
+          "history",
+          "available"
+        ]
+      },
+      "StockMarginQueryDto": {
+        "type": "object",
+        "properties": {
+          "tsCode": {
+            "type": "string",
+            "example": "000001.SZ",
+            "description": "股票代码（ts_code）"
+          },
+          "days": {
+            "type": "number",
+            "description": "回看天数，默认 60",
+            "default": 60,
+            "minimum": 20,
+            "maximum": 250
+          }
+        },
+        "required": [
+          "tsCode"
+        ]
+      },
+      "RelativeStrengthSummaryDto": {
+        "type": "object",
+        "properties": {
+          "stockTotalReturn": {
+            "type": "number",
+            "nullable": true,
+            "description": "期间个股累计涨跌幅 (%)"
+          },
+          "benchmarkTotalReturn": {
+            "type": "number",
+            "nullable": true,
+            "description": "期间基准累计涨跌幅 (%)"
+          },
+          "excessReturn": {
+            "type": "number",
+            "nullable": true,
+            "description": "超额收益 (%)"
+          },
+          "excess20d": {
+            "type": "number",
+            "nullable": true,
+            "description": "最近20日超额收益 (%)"
+          },
+          "annualizedVol": {
+            "type": "number",
+            "nullable": true,
+            "description": "年化波动率 (%)"
+          },
+          "maxDrawdown": {
+            "type": "number",
+            "nullable": true,
+            "description": "最大回撤 (%)"
+          },
+          "beta": {
+            "type": "number",
+            "nullable": true,
+            "description": "Beta（相对基准）"
+          },
+          "informationRatio": {
+            "type": "number",
+            "nullable": true,
+            "description": "信息比率"
+          }
+        }
+      },
+      "RelativeStrengthPointDto": {
+        "type": "object",
+        "properties": {
+          "tradeDate": {
+            "type": "string"
+          },
+          "stockCumReturn": {
+            "type": "number",
+            "description": "个股累计涨跌幅 (%)"
+          },
+          "benchmarkCumReturn": {
+            "type": "number",
+            "description": "基准指数累计涨跌幅 (%)"
+          },
+          "excessReturn": {
+            "type": "number",
+            "description": "超额收益 = stock - benchmark"
+          },
+          "rsRatio": {
+            "type": "number",
+            "description": "相对强弱比率（归一化）"
+          }
+        },
+        "required": [
+          "tradeDate",
+          "stockCumReturn",
+          "benchmarkCumReturn",
+          "excessReturn",
+          "rsRatio"
+        ]
+      },
+      "StockRelativeStrengthDataDto": {
+        "type": "object",
+        "properties": {
+          "tsCode": {
+            "type": "string"
+          },
+          "benchmarkCode": {
+            "type": "string"
+          },
+          "benchmarkName": {
+            "type": "string"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/RelativeStrengthSummaryDto"
+          },
+          "history": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RelativeStrengthPointDto"
+            }
+          }
+        },
+        "required": [
+          "tsCode",
+          "benchmarkCode",
+          "benchmarkName",
+          "summary",
+          "history"
+        ]
+      },
+      "StockRelativeStrengthDto": {
+        "type": "object",
+        "properties": {
+          "tsCode": {
+            "type": "string",
+            "example": "000001.SZ",
+            "description": "股票代码（ts_code）"
+          },
+          "benchmarkCode": {
+            "type": "string",
+            "description": "对比的指数代码，默认沪深300 000300.SH",
+            "default": "000300.SH",
+            "example": "000300.SH"
+          },
+          "days": {
+            "type": "number",
+            "description": "回看天数，默认 120",
+            "default": 120,
+            "minimum": 20,
+            "maximum": 500
+          }
+        },
+        "required": [
+          "tsCode"
+        ]
+      },
       "StockScreenerItemDto": {
         "type": "object",
         "properties": {
@@ -6343,7 +7525,8 @@
               "TOP10_FLOAT_HOLDERS",
               "STK_LIMIT",
               "SUSPEND_D",
-              "INDEX_WEIGHT"
+              "INDEX_WEIGHT",
+              "MARGIN_DETAIL"
             ]
           },
           "label": {
@@ -6429,7 +7612,8 @@
                 "TOP10_FLOAT_HOLDERS",
                 "STK_LIMIT",
                 "SUSPEND_D",
-                "INDEX_WEIGHT"
+                "INDEX_WEIGHT",
+                "MARGIN_DETAIL"
               ]
             }
           }

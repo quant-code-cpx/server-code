@@ -80,6 +80,7 @@ export enum TushareSyncTaskName {
   STK_LIMIT = 'STK_LIMIT',
   SUSPEND_D = 'SUSPEND_D',
   INDEX_WEIGHT = 'INDEX_WEIGHT',
+  MARGIN_DETAIL = 'MARGIN_DETAIL',
 }
 
 /** 同步执行状态 */

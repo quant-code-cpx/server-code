@@ -1,4 +1,4 @@
-import { Body, Controller, Post } from '@nestjs/common'
+import { Body, Controller, Get, Post } from '@nestjs/common'
 import { ApiOperation, ApiTags } from '@nestjs/swagger'
 import { StockService } from './stock.service'
 import { StockListQueryDto } from './dto/stock-list-query.dto'
@@ -11,6 +11,7 @@ import { StockDetailShareholdersDto } from './dto/stock-detail-shareholders.dto'
 import { StockDetailShareCapitalDto } from './dto/stock-detail-share-capital.dto'
 import { StockDetailFinancingDto } from './dto/stock-detail-financing.dto'
 import { StockDetailFinancialStatementsDto } from './dto/stock-detail-financial-statements.dto'
+import { StockScreenerQueryDto } from './dto/stock-screener-query.dto'
 import { ApiSuccessResponse } from 'src/common/decorators/api-success-response.decorator'
 import {
   StockChartDataDto,
@@ -22,6 +23,10 @@ import {
   StockListDataDto,
   StockMainMoneyFlowDataDto,
   StockMoneyFlowDataDto,
+  StockScreenerDataDto,
+  IndustryListDataDto,
+  AreaListDataDto,
+  ScreenerPresetDataDto,
   StockSearchItemDto,
   StockShareCapitalDataDto,
   StockShareholdersDataDto,
@@ -124,5 +129,35 @@ export class StockController {
   @ApiSuccessResponse(StockFinancialStatementsDataDto)
   detailFinancialStatements(@Body() dto: StockDetailFinancialStatementsDto) {
     return this.stockService.getDetailFinancialStatements(dto)
+  }
+
+  // ─── 选股器 ─────────────────────────────────────────────────────────────────
+
+  @Post('screener')
+  @ApiOperation({ summary: '选股器 - 多维度条件筛选' })
+  @ApiSuccessResponse(StockScreenerDataDto)
+  screener(@Body() dto: StockScreenerQueryDto) {
+    return this.stockService.screener(dto)
+  }
+
+  @Post('screener/presets')
+  @ApiOperation({ summary: '选股器 - 内置筛选条件预设列表' })
+  @ApiSuccessResponse(ScreenerPresetDataDto)
+  screenerPresets() {
+    return this.stockService.getScreenerPresets()
+  }
+
+  @Get('industries')
+  @ApiOperation({ summary: '行业列表（含股票数量，按数量降序）' })
+  @ApiSuccessResponse(IndustryListDataDto)
+  getIndustries() {
+    return this.stockService.getIndustries()
+  }
+
+  @Get('areas')
+  @ApiOperation({ summary: '地域列表（含股票数量，按数量降序）' })
+  @ApiSuccessResponse(AreaListDataDto)
+  getAreas() {
+    return this.stockService.getAreas()
   }
 }

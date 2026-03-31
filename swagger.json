@@ -1375,7 +1375,7 @@
             }
           }
         },
-        "summary": "获取市场整体资金流入流出",
+        "summary": "获取市场整体资金流入流出（含各级别拆分）",
         "tags": [
           "Market - 市场与行业"
         ]
@@ -1390,7 +1390,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/MoneyFlowQueryDto"
+                "$ref": "#/components/schemas/SectorFlowQueryDto"
               }
             }
           }
@@ -1418,7 +1418,7 @@
             }
           }
         },
-        "summary": "获取行业板块涨跌及资金流向",
+        "summary": "获取行业板块涨跌及资金流向（支持类型筛选与 Top N）",
         "tags": [
           "Market - 市场与行业"
         ]
@@ -1565,7 +1565,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/MoneyFlowQueryDto"
+                "$ref": "#/components/schemas/HsgtFlowQueryDto"
               }
             }
           }
@@ -1593,7 +1593,7 @@
             }
           }
         },
-        "summary": "获取沪深港通北向/南向资金流向（近 20 日趋势）",
+        "summary": "获取沪深港通北向/南向资金流向（支持自定义天数）",
         "tags": [
           "Market - 市场与行业"
         ]
@@ -1852,6 +1852,264 @@
           }
         },
         "summary": "获取全A市场PE/PB估值趋势",
+        "tags": [
+          "Market - 市场与行业"
+        ]
+      }
+    },
+    "/market/money-flow-trend": {
+      "post": {
+        "operationId": "MarketController_getMoneyFlowTrend",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MoneyFlowTrendQueryDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ResponseModel"
+                    },
+                    {
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/MoneyFlowTrendResponseDto"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "summary": "获取大盘资金流向趋势（近N日各级别净流入序列）",
+        "tags": [
+          "Market - 市场与行业"
+        ]
+      }
+    },
+    "/market/sector-flow-ranking": {
+      "post": {
+        "operationId": "MarketController_getSectorFlowRanking",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SectorFlowRankingQueryDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ResponseModel"
+                    },
+                    {
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/SectorFlowRankingResponseDto"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "summary": "获取板块资金流向排行（按类型与排序维度）",
+        "tags": [
+          "Market - 市场与行业"
+        ]
+      }
+    },
+    "/market/sector-flow-trend": {
+      "post": {
+        "operationId": "MarketController_getSectorFlowTrend",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SectorFlowTrendQueryDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ResponseModel"
+                    },
+                    {
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/SectorFlowTrendResponseDto"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "summary": "获取指定板块资金流向趋势",
+        "tags": [
+          "Market - 市场与行业"
+        ]
+      }
+    },
+    "/market/hsgt-trend": {
+      "post": {
+        "operationId": "MarketController_getHsgtTrend",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HsgtTrendQueryDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ResponseModel"
+                    },
+                    {
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/HsgtTrendResponseDto"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "summary": "获取沪深港通长周期北向/南向资金趋势",
+        "tags": [
+          "Market - 市场与行业"
+        ]
+      }
+    },
+    "/market/main-flow-ranking": {
+      "post": {
+        "operationId": "MarketController_getMainFlowRanking",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MainFlowRankingQueryDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ResponseModel"
+                    },
+                    {
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/MainFlowRankingResponseDto"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "summary": "获取主力资金净流入 Top N 个股排行",
+        "tags": [
+          "Market - 市场与行业"
+        ]
+      }
+    },
+    "/market/stock-flow-detail": {
+      "post": {
+        "operationId": "MarketController_getStockFlowDetail",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StockFlowDetailQueryDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ResponseModel"
+                    },
+                    {
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/StockFlowDetailResponseDto"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "summary": "获取个股资金流动明细（近N日各级别拆分趋势）",
         "tags": [
           "Market - 市场与行业"
         ]
@@ -4660,12 +4918,60 @@
             "type": "number",
             "nullable": true
           },
-          "buyAmount": {
+          "netAmountRate": {
             "type": "number",
             "nullable": true
           },
-          "sellAmount": {
+          "buyElgAmount": {
             "type": "number",
+            "nullable": true
+          },
+          "buyElgAmountRate": {
+            "type": "number",
+            "nullable": true
+          },
+          "buyLgAmount": {
+            "type": "number",
+            "nullable": true
+          },
+          "buyLgAmountRate": {
+            "type": "number",
+            "nullable": true
+          },
+          "buyMdAmount": {
+            "type": "number",
+            "nullable": true
+          },
+          "buyMdAmountRate": {
+            "type": "number",
+            "nullable": true
+          },
+          "buySmAmount": {
+            "type": "number",
+            "nullable": true
+          },
+          "buySmAmountRate": {
+            "type": "number",
+            "nullable": true
+          },
+          "closeSh": {
+            "type": "number",
+            "description": "沪市收盘点位",
+            "nullable": true
+          },
+          "pctChangeSh": {
+            "type": "number",
+            "description": "沪市涨跌幅",
+            "nullable": true
+          },
+          "closeSz": {
+            "type": "number",
+            "description": "深市收盘点位",
+            "nullable": true
+          },
+          "pctChangeSz": {
+            "type": "number",
+            "description": "深市涨跌幅",
             "nullable": true
           }
         },
@@ -4697,7 +5003,35 @@
             "type": "string",
             "nullable": true
           },
+          "pctChange": {
+            "type": "number",
+            "nullable": true
+          },
+          "close": {
+            "type": "number",
+            "nullable": true
+          },
           "netAmount": {
+            "type": "number",
+            "nullable": true
+          },
+          "netAmountRate": {
+            "type": "number",
+            "nullable": true
+          },
+          "buyElgAmount": {
+            "type": "number",
+            "nullable": true
+          },
+          "buyLgAmount": {
+            "type": "number",
+            "nullable": true
+          },
+          "buyMdAmount": {
+            "type": "number",
+            "nullable": true
+          },
+          "buySmAmount": {
             "type": "number",
             "nullable": true
           },
@@ -4743,6 +5077,31 @@
           "concept",
           "region"
         ]
+      },
+      "SectorFlowQueryDto": {
+        "type": "object",
+        "properties": {
+          "trade_date": {
+            "type": "string",
+            "description": "查询日期（YYYYMMDD），默认为最新交易日",
+            "example": "20240101"
+          },
+          "content_type": {
+            "type": "string",
+            "description": "板块类型筛选，不传则返回全部三类",
+            "enum": [
+              "INDUSTRY",
+              "CONCEPT",
+              "REGION"
+            ]
+          },
+          "limit": {
+            "type": "number",
+            "description": "Top N 截断，默认不限制",
+            "minimum": 1,
+            "maximum": 100
+          }
+        }
       },
       "MarketSentimentDto": {
         "type": "object",
@@ -4934,6 +5293,23 @@
         "required": [
           "history"
         ]
+      },
+      "HsgtFlowQueryDto": {
+        "type": "object",
+        "properties": {
+          "trade_date": {
+            "type": "string",
+            "description": "查询日期（YYYYMMDD），默认为最新交易日",
+            "example": "20240101"
+          },
+          "days": {
+            "type": "number",
+            "description": "返回天数，默认 20，最大 365",
+            "minimum": 5,
+            "maximum": 365,
+            "default": 20
+          }
+        }
       },
       "IndexTrendItemDto": {
         "type": "object",
@@ -5317,6 +5693,561 @@
             "default": "1y"
           }
         }
+      },
+      "MoneyFlowTrendItemDto": {
+        "type": "object",
+        "properties": {
+          "tradeDate": {
+            "type": "string",
+            "description": "交易日期 YYYY-MM-DD"
+          },
+          "netAmount": {
+            "type": "number",
+            "description": "当日净流入（万元）",
+            "nullable": true
+          },
+          "cumulativeNet": {
+            "type": "number",
+            "description": "累计净流入（从序列第 1 天开始累加）"
+          },
+          "buyElgAmount": {
+            "type": "number",
+            "description": "超大单净流入",
+            "nullable": true
+          },
+          "buyLgAmount": {
+            "type": "number",
+            "description": "大单净流入",
+            "nullable": true
+          },
+          "buyMdAmount": {
+            "type": "number",
+            "description": "中单净流入",
+            "nullable": true
+          },
+          "buySmAmount": {
+            "type": "number",
+            "description": "小单净流入",
+            "nullable": true
+          }
+        },
+        "required": [
+          "tradeDate",
+          "cumulativeNet"
+        ]
+      },
+      "MoneyFlowTrendResponseDto": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MoneyFlowTrendItemDto"
+            }
+          }
+        },
+        "required": [
+          "data"
+        ]
+      },
+      "MoneyFlowTrendQueryDto": {
+        "type": "object",
+        "properties": {
+          "trade_date": {
+            "type": "string",
+            "description": "查询日期（YYYYMMDD），默认最新交易日",
+            "example": "20240101"
+          },
+          "days": {
+            "type": "number",
+            "description": "历史天数，默认 20，最大 60",
+            "minimum": 5,
+            "maximum": 60,
+            "default": 20
+          }
+        }
+      },
+      "SectorFlowRankingItemDto": {
+        "type": "object",
+        "properties": {
+          "tsCode": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string",
+            "nullable": true
+          },
+          "pctChange": {
+            "type": "number",
+            "description": "板块涨跌幅 %",
+            "nullable": true
+          },
+          "close": {
+            "type": "number",
+            "nullable": true
+          },
+          "netAmount": {
+            "type": "number",
+            "description": "净流入（万元）",
+            "nullable": true
+          },
+          "netAmountRate": {
+            "type": "number",
+            "description": "净流入率 %",
+            "nullable": true
+          },
+          "buyElgAmount": {
+            "type": "number",
+            "description": "超大单净流入",
+            "nullable": true
+          },
+          "buyLgAmount": {
+            "type": "number",
+            "description": "大单净流入",
+            "nullable": true
+          },
+          "buyMdAmount": {
+            "type": "number",
+            "description": "中单净流入",
+            "nullable": true
+          },
+          "buySmAmount": {
+            "type": "number",
+            "description": "小单净流入",
+            "nullable": true
+          }
+        },
+        "required": [
+          "tsCode"
+        ]
+      },
+      "SectorFlowRankingResponseDto": {
+        "type": "object",
+        "properties": {
+          "tradeDate": {
+            "format": "date-time",
+            "type": "string",
+            "description": "交易日期"
+          },
+          "contentType": {
+            "type": "string",
+            "description": "板块类型"
+          },
+          "sectors": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SectorFlowRankingItemDto"
+            }
+          }
+        },
+        "required": [
+          "tradeDate",
+          "contentType",
+          "sectors"
+        ]
+      },
+      "SectorFlowRankingQueryDto": {
+        "type": "object",
+        "properties": {
+          "trade_date": {
+            "type": "string",
+            "description": "查询日期（YYYYMMDD），默认最新交易日",
+            "example": "20240101"
+          },
+          "content_type": {
+            "type": "string",
+            "description": "板块类型，默认 INDUSTRY",
+            "enum": [
+              "INDUSTRY",
+              "CONCEPT",
+              "REGION"
+            ],
+            "default": "INDUSTRY"
+          },
+          "sort_by": {
+            "type": "string",
+            "description": "排序维度，默认 net_amount",
+            "enum": [
+              "net_amount",
+              "pct_change",
+              "buy_elg_amount"
+            ],
+            "default": "net_amount"
+          },
+          "order": {
+            "type": "string",
+            "description": "排序方向",
+            "enum": [
+              "asc",
+              "desc"
+            ],
+            "default": "desc"
+          },
+          "limit": {
+            "type": "number",
+            "description": "Top N，默认 20",
+            "minimum": 1,
+            "maximum": 100,
+            "default": 20
+          }
+        }
+      },
+      "SectorFlowTrendItemDto": {
+        "type": "object",
+        "properties": {
+          "tradeDate": {
+            "type": "string",
+            "description": "交易日期 YYYY-MM-DD"
+          },
+          "pctChange": {
+            "type": "number",
+            "description": "板块涨跌幅 %",
+            "nullable": true
+          },
+          "netAmount": {
+            "type": "number",
+            "description": "当日净流入（万元）",
+            "nullable": true
+          },
+          "cumulativeNet": {
+            "type": "number",
+            "description": "累计净流入"
+          }
+        },
+        "required": [
+          "tradeDate",
+          "cumulativeNet"
+        ]
+      },
+      "SectorFlowTrendResponseDto": {
+        "type": "object",
+        "properties": {
+          "tsCode": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string",
+            "nullable": true
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SectorFlowTrendItemDto"
+            }
+          }
+        },
+        "required": [
+          "tsCode",
+          "data"
+        ]
+      },
+      "SectorFlowTrendQueryDto": {
+        "type": "object",
+        "properties": {
+          "ts_code": {
+            "type": "string",
+            "description": "板块代码，如 BK0475"
+          },
+          "content_type": {
+            "type": "string",
+            "description": "板块类型，默认 INDUSTRY",
+            "enum": [
+              "INDUSTRY",
+              "CONCEPT",
+              "REGION"
+            ],
+            "default": "INDUSTRY"
+          },
+          "days": {
+            "type": "number",
+            "description": "历史天数，默认 20，最大 60",
+            "minimum": 5,
+            "maximum": 60,
+            "default": 20
+          }
+        },
+        "required": [
+          "ts_code"
+        ]
+      },
+      "HsgtTrendItemDto": {
+        "type": "object",
+        "properties": {
+          "tradeDate": {
+            "type": "string",
+            "description": "交易日期 YYYY-MM-DD"
+          },
+          "northMoney": {
+            "type": "number",
+            "description": "北向当日净买入（亿元）",
+            "nullable": true
+          },
+          "southMoney": {
+            "type": "number",
+            "description": "南向当日净买入（亿元）",
+            "nullable": true
+          },
+          "hgt": {
+            "type": "number",
+            "description": "沪股通",
+            "nullable": true
+          },
+          "sgt": {
+            "type": "number",
+            "description": "深股通",
+            "nullable": true
+          },
+          "ggtSs": {
+            "type": "number",
+            "description": "港股通（上海）",
+            "nullable": true
+          },
+          "ggtSz": {
+            "type": "number",
+            "description": "港股通（深圳）",
+            "nullable": true
+          },
+          "cumulativeNorth": {
+            "type": "number",
+            "description": "累计北向净买入（亿元）"
+          },
+          "cumulativeSouth": {
+            "type": "number",
+            "description": "累计南向净买入（亿元）"
+          }
+        },
+        "required": [
+          "tradeDate",
+          "cumulativeNorth",
+          "cumulativeSouth"
+        ]
+      },
+      "HsgtTrendResponseDto": {
+        "type": "object",
+        "properties": {
+          "period": {
+            "type": "string",
+            "description": "查询周期"
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HsgtTrendItemDto"
+            }
+          }
+        },
+        "required": [
+          "period",
+          "data"
+        ]
+      },
+      "HsgtTrendQueryDto": {
+        "type": "object",
+        "properties": {
+          "period": {
+            "type": "string",
+            "description": "时间周期，默认 3m",
+            "enum": [
+              "1m",
+              "3m",
+              "6m",
+              "1y"
+            ],
+            "default": "3m"
+          }
+        }
+      },
+      "MainFlowRankingItemDto": {
+        "type": "object",
+        "properties": {
+          "tsCode": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string",
+            "description": "股票名称",
+            "nullable": true
+          },
+          "industry": {
+            "type": "string",
+            "description": "所属行业",
+            "nullable": true
+          },
+          "mainNetInflow": {
+            "type": "number",
+            "description": "主力净流入 = 超大单净 + 大单净（万元）"
+          },
+          "elgNetInflow": {
+            "type": "number",
+            "description": "超大单净流入（万元）"
+          },
+          "lgNetInflow": {
+            "type": "number",
+            "description": "大单净流入（万元）"
+          },
+          "pctChg": {
+            "type": "number",
+            "description": "当日涨跌幅 %",
+            "nullable": true
+          },
+          "amount": {
+            "type": "number",
+            "description": "当日成交额",
+            "nullable": true
+          }
+        },
+        "required": [
+          "tsCode",
+          "mainNetInflow",
+          "elgNetInflow",
+          "lgNetInflow"
+        ]
+      },
+      "MainFlowRankingResponseDto": {
+        "type": "object",
+        "properties": {
+          "tradeDate": {
+            "format": "date-time",
+            "type": "string",
+            "description": "交易日期"
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MainFlowRankingItemDto"
+            }
+          }
+        },
+        "required": [
+          "tradeDate",
+          "data"
+        ]
+      },
+      "MainFlowRankingQueryDto": {
+        "type": "object",
+        "properties": {
+          "trade_date": {
+            "type": "string",
+            "description": "查询日期（YYYYMMDD），默认最新交易日",
+            "example": "20240101"
+          },
+          "order": {
+            "type": "string",
+            "description": "排序方向：desc=主力净流入最多，asc=主力净流出最多",
+            "enum": [
+              "asc",
+              "desc"
+            ],
+            "default": "desc"
+          },
+          "limit": {
+            "type": "number",
+            "description": "Top N，默认 20",
+            "minimum": 1,
+            "maximum": 100,
+            "default": 20
+          }
+        }
+      },
+      "StockFlowDetailItemDto": {
+        "type": "object",
+        "properties": {
+          "tradeDate": {
+            "type": "string",
+            "description": "交易日期 YYYY-MM-DD"
+          },
+          "mainNetInflow": {
+            "type": "number",
+            "description": "主力净流入 = 超大单净 + 大单净（万元）"
+          },
+          "retailNetInflow": {
+            "type": "number",
+            "description": "散户净流入 = 中单净 + 小单净（万元）"
+          },
+          "buyElgAmount": {
+            "type": "number",
+            "nullable": true
+          },
+          "sellElgAmount": {
+            "type": "number",
+            "nullable": true
+          },
+          "buyLgAmount": {
+            "type": "number",
+            "nullable": true
+          },
+          "sellLgAmount": {
+            "type": "number",
+            "nullable": true
+          },
+          "buyMdAmount": {
+            "type": "number",
+            "nullable": true
+          },
+          "sellMdAmount": {
+            "type": "number",
+            "nullable": true
+          },
+          "buySmAmount": {
+            "type": "number",
+            "nullable": true
+          },
+          "sellSmAmount": {
+            "type": "number",
+            "nullable": true
+          },
+          "netMfAmount": {
+            "type": "number",
+            "description": "总净流入（万元）",
+            "nullable": true
+          }
+        },
+        "required": [
+          "tradeDate",
+          "mainNetInflow",
+          "retailNetInflow"
+        ]
+      },
+      "StockFlowDetailResponseDto": {
+        "type": "object",
+        "properties": {
+          "tsCode": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string",
+            "nullable": true
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StockFlowDetailItemDto"
+            }
+          }
+        },
+        "required": [
+          "tsCode",
+          "data"
+        ]
+      },
+      "StockFlowDetailQueryDto": {
+        "type": "object",
+        "properties": {
+          "ts_code": {
+            "type": "string",
+            "description": "股票代码，如 000001.SZ"
+          },
+          "days": {
+            "type": "number",
+            "description": "历史天数，默认 20，最大 60",
+            "minimum": 5,
+            "maximum": 60,
+            "default": 20
+          }
+        },
+        "required": [
+          "ts_code"
+        ]
       },
       "HeatmapItemDto": {
         "type": "object",

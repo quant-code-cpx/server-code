@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger'
-import { IsEnum, IsInt, IsOptional, IsString, Max, Min } from 'class-validator'
+import { IsEnum, IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator'
 import { Type } from 'class-transformer'
 import { BacktestStatus, BacktestStrategyType } from '../types/backtest-engine.types'
 
@@ -29,8 +29,9 @@ export class ListBacktestRunsDto {
   @IsEnum(['MA_CROSS_SINGLE', 'SCREENING_ROTATION', 'FACTOR_RANKING', 'CUSTOM_POOL_REBALANCE'])
   strategyType?: BacktestStrategyType
 
-  @ApiPropertyOptional({ description: '按名称模糊搜索' })
+  @ApiPropertyOptional({ description: '按名称模糊搜索', maxLength: 128 })
   @IsOptional()
   @IsString()
+  @MaxLength(128)
   keyword?: string
 }

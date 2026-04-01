@@ -60,8 +60,9 @@ export class BacktestMetricsService {
 
     let beta = 0
     if (bmVariance > 0) {
+      const returnsMean = returns.reduce((a, b) => a + b, 0) / returns.length
       const covariance =
-        returns.reduce((a, r, i) => a + (r - mean - dailyRfRate) * (benchmarkReturns[i] - benchmarkMean), 0) /
+        returns.reduce((a, r, i) => a + (r - returnsMean) * (benchmarkReturns[i] - benchmarkMean), 0) /
         returns.length
       beta = covariance / bmVariance
     }

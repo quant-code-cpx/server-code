@@ -50,36 +50,52 @@ export class FactorRankingStrategy implements IBacktestStrategy {
     const tradeDateStr = signalDate.toISOString().slice(0, 10)
     const minListDateStr = minListDate.toISOString().slice(0, 10)
 
-    // Determine universe filter
+    // Determine universe filter using parameterized queries
     let universeSql = ''
     const universalParams: unknown[] = [tradeDateStr, minListDateStr, topN]
 
     if (config.universe !== 'ALL_A' && config.universe !== 'CUSTOM') {
       const indexCode = UNIVERSE_INDEX_CODE[config.universe]
       if (indexCode) {
+        // indexCode comes from the hardcoded UNIVERSE_INDEX_CODE map, safe to interpolate
         universeSql = `AND db.ts_code IN (
           SELECT iw.con_code FROM index_constituent_weights iw
-          WHERE iw.index_code = '${indexCode}'
+          WHERE iw.index_code = $${universalParams.length + 1}
             AND iw.trade_date = (
               SELECT MAX(iw2.trade_date) FROM index_constituent_weights iw2
-              WHERE iw2.index_code = '${indexCode}' AND iw2.trade_date <= '${tradeDateStr}'
+              WHERE iw2.index_code = $${universalParams.length + 1} AND iw2.trade_date <= $1
             )
         )`
+        universalParams.push(indexCode)
       }
     } else if (config.universe === 'CUSTOM' && config.customUniverseTsCodes?.length) {
-      const codes = config.customUniverseTsCodes.map((c) => `'${c}'`).join(',')
-      universeSql = `AND db.ts_code IN (${codes})`
+      // tsCode format is validated by Tushare sync; use parameterized array cast
+      const placeholders = config.customUniverseTsCodes
+        .map((_, i) => `$${universalParams.length + i + 1}`)
+        .join(',')
+      universeSql = `AND db.ts_code IN (${placeholders})`
+      universalParams.push(...config.customUniverseTsCodes)
     }
 
-    // Build optional filters
+    // Build optional filters with parameterized values
     let filterSql = ''
-    if (optionalFilters?.minTotalMv) filterSql += ` AND db.total_mv >= ${optionalFilters.minTotalMv}`
-    if (optionalFilters?.minTurnoverRate) filterSql += ` AND db.turnover_rate_f >= ${optionalFilters.minTurnoverRate}`
-    if (optionalFilters?.maxPeTtm) filterSql += ` AND db.pe_ttm <= ${optionalFilters.maxPeTtm} AND db.pe_ttm > 0`
+    if (optionalFilters?.minTotalMv !== undefined) {
+      universalParams.push(optionalFilters.minTotalMv)
+      filterSql += ` AND db.total_mv >= $${universalParams.length}`
+    }
+    if (optionalFilters?.minTurnoverRate !== undefined) {
+      universalParams.push(optionalFilters.minTurnoverRate)
+      filterSql += ` AND db.turnover_rate_f >= $${universalParams.length}`
+    }
+    if (optionalFilters?.maxPeTtm !== undefined) {
+      universalParams.push(optionalFilters.maxPeTtm)
+      filterSql += ` AND db.pe_ttm <= $${universalParams.length} AND db.pe_ttm > 0`
+    }
 
     let rows: Array<{ ts_code: string }> = []
 
     if (MARKET_FACTORS[factorName]) {
+      // col comes from whitelist-validated MARKET_FACTORS map, safe to interpolate
       const col = MARKET_FACTORS[factorName]
       rows = await prisma.$queryRawUnsafe<Array<{ ts_code: string }>>(
         `SELECT db.ts_code
@@ -97,6 +113,9 @@ export class FactorRankingStrategy implements IBacktestStrategy {
       )
     } else if (FINA_FACTORS[factorName]) {
       const col = FINA_FACTORS[factorName]
+      // Replace 'db.' prefix in universeSql with 'fi.' for fina factor query
+      const fiUniverseSql = universeSql.replace(/db\.ts_code/g, 'fi.ts_code')
+      const fiFilterSql = filterSql // db. prefix filters remain on joined db table
       rows = await prisma.$queryRawUnsafe<Array<{ ts_code: string }>>(
         `SELECT fi.ts_code
          FROM financial_indicator_snapshots fi
@@ -109,8 +128,8 @@ export class FactorRankingStrategy implements IBacktestStrategy {
              SELECT MAX(fi2.end_date) FROM financial_indicator_snapshots fi2
              WHERE fi2.ts_code = fi.ts_code AND fi2.end_date <= $1::date
            )
-           ${universeSql}
-           ${filterSql}
+           ${fiUniverseSql}
+           ${fiFilterSql}
          ORDER BY fi.${col} ${orderDir}
          LIMIT $3`,
         ...universalParams,

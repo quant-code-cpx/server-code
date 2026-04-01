@@ -8,6 +8,7 @@ import {
   PortfolioState,
   PositionSnapshot,
   RebalanceFrequency,
+  SignalOutput,
   UNIVERSE_INDEX_CODE,
 } from '../types/backtest-engine.types'
 import { BacktestDataService } from './backtest-data.service'
@@ -87,8 +88,7 @@ export class BacktestEngineService {
     let highWaterMark = config.initialCapital
     let benchmarkBase: number | null = null
 
-    let pendingSignal: { signal: { targets: Array<{ tsCode: string; weight?: number }> }; signalDate: Date } | null =
-      null
+    let pendingSignal: { signal: SignalOutput; signalDate: Date } | null = null
 
     const isRebalanceDay = (date: Date, idx: number) =>
       this.checkRebalanceDay(date, tradingDays, idx, config.rebalanceFrequency)

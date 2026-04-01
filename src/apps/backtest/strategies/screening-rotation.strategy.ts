@@ -36,6 +36,11 @@ export class ScreeningRotationStrategy implements IBacktestStrategy {
     const minListDate = new Date(signalDate.getTime() - minDaysListed * 24 * 60 * 60 * 1000)
     const tradeDateStr = signalDate.toISOString().slice(0, 10)
 
+    // dbColumn and orderDir are derived from whitelist maps (RANK_FIELD_MAP), safe to interpolate
+    if (!dbColumn.match(/^[a-z_]+$/)) {
+      return { targets: [] }
+    }
+
     // Query top-N stocks from daily_basic joined with stock_basic_profiles
     const rows = await prisma.$queryRawUnsafe<Array<{ ts_code: string }>>(
       `SELECT db.ts_code

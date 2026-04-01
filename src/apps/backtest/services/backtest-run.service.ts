@@ -292,7 +292,7 @@ export class BacktestRunService {
 
     let tradeDate: Date
     if (dto.tradeDate) {
-      tradeDate = new Date(`${dto.tradeDate.slice(0, 4)}-${dto.tradeDate.slice(4, 6)}-${dto.tradeDate.slice(6, 8)}`)
+      tradeDate = this.parseDate(dto.tradeDate)
     } else {
       // Get latest snapshot date
       const latest = await this.prisma.backtestPositionSnapshot.findFirst({

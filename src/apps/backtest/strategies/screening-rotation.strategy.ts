@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common'
 import { PrismaService } from 'src/shared/prisma.service'
 import { BacktestConfig, DailyBar, SignalOutput } from '../types/backtest-engine.types'
 import { IBacktestStrategy } from './backtest-strategy.interface'
@@ -20,6 +21,8 @@ const RANK_FIELD_MAP: Record<string, string> = {
 }
 
 export class ScreeningRotationStrategy implements IBacktestStrategy {
+  private readonly logger = new Logger(ScreeningRotationStrategy.name)
+
   async generateSignal(
     signalDate: Date,
     config: BacktestConfig,
@@ -30,6 +33,9 @@ export class ScreeningRotationStrategy implements IBacktestStrategy {
     const cfg = config.strategyConfig as unknown as ScreeningRotationConfig
     const { rankBy = 'totalMv', rankOrder = 'desc', topN = 20, minDaysListed = 60 } = cfg
 
+    if (rankBy && !RANK_FIELD_MAP[rankBy]) {
+      this.logger.warn(`ScreeningRotation: unsupported rankBy="${rankBy}", falling back to totalMv`)
+    }
     const dbColumn = RANK_FIELD_MAP[rankBy] ?? 'total_mv'
     const orderDir = rankOrder === 'asc' ? 'ASC' : 'DESC'
 

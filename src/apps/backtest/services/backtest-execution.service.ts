@@ -140,7 +140,7 @@ export class BacktestExecutionService {
       if (diffValue <= 0) continue // already at or above target
       if (portfolio.cash < diffValue) continue // not enough cash
 
-      // Round to 100-share lots
+      // A股最小交易单位为 100 股（1 手），买入数量必须是 100 的整数倍
       const rawQty = Math.floor(diffValue / execPrice / 100) * 100
       if (rawQty <= 0) continue
 

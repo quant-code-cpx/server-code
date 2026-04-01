@@ -16,6 +16,7 @@ import { QueueModule } from './queue/queue.module'
 import { WebsocketModule } from './websocket/websocket.module'
 import { JwtAuthGuard } from './lifecycle/guard/jwt-auth.guard'
 import { TushareModule } from './tushare/tushare.module'
+import { BacktestModule } from './apps/backtest/backtest.module'
 
 @Module({
   imports: [
@@ -51,6 +52,7 @@ import { TushareModule } from './tushare/tushare.module'
     HeatmapModule,
     TushareAdminModule,
     FactorModule,
+    BacktestModule,
 
     // ── 队列模块（BullMQ 回测任务） ──
     QueueModule,

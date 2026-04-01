@@ -7,6 +7,7 @@ import { BacktestingService } from './backtesting/backtesting.service'
 import { BacktestingController } from './backtesting/backtesting.controller'
 import { IRedisConfig, REDIS_CONFIG_TOKEN } from 'src/config/redis.config'
 import { WebsocketModule } from 'src/websocket/websocket.module'
+import { BacktestModule } from 'src/apps/backtest/backtest.module'
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { WebsocketModule } from 'src/websocket/websocket.module'
     }),
     BullModule.registerQueue({ name: BACKTESTING_QUEUE }),
     WebsocketModule,
+    BacktestModule,
   ],
   controllers: [BacktestingController],
   providers: [BacktestingProcessor, BacktestingService],

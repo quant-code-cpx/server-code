@@ -18,12 +18,8 @@ export class BacktestingService {
     const job = await this.backtestingQueue.add(
       BacktestingJobName.RUN_BACKTEST,
       {
-        strategyId: dto.strategyId,
-        startDate: dto.startDate,
-        endDate: dto.endDate,
-        initialCapital: dto.initialCapital,
+        runId: dto.strategyId, // legacy: use strategyId as runId placeholder
         userId,
-        params: dto.params,
       },
       {
         attempts: 3, // 失败重试 3 次

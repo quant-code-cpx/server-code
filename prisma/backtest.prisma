@@ -1,0 +1,126 @@
+// 回测模块持久化模型
+
+model BacktestRun {
+  id                 String    @id @default(cuid())
+  userId             Int       @map("user_id")
+  jobId              String?   @map("job_id")
+  name               String?   @db.VarChar(128)
+
+  strategyType       String    @map("strategy_type") @db.VarChar(64)
+  strategyConfig     Json      @map("strategy_config")
+
+  startDate          DateTime  @map("start_date") @db.Date
+  endDate            DateTime  @map("end_date") @db.Date
+  benchmarkTsCode    String    @map("benchmark_ts_code") @db.VarChar(16)
+  universe           String    @db.VarChar(32)
+  customUniverse     Json?     @map("custom_universe")
+
+  initialCapital     Decimal   @map("initial_capital") @db.Decimal(20, 4)
+  rebalanceFrequency String    @map("rebalance_frequency") @db.VarChar(32)
+  priceMode          String    @map("price_mode") @db.VarChar(32)
+
+  commissionRate     Decimal?  @map("commission_rate") @db.Decimal(10, 6)
+  stampDutyRate      Decimal?  @map("stamp_duty_rate") @db.Decimal(10, 6)
+  minCommission      Decimal?  @map("min_commission") @db.Decimal(20, 4)
+  slippageBps        Int?      @map("slippage_bps")
+
+  status             String    @db.VarChar(32)
+  progress           Int       @default(0)
+  failedReason       String?   @map("failed_reason") @db.Text
+
+  totalReturn        Float?    @map("total_return")
+  annualizedReturn   Float?    @map("annualized_return")
+  benchmarkReturn    Float?    @map("benchmark_return")
+  excessReturn       Float?    @map("excess_return")
+  maxDrawdown        Float?    @map("max_drawdown")
+  sharpeRatio        Float?    @map("sharpe_ratio")
+  sortinoRatio       Float?    @map("sortino_ratio")
+  calmarRatio        Float?    @map("calmar_ratio")
+  volatility         Float?
+  alpha              Float?
+  beta               Float?
+  informationRatio   Float?    @map("information_ratio")
+  winRate            Float?    @map("win_rate")
+  turnoverRate       Float?    @map("turnover_rate")
+  tradeCount         Int?      @map("trade_count")
+
+  createdAt          DateTime  @default(now()) @map("created_at")
+  startedAt          DateTime? @map("started_at")
+  completedAt        DateTime? @map("completed_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([status, createdAt(sort: Desc)])
+  @@map("backtest_runs")
+}
+
+model BacktestDailyNav {
+  runId           String   @map("run_id")
+  tradeDate       DateTime @map("trade_date") @db.Date
+  nav             Decimal  @db.Decimal(20, 8)
+  benchmarkNav    Decimal? @map("benchmark_nav") @db.Decimal(20, 8)
+  dailyReturn     Float?   @map("daily_return")
+  benchmarkReturn Float?   @map("benchmark_return")
+  drawdown        Float?
+  cash            Decimal? @db.Decimal(20, 4)
+  positionValue   Decimal? @map("position_value") @db.Decimal(20, 4)
+  exposure        Float?
+  cashRatio       Float?   @map("cash_ratio")
+
+  @@id([runId, tradeDate])
+  @@index([tradeDate])
+  @@map("backtest_daily_navs")
+}
+
+model BacktestTrade {
+  id           BigInt   @id @default(autoincrement())
+  runId        String   @map("run_id")
+  tradeDate    DateTime @map("trade_date") @db.Date
+  tsCode       String   @map("ts_code") @db.VarChar(16)
+  side         String   @db.VarChar(8)
+  price        Decimal  @db.Decimal(20, 4)
+  quantity     Int
+  amount       Decimal  @db.Decimal(20, 4)
+  commission   Decimal? @db.Decimal(20, 4)
+  stampDuty    Decimal? @map("stamp_duty") @db.Decimal(20, 4)
+  slippageCost Decimal? @map("slippage_cost") @db.Decimal(20, 4)
+  reason       String?  @db.Text
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@index([runId, tradeDate(sort: Desc)])
+  @@index([tsCode, tradeDate(sort: Desc)])
+  @@map("backtest_trades")
+}
+
+model BacktestPositionSnapshot {
+  runId         String   @map("run_id")
+  tradeDate     DateTime @map("trade_date") @db.Date
+  tsCode        String   @map("ts_code") @db.VarChar(16)
+  quantity      Int
+  costPrice     Decimal? @map("cost_price") @db.Decimal(20, 4)
+  closePrice    Decimal? @map("close_price") @db.Decimal(20, 4)
+  marketValue   Decimal? @map("market_value") @db.Decimal(20, 4)
+  weight        Float?
+  unrealizedPnl Decimal? @map("unrealized_pnl") @db.Decimal(20, 4)
+  holdingDays   Int?     @map("holding_days")
+
+  @@id([runId, tradeDate, tsCode])
+  @@index([runId, tradeDate(sort: Desc)])
+  @@map("backtest_position_snapshots")
+}
+
+model BacktestRebalanceLog {
+  id                  BigInt   @id @default(autoincrement())
+  runId               String   @map("run_id")
+  signalDate          DateTime @map("signal_date") @db.Date
+  executeDate         DateTime @map("execute_date") @db.Date
+  targetCount         Int?     @map("target_count")
+  executedBuyCount    Int?     @map("executed_buy_count")
+  executedSellCount   Int?     @map("executed_sell_count")
+  skippedLimitCount   Int?     @map("skipped_limit_count")
+  skippedSuspendCount Int?     @map("skipped_suspend_count")
+  message             String?  @db.Text
+
+  @@index([runId, signalDate(sort: Desc)])
+  @@map("backtest_rebalance_logs")
+}

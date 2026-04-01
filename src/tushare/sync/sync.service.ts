@@ -1,15 +1,13 @@
-import {
-  BadRequestException,
-  ConflictException,
-  Injectable,
-  Logger,
-  OnApplicationBootstrap,
-} from '@nestjs/common'
+import { BadRequestException, ConflictException, Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { SchedulerRegistry } from '@nestjs/schedule'
 import { CronJob } from 'cron'
+import { BusinessException } from 'src/common/exceptions/business.exception'
 import { ITushareConfig, TUSHARE_CONFIG_TOKEN } from 'src/config/tushare.config'
+import { MONITORED_CACHE_NAMESPACES, SYNC_INVALIDATION_PREFIXES } from 'src/constant/cache.constant'
+import { ErrorEnum } from 'src/constant/response-code.constant'
 import { TushareSyncTaskName } from 'src/constant/tushare.constant'
+import { CacheService } from 'src/shared/cache.service'
 import { EventsGateway } from 'src/websocket/events.gateway'
 import { SyncHelperService } from './sync-helper.service'
 import { TushareSyncRegistryService } from './sync-registry.service'
@@ -50,10 +48,13 @@ export class TushareSyncService implements OnApplicationBootstrap {
     private readonly schedulerRegistry: SchedulerRegistry,
     private readonly helper: SyncHelperService,
     private readonly registry: TushareSyncRegistryService,
+    private readonly cacheService: CacheService,
     private readonly eventsGateway: EventsGateway,
   ) {
     const cfg = this.configService.get<ITushareConfig>(TUSHARE_CONFIG_TOKEN, { infer: true })
-    if (!cfg) throw new Error('TushareConfig is not registered.')
+    if (!cfg) {
+      throw new BusinessException(ErrorEnum.TUSHARE_CONFIG_MISSING)
+    }
     this.syncEnabled = cfg.syncEnabled
     this.syncTimeZone = cfg.syncTimeZone
   }
@@ -93,6 +94,13 @@ export class TushareSyncService implements OnApplicationBootstrap {
           }
         : null,
     }))
+  }
+
+  async getCacheStats() {
+    return {
+      generatedAt: new Date().toISOString(),
+      namespaces: await this.cacheService.getNamespaceMetrics(MONITORED_CACHE_NAMESPACES),
+    }
   }
 
   async runManualSync(input: { tasks?: TushareSyncTaskName[]; mode: TushareSyncMode }): Promise<RunPlansResult> {
@@ -146,17 +154,13 @@ export class TushareSyncService implements OnApplicationBootstrap {
 
     const unsupportedManual = requestedPlans.filter((plan) => !plan.supportsManual)
     if (unsupportedManual.length > 0) {
-      throw new BadRequestException(
-        `以下任务不支持手动同步: ${unsupportedManual.map((plan) => plan.task).join(', ')}`,
-      )
+      throw new BadRequestException(`以下任务不支持手动同步: ${unsupportedManual.map((plan) => plan.task).join(', ')}`)
     }
 
     if (input.mode === 'full') {
       const unsupportedFull = requestedPlans.filter((plan) => !plan.supportsFullSync)
       if (unsupportedFull.length > 0) {
-        throw new BadRequestException(
-          `以下任务不支持全量同步: ${unsupportedFull.map((plan) => plan.task).join(', ')}`,
-        )
+        throw new BadRequestException(`以下任务不支持全量同步: ${unsupportedFull.map((plan) => plan.task).join(', ')}`)
       }
     }
 
@@ -332,6 +336,7 @@ export class TushareSyncService implements OnApplicationBootstrap {
           targetTradeDate,
           elapsedSeconds,
         }
+        await this.invalidateCachesAfterSync(result1)
         this.eventsGateway.broadcastSyncCompleted(result1)
         return result1
       }
@@ -350,6 +355,7 @@ export class TushareSyncService implements OnApplicationBootstrap {
         targetTradeDate,
         elapsedSeconds,
       }
+      await this.invalidateCachesAfterSync(result2)
       this.eventsGateway.broadcastSyncCompleted(result2)
       return result2
     } catch (error) {
@@ -392,5 +398,21 @@ export class TushareSyncService implements OnApplicationBootstrap {
 
   private getJobName(task: TushareSyncTaskName): string {
     return `tushare-sync:${task}`
+  }
+
+  private async invalidateCachesAfterSync(result: RunPlansResult) {
+    if (result.executedTasks.length === 0) {
+      return
+    }
+
+    try {
+      const trackedDeleted = await this.cacheService.invalidateNamespaces(MONITORED_CACHE_NAMESPACES)
+      const legacyDeleted = await this.cacheService.invalidateByPrefixes([...SYNC_INVALIDATION_PREFIXES])
+      this.logger.log(
+        `已清理同步相关缓存：tracked=${trackedDeleted}，legacy=${legacyDeleted}，tasks=${result.executedTasks.join(', ')}`,
+      )
+    } catch (error) {
+      this.logger.warn(`同步后缓存清理失败: ${(error as Error).message}`)
+    }
   }
 }

@@ -4,7 +4,7 @@ import { SUCCESS_CODE } from 'src/constant/response-code.constant'
 /**
  * 统一响应数据模型
  */
-export class ResponseModel<T = any> {
+export class ResponseModel<T = unknown> {
   @ApiProperty({ type: 'number', default: SUCCESS_CODE })
   code: number
 
@@ -24,7 +24,7 @@ export class ResponseModel<T = any> {
     return new ResponseModel<T>(SUCCESS_CODE, data, message)
   }
 
-  static error({ code, message }: { code: number; message: string }) {
-    return new ResponseModel<null>(code, null, message)
+  static error({ code, message, data }: { code: number; message: string; data?: unknown }) {
+    return new ResponseModel<unknown>(code, data ?? null, message)
   }
 }

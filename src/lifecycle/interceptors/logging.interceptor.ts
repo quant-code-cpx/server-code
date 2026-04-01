@@ -6,7 +6,7 @@ import { LoggerService } from 'src/shared/logger/logger.service'
 export class LoggingInterceptor implements NestInterceptor {
   constructor(private readonly loggerService: LoggerService) {}
 
-  intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
+  intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
     const request = context.switchToHttp().getRequest()
     const { method, url } = request
     const start = Date.now()

@@ -1,8 +1,8 @@
-import { Inject, Injectable, NotFoundException } from '@nestjs/common'
+import { Injectable, NotFoundException } from '@nestjs/common'
 import { Prisma } from '@prisma/client'
+import { CACHE_NAMESPACE } from 'src/constant/cache.constant'
+import { CacheService } from 'src/shared/cache.service'
 import { PrismaService } from 'src/shared/prisma.service'
-import { REDIS_CLIENT } from 'src/shared/redis.provider'
-import type { RedisClientType } from 'redis'
 import { FactorComputeService } from './factor-compute.service'
 import {
   FactorCorrelationDto,
@@ -86,12 +86,14 @@ interface TradeCalRow {
   cal_date: Date
 }
 
+const FACTOR_ANALYSIS_CACHE_TTL_SECONDS = 24 * 3600
+
 @Injectable()
 export class FactorAnalysisService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly compute: FactorComputeService,
-    @Inject(REDIS_CLIENT) private readonly redis: RedisClientType,
+    private readonly cacheService: CacheService,
   ) {}
 
   // ── Trading-day helpers ──────────────────────────────────────────────────
@@ -154,70 +156,67 @@ export class FactorAnalysisService {
 
   async getIcAnalysis(dto: FactorIcAnalysisDto) {
     const cacheKey = `factor:ic:${dto.factorName}:${dto.startDate}:${dto.endDate}:${dto.universe ?? 'all'}:${dto.forwardDays ?? 5}:${dto.icMethod ?? 'rank'}`
-    const cached = await this.redis.get(cacheKey)
-    if (cached) return JSON.parse(cached) as unknown
 
-    const forwardDays = dto.forwardDays ?? 5
-    const icMethod = dto.icMethod ?? 'rank'
+    return this.rememberFactorAnalysisCache(cacheKey, async () => {
+      const forwardDays = dto.forwardDays ?? 5
+      const icMethod = dto.icMethod ?? 'rank'
 
-    const tradeDates = await this.getTradeDates(dto.startDate, dto.endDate)
+      const tradeDates = await this.getTradeDates(dto.startDate, dto.endDate)
 
-    const series: Array<{ tradeDate: string; ic: number; stockCount: number }> = []
+      const series: Array<{ tradeDate: string; ic: number; stockCount: number }> = []
 
-    for (const tradeDate of tradeDates) {
-      const forwardDate = await this.getNthTradingDayAfter(tradeDate, forwardDays)
-      if (!forwardDate) continue
+      for (const tradeDate of tradeDates) {
+        const forwardDate = await this.getNthTradingDayAfter(tradeDate, forwardDays)
+        if (!forwardDate) continue
 
-      const factorValues = await this.compute.getRawFactorValuesForDate(dto.factorName, tradeDate, dto.universe)
-      const valid = factorValues.filter((v) => v.factorValue != null)
-      if (!valid.length) continue
+        const factorValues = await this.compute.getRawFactorValuesForDate(dto.factorName, tradeDate, dto.universe)
+        const valid = factorValues.filter((v) => v.factorValue != null)
+        if (!valid.length) continue
 
-      const returnMap = await this.getAdjReturns(
-        tradeDate,
-        forwardDate,
-        valid.map((v) => v.tsCode),
-      )
+        const returnMap = await this.getAdjReturns(
+          tradeDate,
+          forwardDate,
+          valid.map((v) => v.tsCode),
+        )
 
-      const pairs: Array<{ f: number; r: number }> = []
-      for (const { tsCode, factorValue } of valid) {
-        const ret = returnMap[tsCode]
-        if (ret != null && factorValue != null) pairs.push({ f: factorValue, r: ret })
+        const pairs: Array<{ f: number; r: number }> = []
+        for (const { tsCode, factorValue } of valid) {
+          const ret = returnMap[tsCode]
+          if (ret != null && factorValue != null) pairs.push({ f: factorValue, r: ret })
+        }
+        if (pairs.length < 5) continue
+
+        const fs = pairs.map((p) => p.f)
+        const rs = pairs.map((p) => p.r)
+        const ic = icMethod === 'rank' ? spearmanCorr(fs, rs) : pearsonCorr(fs, rs)
+        if (ic != null) series.push({ tradeDate, ic: Math.round(ic * 1e6) / 1e6, stockCount: pairs.length })
       }
-      if (pairs.length < 5) continue
 
-      const fs = pairs.map((p) => p.f)
-      const rs = pairs.map((p) => p.r)
-      const ic = icMethod === 'rank' ? spearmanCorr(fs, rs) : pearsonCorr(fs, rs)
-      if (ic != null) series.push({ tradeDate, ic: Math.round(ic * 1e6) / 1e6, stockCount: pairs.length })
-    }
+      const ics = series.map((s) => s.ic)
+      const icMean = ics.length ? mean(ics) : 0
+      const icStd = ics.length ? stdDev(ics, icMean) : 0
+      const icIr = icStd !== 0 ? icMean / icStd : 0
+      const icPositiveRate = ics.length ? ics.filter((v) => v > 0).length / ics.length : 0
+      const icAboveThreshold = ics.length ? ics.filter((v) => Math.abs(v) > 0.03).length / ics.length : 0
+      const tStat = icStd !== 0 ? (icMean / icStd) * Math.sqrt(ics.length) : 0
 
-    const ics = series.map((s) => s.ic)
-    const icMean = ics.length ? mean(ics) : 0
-    const icStd = ics.length ? stdDev(ics, icMean) : 0
-    const icIr = icStd !== 0 ? icMean / icStd : 0
-    const icPositiveRate = ics.length ? ics.filter((v) => v > 0).length / ics.length : 0
-    const icAboveThreshold = ics.length ? ics.filter((v) => Math.abs(v) > 0.03).length / ics.length : 0
-    const tStat = icStd !== 0 ? (icMean / icStd) * Math.sqrt(ics.length) : 0
-
-    const result = {
-      factorName: dto.factorName,
-      forwardDays,
-      icMethod,
-      startDate: dto.startDate,
-      endDate: dto.endDate,
-      summary: {
-        icMean: Math.round(icMean * 1e6) / 1e6,
-        icStd: Math.round(icStd * 1e6) / 1e6,
-        icIr: Math.round(icIr * 1e4) / 1e4,
-        icPositiveRate: Math.round(icPositiveRate * 1e4) / 1e4,
-        icAboveThreshold: Math.round(icAboveThreshold * 1e4) / 1e4,
-        tStat: Math.round(tStat * 1e4) / 1e4,
-      },
-      series,
-    }
-
-    await this.redis.setEx(cacheKey, 86400, JSON.stringify(result))
-    return result
+      return {
+        factorName: dto.factorName,
+        forwardDays,
+        icMethod,
+        startDate: dto.startDate,
+        endDate: dto.endDate,
+        summary: {
+          icMean: Math.round(icMean * 1e6) / 1e6,
+          icStd: Math.round(icStd * 1e6) / 1e6,
+          icIr: Math.round(icIr * 1e4) / 1e4,
+          icPositiveRate: Math.round(icPositiveRate * 1e4) / 1e4,
+          icAboveThreshold: Math.round(icAboveThreshold * 1e4) / 1e4,
+          tStat: Math.round(tStat * 1e4) / 1e4,
+        },
+        series,
+      }
+    })
   }
 
   // ── Quantile Backtest ────────────────────────────────────────────────────
@@ -227,123 +226,114 @@ export class FactorAnalysisService {
     const rebalanceDays = dto.rebalanceDays ?? 5
 
     const cacheKey = `factor:quantile:${dto.factorName}:${dto.startDate}:${dto.endDate}:${dto.universe ?? 'all'}:${quantiles}:${rebalanceDays}`
-    const cached = await this.redis.get(cacheKey)
-    if (cached) return JSON.parse(cached) as unknown
 
-    const tradeDates = await this.getTradeDates(dto.startDate, dto.endDate)
-    if (tradeDates.length < 2) throw new NotFoundException('分析期内交易日数量不足')
+    return this.rememberFactorAnalysisCache(cacheKey, async () => {
+      const tradeDates = await this.getTradeDates(dto.startDate, dto.endDate)
+      if (tradeDates.length < 2) throw new NotFoundException('分析期内交易日数量不足')
 
-    // Pick rebalance dates (every N trading days)
-    const rebalanceDates: string[] = []
-    for (let i = 0; i < tradeDates.length - 1; i += rebalanceDays) {
-      rebalanceDates.push(tradeDates[i])
-    }
-    if (rebalanceDates[rebalanceDates.length - 1] !== tradeDates[tradeDates.length - 1]) {
-      rebalanceDates.push(tradeDates[tradeDates.length - 1])
-    }
-
-    // Accumulate daily series per group (index 0 = Q1 = lowest factor)
-    // We'll store cumulative returns at each rebalance boundary
-    const groupCumSeries: Array<Array<{ tradeDate: string; cumReturn: number }>> = Array.from(
-      { length: quantiles },
-      () => [{ tradeDate: rebalanceDates[0], cumReturn: 0 }],
-    )
-    const lsSeries: Array<{ tradeDate: string; cumReturn: number }> = [{ tradeDate: rebalanceDates[0], cumReturn: 0 }]
-    const bmSeries: Array<{ tradeDate: string; cumReturn: number }> = [{ tradeDate: rebalanceDates[0], cumReturn: 0 }]
-
-    const groupPeriodReturns: number[][] = Array.from({ length: quantiles }, () => [])
-    const lsPeriodReturns: number[] = []
-    const bmPeriodReturns: number[] = []
-
-    for (let i = 0; i < rebalanceDates.length - 1; i++) {
-      const fromDate = rebalanceDates[i]
-      const toDate = rebalanceDates[i + 1]
-
-      const factorValues = await this.compute.getRawFactorValuesForDate(dto.factorName, fromDate, dto.universe)
-      const valid = factorValues.filter((v) => v.factorValue != null)
-      if (valid.length < quantiles) continue
-
-      // Sort ascending by factor value → Q1 = lowest
-      valid.sort((a, b) => (a.factorValue as number) - (b.factorValue as number))
-      const size = Math.floor(valid.length / quantiles)
-
-      const groups: string[][] = Array.from({ length: quantiles }, (_, q) => {
-        const start = q * size
-        const end = q === quantiles - 1 ? valid.length : start + size
-        return valid.slice(start, end).map((v) => v.tsCode)
-      })
-
-      const allCodes = valid.map((v) => v.tsCode)
-      const returnMap = await this.getAdjReturns(fromDate, toDate, allCodes)
-
-      const groupRets = groups.map((codes) => {
-        const rets = codes.map((c) => returnMap[c] ?? 0)
-        return rets.length ? mean(rets) : 0
-      })
-
-      // Benchmark: equal-weight all stocks
-      const bmRet = allCodes.length ? mean(allCodes.map((c) => returnMap[c] ?? 0)) : 0
-      const lsRet = groupRets[quantiles - 1] - groupRets[0]
-
-      // Update cumulative returns
-      for (let q = 0; q < quantiles; q++) {
-        const prev = groupCumSeries[q][groupCumSeries[q].length - 1].cumReturn
-        const newCum = (1 + prev) * (1 + groupRets[q]) - 1
-        groupCumSeries[q].push({ tradeDate: toDate, cumReturn: Math.round(newCum * 1e6) / 1e6 })
-        groupPeriodReturns[q].push(groupRets[q])
+      const rebalanceDates: string[] = []
+      for (let i = 0; i < tradeDates.length - 1; i += rebalanceDays) {
+        rebalanceDates.push(tradeDates[i])
       }
-      const prevLs = lsSeries[lsSeries.length - 1].cumReturn
-      const newLsCum = (1 + prevLs) * (1 + lsRet) - 1
-      lsSeries.push({ tradeDate: toDate, cumReturn: Math.round(newLsCum * 1e6) / 1e6 })
-      lsPeriodReturns.push(lsRet)
+      if (rebalanceDates[rebalanceDates.length - 1] !== tradeDates[tradeDates.length - 1]) {
+        rebalanceDates.push(tradeDates[tradeDates.length - 1])
+      }
 
-      const prevBm = bmSeries[bmSeries.length - 1].cumReturn
-      const newBmCum = (1 + prevBm) * (1 + bmRet) - 1
-      bmSeries.push({ tradeDate: toDate, cumReturn: Math.round(newBmCum * 1e6) / 1e6 })
-      bmPeriodReturns.push(bmRet)
-    }
+      const groupCumSeries: Array<Array<{ tradeDate: string; cumReturn: number }>> = Array.from(
+        { length: quantiles },
+        () => [{ tradeDate: rebalanceDates[0], cumReturn: 0 }],
+      )
+      const lsSeries: Array<{ tradeDate: string; cumReturn: number }> = [{ tradeDate: rebalanceDates[0], cumReturn: 0 }]
+      const bmSeries: Array<{ tradeDate: string; cumReturn: number }> = [{ tradeDate: rebalanceDates[0], cumReturn: 0 }]
 
-    const totalDays = tradeDates.length
+      const groupPeriodReturns: number[][] = Array.from({ length: quantiles }, () => [])
+      const lsPeriodReturns: number[] = []
+      const bmPeriodReturns: number[] = []
 
-    const groups = groupCumSeries.map((series, q) => {
-      const totalReturn = series[series.length - 1]?.cumReturn ?? 0
-      const cumValues = series.map((s) => 1 + s.cumReturn)
+      for (let i = 0; i < rebalanceDates.length - 1; i++) {
+        const fromDate = rebalanceDates[i]
+        const toDate = rebalanceDates[i + 1]
+
+        const factorValues = await this.compute.getRawFactorValuesForDate(dto.factorName, fromDate, dto.universe)
+        const valid = factorValues.filter((v) => v.factorValue != null)
+        if (valid.length < quantiles) continue
+
+        valid.sort((a, b) => (a.factorValue as number) - (b.factorValue as number))
+        const size = Math.floor(valid.length / quantiles)
+
+        const groups: string[][] = Array.from({ length: quantiles }, (_, q) => {
+          const start = q * size
+          const end = q === quantiles - 1 ? valid.length : start + size
+          return valid.slice(start, end).map((v) => v.tsCode)
+        })
+
+        const allCodes = valid.map((v) => v.tsCode)
+        const returnMap = await this.getAdjReturns(fromDate, toDate, allCodes)
+
+        const groupRets = groups.map((codes) => {
+          const rets = codes.map((c) => returnMap[c] ?? 0)
+          return rets.length ? mean(rets) : 0
+        })
+
+        const bmRet = allCodes.length ? mean(allCodes.map((c) => returnMap[c] ?? 0)) : 0
+        const lsRet = groupRets[quantiles - 1] - groupRets[0]
+
+        for (let q = 0; q < quantiles; q++) {
+          const prev = groupCumSeries[q][groupCumSeries[q].length - 1].cumReturn
+          const newCum = (1 + prev) * (1 + groupRets[q]) - 1
+          groupCumSeries[q].push({ tradeDate: toDate, cumReturn: Math.round(newCum * 1e6) / 1e6 })
+          groupPeriodReturns[q].push(groupRets[q])
+        }
+        const prevLs = lsSeries[lsSeries.length - 1].cumReturn
+        const newLsCum = (1 + prevLs) * (1 + lsRet) - 1
+        lsSeries.push({ tradeDate: toDate, cumReturn: Math.round(newLsCum * 1e6) / 1e6 })
+        lsPeriodReturns.push(lsRet)
+
+        const prevBm = bmSeries[bmSeries.length - 1].cumReturn
+        const newBmCum = (1 + prevBm) * (1 + bmRet) - 1
+        bmSeries.push({ tradeDate: toDate, cumReturn: Math.round(newBmCum * 1e6) / 1e6 })
+        bmPeriodReturns.push(bmRet)
+      }
+
+      const totalDays = tradeDates.length
+
+      const groups = groupCumSeries.map((series, q) => {
+        const totalReturn = series[series.length - 1]?.cumReturn ?? 0
+        const cumValues = series.map((s) => 1 + s.cumReturn)
+        return {
+          group: `Q${q + 1}`,
+          label: q === 0 ? '因子值最小组' : q === quantiles - 1 ? '因子值最大组' : `Q${q + 1}`,
+          totalReturn: Math.round(totalReturn * 1e6) / 1e6,
+          annualizedReturn: Math.round(annualisedReturn(totalReturn, totalDays) * 1e6) / 1e6,
+          maxDrawdown: Math.round(maxDrawdown(cumValues) * 1e6) / 1e6,
+          sharpeRatio: Math.round(sharpe(groupPeriodReturns[q]) * 1e4) / 1e4,
+          series,
+        }
+      })
+
+      const lsTotalReturn = lsSeries[lsSeries.length - 1]?.cumReturn ?? 0
+      const lsCumValues = lsSeries.map((s) => 1 + s.cumReturn)
+
       return {
-        group: `Q${q + 1}`,
-        label: q === 0 ? '因子值最小组' : q === quantiles - 1 ? '因子值最大组' : `Q${q + 1}`,
-        totalReturn: Math.round(totalReturn * 1e6) / 1e6,
-        annualizedReturn: Math.round(annualisedReturn(totalReturn, totalDays) * 1e6) / 1e6,
-        maxDrawdown: Math.round(maxDrawdown(cumValues) * 1e6) / 1e6,
-        sharpeRatio: Math.round(sharpe(groupPeriodReturns[q]) * 1e4) / 1e4,
-        series,
+        factorName: dto.factorName,
+        quantiles,
+        rebalanceDays,
+        startDate: dto.startDate,
+        endDate: dto.endDate,
+        groups,
+        longShort: {
+          totalReturn: Math.round(lsTotalReturn * 1e6) / 1e6,
+          annualizedReturn: Math.round(annualisedReturn(lsTotalReturn, totalDays) * 1e6) / 1e6,
+          maxDrawdown: Math.round(maxDrawdown(lsCumValues) * 1e6) / 1e6,
+          sharpeRatio: Math.round(sharpe(lsPeriodReturns) * 1e4) / 1e4,
+          series: lsSeries,
+        },
+        benchmark: {
+          totalReturn: Math.round((bmSeries[bmSeries.length - 1]?.cumReturn ?? 0) * 1e6) / 1e6,
+          series: bmSeries,
+        },
       }
     })
-
-    const lsTotalReturn = lsSeries[lsSeries.length - 1]?.cumReturn ?? 0
-    const lsCumValues = lsSeries.map((s) => 1 + s.cumReturn)
-
-    const result = {
-      factorName: dto.factorName,
-      quantiles,
-      rebalanceDays,
-      startDate: dto.startDate,
-      endDate: dto.endDate,
-      groups,
-      longShort: {
-        totalReturn: Math.round(lsTotalReturn * 1e6) / 1e6,
-        annualizedReturn: Math.round(annualisedReturn(lsTotalReturn, totalDays) * 1e6) / 1e6,
-        maxDrawdown: Math.round(maxDrawdown(lsCumValues) * 1e6) / 1e6,
-        sharpeRatio: Math.round(sharpe(lsPeriodReturns) * 1e4) / 1e4,
-        series: lsSeries,
-      },
-      benchmark: {
-        totalReturn: Math.round((bmSeries[bmSeries.length - 1]?.cumReturn ?? 0) * 1e6) / 1e6,
-        series: bmSeries,
-      },
-    }
-
-    await this.redis.setEx(cacheKey, 86400, JSON.stringify(result))
-    return result
   }
 
   // ── Decay Analysis ───────────────────────────────────────────────────────
@@ -351,32 +341,30 @@ export class FactorAnalysisService {
   async getDecayAnalysis(dto: FactorDecayAnalysisDto) {
     const periods = dto.periods ?? [1, 3, 5, 10, 20]
     const cacheKey = `factor:decay:${dto.factorName}:${dto.startDate}:${dto.endDate}:${dto.universe ?? 'all'}:${periods.join(',')}`
-    const cached = await this.redis.get(cacheKey)
-    if (cached) return JSON.parse(cached) as unknown
 
-    const results = await Promise.all(
-      periods.map(async (period) => {
-        const icDto: FactorIcAnalysisDto = {
-          factorName: dto.factorName,
-          startDate: dto.startDate,
-          endDate: dto.endDate,
-          universe: dto.universe,
-          forwardDays: period,
-          icMethod: 'rank',
-        }
-        const ic = await this.getIcAnalysis(icDto)
-        return {
-          period,
-          icMean: (ic as { summary: { icMean: number } }).summary.icMean,
-          icIr: (ic as { summary: { icIr: number } }).summary.icIr,
-          icPositiveRate: (ic as { summary: { icPositiveRate: number } }).summary.icPositiveRate,
-        }
-      }),
-    )
+    return this.rememberFactorAnalysisCache(cacheKey, async () => {
+      const results = await Promise.all(
+        periods.map(async (period) => {
+          const icDto: FactorIcAnalysisDto = {
+            factorName: dto.factorName,
+            startDate: dto.startDate,
+            endDate: dto.endDate,
+            universe: dto.universe,
+            forwardDays: period,
+            icMethod: 'rank',
+          }
+          const ic = await this.getIcAnalysis(icDto)
+          return {
+            period,
+            icMean: ic.summary.icMean,
+            icIr: ic.summary.icIr,
+            icPositiveRate: ic.summary.icPositiveRate,
+          }
+        }),
+      )
 
-    const result = { factorName: dto.factorName, results }
-    await this.redis.setEx(cacheKey, 86400, JSON.stringify(result))
-    return result
+      return { factorName: dto.factorName, results }
+    })
   }
 
   // ── Distribution ─────────────────────────────────────────────────────────
@@ -384,72 +372,67 @@ export class FactorAnalysisService {
   async getDistribution(dto: FactorDistributionDto) {
     const bins = dto.bins ?? 50
     const cacheKey = `factor:dist:${dto.factorName}:${dto.tradeDate}:${dto.universe ?? 'all'}:${bins}`
-    const cached = await this.redis.get(cacheKey)
-    if (cached) return JSON.parse(cached) as unknown
 
-    const values = await this.compute.getRawFactorValuesForDate(dto.factorName, dto.tradeDate, dto.universe)
-    const valid = values.map((v) => v.factorValue).filter((v): v is number => v != null)
+    return this.rememberFactorAnalysisCache(cacheKey, async () => {
+      const values = await this.compute.getRawFactorValuesForDate(dto.factorName, dto.tradeDate, dto.universe)
+      const valid = values.map((v) => v.factorValue).filter((v): v is number => v != null)
 
-    if (!valid.length) {
-      return { factorName: dto.factorName, tradeDate: dto.tradeDate, stats: null, histogram: [] }
-    }
+      if (!valid.length) {
+        return { factorName: dto.factorName, tradeDate: dto.tradeDate, stats: null, histogram: [] }
+      }
 
-    valid.sort((a, b) => a - b)
-    const n = valid.length
-    const total = values.length
-    const missing = total - n
-    const mu = mean(valid)
-    const sd = stdDev(valid, mu)
-    const median = n % 2 === 0 ? (valid[n / 2 - 1] + valid[n / 2]) / 2 : valid[Math.floor(n / 2)]
-    const q5 = valid[Math.max(0, Math.floor(n * 0.05))]
-    const q25 = valid[Math.max(0, Math.floor(n * 0.25))]
-    const q75 = valid[Math.max(0, Math.floor(n * 0.75))]
-    const q95 = valid[Math.min(n - 1, Math.floor(n * 0.95))]
-    const minVal = valid[0]
-    const maxVal = valid[n - 1]
+      valid.sort((a, b) => a - b)
+      const n = valid.length
+      const total = values.length
+      const missing = total - n
+      const mu = mean(valid)
+      const sd = stdDev(valid, mu)
+      const median = n % 2 === 0 ? (valid[n / 2 - 1] + valid[n / 2]) / 2 : valid[Math.floor(n / 2)]
+      const q5 = valid[Math.max(0, Math.floor(n * 0.05))]
+      const q25 = valid[Math.max(0, Math.floor(n * 0.25))]
+      const q75 = valid[Math.max(0, Math.floor(n * 0.75))]
+      const q95 = valid[Math.min(n - 1, Math.floor(n * 0.95))]
+      const minVal = valid[0]
+      const maxVal = valid[n - 1]
 
-    // Skewness and kurtosis
-    const skewness = sd !== 0 ? valid.reduce((s, v) => s + ((v - mu) / sd) ** 3, 0) / n : 0
-    const kurtosis = sd !== 0 ? valid.reduce((s, v) => s + ((v - mu) / sd) ** 4, 0) / n - 3 : 0
+      const skewness = sd !== 0 ? valid.reduce((s, v) => s + ((v - mu) / sd) ** 3, 0) / n : 0
+      const kurtosis = sd !== 0 ? valid.reduce((s, v) => s + ((v - mu) / sd) ** 4, 0) / n - 3 : 0
 
-    // Histogram
-    const binWidth = (maxVal - minVal) / bins
-    const histogram: Array<{ binStart: number; binEnd: number; count: number }> = []
-    for (let i = 0; i < bins; i++) {
-      const binStart = minVal + i * binWidth
-      const binEnd = binStart + binWidth
-      const count = valid.filter((v) => v >= binStart && (i === bins - 1 ? v <= binEnd : v < binEnd)).length
-      histogram.push({
-        binStart: Math.round(binStart * 1e4) / 1e4,
-        binEnd: Math.round(binEnd * 1e4) / 1e4,
-        count,
-      })
-    }
+      const binWidth = (maxVal - minVal) / bins
+      const histogram: Array<{ binStart: number; binEnd: number; count: number }> = []
+      for (let i = 0; i < bins; i++) {
+        const binStart = minVal + i * binWidth
+        const binEnd = binStart + binWidth
+        const count = valid.filter((v) => v >= binStart && (i === bins - 1 ? v <= binEnd : v < binEnd)).length
+        histogram.push({
+          binStart: Math.round(binStart * 1e4) / 1e4,
+          binEnd: Math.round(binEnd * 1e4) / 1e4,
+          count,
+        })
+      }
 
-    const result = {
-      factorName: dto.factorName,
-      tradeDate: dto.tradeDate,
-      stats: {
-        count: n,
-        missing,
-        missingRate: Math.round((missing / total) * 1e4) / 1e4,
-        mean: Math.round(mu * 1e4) / 1e4,
-        median: Math.round(median * 1e4) / 1e4,
-        stdDev: Math.round(sd * 1e4) / 1e4,
-        skewness: Math.round(skewness * 1e4) / 1e4,
-        kurtosis: Math.round(kurtosis * 1e4) / 1e4,
-        min: Math.round(minVal * 1e4) / 1e4,
-        max: Math.round(maxVal * 1e4) / 1e4,
-        q5: Math.round(q5 * 1e4) / 1e4,
-        q25: Math.round(q25 * 1e4) / 1e4,
-        q75: Math.round(q75 * 1e4) / 1e4,
-        q95: Math.round(q95 * 1e4) / 1e4,
-      },
-      histogram,
-    }
-
-    await this.redis.setEx(cacheKey, 86400, JSON.stringify(result))
-    return result
+      return {
+        factorName: dto.factorName,
+        tradeDate: dto.tradeDate,
+        stats: {
+          count: n,
+          missing,
+          missingRate: Math.round((missing / total) * 1e4) / 1e4,
+          mean: Math.round(mu * 1e4) / 1e4,
+          median: Math.round(median * 1e4) / 1e4,
+          stdDev: Math.round(sd * 1e4) / 1e4,
+          skewness: Math.round(skewness * 1e4) / 1e4,
+          kurtosis: Math.round(kurtosis * 1e4) / 1e4,
+          min: Math.round(minVal * 1e4) / 1e4,
+          max: Math.round(maxVal * 1e4) / 1e4,
+          q5: Math.round(q5 * 1e4) / 1e4,
+          q25: Math.round(q25 * 1e4) / 1e4,
+          q75: Math.round(q75 * 1e4) / 1e4,
+          q95: Math.round(q95 * 1e4) / 1e4,
+        },
+        histogram,
+      }
+    })
   }
 
   // ── Correlation ──────────────────────────────────────────────────────────
@@ -458,49 +441,52 @@ export class FactorAnalysisService {
     const method = dto.method ?? 'spearman'
     const sorted = [...dto.factorNames].sort()
     const cacheKey = `factor:corr:${sorted.join(',')}:${dto.tradeDate}:${dto.universe ?? 'all'}:${method}`
-    const cached = await this.redis.get(cacheKey)
-    if (cached) return JSON.parse(cached) as unknown
 
-    // Get factor values for all requested factors
-    const factorMaps: Array<Record<string, number>> = []
-    for (const factorName of dto.factorNames) {
-      const vals = await this.compute.getRawFactorValuesForDate(factorName, dto.tradeDate, dto.universe)
-      const map: Record<string, number> = {}
-      for (const v of vals) {
-        if (v.factorValue != null) map[v.tsCode] = v.factorValue
+    return this.rememberFactorAnalysisCache(cacheKey, async () => {
+      const factorMaps: Array<Record<string, number>> = []
+      for (const factorName of dto.factorNames) {
+        const vals = await this.compute.getRawFactorValuesForDate(factorName, dto.tradeDate, dto.universe)
+        const map: Record<string, number> = {}
+        for (const v of vals) {
+          if (v.factorValue != null) map[v.tsCode] = v.factorValue
+        }
+        factorMaps.push(map)
       }
-      factorMaps.push(map)
-    }
 
-    // Find common stocks across all factors
-    const sets = factorMaps.map((m) => new Set(Object.keys(m)))
-    const commonCodes = [...sets[0]].filter((c) => sets.every((s) => s.has(c)))
+      const sets = factorMaps.map((m) => new Set(Object.keys(m)))
+      const commonCodes = [...sets[0]].filter((c) => sets.every((s) => s.has(c)))
 
-    // Build vectors
-    const vectors = factorMaps.map((m) => commonCodes.map((c) => m[c]))
+      const vectors = factorMaps.map((m) => commonCodes.map((c) => m[c]))
 
-    // Compute pairwise correlation matrix
-    const nFactors = dto.factorNames.length
-    const matrix: number[][] = Array.from({ length: nFactors }, () => new Array(nFactors).fill(0))
+      const nFactors = dto.factorNames.length
+      const matrix: number[][] = Array.from({ length: nFactors }, () => new Array(nFactors).fill(0))
 
-    for (let i = 0; i < nFactors; i++) {
-      matrix[i][i] = 1
-      for (let j = i + 1; j < nFactors; j++) {
-        const corr = method === 'spearman' ? spearmanCorr(vectors[i], vectors[j]) : pearsonCorr(vectors[i], vectors[j])
-        const val = corr != null ? Math.round(corr * 1e3) / 1e3 : 0
-        matrix[i][j] = val
-        matrix[j][i] = val
+      for (let i = 0; i < nFactors; i++) {
+        matrix[i][i] = 1
+        for (let j = i + 1; j < nFactors; j++) {
+          const corr =
+            method === 'spearman' ? spearmanCorr(vectors[i], vectors[j]) : pearsonCorr(vectors[i], vectors[j])
+          const val = corr != null ? Math.round(corr * 1e3) / 1e3 : 0
+          matrix[i][j] = val
+          matrix[j][i] = val
+        }
       }
-    }
 
-    const result = {
-      tradeDate: dto.tradeDate,
-      method,
-      factors: dto.factorNames,
-      matrix,
-    }
+      return {
+        tradeDate: dto.tradeDate,
+        method,
+        factors: dto.factorNames,
+        matrix,
+      }
+    })
+  }
 
-    await this.redis.setEx(cacheKey, 86400, JSON.stringify(result))
-    return result
+  private rememberFactorAnalysisCache<T>(key: string, loader: () => Promise<T>) {
+    return this.cacheService.rememberJson({
+      namespace: CACHE_NAMESPACE.FACTOR_ANALYSIS,
+      key,
+      ttlSeconds: FACTOR_ANALYSIS_CACHE_TTL_SECONDS,
+      loader,
+    })
   }
 }

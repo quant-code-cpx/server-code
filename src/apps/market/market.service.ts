@@ -1,12 +1,12 @@
-import { Inject, Injectable } from '@nestjs/common'
+import { Injectable } from '@nestjs/common'
 import { MoneyflowContentType, Prisma } from '@prisma/client'
 import * as dayjs from 'dayjs'
 // use require for plugins to ensure compatibility with commonjs output
 const timezone = require('dayjs/plugin/timezone')
 const utc = require('dayjs/plugin/utc')
-import type { RedisClientType } from 'redis'
+import { CACHE_NAMESPACE } from 'src/constant/cache.constant'
+import { CacheService } from 'src/shared/cache.service'
 import { PrismaService } from 'src/shared/prisma.service'
-import { REDIS_CLIENT } from 'src/shared/redis.provider'
 import { MoneyFlowQueryDto } from './dto/money-flow-query.dto'
 import { SectorFlowQueryDto } from './dto/sector-flow-query.dto'
 import { HsgtFlowQueryDto } from './dto/hsgt-flow-query.dto'
@@ -25,6 +25,9 @@ import { StockFlowDetailQueryDto } from './dto/stock-flow-detail-query.dto'
 dayjs.extend(utc)
 dayjs.extend(timezone)
 
+const MARKET_STANDARD_CACHE_TTL_SECONDS = 4 * 3600
+const MARKET_EXTENDED_CACHE_TTL_SECONDS = 8 * 3600
+
 /**
  * MarketService
  *
@@ -40,7 +43,7 @@ dayjs.extend(timezone)
 export class MarketService {
   constructor(
     private readonly prisma: PrismaService,
-    @Inject(REDIS_CLIENT) private readonly redis: RedisClientType,
+    private readonly cacheService: CacheService,
   ) {}
 
   // ─── 大盘资金流向 ──────────────────────────────────────────────────────────
@@ -70,17 +73,14 @@ export class MarketService {
       }
     }
 
-    const contentTypeFilter = query.content_type
-      ? (query.content_type as MoneyflowContentType)
-      : undefined
+    const contentTypeFilter = query.content_type ? (query.content_type as MoneyflowContentType) : undefined
 
     const rows = await this.prisma.moneyflowIndDc.findMany({
       where: { tradeDate, ...(contentTypeFilter ? { contentType: contentTypeFilter } : {}) },
       orderBy: [{ contentType: 'asc' }, { rank: 'asc' }, { netAmount: 'desc' }],
     })
 
-    const applyLimit = (items: typeof rows) =>
-      query.limit ? items.slice(0, query.limit) : items
+    const applyLimit = (items: typeof rows) => (query.limit ? items.slice(0, query.limit) : items)
 
     return {
       tradeDate,
@@ -124,7 +124,13 @@ export class MarketService {
       ? this.parseDate(query.trade_date)
       : await this.resolveLatestDailyBasicTradeDate()
     if (!tradeDate) {
-      return { tradeDate: null, peTtmMedian: null, pbMedian: null, peTtmPercentile: { oneYear: null, threeYear: null, fiveYear: null }, pbPercentile: { oneYear: null, threeYear: null, fiveYear: null } }
+      return {
+        tradeDate: null,
+        peTtmMedian: null,
+        pbMedian: null,
+        peTtmPercentile: { oneYear: null, threeYear: null, fiveYear: null },
+        pbPercentile: { oneYear: null, threeYear: null, fiveYear: null },
+      }
     }
 
     // 当日 PE/PB 中位数（使用 PostgreSQL percentile_cont 函数）
@@ -209,35 +215,31 @@ export class MarketService {
     const period = query.period ?? '3m'
     const cacheKey = `market:index-trend:${tsCode}:${period}`
 
-    const cached = await this.redis.get(cacheKey)
-    if (cached) return JSON.parse(cached)
+    return this.rememberMarketCache(cacheKey, MARKET_STANDARD_CACHE_TTL_SECONDS, async () => {
+      const latestDate = await this.resolveLatestIndexTradeDate()
+      if (!latestDate) return { tsCode, name: MarketService.INDEX_NAME_MAP[tsCode] ?? tsCode, period, data: [] }
 
-    const latestDate = await this.resolveLatestIndexTradeDate()
-    if (!latestDate) return { tsCode, name: MarketService.INDEX_NAME_MAP[tsCode] ?? tsCode, period, data: [] }
+      const startDate = this.periodToStartDate(latestDate, period as IndexTrendPeriod)
 
-    const startDate = this.periodToStartDate(latestDate, period as IndexTrendPeriod)
+      const rows = await this.prisma.indexDaily.findMany({
+        where: { tsCode, tradeDate: { gte: startDate } },
+        orderBy: { tradeDate: 'asc' },
+        select: { tradeDate: true, close: true, pctChg: true, vol: true, amount: true },
+      })
 
-    const rows = await this.prisma.indexDaily.findMany({
-      where: { tsCode, tradeDate: { gte: startDate } },
-      orderBy: { tradeDate: 'asc' },
-      select: { tradeDate: true, close: true, pctChg: true, vol: true, amount: true },
+      return {
+        tsCode,
+        name: MarketService.INDEX_NAME_MAP[tsCode] ?? tsCode,
+        period,
+        data: rows.map((r) => ({
+          tradeDate: dayjs(r.tradeDate).format('YYYY-MM-DD'),
+          close: r.close,
+          pctChg: r.pctChg,
+          vol: r.vol,
+          amount: r.amount,
+        })),
+      }
     })
-
-    const result = {
-      tsCode,
-      name: MarketService.INDEX_NAME_MAP[tsCode] ?? tsCode,
-      period,
-      data: rows.map((r) => ({
-        tradeDate: dayjs(r.tradeDate).format('YYYY-MM-DD'),
-        close: r.close,
-        pctChg: r.pctChg,
-        vol: r.vol,
-        amount: r.amount,
-      })),
-    }
-
-    await this.redis.setEx(cacheKey, 4 * 3600, JSON.stringify(result))
-    return result
   }
 
   // ─── 市场涨跌分布 ──────────────────────────────────────────────────────────
@@ -249,39 +251,36 @@ export class MarketService {
     const tradeDateStr = dayjs(tradeDate).format('YYYY-MM-DD')
     const cacheKey = `market:change-dist:${tradeDateStr}`
 
-    const cached = await this.redis.get(cacheKey)
-    if (cached) return JSON.parse(cached)
+    return this.rememberMarketCache(cacheKey, MARKET_STANDARD_CACHE_TTL_SECONDS, async () => {
+      // 使用 PostgreSQL width_bucket 按 1% 步长分桶
+      const bucketRows = await this.prisma.$queryRaw<{ bucket: number; cnt: bigint }[]>`
+        SELECT
+          width_bucket(pct_chg, -11, 11, 22) AS bucket,
+          COUNT(*) AS cnt
+        FROM stock_daily_prices
+        WHERE trade_date = ${tradeDate}
+        GROUP BY bucket
+        ORDER BY bucket
+      `
 
-    // 使用 PostgreSQL width_bucket 按 1% 步长分桶
-    const bucketRows = await this.prisma.$queryRaw<{ bucket: number; cnt: bigint }[]>`
-      SELECT
-        width_bucket(pct_chg, -11, 11, 22) AS bucket,
-        COUNT(*) AS cnt
-      FROM stock_daily_prices
-      WHERE trade_date = ${tradeDate}
-      GROUP BY bucket
-      ORDER BY bucket
-    `
+      const [limitUp, limitDown] = await Promise.all([
+        this.prisma.daily.count({ where: { tradeDate, pctChg: { gte: 9.5 } } }),
+        this.prisma.daily.count({ where: { tradeDate, pctChg: { lte: -9.5 } } }),
+      ])
 
-    const [limitUp, limitDown] = await Promise.all([
-      this.prisma.daily.count({ where: { tradeDate, pctChg: { gte: 9.5 } } }),
-      this.prisma.daily.count({ where: { tradeDate, pctChg: { lte: -9.5 } } }),
-    ])
+      // 构建 21 档直方图（桶 1~21 对应 [-11,-10), [-10,-9), ..., [9,10), [10,11]）
+      const bucketMap = new Map(bucketRows.map((r) => [Number(r.bucket), Number(r.cnt)]))
+      const distribution = Array.from({ length: 21 }, (_, i) => {
+        const low = -11 + i
+        const high = low + 1
+        return {
+          label: `${low}~${high}`,
+          count: bucketMap.get(i + 1) ?? 0,
+        }
+      })
 
-    // 构建 21 档直方图（桶 1~21 对应 [-11,-10), [-10,-9), ..., [9,10), [10,11]）
-    const bucketMap = new Map(bucketRows.map((r) => [Number(r.bucket), Number(r.cnt)]))
-    const distribution = Array.from({ length: 21 }, (_, i) => {
-      const low = -11 + i
-      const high = low + 1
-      return {
-        label: `${low}~${high}`,
-        count: bucketMap.get(i + 1) ?? 0,
-      }
+      return { tradeDate, limitUp, limitDown, distribution }
     })
-
-    const result = { tradeDate, limitUp, limitDown, distribution }
-    await this.redis.setEx(cacheKey, 4 * 3600, JSON.stringify(result))
-    return result
   }
 
   // ─── 行业涨跌排行 ──────────────────────────────────────────────────────────
@@ -294,31 +293,27 @@ export class MarketService {
     const tradeDateStr = dayjs(tradeDate).format('YYYYMMDD')
     const cacheKey = `market:sector-ranking:${tradeDateStr}:${sortBy}:${query.limit ?? 'all'}`
 
-    const cached = await this.redis.get(cacheKey)
-    if (cached) return JSON.parse(cached)
+    return this.rememberMarketCache(cacheKey, MARKET_STANDARD_CACHE_TTL_SECONDS, async () => {
+      const orderBy = sortBy === 'net_amount' ? { netAmount: 'desc' as const } : { pctChange: 'desc' as const }
 
-    const orderBy = sortBy === 'net_amount' ? { netAmount: 'desc' as const } : { pctChange: 'desc' as const }
+      const rows = await this.prisma.moneyflowIndDc.findMany({
+        where: { tradeDate, contentType: MoneyflowContentType.INDUSTRY },
+        orderBy,
+        ...(query.limit ? { take: query.limit } : {}),
+        select: { tsCode: true, name: true, pctChange: true, netAmount: true, netAmountRate: true },
+      })
 
-    const rows = await this.prisma.moneyflowIndDc.findMany({
-      where: { tradeDate, contentType: MoneyflowContentType.INDUSTRY },
-      orderBy,
-      ...(query.limit ? { take: query.limit } : {}),
-      select: { tsCode: true, name: true, pctChange: true, netAmount: true, netAmountRate: true },
+      return {
+        tradeDate,
+        sectors: rows.map((r) => ({
+          tsCode: r.tsCode,
+          name: r.name,
+          pctChange: r.pctChange,
+          netAmount: r.netAmount,
+          netAmountRate: r.netAmountRate,
+        })),
+      }
     })
-
-    const result = {
-      tradeDate,
-      sectors: rows.map((r) => ({
-        tsCode: r.tsCode,
-        name: r.name,
-        pctChange: r.pctChange,
-        netAmount: r.netAmount,
-        netAmountRate: r.netAmountRate,
-      })),
-    }
-
-    await this.redis.setEx(cacheKey, 4 * 3600, JSON.stringify(result))
-    return result
   }
 
   // ─── 市场成交概况 ──────────────────────────────────────────────────────────
@@ -331,57 +326,54 @@ export class MarketService {
     const tradeDateStr = dayjs(tradeDate).format('YYYYMMDD')
     const cacheKey = `market:vol-overview:${tradeDateStr}:${days}`
 
-    const cached = await this.redis.get(cacheKey)
-    if (cached) return JSON.parse(cached)
+    return this.rememberMarketCache(cacheKey, MARKET_STANDARD_CACHE_TTL_SECONDS, async () => {
+      // 全A成交额（万元，amount字段单位为千元，除以100000转亿元）
+      const totalRows = await this.prisma.$queryRaw<{ trade_date: Date; total_amount: string }[]>`
+        SELECT trade_date, SUM(amount) / 100000.0 AS total_amount
+        FROM stock_daily_prices
+        WHERE trade_date <= ${tradeDate}
+        GROUP BY trade_date
+        ORDER BY trade_date DESC
+        LIMIT ${days}
+      `
 
-    // 全A成交额（万元，amount字段单位为千元，除以100000转亿元）
-    const totalRows = await this.prisma.$queryRaw<{ trade_date: Date; total_amount: string }[]>`
-      SELECT trade_date, SUM(amount) / 100000.0 AS total_amount
-      FROM stock_daily_prices
-      WHERE trade_date <= ${tradeDate}
-      GROUP BY trade_date
-      ORDER BY trade_date DESC
-      LIMIT ${days}
-    `
-
-    // 指数成交额（index_daily amount 字段单位同 daily，除以100000转亿元）
-    const indexRows = await this.prisma.indexDaily.findMany({
-      where: {
-        tsCode: { in: ['000001.SH', '399001.SZ'] },
-        tradeDate: { lte: tradeDate },
-      },
-      orderBy: { tradeDate: 'desc' },
-      take: days * 2,
-      select: { tsCode: true, tradeDate: true, amount: true },
-    })
-
-    // 以 tradeDate 为 key 合并
-    const indexMap = new Map<string, { sh: number; sz: number }>()
-    for (const r of indexRows) {
-      const key = dayjs(r.tradeDate).format('YYYY-MM-DD')
-      if (!indexMap.has(key)) indexMap.set(key, { sh: 0, sz: 0 })
-      const entry = indexMap.get(key)!
-      const amountBillions = r.amount !== null ? Number(r.amount) / 100000 : 0
-      if (r.tsCode === '000001.SH') entry.sh = amountBillions
-      else if (r.tsCode === '399001.SZ') entry.sz = amountBillions
-    }
-
-    const data = totalRows
-      .map((r) => {
-        const key = dayjs(r.trade_date).format('YYYY-MM-DD')
-        const idx = indexMap.get(key) ?? { sh: 0, sz: 0 }
-        return {
-          tradeDate: key,
-          totalAmount: Number(Number(r.total_amount).toFixed(2)),
-          shAmount: Number(idx.sh.toFixed(2)),
-          szAmount: Number(idx.sz.toFixed(2)),
-        }
+      // 指数成交额（index_daily amount 字段单位同 daily，除以100000转亿元）
+      const indexRows = await this.prisma.indexDaily.findMany({
+        where: {
+          tsCode: { in: ['000001.SH', '399001.SZ'] },
+          tradeDate: { lte: tradeDate },
+        },
+        orderBy: { tradeDate: 'desc' },
+        take: days * 2,
+        select: { tsCode: true, tradeDate: true, amount: true },
       })
-      .reverse() // 按时间升序返回
 
-    const result = { data }
-    await this.redis.setEx(cacheKey, 4 * 3600, JSON.stringify(result))
-    return result
+      // 以 tradeDate 为 key 合并
+      const indexMap = new Map<string, { sh: number; sz: number }>()
+      for (const r of indexRows) {
+        const key = dayjs(r.tradeDate).format('YYYY-MM-DD')
+        if (!indexMap.has(key)) indexMap.set(key, { sh: 0, sz: 0 })
+        const entry = indexMap.get(key)!
+        const amountBillions = r.amount !== null ? Number(r.amount) / 100000 : 0
+        if (r.tsCode === '000001.SH') entry.sh = amountBillions
+        else if (r.tsCode === '399001.SZ') entry.sz = amountBillions
+      }
+
+      const data = totalRows
+        .map((r) => {
+          const key = dayjs(r.trade_date).format('YYYY-MM-DD')
+          const idx = indexMap.get(key) ?? { sh: 0, sz: 0 }
+          return {
+            tradeDate: key,
+            totalAmount: Number(Number(r.total_amount).toFixed(2)),
+            shAmount: Number(idx.sh.toFixed(2)),
+            szAmount: Number(idx.sz.toFixed(2)),
+          }
+        })
+        .reverse()
+
+      return { data }
+    })
   }
 
   // ─── 市场情绪趋势 ──────────────────────────────────────────────────────────
@@ -394,55 +386,52 @@ export class MarketService {
     const tradeDateStr = dayjs(tradeDate).format('YYYYMMDD')
     const cacheKey = `market:sentiment-trend:${tradeDateStr}:${days}`
 
-    const cached = await this.redis.get(cacheKey)
-    if (cached) return JSON.parse(cached)
+    return this.rememberMarketCache(cacheKey, MARKET_STANDARD_CACHE_TTL_SECONDS, async () => {
+      const dateRows = await this.prisma.$queryRaw<{ trade_date: Date }[]>`
+        SELECT DISTINCT trade_date
+        FROM stock_daily_prices
+        WHERE trade_date <= ${tradeDate}
+        ORDER BY trade_date DESC
+        LIMIT ${days}
+      `
+      if (dateRows.length === 0) return { data: [] }
 
-    // 取最近 N 个交易日日期
-    const dateRows = await this.prisma.$queryRaw<{ trade_date: Date }[]>`
-      SELECT DISTINCT trade_date
-      FROM stock_daily_prices
-      WHERE trade_date <= ${tradeDate}
-      ORDER BY trade_date DESC
-      LIMIT ${days}
-    `
-    if (dateRows.length === 0) return { data: [] }
+      const tradeDates = dateRows.map((r) => r.trade_date)
 
-    const tradeDates = dateRows.map((r) => r.trade_date)
+      const sentimentRows = await this.prisma.$queryRaw<
+        {
+          trade_date: Date
+          rise: bigint
+          flat: bigint
+          fall: bigint
+          limit_up: bigint
+          limit_down: bigint
+        }[]
+      >`
+        SELECT
+          trade_date,
+          COUNT(*) FILTER (WHERE pct_chg > 0.001)                        AS rise,
+          COUNT(*) FILTER (WHERE pct_chg >= -0.001 AND pct_chg <= 0.001) AS flat,
+          COUNT(*) FILTER (WHERE pct_chg < -0.001)                       AS fall,
+          COUNT(*) FILTER (WHERE pct_chg >= 9.5)                         AS limit_up,
+          COUNT(*) FILTER (WHERE pct_chg <= -9.5)                        AS limit_down
+        FROM stock_daily_prices
+        WHERE trade_date = ANY(${tradeDates})
+        GROUP BY trade_date
+        ORDER BY trade_date ASC
+      `
 
-    // 一次性批量统计所有交易日的涨跌家数
-    const sentimentRows = await this.prisma.$queryRaw<{
-      trade_date: Date
-      rise: bigint
-      flat: bigint
-      fall: bigint
-      limit_up: bigint
-      limit_down: bigint
-    }[]>`
-      SELECT
-        trade_date,
-        COUNT(*) FILTER (WHERE pct_chg > 0.001)                        AS rise,
-        COUNT(*) FILTER (WHERE pct_chg >= -0.001 AND pct_chg <= 0.001) AS flat,
-        COUNT(*) FILTER (WHERE pct_chg < -0.001)                       AS fall,
-        COUNT(*) FILTER (WHERE pct_chg >= 9.5)                         AS limit_up,
-        COUNT(*) FILTER (WHERE pct_chg <= -9.5)                        AS limit_down
-      FROM stock_daily_prices
-      WHERE trade_date = ANY(${tradeDates})
-      GROUP BY trade_date
-      ORDER BY trade_date ASC
-    `
-
-    const data = sentimentRows.map((r) => ({
-      tradeDate: dayjs(r.trade_date).format('YYYY-MM-DD'),
-      rise: Number(r.rise),
-      flat: Number(r.flat),
-      fall: Number(r.fall),
-      limitUp: Number(r.limit_up),
-      limitDown: Number(r.limit_down),
-    }))
-
-    const result = { data }
-    await this.redis.setEx(cacheKey, 4 * 3600, JSON.stringify(result))
-    return result
+      return {
+        data: sentimentRows.map((r) => ({
+          tradeDate: dayjs(r.trade_date).format('YYYY-MM-DD'),
+          rise: Number(r.rise),
+          flat: Number(r.flat),
+          fall: Number(r.fall),
+          limitUp: Number(r.limit_up),
+          limitDown: Number(r.limit_down),
+        })),
+      }
+    })
   }
 
   // ─── 估值趋势 ─────────────────────────────────────────────────────────────
@@ -451,35 +440,33 @@ export class MarketService {
     const period = query.period ?? '1y'
     const cacheKey = `market:valuation-trend:${period}`
 
-    const cached = await this.redis.get(cacheKey)
-    if (cached) return JSON.parse(cached)
+    return this.rememberMarketCache(cacheKey, MARKET_EXTENDED_CACHE_TTL_SECONDS, async () => {
+      const latestDate = await this.resolveLatestDailyBasicTradeDate()
+      if (!latestDate) return { period, data: [] }
 
-    const latestDate = await this.resolveLatestDailyBasicTradeDate()
-    if (!latestDate) return { period, data: [] }
+      const startDate = this.periodToStartDate(latestDate, period as ValuationTrendPeriod)
 
-    const startDate = this.periodToStartDate(latestDate, period as ValuationTrendPeriod)
+      const rows = await this.prisma.$queryRaw<{ trade_date: Date; pe_ttm_median: string; pb_median: string }[]>`
+        SELECT
+          trade_date,
+          PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY pe_ttm)::text AS pe_ttm_median,
+          PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY pb)::text     AS pb_median
+        FROM stock_daily_valuation_metrics
+        WHERE trade_date >= ${startDate}
+          AND pe_ttm > 0 AND pe_ttm < 1000 AND pb > 0
+        GROUP BY trade_date
+        ORDER BY trade_date ASC
+      `
 
-    const rows = await this.prisma.$queryRaw<{ trade_date: Date; pe_ttm_median: string; pb_median: string }[]>`
-      SELECT
-        trade_date,
-        PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY pe_ttm)::text AS pe_ttm_median,
-        PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY pb)::text     AS pb_median
-      FROM stock_daily_valuation_metrics
-      WHERE trade_date >= ${startDate}
-        AND pe_ttm > 0 AND pe_ttm < 1000 AND pb > 0
-      GROUP BY trade_date
-      ORDER BY trade_date ASC
-    `
-
-    const data = rows.map((r) => ({
-      tradeDate: dayjs(r.trade_date).format('YYYY-MM-DD'),
-      peTtmMedian: Number(Number(r.pe_ttm_median).toFixed(2)),
-      pbMedian: Number(Number(r.pb_median).toFixed(2)),
-    }))
-
-    const result = { period, data }
-    await this.redis.setEx(cacheKey, 8 * 3600, JSON.stringify(result))
-    return result
+      return {
+        period,
+        data: rows.map((r) => ({
+          tradeDate: dayjs(r.trade_date).format('YYYY-MM-DD'),
+          peTtmMedian: Number(Number(r.pe_ttm_median).toFixed(2)),
+          pbMedian: Number(Number(r.pb_median).toFixed(2)),
+        })),
+      }
+    })
   }
 
   // ─── 大盘资金流向趋势 ──────────────────────────────────────────────────────
@@ -492,34 +479,30 @@ export class MarketService {
     const tradeDateStr = dayjs(tradeDate).format('YYYYMMDD')
     const cacheKey = `market:mf-trend:${tradeDateStr}:${days}`
 
-    const cached = await this.redis.get(cacheKey)
-    if (cached) return JSON.parse(cached)
+    return this.rememberMarketCache(cacheKey, MARKET_STANDARD_CACHE_TTL_SECONDS, async () => {
+      const rows = await this.prisma.moneyflowMktDc.findMany({
+        where: { tradeDate: { lte: tradeDate } },
+        orderBy: { tradeDate: 'desc' },
+        take: days,
+      })
 
-    const rows = await this.prisma.moneyflowMktDc.findMany({
-      where: { tradeDate: { lte: tradeDate } },
-      orderBy: { tradeDate: 'desc' },
-      take: days,
-    })
-
-    // 倒序（时间升序）再计算累计净流入
-    const sorted = rows.reverse()
-    let cumulative = 0
-    const data = sorted.map((r) => {
-      cumulative += r.netAmount ?? 0
+      const sorted = rows.reverse()
+      let cumulative = 0
       return {
-        tradeDate: dayjs(r.tradeDate).format('YYYY-MM-DD'),
-        netAmount: r.netAmount,
-        cumulativeNet: Number(cumulative.toFixed(2)),
-        buyElgAmount: r.buyElgAmount,
-        buyLgAmount: r.buyLgAmount,
-        buyMdAmount: r.buyMdAmount,
-        buySmAmount: r.buySmAmount,
+        data: sorted.map((r) => {
+          cumulative += r.netAmount ?? 0
+          return {
+            tradeDate: dayjs(r.tradeDate).format('YYYY-MM-DD'),
+            netAmount: r.netAmount,
+            cumulativeNet: Number(cumulative.toFixed(2)),
+            buyElgAmount: r.buyElgAmount,
+            buyLgAmount: r.buyLgAmount,
+            buyMdAmount: r.buyMdAmount,
+            buySmAmount: r.buySmAmount,
+          }
+        }),
       }
     })
-
-    const result = { data }
-    await this.redis.setEx(cacheKey, 4 * 3600, JSON.stringify(result))
-    return result
   }
 
   // ─── 板块资金流向排行 ──────────────────────────────────────────────────────
@@ -536,52 +519,48 @@ export class MarketService {
     const tradeDateStr = dayjs(tradeDate).format('YYYYMMDD')
     const cacheKey = `market:sector-rank:${tradeDateStr}:${contentType}:${sortBy}:${order}:${limit}`
 
-    const cached = await this.redis.get(cacheKey)
-    if (cached) return JSON.parse(cached)
+    return this.rememberMarketCache(cacheKey, MARKET_STANDARD_CACHE_TTL_SECONDS, async () => {
+      const orderByMap = {
+        net_amount: { netAmount: order },
+        pct_change: { pctChange: order },
+        buy_elg_amount: { buyElgAmount: order },
+      } as const
 
-    const orderByMap = {
-      net_amount: { netAmount: order },
-      pct_change: { pctChange: order },
-      buy_elg_amount: { buyElgAmount: order },
-    } as const
+      const rows = await this.prisma.moneyflowIndDc.findMany({
+        where: { tradeDate, contentType },
+        orderBy: orderByMap[sortBy],
+        take: limit,
+        select: {
+          tsCode: true,
+          name: true,
+          pctChange: true,
+          close: true,
+          netAmount: true,
+          netAmountRate: true,
+          buyElgAmount: true,
+          buyLgAmount: true,
+          buyMdAmount: true,
+          buySmAmount: true,
+        },
+      })
 
-    const rows = await this.prisma.moneyflowIndDc.findMany({
-      where: { tradeDate, contentType },
-      orderBy: orderByMap[sortBy],
-      take: limit,
-      select: {
-        tsCode: true,
-        name: true,
-        pctChange: true,
-        close: true,
-        netAmount: true,
-        netAmountRate: true,
-        buyElgAmount: true,
-        buyLgAmount: true,
-        buyMdAmount: true,
-        buySmAmount: true,
-      },
+      return {
+        tradeDate,
+        contentType,
+        sectors: rows.map((r) => ({
+          tsCode: r.tsCode,
+          name: r.name,
+          pctChange: r.pctChange,
+          close: r.close,
+          netAmount: r.netAmount,
+          netAmountRate: r.netAmountRate,
+          buyElgAmount: r.buyElgAmount,
+          buyLgAmount: r.buyLgAmount,
+          buyMdAmount: r.buyMdAmount,
+          buySmAmount: r.buySmAmount,
+        })),
+      }
     })
-
-    const result = {
-      tradeDate,
-      contentType,
-      sectors: rows.map((r) => ({
-        tsCode: r.tsCode,
-        name: r.name,
-        pctChange: r.pctChange,
-        close: r.close,
-        netAmount: r.netAmount,
-        netAmountRate: r.netAmountRate,
-        buyElgAmount: r.buyElgAmount,
-        buyLgAmount: r.buyLgAmount,
-        buyMdAmount: r.buyMdAmount,
-        buySmAmount: r.buySmAmount,
-      })),
-    }
-
-    await this.redis.setEx(cacheKey, 4 * 3600, JSON.stringify(result))
-    return result
   }
 
   // ─── 板块资金流向趋势 ──────────────────────────────────────────────────────
@@ -592,36 +571,35 @@ export class MarketService {
     const days = query.days ?? 20
     const cacheKey = `market:sector-trend:${tsCode}:${contentType}:${days}`
 
-    const cached = await this.redis.get(cacheKey)
-    if (cached) return JSON.parse(cached)
+    return this.rememberMarketCache(cacheKey, MARKET_STANDARD_CACHE_TTL_SECONDS, async () => {
+      const rows = await this.prisma.moneyflowIndDc.findMany({
+        where: { tsCode, contentType },
+        orderBy: { tradeDate: 'desc' },
+        take: days,
+        select: { tradeDate: true, name: true, pctChange: true, netAmount: true },
+      })
 
-    const rows = await this.prisma.moneyflowIndDc.findMany({
-      where: { tsCode, contentType },
-      orderBy: { tradeDate: 'desc' },
-      take: days,
-      select: { tradeDate: true, name: true, pctChange: true, netAmount: true },
-    })
+      if (rows.length === 0) {
+        return { tsCode, name: null, data: [] }
+      }
 
-    if (rows.length === 0) {
-      return { tsCode, name: null, data: [] }
-    }
-
-    const name = rows[0].name ?? null
-    const sorted = rows.reverse()
-    let cumulative = 0
-    const data = sorted.map((r) => {
-      cumulative += r.netAmount ?? 0
+      const name = rows[0].name ?? null
+      const sorted = rows.reverse()
+      let cumulative = 0
       return {
-        tradeDate: dayjs(r.tradeDate).format('YYYY-MM-DD'),
-        pctChange: r.pctChange,
-        netAmount: r.netAmount,
-        cumulativeNet: Number(cumulative.toFixed(2)),
+        tsCode,
+        name,
+        data: sorted.map((r) => {
+          cumulative += r.netAmount ?? 0
+          return {
+            tradeDate: dayjs(r.tradeDate).format('YYYY-MM-DD'),
+            pctChange: r.pctChange,
+            netAmount: r.netAmount,
+            cumulativeNet: Number(cumulative.toFixed(2)),
+          }
+        }),
       }
     })
-
-    const result = { tsCode, name, data }
-    await this.redis.setEx(cacheKey, 4 * 3600, JSON.stringify(result))
-    return result
   }
 
   // ─── 沪深港通趋势（扩展）─────────────────────────────────────────────────
@@ -630,48 +608,44 @@ export class MarketService {
     const period = query.period ?? '3m'
     const cacheKey = `market:hsgt-trend:${period}`
 
-    const cached = await this.redis.get(cacheKey)
-    if (cached) return JSON.parse(cached)
+    return this.rememberMarketCache(cacheKey, MARKET_STANDARD_CACHE_TTL_SECONDS, async () => {
+      const latestDate = await this.resolveLatestHsgtTradeDate()
+      if (!latestDate) return { period, data: [] }
 
-    const latestDate = await this.resolveLatestHsgtTradeDate()
-    if (!latestDate) return { period, data: [] }
+      const startDate = this.periodToStartDate(latestDate, period)
 
-    const startDate = this.periodToStartDate(latestDate, period)
+      const rows = await this.prisma.moneyflowHsgt.findMany({
+        where: { tradeDate: { gte: startDate } },
+        orderBy: { tradeDate: 'asc' },
+      })
 
-    const rows = await this.prisma.moneyflowHsgt.findMany({
-      where: { tradeDate: { gte: startDate } },
-      orderBy: { tradeDate: 'asc' },
-    })
-
-    let cumulativeNorth = 0
-    let cumulativeSouth = 0
-    const data = rows.map((r) => {
-      cumulativeNorth += r.northMoney ?? 0
-      cumulativeSouth += r.southMoney ?? 0
+      let cumulativeNorth = 0
+      let cumulativeSouth = 0
       return {
-        tradeDate: dayjs(r.tradeDate).format('YYYY-MM-DD'),
-        northMoney: r.northMoney,
-        southMoney: r.southMoney,
-        hgt: r.hgt,
-        sgt: r.sgt,
-        ggtSs: r.ggtSs,
-        ggtSz: r.ggtSz,
-        cumulativeNorth: Number(cumulativeNorth.toFixed(2)),
-        cumulativeSouth: Number(cumulativeSouth.toFixed(2)),
+        period,
+        data: rows.map((r) => {
+          cumulativeNorth += r.northMoney ?? 0
+          cumulativeSouth += r.southMoney ?? 0
+          return {
+            tradeDate: dayjs(r.tradeDate).format('YYYY-MM-DD'),
+            northMoney: r.northMoney,
+            southMoney: r.southMoney,
+            hgt: r.hgt,
+            sgt: r.sgt,
+            ggtSs: r.ggtSs,
+            ggtSz: r.ggtSz,
+            cumulativeNorth: Number(cumulativeNorth.toFixed(2)),
+            cumulativeSouth: Number(cumulativeSouth.toFixed(2)),
+          }
+        }),
       }
     })
-
-    const result = { period, data }
-    await this.redis.setEx(cacheKey, 4 * 3600, JSON.stringify(result))
-    return result
   }
 
   // ─── 主力资金净流入 Top N ──────────────────────────────────────────────────
 
   async getMainFlowRanking(query: MainFlowRankingQueryDto) {
-    const tradeDate = query.trade_date
-      ? this.parseDate(query.trade_date)
-      : await this.resolveLatestStockFlowTradeDate()
+    const tradeDate = query.trade_date ? this.parseDate(query.trade_date) : await this.resolveLatestStockFlowTradeDate()
     if (!tradeDate) return { tradeDate: null, data: [] }
 
     const order = query.order ?? 'desc'
@@ -680,53 +654,51 @@ export class MarketService {
     const tradeDateStr = dayjs(tradeDate).format('YYYYMMDD')
     const cacheKey = `market:main-flow-rank:${tradeDateStr}:${order}:${limit}`
 
-    const cached = await this.redis.get(cacheKey)
-    if (cached) return JSON.parse(cached)
+    return this.rememberMarketCache(cacheKey, MARKET_STANDARD_CACHE_TTL_SECONDS, async () => {
+      const rows = await this.prisma.$queryRaw<
+        {
+          ts_code: string
+          name: string | null
+          industry: string | null
+          main_net_inflow: string
+          elg_net_inflow: string
+          lg_net_inflow: string
+          pct_chg: number | null
+          amount: number | null
+        }[]
+      >`
+        SELECT
+          mf.ts_code,
+          sb.name,
+          sb.industry,
+          (COALESCE(mf.buy_elg_amount, 0) - COALESCE(mf.sell_elg_amount, 0)
+           + COALESCE(mf.buy_lg_amount, 0)  - COALESCE(mf.sell_lg_amount, 0))  AS main_net_inflow,
+          (COALESCE(mf.buy_elg_amount, 0) - COALESCE(mf.sell_elg_amount, 0))   AS elg_net_inflow,
+          (COALESCE(mf.buy_lg_amount, 0)  - COALESCE(mf.sell_lg_amount, 0))    AS lg_net_inflow,
+          d.pct_chg,
+          d.amount
+        FROM stock_capital_flows mf
+        JOIN stock_basic_profiles sb ON sb.ts_code = mf.ts_code
+        LEFT JOIN stock_daily_prices d ON d.ts_code = mf.ts_code AND d.trade_date = mf.trade_date
+        WHERE mf.trade_date = ${tradeDate}
+        ORDER BY main_net_inflow ${order === 'desc' ? Prisma.sql`DESC` : Prisma.sql`ASC`}
+        LIMIT ${limit}
+      `
 
-    const rows = await this.prisma.$queryRaw<
-      {
-        ts_code: string
-        name: string | null
-        industry: string | null
-        main_net_inflow: string
-        elg_net_inflow: string
-        lg_net_inflow: string
-        pct_chg: number | null
-        amount: number | null
-      }[]
-    >`
-      SELECT
-        mf.ts_code,
-        sb.name,
-        sb.industry,
-        (COALESCE(mf.buy_elg_amount, 0) - COALESCE(mf.sell_elg_amount, 0)
-         + COALESCE(mf.buy_lg_amount, 0)  - COALESCE(mf.sell_lg_amount, 0))  AS main_net_inflow,
-        (COALESCE(mf.buy_elg_amount, 0) - COALESCE(mf.sell_elg_amount, 0))   AS elg_net_inflow,
-        (COALESCE(mf.buy_lg_amount, 0)  - COALESCE(mf.sell_lg_amount, 0))    AS lg_net_inflow,
-        d.pct_chg,
-        d.amount
-      FROM stock_capital_flows mf
-      JOIN stock_basic_profiles sb ON sb.ts_code = mf.ts_code
-      LEFT JOIN stock_daily_prices d ON d.ts_code = mf.ts_code AND d.trade_date = mf.trade_date
-      WHERE mf.trade_date = ${tradeDate}
-      ORDER BY main_net_inflow ${order === 'desc' ? Prisma.sql`DESC` : Prisma.sql`ASC`}
-      LIMIT ${limit}
-    `
-
-    const data = rows.map((r) => ({
-      tsCode: r.ts_code,
-      name: r.name,
-      industry: r.industry,
-      mainNetInflow: Number(r.main_net_inflow),
-      elgNetInflow: Number(r.elg_net_inflow),
-      lgNetInflow: Number(r.lg_net_inflow),
-      pctChg: r.pct_chg !== null ? Number(r.pct_chg) : null,
-      amount: r.amount !== null ? Number(r.amount) : null,
-    }))
-
-    const result = { tradeDate, data }
-    await this.redis.setEx(cacheKey, 4 * 3600, JSON.stringify(result))
-    return result
+      return {
+        tradeDate,
+        data: rows.map((r) => ({
+          tsCode: r.ts_code,
+          name: r.name,
+          industry: r.industry,
+          mainNetInflow: Number(r.main_net_inflow),
+          elgNetInflow: Number(r.elg_net_inflow),
+          lgNetInflow: Number(r.lg_net_inflow),
+          pctChg: r.pct_chg !== null ? Number(r.pct_chg) : null,
+          amount: r.amount !== null ? Number(r.amount) : null,
+        })),
+      }
+    })
   }
 
   // ─── 个股资金流动明细 ──────────────────────────────────────────────────────
@@ -736,46 +708,45 @@ export class MarketService {
     const days = query.days ?? 20
     const cacheKey = `market:stock-flow:${tsCode}:${days}`
 
-    const cached = await this.redis.get(cacheKey)
-    if (cached) return JSON.parse(cached)
+    return this.rememberMarketCache(cacheKey, MARKET_STANDARD_CACHE_TTL_SECONDS, async () => {
+      const [flowRows, stockBasic] = await Promise.all([
+        this.prisma.moneyflow.findMany({
+          where: { tsCode },
+          orderBy: { tradeDate: 'desc' },
+          take: days,
+        }),
+        this.prisma.stockBasic.findUnique({
+          where: { tsCode },
+          select: { name: true },
+        }),
+      ])
 
-    const [flowRows, stockBasic] = await Promise.all([
-      this.prisma.moneyflow.findMany({
-        where: { tsCode },
-        orderBy: { tradeDate: 'desc' },
-        take: days,
-      }),
-      this.prisma.stockBasic.findUnique({
-        where: { tsCode },
-        select: { name: true },
-      }),
-    ])
-
-    const name = stockBasic?.name ?? null
-    const data = flowRows.reverse().map((r) => {
-      const elgNet = (r.buyElgAmount ?? 0) - (r.sellElgAmount ?? 0)
-      const lgNet = (r.buyLgAmount ?? 0) - (r.sellLgAmount ?? 0)
-      const mdNet = (r.buyMdAmount ?? 0) - (r.sellMdAmount ?? 0)
-      const smNet = (r.buySmAmount ?? 0) - (r.sellSmAmount ?? 0)
+      const name = stockBasic?.name ?? null
       return {
-        tradeDate: dayjs(r.tradeDate).format('YYYY-MM-DD'),
-        mainNetInflow: Number((elgNet + lgNet).toFixed(2)),
-        retailNetInflow: Number((mdNet + smNet).toFixed(2)),
-        buyElgAmount: r.buyElgAmount,
-        sellElgAmount: r.sellElgAmount,
-        buyLgAmount: r.buyLgAmount,
-        sellLgAmount: r.sellLgAmount,
-        buyMdAmount: r.buyMdAmount,
-        sellMdAmount: r.sellMdAmount,
-        buySmAmount: r.buySmAmount,
-        sellSmAmount: r.sellSmAmount,
-        netMfAmount: r.netMfAmount,
+        tsCode,
+        name,
+        data: flowRows.reverse().map((r) => {
+          const elgNet = (r.buyElgAmount ?? 0) - (r.sellElgAmount ?? 0)
+          const lgNet = (r.buyLgAmount ?? 0) - (r.sellLgAmount ?? 0)
+          const mdNet = (r.buyMdAmount ?? 0) - (r.sellMdAmount ?? 0)
+          const smNet = (r.buySmAmount ?? 0) - (r.sellSmAmount ?? 0)
+          return {
+            tradeDate: dayjs(r.tradeDate).format('YYYY-MM-DD'),
+            mainNetInflow: Number((elgNet + lgNet).toFixed(2)),
+            retailNetInflow: Number((mdNet + smNet).toFixed(2)),
+            buyElgAmount: r.buyElgAmount,
+            sellElgAmount: r.sellElgAmount,
+            buyLgAmount: r.buyLgAmount,
+            sellLgAmount: r.sellLgAmount,
+            buyMdAmount: r.buyMdAmount,
+            sellMdAmount: r.sellMdAmount,
+            buySmAmount: r.buySmAmount,
+            sellSmAmount: r.sellSmAmount,
+            netMfAmount: r.netMfAmount,
+          }
+        }),
       }
     })
-
-    const result = { tsCode, name, data }
-    await this.redis.setEx(cacheKey, 4 * 3600, JSON.stringify(result))
-    return result
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -791,8 +762,9 @@ export class MarketService {
     fiveYearAgo.setFullYear(fiveYearAgo.getFullYear() - 5)
 
     const computePercentile = async (startDate: Date): Promise<number | null> => {
-      const dailyMedians: { daily_median: string }[] = field === 'pe_ttm'
-        ? await this.prisma.$queryRaw`
+      const dailyMedians: { daily_median: string }[] =
+        field === 'pe_ttm'
+          ? await this.prisma.$queryRaw`
             SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY pe_ttm)::text AS daily_median
             FROM stock_daily_valuation_metrics
             WHERE trade_date >= ${startDate} AND trade_date <= ${tradeDate}
@@ -800,7 +772,7 @@ export class MarketService {
             GROUP BY trade_date
             ORDER BY trade_date
           `
-        : await this.prisma.$queryRaw`
+          : await this.prisma.$queryRaw`
             SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY pb)::text AS daily_median
             FROM stock_daily_valuation_metrics
             WHERE trade_date >= ${startDate} AND trade_date <= ${tradeDate}
@@ -885,6 +857,15 @@ export class MarketService {
 
   private parseDate(value: string) {
     return (dayjs as any).tz(value, 'YYYYMMDD', 'Asia/Shanghai').toDate()
+  }
+
+  private rememberMarketCache<T>(key: string, ttlSeconds: number, loader: () => Promise<T>) {
+    return this.cacheService.rememberJson({
+      namespace: CACHE_NAMESPACE.MARKET,
+      key,
+      ttlSeconds,
+      loader,
+    })
   }
 
   /** 根据 period 字符串计算起始日期（从基准日期向前推） */

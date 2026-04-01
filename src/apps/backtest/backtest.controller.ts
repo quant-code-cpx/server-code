@@ -1,12 +1,4 @@
-import {
-  Body,
-  Controller,
-  Get,
-  Param,
-  Post,
-  Query,
-  UseGuards,
-} from '@nestjs/common'
+import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common'
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger'
 import { JwtAuthGuard } from 'src/lifecycle/guard/jwt-auth.guard'
 import { CurrentUser } from 'src/common/decorators/current-user.decorator'
@@ -14,7 +6,6 @@ import { TokenPayload } from 'src/shared/token.interface'
 import { ApiSuccessResponse } from 'src/common/decorators/api-success-response.decorator'
 import { BacktestRunService } from './services/backtest-run.service'
 import { BacktestStrategyRegistryService } from './services/backtest-strategy-registry.service'
-import { BacktestDataReadinessService } from './services/backtest-data-readiness.service'
 import { CreateBacktestRunDto } from './dto/create-backtest-run.dto'
 import { ValidateBacktestRunDto } from './dto/backtest-validate.dto'
 import { ListBacktestRunsDto } from './dto/list-backtest-runs.dto'
@@ -40,7 +31,6 @@ export class BacktestController {
   constructor(
     private readonly runService: BacktestRunService,
     private readonly strategyRegistry: BacktestStrategyRegistryService,
-    private readonly dataReadinessService: BacktestDataReadinessService,
   ) {}
 
   @Get('strategy-templates')
@@ -54,7 +44,7 @@ export class BacktestController {
   @ApiOperation({ summary: '验证回测配置合法性和数据完备性' })
   @ApiSuccessResponse(ValidateBacktestRunResponseDto)
   validateRun(@Body() dto: ValidateBacktestRunDto) {
-    return this.dataReadinessService.checkReadiness(dto)
+    return this.runService.validateRun(dto)
   }
 
   @Post('runs')

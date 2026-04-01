@@ -84,27 +84,43 @@ export class LoggerService extends ConsoleLogger {
   }
 
   /** 输出 INFO 级别日志；生产环境同时写入 Winston。 */
-  log(message: any, context?: string) {
+  log(message: unknown, context?: string) {
     super.log(message, context)
-    this.winstonLogger?.info(message, { context })
+    this.winstonLogger?.info(this.formatUnknownMessage(message), { context })
   }
 
   /** 输出 WARN 级别日志；生产环境同时写入 Winston。 */
-  warn(message: any, context?: string) {
+  warn(message: unknown, context?: string) {
     super.warn(message, context)
-    this.winstonLogger?.warn(message, { context })
+    this.winstonLogger?.warn(this.formatUnknownMessage(message), { context })
   }
 
   /** 输出 ERROR 级别日志；生产环境同时写入 Winston。 */
-  error(message: any, stack?: string, context?: string) {
+  error(message: unknown, stack?: string, context?: string) {
     super.error(message, stack, context)
-    this.winstonLogger?.error(message, { stack, context })
+    this.winstonLogger?.error(this.formatUnknownMessage(message), { stack, context })
   }
 
   /** 仅开发环境打印日志，生产环境自动跳过，适用于调试信息。 */
-  devLog(message: any, context?: string) {
+  devLog(message: unknown, context?: string) {
     if (this.isDev) {
       this.log(message, context)
+    }
+  }
+
+  private formatUnknownMessage(message: unknown): string {
+    if (typeof message === 'string') {
+      return message
+    }
+
+    if (message instanceof Error) {
+      return message.message
+    }
+
+    try {
+      return JSON.stringify(message)
+    } catch {
+      return String(message)
     }
   }
 }

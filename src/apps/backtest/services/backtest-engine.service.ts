@@ -1,4 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common'
+import { BusinessException } from 'src/common/exceptions/business.exception'
+import { ErrorEnum } from 'src/constant/response-code.constant'
 import { PrismaService } from 'src/shared/prisma.service'
 import {
   BacktestConfig,
@@ -37,7 +39,9 @@ export class BacktestEngineService {
     // ── 1. Load trading days ─────────────────────────────────────────────────
     await onProgress?.(5, 'loading-data')
     const tradingDays = await this.dataService.getTradingDays(config.startDate, config.endDate)
-    if (tradingDays.length === 0) throw new Error('No trading days found in the specified date range')
+    if (tradingDays.length === 0) {
+      throw new BusinessException(ErrorEnum.BACKTEST_NO_TRADING_DAYS)
+    }
 
     // ── 2. Determine initial universe ────────────────────────────────────────
     const universe = await this.resolveUniverse(config, tradingDays[0])
@@ -217,7 +221,10 @@ export class BacktestEngineService {
     return result
   }
 
-  private buildHistoricalBars(allBarsMap: Map<string, Map<string, DailyBar>>, upToDateStr: string): Map<string, DailyBar[]> {
+  private buildHistoricalBars(
+    allBarsMap: Map<string, Map<string, DailyBar>>,
+    upToDateStr: string,
+  ): Map<string, DailyBar[]> {
     const result = new Map<string, DailyBar[]>()
     for (const [tsCode, dateMap] of allBarsMap) {
       const bars = [...dateMap.entries()]
@@ -276,12 +283,7 @@ export class BacktestEngineService {
     return snapshots
   }
 
-  private checkRebalanceDay(
-    date: Date,
-    tradingDays: Date[],
-    idx: number,
-    frequency: RebalanceFrequency,
-  ): boolean {
+  private checkRebalanceDay(date: Date, tradingDays: Date[], idx: number, frequency: RebalanceFrequency): boolean {
     if (frequency === 'DAILY') return true
 
     const prev = idx > 0 ? tradingDays[idx - 1] : null

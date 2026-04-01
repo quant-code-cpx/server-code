@@ -265,6 +265,7 @@ export class StockScreenerQueryDto extends ScreenerFiltersDto {
   @Type(() => Number)
   @IsInt()
   @Min(1)
+  @Max(1000)
   page?: number = 1
 
   @ApiPropertyOptional({ description: '每页条数', default: 20, maximum: 100 })

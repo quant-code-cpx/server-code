@@ -1,4 +1,4 @@
-import { IsEnum, IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator'
+import { IsEnum, IsInt, IsOptional, IsString, Matches, Max, MaxLength, Min } from 'class-validator'
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
 
 export enum ChartPeriod {
@@ -40,12 +40,14 @@ export class StockDetailChartDto {
   @ApiPropertyOptional({ description: '开始日期（YYYYMMDD）', example: '20240101' })
   @IsOptional()
   @IsString()
+  @Matches(/^\d{8}$/, { message: 'startDate must be YYYYMMDD' })
   @MaxLength(8)
   startDate?: string
 
   @ApiPropertyOptional({ description: '结束日期（YYYYMMDD）', example: '20260321' })
   @IsOptional()
   @IsString()
+  @Matches(/^\d{8}$/, { message: 'endDate must be YYYYMMDD' })
   @MaxLength(8)
   endDate?: string
 

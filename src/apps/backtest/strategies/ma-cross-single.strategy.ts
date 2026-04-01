@@ -1,24 +1,16 @@
 import { PrismaService } from 'src/shared/prisma.service'
-import { BacktestConfig, DailyBar, SignalOutput } from '../types/backtest-engine.types'
+import { BacktestConfig, DailyBar, MaCrossSingleStrategyConfig, SignalOutput } from '../types/backtest-engine.types'
 import { IBacktestStrategy } from './backtest-strategy.interface'
 
-interface MaCrossSingleConfig {
-  tsCode: string
-  shortWindow: number
-  longWindow: number
-  priceField?: 'close'
-  allowFlat?: boolean
-}
-
-export class MaCrossSingleStrategy implements IBacktestStrategy {
+export class MaCrossSingleStrategy implements IBacktestStrategy<'MA_CROSS_SINGLE'> {
   async generateSignal(
     signalDate: Date,
-    config: BacktestConfig,
+    config: BacktestConfig<'MA_CROSS_SINGLE'>,
     _barData: Map<string, DailyBar>,
     historicalBars: Map<string, DailyBar[]>,
     _prisma: PrismaService,
   ): Promise<SignalOutput> {
-    const cfg = config.strategyConfig as unknown as MaCrossSingleConfig
+    const cfg: MaCrossSingleStrategyConfig = config.strategyConfig
     const { tsCode, shortWindow = 5, longWindow = 20 } = cfg
 
     const bars = historicalBars.get(tsCode) ?? []

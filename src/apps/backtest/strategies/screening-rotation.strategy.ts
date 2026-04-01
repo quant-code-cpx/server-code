@@ -1,17 +1,17 @@
 import { Logger } from '@nestjs/common'
 import { PrismaService } from 'src/shared/prisma.service'
-import { BacktestConfig, DailyBar, SignalOutput } from '../types/backtest-engine.types'
+import {
+  BacktestConfig,
+  DailyBar,
+  ScreeningRotationRankField,
+  SCREENING_ROTATION_RANK_FIELDS,
+  ScreeningRotationStrategyConfig,
+  SignalOutput,
+} from '../types/backtest-engine.types'
 import { IBacktestStrategy } from './backtest-strategy.interface'
 
-interface ScreeningRotationConfig {
-  rankBy?: string
-  rankOrder?: 'asc' | 'desc'
-  topN: number
-  minDaysListed?: number
-}
-
 // Supported rankBy fields mapped to DailyBasic columns
-const RANK_FIELD_MAP: Record<string, string> = {
+const RANK_FIELD_MAP: Record<ScreeningRotationRankField, string> = {
   totalMv: 'total_mv',
   peTtm: 'pe_ttm',
   pb: 'pb',
@@ -20,20 +20,20 @@ const RANK_FIELD_MAP: Record<string, string> = {
   turnoverRateF: 'turnover_rate_f',
 }
 
-export class ScreeningRotationStrategy implements IBacktestStrategy {
+export class ScreeningRotationStrategy implements IBacktestStrategy<'SCREENING_ROTATION'> {
   private readonly logger = new Logger(ScreeningRotationStrategy.name)
 
   async generateSignal(
     signalDate: Date,
-    config: BacktestConfig,
+    config: BacktestConfig<'SCREENING_ROTATION'>,
     _barData: Map<string, DailyBar>,
     _historicalBars: Map<string, DailyBar[]>,
     prisma: PrismaService,
   ): Promise<SignalOutput> {
-    const cfg = config.strategyConfig as unknown as ScreeningRotationConfig
+    const cfg: ScreeningRotationStrategyConfig = config.strategyConfig
     const { rankBy = 'totalMv', rankOrder = 'desc', topN = 20, minDaysListed = 60 } = cfg
 
-    if (rankBy && !RANK_FIELD_MAP[rankBy]) {
+    if (rankBy && !SCREENING_ROTATION_RANK_FIELDS.includes(rankBy)) {
       this.logger.warn(`ScreeningRotation: unsupported rankBy="${rankBy}", falling back to totalMv`)
     }
     const dbColumn = RANK_FIELD_MAP[rankBy] ?? 'total_mv'

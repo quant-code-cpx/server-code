@@ -2,6 +2,8 @@ import { Processor, WorkerHost, OnWorkerEvent } from '@nestjs/bullmq'
 import { Logger } from '@nestjs/common'
 import { Job } from 'bullmq'
 import { BACKTESTING_QUEUE, BacktestingJobName } from 'src/constant/queue.constant'
+import { BusinessException } from 'src/common/exceptions/business.exception'
+import { ErrorEnum } from 'src/constant/response-code.constant'
 import { BacktestingJobData, BacktestingJobResult } from './backtesting.interface'
 import { EventsGateway } from 'src/websocket/events.gateway'
 import { BacktestEngineService } from 'src/apps/backtest/services/backtest-engine.service'
@@ -30,7 +32,7 @@ export class BacktestingProcessor extends WorkerHost {
       case BacktestingJobName.RUN_BACKTEST:
         return this.runBacktest(job)
       default:
-        throw new Error(`Unknown job name: ${job.name}`)
+        throw new BusinessException(ErrorEnum.BACKTEST_UNKNOWN_JOB)
     }
   }
 
@@ -83,12 +85,12 @@ export class BacktestingProcessor extends WorkerHost {
           where: { id: runId },
           data: { status: 'FAILED', failedReason: error.message },
         })
-      } catch (e) {
-        this.logger.error(`Failed to update run status for runId=${runId}: ${e.message}`)
+      } catch (updateError) {
+        const message = updateError instanceof Error ? updateError.message : String(updateError)
+        this.logger.error(`Failed to update run status for runId=${runId}: ${message}`)
       }
     }
 
     this.eventsGateway.emitBacktestFailed(jobId, error.message)
   }
 }
-

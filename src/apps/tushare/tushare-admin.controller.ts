@@ -7,7 +7,7 @@ import { Roles } from 'src/common/decorators/roles.decorator'
 import { RolesGuard } from 'src/lifecycle/guard/roles.guard'
 import { TushareSyncService } from 'src/tushare/sync/sync.service'
 import { ManualSyncDto } from './dto/manual-sync.dto'
-import { TushareSyncPlanDto } from './dto/tushare-sync-response.dto'
+import { CacheMetricsDataDto, TushareSyncPlanDto } from './dto/tushare-sync-response.dto'
 
 @ApiBearerAuth()
 @ApiTags('Tushare - 同步管理')
@@ -24,11 +24,19 @@ export class TushareAdminController {
     return this.tushareSyncService.getAvailableSyncPlans()
   }
 
+  @Get('cache/stats')
+  @ApiOperation({ summary: '获取缓存命中率与当前缓存键统计（仅超级管理员）' })
+  @ApiSuccessResponse(CacheMetricsDataDto)
+  getCacheStats() {
+    return this.tushareSyncService.getCacheStats()
+  }
+
   @Post('sync')
   @HttpCode(HttpStatus.ACCEPTED)
   @ApiOperation({
     summary: '手动触发 Tushare 同步（仅超级管理员）',
-    description: '同步任务在后台异步执行，结果通过 WebSocket 事件 tushare_sync_completed / tushare_sync_failed 通知前端。',
+    description:
+      '同步任务在后台异步执行，结果通过 WebSocket 事件 tushare_sync_completed / tushare_sync_failed 通知前端。',
   })
   @ApiSuccessRawResponse({ type: 'null', nullable: true })
   manualSync(@Body() dto: ManualSyncDto): ResponseModel {

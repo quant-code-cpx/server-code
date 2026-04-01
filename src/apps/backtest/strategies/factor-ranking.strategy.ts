@@ -1,21 +1,17 @@
 import { PrismaService } from 'src/shared/prisma.service'
-import { BacktestConfig, DailyBar, SignalOutput, UNIVERSE_INDEX_CODE } from '../types/backtest-engine.types'
+import {
+  BacktestConfig,
+  DailyBar,
+  FACTOR_RANKING_FACTOR_NAMES,
+  FactorRankingFactorName,
+  FactorRankingStrategyConfig,
+  SignalOutput,
+  UNIVERSE_INDEX_CODE,
+} from '../types/backtest-engine.types'
 import { IBacktestStrategy } from './backtest-strategy.interface'
 
-interface FactorRankingConfig {
-  factorName: string
-  rankOrder: 'asc' | 'desc'
-  topN?: number
-  minDaysListed?: number
-  optionalFilters?: {
-    minTotalMv?: number
-    minTurnoverRate?: number
-    maxPeTtm?: number
-  }
-}
-
 // Market factors from stock_daily_valuation_metrics
-const MARKET_FACTORS: Record<string, string> = {
+const MARKET_FACTORS: Partial<Record<FactorRankingFactorName, string>> = {
   pe_ttm: 'pe_ttm',
   pb: 'pb',
   total_mv: 'total_mv',
@@ -25,7 +21,7 @@ const MARKET_FACTORS: Record<string, string> = {
 }
 
 // Fundamental factors from financial_indicator_snapshots
-const FINA_FACTORS: Record<string, string> = {
+const FINA_FACTORS: Partial<Record<FactorRankingFactorName, string>> = {
   roe: 'roe',
   roa: 'roa',
   revenue_yoy: 'revenue_yoy',
@@ -34,16 +30,20 @@ const FINA_FACTORS: Record<string, string> = {
   netprofit_margin: 'netprofit_margin',
 }
 
-export class FactorRankingStrategy implements IBacktestStrategy {
+export class FactorRankingStrategy implements IBacktestStrategy<'FACTOR_RANKING'> {
   async generateSignal(
     signalDate: Date,
-    config: BacktestConfig,
+    config: BacktestConfig<'FACTOR_RANKING'>,
     _barData: Map<string, DailyBar>,
     _historicalBars: Map<string, DailyBar[]>,
     prisma: PrismaService,
   ): Promise<SignalOutput> {
-    const cfg = config.strategyConfig as unknown as FactorRankingConfig
+    const cfg: FactorRankingStrategyConfig = config.strategyConfig
     const { factorName, rankOrder = 'desc', topN = 20, minDaysListed = 60, optionalFilters } = cfg
+
+    if (!FACTOR_RANKING_FACTOR_NAMES.includes(factorName)) {
+      return { targets: [] }
+    }
 
     const orderDir = rankOrder === 'asc' ? 'ASC' : 'DESC'
     const minListDate = new Date(signalDate.getTime() - minDaysListed * 24 * 60 * 60 * 1000)
@@ -73,9 +73,7 @@ export class FactorRankingStrategy implements IBacktestStrategy {
           marketParams.push(indexCode)
         }
       } else if (config.universe === 'CUSTOM' && config.customUniverseTsCodes?.length) {
-        const placeholders = config.customUniverseTsCodes
-          .map((_, i) => `$${marketParams.length + i + 1}`)
-          .join(',')
+        const placeholders = config.customUniverseTsCodes.map((_, i) => `$${marketParams.length + i + 1}`).join(',')
         marketUniverseSql = `AND db.ts_code IN (${placeholders})`
         marketParams.push(...config.customUniverseTsCodes)
       }
@@ -129,9 +127,7 @@ export class FactorRankingStrategy implements IBacktestStrategy {
           finaParams.push(indexCode)
         }
       } else if (config.universe === 'CUSTOM' && config.customUniverseTsCodes?.length) {
-        const placeholders = config.customUniverseTsCodes
-          .map((_, i) => `$${finaParams.length + i + 1}`)
-          .join(',')
+        const placeholders = config.customUniverseTsCodes.map((_, i) => `$${finaParams.length + i + 1}`).join(',')
         finaUniverseSql = `AND fi.ts_code IN (${placeholders})`
         finaParams.push(...config.customUniverseTsCodes)
       }

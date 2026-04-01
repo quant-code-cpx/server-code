@@ -1,5 +1,16 @@
 import { Injectable } from '@nestjs/common'
-import { BacktestStrategyType } from '../types/backtest-engine.types'
+import { BusinessException } from 'src/common/exceptions/business.exception'
+import { ErrorEnum } from 'src/constant/response-code.constant'
+import {
+  BacktestStrategyConfigMap,
+  BacktestStrategyType,
+  CustomPoolRebalanceStrategyConfig,
+  FACTOR_RANKING_FACTOR_NAMES,
+  FactorRankingStrategyConfig,
+  MaCrossSingleStrategyConfig,
+  ScreeningRotationStrategyConfig,
+  SCREENING_ROTATION_RANK_FIELDS,
+} from '../types/backtest-engine.types'
 import { StrategyTemplateDto } from '../dto/backtest-response.dto'
 import { IBacktestStrategy } from '../strategies/backtest-strategy.interface'
 import { MaCrossSingleStrategy } from '../strategies/ma-cross-single.strategy'
@@ -9,18 +20,36 @@ import { CustomPoolRebalanceStrategy } from '../strategies/custom-pool-rebalance
 
 @Injectable()
 export class BacktestStrategyRegistryService {
-  getStrategy(strategyType: BacktestStrategyType): IBacktestStrategy {
+  getStrategy<T extends BacktestStrategyType>(strategyType: T): IBacktestStrategy<T> {
     switch (strategyType) {
       case 'MA_CROSS_SINGLE':
-        return new MaCrossSingleStrategy()
+        return new MaCrossSingleStrategy() as IBacktestStrategy<T>
       case 'SCREENING_ROTATION':
-        return new ScreeningRotationStrategy()
+        return new ScreeningRotationStrategy() as IBacktestStrategy<T>
       case 'FACTOR_RANKING':
-        return new FactorRankingStrategy()
+        return new FactorRankingStrategy() as IBacktestStrategy<T>
       case 'CUSTOM_POOL_REBALANCE':
-        return new CustomPoolRebalanceStrategy()
+        return new CustomPoolRebalanceStrategy() as IBacktestStrategy<T>
       default:
-        throw new Error(`Unknown strategy type: ${strategyType}`)
+        throw new BusinessException(ErrorEnum.BACKTEST_UNKNOWN_STRATEGY)
+    }
+  }
+
+  validateStrategyConfig<T extends BacktestStrategyType>(
+    strategyType: T,
+    strategyConfig: unknown,
+  ): BacktestStrategyConfigMap[T] {
+    switch (strategyType) {
+      case 'MA_CROSS_SINGLE':
+        return this.validateMaCrossSingleConfig(strategyConfig) as BacktestStrategyConfigMap[T]
+      case 'SCREENING_ROTATION':
+        return this.validateScreeningRotationConfig(strategyConfig) as BacktestStrategyConfigMap[T]
+      case 'FACTOR_RANKING':
+        return this.validateFactorRankingConfig(strategyConfig) as BacktestStrategyConfigMap[T]
+      case 'CUSTOM_POOL_REBALANCE':
+        return this.validateCustomPoolConfig(strategyConfig) as BacktestStrategyConfigMap[T]
+      default:
+        throw new BusinessException(ErrorEnum.BACKTEST_UNKNOWN_STRATEGY)
     }
   }
 
@@ -194,5 +223,238 @@ export class BacktestStrategyRegistryService {
         },
       ],
     }
+  }
+
+  private validateMaCrossSingleConfig(strategyConfig: unknown): MaCrossSingleStrategyConfig {
+    const config = this.assertObject(strategyConfig)
+    const tsCode = this.assertNonEmptyString(config.tsCode, 'strategyConfig.tsCode')
+    const shortWindow = this.toPositiveInteger(config.shortWindow, 'strategyConfig.shortWindow', 5, 250)
+    const longWindow = this.toPositiveInteger(config.longWindow, 'strategyConfig.longWindow', 20, 500)
+
+    if (shortWindow >= longWindow) {
+      throw this.invalidStrategyConfig('strategyConfig.shortWindow 必须小于 longWindow')
+    }
+
+    if (config.priceField !== undefined && config.priceField !== 'close') {
+      throw this.invalidStrategyConfig('strategyConfig.priceField 目前仅支持 close')
+    }
+
+    if (config.allowFlat !== undefined && typeof config.allowFlat !== 'boolean') {
+      throw this.invalidStrategyConfig('strategyConfig.allowFlat 必须为布尔值')
+    }
+
+    return {
+      tsCode,
+      shortWindow,
+      longWindow,
+      ...(config.priceField === 'close' ? { priceField: 'close' as const } : {}),
+      ...(typeof config.allowFlat === 'boolean' ? { allowFlat: config.allowFlat } : {}),
+    }
+  }
+
+  private validateScreeningRotationConfig(strategyConfig: unknown): ScreeningRotationStrategyConfig {
+    const config = this.assertObject(strategyConfig)
+    const rankBy =
+      config.rankBy === undefined
+        ? 'totalMv'
+        : this.assertStringLiteral(config.rankBy, SCREENING_ROTATION_RANK_FIELDS, 'strategyConfig.rankBy')
+    const rankOrder =
+      config.rankOrder === undefined
+        ? 'desc'
+        : this.assertStringLiteral(config.rankOrder, ['asc', 'desc'] as const, 'strategyConfig.rankOrder')
+    const topN = this.toPositiveInteger(config.topN, 'strategyConfig.topN', 20, 500)
+    const minDaysListed = this.toNonNegativeInteger(config.minDaysListed, 'strategyConfig.minDaysListed', 60, 5000)
+
+    return { rankBy, rankOrder, topN, minDaysListed }
+  }
+
+  private validateFactorRankingConfig(strategyConfig: unknown): FactorRankingStrategyConfig {
+    const config = this.assertObject(strategyConfig)
+    const factorName = this.assertStringLiteral(
+      config.factorName,
+      FACTOR_RANKING_FACTOR_NAMES,
+      'strategyConfig.factorName',
+    )
+    const rankOrder =
+      config.rankOrder === undefined
+        ? 'desc'
+        : this.assertStringLiteral(config.rankOrder, ['asc', 'desc'] as const, 'strategyConfig.rankOrder')
+    const topN = this.toPositiveInteger(config.topN, 'strategyConfig.topN', 20, 500)
+    const minDaysListed = this.toNonNegativeInteger(config.minDaysListed, 'strategyConfig.minDaysListed', 60, 5000)
+
+    let optionalFilters: FactorRankingStrategyConfig['optionalFilters'] | undefined
+    if (config.optionalFilters !== undefined) {
+      const rawFilters = this.assertObject(config.optionalFilters, 'strategyConfig.optionalFilters')
+      optionalFilters = {
+        ...(rawFilters.minTotalMv !== undefined
+          ? { minTotalMv: this.toNonNegativeNumber(rawFilters.minTotalMv, 'strategyConfig.optionalFilters.minTotalMv') }
+          : {}),
+        ...(rawFilters.minTurnoverRate !== undefined
+          ? {
+              minTurnoverRate: this.toNonNegativeNumber(
+                rawFilters.minTurnoverRate,
+                'strategyConfig.optionalFilters.minTurnoverRate',
+              ),
+            }
+          : {}),
+        ...(rawFilters.maxPeTtm !== undefined
+          ? { maxPeTtm: this.toNonNegativeNumber(rawFilters.maxPeTtm, 'strategyConfig.optionalFilters.maxPeTtm') }
+          : {}),
+      }
+    }
+
+    return {
+      factorName,
+      rankOrder,
+      topN,
+      minDaysListed,
+      ...(optionalFilters ? { optionalFilters } : {}),
+    }
+  }
+
+  private validateCustomPoolConfig(strategyConfig: unknown): CustomPoolRebalanceStrategyConfig {
+    const config = this.assertObject(strategyConfig)
+    const tsCodes = this.assertStringArray(config.tsCodes, 'strategyConfig.tsCodes', true)
+    const uniqueTsCodes = Array.from(new Set(tsCodes.map((tsCode) => tsCode.trim()).filter(Boolean)))
+
+    if (uniqueTsCodes.length === 0) {
+      throw this.invalidStrategyConfig('strategyConfig.tsCodes 不能为空')
+    }
+
+    const weightMode =
+      config.weightMode === undefined
+        ? 'EQUAL'
+        : this.assertStringLiteral(config.weightMode, ['EQUAL', 'CUSTOM'] as const, 'strategyConfig.weightMode')
+
+    let customWeights: CustomPoolRebalanceStrategyConfig['customWeights'] | undefined
+    if (config.customWeights !== undefined) {
+      if (!Array.isArray(config.customWeights)) {
+        throw this.invalidStrategyConfig('strategyConfig.customWeights 必须为数组')
+      }
+
+      customWeights = config.customWeights.map((item, index) => {
+        const record = this.assertObject(item, `strategyConfig.customWeights[${index}]`)
+        const tsCode = this.assertNonEmptyString(record.tsCode, `strategyConfig.customWeights[${index}].tsCode`)
+        const weight = this.toPositiveNumber(record.weight, `strategyConfig.customWeights[${index}].weight`, 1)
+        if (weight > 1) {
+          throw this.invalidStrategyConfig(`strategyConfig.customWeights[${index}].weight 不能大于 1`)
+        }
+        return { tsCode, weight }
+      })
+    }
+
+    if (weightMode === 'CUSTOM') {
+      if (!customWeights?.length) {
+        throw this.invalidStrategyConfig('strategyConfig.weightMode=CUSTOM 时必须提供 customWeights')
+      }
+
+      const weightSum = customWeights.reduce((sum, item) => sum + item.weight, 0)
+      if (Math.abs(weightSum - 1) > 0.001) {
+        throw this.invalidStrategyConfig('strategyConfig.customWeights 权重和必须为 1')
+      }
+
+      const allowedTsCodes = new Set(uniqueTsCodes)
+      const invalidWeightCode = customWeights.find((item) => !allowedTsCodes.has(item.tsCode))
+      if (invalidWeightCode) {
+        throw this.invalidStrategyConfig('strategyConfig.customWeights 中存在不属于 tsCodes 的股票代码')
+      }
+    }
+
+    return {
+      tsCodes: uniqueTsCodes,
+      weightMode,
+      ...(customWeights ? { customWeights } : {}),
+    }
+  }
+
+  private assertObject(value: unknown, field = 'strategyConfig'): Record<string, unknown> {
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+      throw this.invalidStrategyConfig(`${field} 必须为对象`)
+    }
+
+    return value as Record<string, unknown>
+  }
+
+  private assertNonEmptyString(value: unknown, field: string): string {
+    if (typeof value !== 'string' || value.trim().length === 0) {
+      throw this.invalidStrategyConfig(`${field} 必须为非空字符串`)
+    }
+
+    return value.trim()
+  }
+
+  private assertStringArray(value: unknown, field: string, requireNonEmpty = false): string[] {
+    if (!Array.isArray(value)) {
+      throw this.invalidStrategyConfig(`${field} 必须为字符串数组`)
+    }
+
+    const normalized = value.map((item, index) => this.assertNonEmptyString(item, `${field}[${index}]`))
+    if (requireNonEmpty && normalized.length === 0) {
+      throw this.invalidStrategyConfig(`${field} 不能为空数组`)
+    }
+
+    return normalized
+  }
+
+  private assertStringLiteral<const T extends readonly string[]>(
+    value: unknown,
+    candidates: T,
+    field: string,
+  ): T[number] {
+    if (typeof value !== 'string' || !candidates.includes(value)) {
+      throw this.invalidStrategyConfig(`${field} 取值不合法`)
+    }
+
+    return value as T[number]
+  }
+
+  private toPositiveInteger(value: unknown, field: string, defaultValue: number, maxValue?: number): number {
+    const resolved = value === undefined ? defaultValue : this.toNumber(value, field)
+    if (!Number.isInteger(resolved) || resolved <= 0) {
+      throw this.invalidStrategyConfig(`${field} 必须为正整数`)
+    }
+    if (maxValue !== undefined && resolved > maxValue) {
+      throw this.invalidStrategyConfig(`${field} 不能大于 ${maxValue}`)
+    }
+    return resolved
+  }
+
+  private toNonNegativeInteger(value: unknown, field: string, defaultValue: number, maxValue?: number): number {
+    const resolved = value === undefined ? defaultValue : this.toNumber(value, field)
+    if (!Number.isInteger(resolved) || resolved < 0) {
+      throw this.invalidStrategyConfig(`${field} 必须为非负整数`)
+    }
+    if (maxValue !== undefined && resolved > maxValue) {
+      throw this.invalidStrategyConfig(`${field} 不能大于 ${maxValue}`)
+    }
+    return resolved
+  }
+
+  private toNonNegativeNumber(value: unknown, field: string): number {
+    const resolved = this.toNumber(value, field)
+    if (resolved < 0) {
+      throw this.invalidStrategyConfig(`${field} 不能小于 0`)
+    }
+    return resolved
+  }
+
+  private toPositiveNumber(value: unknown, field: string, defaultValue?: number): number {
+    const resolved = value === undefined && defaultValue !== undefined ? defaultValue : this.toNumber(value, field)
+    if (resolved <= 0) {
+      throw this.invalidStrategyConfig(`${field} 必须大于 0`)
+    }
+    return resolved
+  }
+
+  private toNumber(value: unknown, field: string): number {
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+      throw this.invalidStrategyConfig(`${field} 必须为有效数字`)
+    }
+    return value
+  }
+
+  private invalidStrategyConfig(message: string) {
+    const [code] = ErrorEnum.BACKTEST_INVALID_STRATEGY_CONFIG.split(':')
+    return new BusinessException(`${code}:${message}`)
   }
 }

@@ -32,21 +32,21 @@
 ## 三、TypeScript 类型安全
 
 - [ ] 清理 `any` 类型使用（当前约 182 处，ESLint 规则已禁用）
-- [ ] 启用 ESLint `@typescript-eslint/no-explicit-any` 规则（至少 warn 级别）
+- [x] 启用 ESLint `@typescript-eslint/no-explicit-any` 规则（至少 warn 级别）
 - [ ] 审查并消除 Tushare API 响应中的 `any` 类型（添加明确接口定义）
-- [ ] 审查 Backtest 模块中策略配置 JSON 的类型定义
+- [x] 审查 Backtest 模块中策略配置 JSON 的类型定义
 
 ---
 
 ## 四、错误处理一致性
 
-- [ ] 统一所有 `throw new Error()` 为 `BusinessException`（当前 10+ 处使用原生 Error）
+- [x] 统一所有 `throw new Error()` 为 `BusinessException`（当前 10+ 处使用原生 Error）
   - `src/tushare/sync/` 多个文件
   - `src/apps/backtest/` 策略注册和引擎服务
   - `src/queue/` 回测处理器
-- [ ] 为 Tushare API 错误添加专用错误码（当前 response-code.constant 无 Tushare 相关码）
-- [ ] class-validator 校验错误映射到标准错误码（当前使用默认消息）
-- [ ] 添加请求参数边界校验：
+- [x] 为 Tushare API 错误添加专用错误码（当前 response-code.constant 无 Tushare 相关码）
+- [x] class-validator 校验错误映射到标准错误码（当前使用默认消息）
+- [x] 添加请求参数边界校验：
   - K 线图日期范围上限
   - 分页参数上限（page/pageSize）
   - 搜索关键词长度限制
@@ -55,27 +55,23 @@
 
 ## 五、数据库性能优化
 
-- [ ] 为 Tushare 数据表添加索引（高频查询字段）：
-  - `daily` / `weekly` / `monthly`：`ts_code` + `trade_date` 联合索引
-  - `stock_basic`：`name`、`industry`、`market` 索引
-  - `moneyflow_dc`：`ts_code` + `trade_date` 索引
-  - `balance_sheet` / `cashflow` / `income`：`ts_code` + `end_date` 索引
-- [ ] 审查大表查询性能（`stock.service.ts` 1,500+ 行，多个全表扫描风险）
-- [ ] 配置 Prisma 连接池参数（当前使用默认值）
-- [ ] 添加数据库查询超时设置
+- [x] 核对并补齐高频查询索引（`daily` / `weekly` / `monthly` / `moneyflow` 的 `ts_code + trade_date` 已由复合主键覆盖，补充 `express` 与财报查询索引）
+- [x] 审查大表查询性能（`stock.service.ts` 1,500+ 行，已优化 count / exists / 年度股本快照查询）
+- [x] 配置 Prisma 连接池参数（默认值 + 环境变量覆盖）
+- [x] 添加数据库查询超时设置
 - [ ] 考虑对历史行情数据做分区表（按年份）
 
 ---
 
 ## 六、缓存策略
 
-- [ ] 为高频只读接口添加 Redis 缓存层：
-  - 股票列表 / 搜索结果（TTL 5-10 分钟）
+- [x] 为高频只读接口添加 Redis 缓存层：
+  - 股票列表（TTL 5 分钟）/ 搜索结果（TTL 10 分钟）
   - 股票详情总览（TTL 10 分钟）
-  - 交易日历（TTL 24 小时）
-  - 行业板块列表（TTL 1 小时）
-- [ ] 缓存失效机制：Tushare 同步完成后清除相关缓存
-- [ ] 添加缓存命中率监控
+  - 交易日历查询（TTL 24 小时）
+  - 行业 / 地域列表（TTL 1 小时）
+- [x] 缓存失效机制：Tushare 同步完成后清除相关缓存（含 legacy `market:*` / `factor:*` 前缀缓存）
+- [x] 添加缓存命中率监控（共享 CacheService 指标 + 超级管理员统计接口）
 
 ---
 
@@ -162,4 +158,4 @@
 
 ---
 
-*最后更新：2026-04-01*
+_最后更新：2026-04-01_

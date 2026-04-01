@@ -1,4 +1,6 @@
 import { Injectable } from '@nestjs/common'
+import { BusinessException } from 'src/common/exceptions/business.exception'
+import { ErrorEnum } from 'src/constant/response-code.constant'
 import { TushareSyncTaskName } from 'src/constant/tushare.constant'
 import { BasicSyncService } from './basic-sync.service'
 import { FactorDataSyncService } from './factor-data-sync.service'
@@ -32,9 +34,7 @@ export class TushareSyncRegistryService {
   }
 
   getPlansByTasks(tasks: TushareSyncTaskName[]): TushareSyncPlan[] {
-    return tasks
-      .map((task) => this.getPlan(task))
-      .filter((plan): plan is TushareSyncPlan => Boolean(plan))
+    return tasks.map((task) => this.getPlan(task)).filter((plan): plan is TushareSyncPlan => Boolean(plan))
   }
 
   getBootstrapPlans(): TushareSyncPlan[] {
@@ -61,7 +61,8 @@ export class TushareSyncRegistryService {
     const seen = new Set<TushareSyncTaskName>()
     for (const plan of plans) {
       if (seen.has(plan.task)) {
-        throw new Error(`Duplicate Tushare sync plan detected: ${plan.task}`)
+        const [code] = ErrorEnum.TUSHARE_SYNC_PLAN_DUPLICATE.split(':')
+        throw new BusinessException(`${code}:Tushare 同步任务注册重复: ${plan.task}`)
       }
       seen.add(plan.task)
     }

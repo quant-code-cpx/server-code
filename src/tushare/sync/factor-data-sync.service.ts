@@ -1,5 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common'
-import { FACTOR_UNIVERSE_INDEX_CODES, TushareSyncExecutionStatus, TushareSyncTaskName } from 'src/constant/tushare.constant'
+import { BusinessException } from 'src/common/exceptions/business.exception'
+import { ErrorEnum } from 'src/constant/response-code.constant'
+import {
+  FACTOR_UNIVERSE_INDEX_CODES,
+  TushareSyncExecutionStatus,
+  TushareSyncTaskName,
+} from 'src/constant/tushare.constant'
 import { FactorDataApiService } from '../api/factor-data-api.service'
 import { mapIndexWeightRecord, mapStkLimitRecord, mapSuspendDRecord } from '../tushare-sync.mapper'
 import { SyncHelperService } from './sync-helper.service'
@@ -195,7 +201,9 @@ export class FactorDataSyncService {
       return
     }
 
-    this.logger.log(`[${label}] 开始同步 ${tradeDates.length} 个交易日: ${tradeDates[0]} → ${tradeDates[tradeDates.length - 1]}`)
+    this.logger.log(
+      `[${label}] 开始同步 ${tradeDates.length} 个交易日: ${tradeDates[0]} → ${tradeDates[tradeDates.length - 1]}`,
+    )
 
     let totalRows = 0
     const failed: Array<{ date: string; error: string }> = []
@@ -225,14 +233,20 @@ export class FactorDataSyncService {
         status: TushareSyncExecutionStatus.SUCCESS,
         message: `${label}同步完成，${totalRows} 条，${failed.length} 个日期曾失败`,
         tradeDate: this.helper.toDate(tradeDates[tradeDates.length - 1]),
-        payload: { rowCount: totalRows, dateCount: tradeDates.length, ...(failed.length > 0 && { failedDates: failed }) },
+        payload: {
+          rowCount: totalRows,
+          dateCount: tradeDates.length,
+          ...(failed.length > 0 && { failedDates: failed }),
+        },
       },
       startedAt,
     )
   }
 
   private requireTradeDate(targetTradeDate?: string): string {
-    if (!targetTradeDate) throw new Error('targetTradeDate is required')
+    if (!targetTradeDate) {
+      throw new BusinessException(ErrorEnum.TUSHARE_TARGET_TRADE_DATE_REQUIRED)
+    }
     return targetTradeDate
   }
 }

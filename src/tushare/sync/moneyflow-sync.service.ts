@@ -1,5 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
+import { BusinessException } from 'src/common/exceptions/business.exception'
+import { ErrorEnum } from 'src/constant/response-code.constant'
 import {
   MoneyflowContentType,
   TUSHARE_MONEYFLOW_CONTENT_TYPES,
@@ -342,7 +344,7 @@ export class MoneyflowSyncService {
 
   private requireTradeDate(targetTradeDate?: string): string {
     if (!targetTradeDate) {
-      throw new Error('targetTradeDate is required for moneyflow sync plan')
+      throw new BusinessException(ErrorEnum.TUSHARE_TARGET_TRADE_DATE_REQUIRED)
     }
     return targetTradeDate
   }

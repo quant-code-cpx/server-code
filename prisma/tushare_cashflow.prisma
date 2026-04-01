@@ -102,6 +102,7 @@ model Cashflow {
   syncedAt                DateTime  @default(now()) @map("synced_at")
 
   @@index([tsCode, endDate(sort: Desc)])
+  @@index([tsCode, reportType, endDate(sort: Desc)])
   @@index([annDate])
   @@index([fAnnDate])
   @@map("cashflow_reports")

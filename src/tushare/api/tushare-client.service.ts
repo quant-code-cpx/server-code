@@ -1,5 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
+import { BusinessException } from 'src/common/exceptions/business.exception'
+import { ErrorEnum } from 'src/constant/response-code.constant'
 import { ITushareConfig, TUSHARE_CONFIG_TOKEN } from 'src/config/tushare.config'
 import { TushareRequestParams, TushareResponse } from '../tushare.interface'
 
@@ -38,7 +40,7 @@ export class TushareClient {
   constructor(private readonly configService: ConfigService) {
     const cfg = this.configService.get<ITushareConfig>(TUSHARE_CONFIG_TOKEN, { infer: true })
     if (!cfg) {
-      throw new Error(`Tushare config "${TUSHARE_CONFIG_TOKEN}" is not registered.`)
+      throw new BusinessException(ErrorEnum.TUSHARE_CONFIG_MISSING)
     }
     this.token = cfg.token
     this.baseUrl = cfg.baseUrl

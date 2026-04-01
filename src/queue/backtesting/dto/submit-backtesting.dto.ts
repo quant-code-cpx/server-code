@@ -20,7 +20,7 @@ export class SubmitBacktestingDto {
   @Min(1)
   initialCapital: number
 
-  @ApiPropertyOptional({ description: '策略参数' })
+  @ApiPropertyOptional({ description: '策略参数', type: 'object', additionalProperties: true })
   @IsOptional()
-  params?: Record<string, any>
+  params?: Record<string, unknown>
 }

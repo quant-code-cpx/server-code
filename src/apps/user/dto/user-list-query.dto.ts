@@ -1,4 +1,4 @@
-import { IsEnum, IsIn, IsInt, IsOptional, IsString, Max, Min } from 'class-validator'
+import { IsEnum, IsIn, IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator'
 import { ApiPropertyOptional } from '@nestjs/swagger'
 import { UserRole, UserStatus } from '@prisma/client'
 import { Type } from 'class-transformer'
@@ -11,6 +11,7 @@ export class UserListQueryDto {
   @Type(() => Number)
   @IsInt()
   @Min(1)
+  @Max(1000)
   @IsOptional()
   page: number = 1
 
@@ -24,6 +25,7 @@ export class UserListQueryDto {
 
   @ApiPropertyOptional({ description: '账号模糊搜索' })
   @IsString()
+  @MaxLength(64)
   @IsOptional()
   account?: string
 

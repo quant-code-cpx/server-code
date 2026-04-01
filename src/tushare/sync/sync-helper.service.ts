@@ -19,6 +19,10 @@ import {
   TushareSyncExecutionStatus,
   TushareSyncTaskName,
 } from 'src/constant/tushare.constant'
+import { CACHE_KEY_PREFIX, CACHE_NAMESPACE, CACHE_TTL_SECONDS } from 'src/constant/cache.constant'
+import { BusinessException } from 'src/common/exceptions/business.exception'
+import { ErrorEnum } from 'src/constant/response-code.constant'
+import { CacheService } from 'src/shared/cache.service'
 import { ITushareConfig, TUSHARE_CONFIG_TOKEN } from 'src/config/tushare.config'
 import { PrismaService } from 'src/shared/prisma.service'
 
@@ -49,10 +53,13 @@ export class SyncHelperService {
   constructor(
     prisma: PrismaService,
     private readonly configService: ConfigService,
+    private readonly cacheService: CacheService,
   ) {
     this.prisma = prisma
     const cfg = this.configService.get<ITushareConfig>(TUSHARE_CONFIG_TOKEN, { infer: true })
-    if (!cfg) throw new Error('TushareConfig is not registered.')
+    if (!cfg) {
+      throw new BusinessException(ErrorEnum.TUSHARE_CONFIG_MISSING)
+    }
     this.syncStartDate = cfg.syncStartDate
     this.syncTimeZone = cfg.syncTimeZone
   }
@@ -192,32 +199,48 @@ export class SyncHelperService {
   /** 获取区间内所有开市交易日（SSE，升序） */
   async getOpenTradeDatesBetween(startDate: string, endDate: string): Promise<string[]> {
     if (this.compareDateString(startDate, endDate) > 0) return []
-    const rows = await this.prisma.tradeCal.findMany({
-      where: {
-        exchange: PrismaStockExchange.SSE,
-        isOpen: '1',
-        calDate: { gte: this.toDate(startDate), lte: this.toDate(endDate) },
+
+    return this.cacheService.rememberJson({
+      namespace: CACHE_NAMESPACE.TRADE_CALENDAR,
+      key: this.cacheService.buildKey(CACHE_KEY_PREFIX.TRADE_CALENDAR_OPEN_RANGE, { startDate, endDate }),
+      ttlSeconds: CACHE_TTL_SECONDS.TRADE_CALENDAR,
+      loader: async () => {
+        const rows = await this.prisma.tradeCal.findMany({
+          where: {
+            exchange: PrismaStockExchange.SSE,
+            isOpen: '1',
+            calDate: { gte: this.toDate(startDate), lte: this.toDate(endDate) },
+          },
+          orderBy: { calDate: 'asc' },
+          select: { calDate: true },
+        })
+        return rows.map((r) => this.formatDate(r.calDate))
       },
-      orderBy: { calDate: 'asc' },
-      select: { calDate: true },
     })
-    return rows.map((r) => this.formatDate(r.calDate))
   }
 
   /** 获取最近 N 个开市交易日（SSE，升序） */
   async getRecentOpenTradeDates(endDate: string, limit: number): Promise<string[]> {
     if (limit <= 0) return []
-    const rows = await this.prisma.tradeCal.findMany({
-      where: {
-        exchange: PrismaStockExchange.SSE,
-        isOpen: '1',
-        calDate: { lte: this.toDate(endDate) },
+
+    return this.cacheService.rememberJson({
+      namespace: CACHE_NAMESPACE.TRADE_CALENDAR,
+      key: this.cacheService.buildKey(CACHE_KEY_PREFIX.TRADE_CALENDAR_RECENT_OPEN, { endDate, limit }),
+      ttlSeconds: CACHE_TTL_SECONDS.TRADE_CALENDAR,
+      loader: async () => {
+        const rows = await this.prisma.tradeCal.findMany({
+          where: {
+            exchange: PrismaStockExchange.SSE,
+            isOpen: '1',
+            calDate: { lte: this.toDate(endDate) },
+          },
+          orderBy: { calDate: 'desc' },
+          take: limit,
+          select: { calDate: true },
+        })
+        return rows.map((r) => this.formatDate(r.calDate)).reverse()
       },
-      orderBy: { calDate: 'desc' },
-      take: limit,
-      select: { calDate: true },
     })
-    return rows.map((r) => this.formatDate(r.calDate)).reverse()
   }
 
   /** 获取区间内每周/每月最后一个交易日 */
@@ -234,51 +257,67 @@ export class SyncHelperService {
 
   /** 解析最近一个已完成收盘的交易日（适用于盘后同步） */
   async resolveLatestCompletedTradeDate(): Promise<string | null> {
-    const now = this.getCurrentShanghaiNow()
-    const todayDate = now.format('YYYYMMDD')
-    const todaCal = await this.prisma.tradeCal.findUnique({
-      where: {
-        exchange_calDate: {
-          exchange: PrismaStockExchange.SSE,
-          calDate: this.toDate(todayDate),
-        },
+    const todayDate = this.getCurrentShanghaiDateString()
+    const passedCutoff = this.hasPassedSyncCutoff()
+
+    return this.cacheService.rememberJson({
+      namespace: CACHE_NAMESPACE.TRADE_CALENDAR,
+      key: this.cacheService.buildKey(CACHE_KEY_PREFIX.TRADE_CALENDAR_LATEST_COMPLETED, {
+        todayDate,
+        passedCutoff,
+      }),
+      ttlSeconds: CACHE_TTL_SECONDS.TRADE_CALENDAR,
+      loader: async () => {
+        const todaCal = await this.prisma.tradeCal.findUnique({
+          where: {
+            exchange_calDate: {
+              exchange: PrismaStockExchange.SSE,
+              calDate: this.toDate(todayDate),
+            },
+          },
+        })
+
+        if (todaCal?.isOpen === '1') {
+          if (passedCutoff) return todayDate
+          return todaCal.pretradeDate ? this.formatDate(todaCal.pretradeDate) : null
+        }
+
+        if (todaCal?.pretradeDate) return this.formatDate(todaCal.pretradeDate)
+
+        const latest = await this.prisma.tradeCal.findFirst({
+          where: {
+            exchange: PrismaStockExchange.SSE,
+            isOpen: '1',
+            calDate: { lte: this.toDate(todayDate) },
+          },
+          orderBy: { calDate: 'desc' },
+          select: { calDate: true },
+        })
+        return latest ? this.formatDate(latest.calDate) : null
       },
     })
-
-    if (todaCal?.isOpen === '1') {
-      const passedCutoff =
-        now.hour() > TUSHARE_SYNC_CUTOFF_HOUR ||
-        (now.hour() === TUSHARE_SYNC_CUTOFF_HOUR && now.minute() >= TUSHARE_SYNC_CUTOFF_MINUTE)
-      if (passedCutoff) return todayDate
-      return todaCal.pretradeDate ? this.formatDate(todaCal.pretradeDate) : null
-    }
-
-    if (todaCal?.pretradeDate) return this.formatDate(todaCal.pretradeDate)
-
-    const latest = await this.prisma.tradeCal.findFirst({
-      where: {
-        exchange: PrismaStockExchange.SSE,
-        isOpen: '1',
-        calDate: { lte: this.toDate(todayDate) },
-      },
-      orderBy: { calDate: 'desc' },
-      select: { calDate: true },
-    })
-    return latest ? this.formatDate(latest.calDate) : null
   }
 
   /** 今天是否为交易日 */
   async isTodayTradingDay(): Promise<boolean> {
     const todayDate = this.getCurrentShanghaiDateString()
-    const cal = await this.prisma.tradeCal.findUnique({
-      where: {
-        exchange_calDate: {
-          exchange: PrismaStockExchange.SSE,
-          calDate: this.toDate(todayDate),
-        },
+
+    return this.cacheService.rememberJson({
+      namespace: CACHE_NAMESPACE.TRADE_CALENDAR,
+      key: this.cacheService.buildKey(CACHE_KEY_PREFIX.TRADE_CALENDAR_IS_TODAY_TRADING, { todayDate }),
+      ttlSeconds: CACHE_TTL_SECONDS.TRADE_CALENDAR,
+      loader: async () => {
+        const cal = await this.prisma.tradeCal.findUnique({
+          where: {
+            exchange_calDate: {
+              exchange: PrismaStockExchange.SSE,
+              calDate: this.toDate(todayDate),
+            },
+          },
+        })
+        return cal?.isOpen === '1'
       },
     })
-    return cal?.isOpen === '1'
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -291,6 +330,13 @@ export class SyncHelperService {
 
   getCurrentShanghaiDateString(): string {
     return this.getCurrentShanghaiNow().format('YYYYMMDD')
+  }
+
+  private hasPassedSyncCutoff(now = this.getCurrentShanghaiNow()): boolean {
+    return (
+      now.hour() > TUSHARE_SYNC_CUTOFF_HOUR ||
+      (now.hour() === TUSHARE_SYNC_CUTOFF_HOUR && now.minute() >= TUSHARE_SYNC_CUTOFF_MINUTE)
+    )
   }
 
   getCurrentShanghaiDay(value: string) {

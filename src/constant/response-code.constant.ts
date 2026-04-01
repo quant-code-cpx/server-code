@@ -1,6 +1,9 @@
 export enum ErrorEnum {
   SERVER_ERROR = '500:服务繁忙，请稍后再试',
 
+  VALIDATION_ERROR = '9001:请求参数校验失败',
+  INVALID_DATE_RANGE = '9002:日期范围不合法',
+
   INVALID_USERNAME_PASSWORD = '1001:用户名或密码有误',
   ACCESS_TOKEN_EXPIRED = '1002:访问令牌已过期',
   REFRESH_TOKEN_EXPIRED = '1003:刷新令牌已过期',
@@ -21,6 +24,16 @@ export enum ErrorEnum {
   PASSWORD_TOO_SHORT = '2011:密码不能少于8位',
   SUPER_ADMIN_CANNOT_CHANGE_ROLE = '2012:超级管理员角色不可更改',
   CANNOT_OPERATE_SUPER_ADMIN = '2013:超级管理员账号不允许被编辑、禁用、重置密码或删除',
+
+  TUSHARE_CONFIG_MISSING = '3001:Tushare 配置缺失',
+  TUSHARE_API_ERROR = '3002:Tushare 接口调用失败',
+  TUSHARE_TARGET_TRADE_DATE_REQUIRED = '3003:Tushare 同步缺少目标交易日',
+  TUSHARE_SYNC_PLAN_DUPLICATE = '3004:Tushare 同步任务注册重复',
+
+  BACKTEST_INVALID_STRATEGY_CONFIG = '4001:回测策略配置不合法',
+  BACKTEST_NO_TRADING_DAYS = '4002:指定区间内无可用交易日',
+  BACKTEST_UNKNOWN_STRATEGY = '4003:未知的回测策略类型',
+  BACKTEST_UNKNOWN_JOB = '4004:未知的回测任务类型',
 }
 
 export const SUCCESS_CODE = 0

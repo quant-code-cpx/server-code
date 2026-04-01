@@ -64,3 +64,46 @@ export class ManualSyncResultDto {
   @ApiProperty()
   elapsedSeconds!: number
 }
+
+export class CacheNamespaceMetricsDto {
+  @ApiProperty()
+  namespace!: string
+
+  @ApiProperty()
+  keyCount!: number
+
+  @ApiProperty()
+  hits!: number
+
+  @ApiProperty()
+  misses!: number
+
+  @ApiProperty()
+  writes!: number
+
+  @ApiProperty()
+  invalidations!: number
+
+  @ApiPropertyOptional({ nullable: true, description: '命中率（%）' })
+  hitRate!: number | null
+
+  @ApiPropertyOptional({ nullable: true })
+  lastHitAt!: string | null
+
+  @ApiPropertyOptional({ nullable: true })
+  lastMissAt!: string | null
+
+  @ApiPropertyOptional({ nullable: true })
+  lastWriteAt!: string | null
+
+  @ApiPropertyOptional({ nullable: true })
+  lastInvalidatedAt!: string | null
+}
+
+export class CacheMetricsDataDto {
+  @ApiProperty({ description: '统计生成时间（ISO 字符串）' })
+  generatedAt!: string
+
+  @ApiProperty({ type: [CacheNamespaceMetricsDto] })
+  namespaces!: CacheNamespaceMetricsDto[]
+}

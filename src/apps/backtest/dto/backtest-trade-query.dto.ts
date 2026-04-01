@@ -7,6 +7,7 @@ export class BacktestTradeQueryDto {
   @IsOptional()
   @IsInt()
   @Min(1)
+  @Max(1000)
   @Type(() => Number)
   page?: number = 1
 

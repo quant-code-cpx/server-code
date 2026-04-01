@@ -1,22 +1,21 @@
 import { PrismaService } from 'src/shared/prisma.service'
-import { BacktestConfig, DailyBar, SignalOutput } from '../types/backtest-engine.types'
+import {
+  BacktestConfig,
+  CustomPoolRebalanceStrategyConfig,
+  DailyBar,
+  SignalOutput,
+} from '../types/backtest-engine.types'
 import { IBacktestStrategy } from './backtest-strategy.interface'
 
-interface CustomPoolRebalanceConfig {
-  tsCodes: string[]
-  weightMode: 'EQUAL' | 'CUSTOM'
-  customWeights?: Array<{ tsCode: string; weight: number }>
-}
-
-export class CustomPoolRebalanceStrategy implements IBacktestStrategy {
+export class CustomPoolRebalanceStrategy implements IBacktestStrategy<'CUSTOM_POOL_REBALANCE'> {
   async generateSignal(
     _signalDate: Date,
-    config: BacktestConfig,
+    config: BacktestConfig<'CUSTOM_POOL_REBALANCE'>,
     _barData: Map<string, DailyBar>,
     _historicalBars: Map<string, DailyBar[]>,
     _prisma: PrismaService,
   ): Promise<SignalOutput> {
-    const cfg = config.strategyConfig as unknown as CustomPoolRebalanceConfig
+    const cfg: CustomPoolRebalanceStrategyConfig = config.strategyConfig
     const { tsCodes = [], weightMode = 'EQUAL', customWeights = [] } = cfg
 
     if (tsCodes.length === 0) return { targets: [] }

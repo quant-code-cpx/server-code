@@ -1,9 +1,11 @@
-import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common'
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common'
 import { Prisma, ScreenerStrategy } from '@prisma/client'
 import * as dayjs from 'dayjs'
+import { BusinessException } from 'src/common/exceptions/business.exception'
+import { CACHE_KEY_PREFIX, CACHE_NAMESPACE, CACHE_TTL_SECONDS } from 'src/constant/cache.constant'
+import { ErrorEnum } from 'src/constant/response-code.constant'
+import { CacheService } from 'src/shared/cache.service'
 import { PrismaService } from 'src/shared/prisma.service'
-import { REDIS_CLIENT } from 'src/shared/redis.provider'
-import type { RedisClientType } from 'redis'
 import { FinancialSyncService } from 'src/tushare/sync/financial-sync.service'
 import { StockListQueryDto, StockSortBy } from './dto/stock-list-query.dto'
 import { StockSearchDto } from './dto/stock-search.dto'
@@ -134,6 +136,7 @@ const BUILT_IN_PRESETS: ScreenerPreset[] = [
 ]
 
 const MAX_SCREENER_STRATEGIES = 20
+const MAX_CHART_RANGE_DAYS = 3650
 
 // 交易所代码 → 中文名映射
 const EXCHANGE_LABEL: Record<string, string> = {
@@ -182,7 +185,7 @@ export class StockService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly financialSyncService: FinancialSyncService,
-    @Inject(REDIS_CLIENT) private readonly redis: RedisClientType,
+    private readonly cacheService: CacheService,
   ) {}
 
   // ─── 股票列表 ─────────────────────────────────────────────────────────────────
@@ -194,208 +197,242 @@ export class StockService {
     const sortBy = query.sortBy ?? StockSortBy.TOTAL_MV
     const sortOrder = query.sortOrder ?? 'desc'
 
-    const conditions: Prisma.Sql[] = []
+    return this.cacheService.rememberJson({
+      namespace: CACHE_NAMESPACE.STOCK_LIST,
+      key: this.cacheService.buildKey(CACHE_KEY_PREFIX.STOCK_LIST, {
+        ...query,
+        page,
+        pageSize,
+        sortBy,
+        sortOrder,
+      }),
+      ttlSeconds: CACHE_TTL_SECONDS.STOCK_LIST,
+      loader: async () => {
+        const conditions: Prisma.Sql[] = []
 
-    if (query.keyword) {
-      const kw = `%${query.keyword}%`
-      conditions.push(
-        Prisma.sql`(sb.ts_code ILIKE ${kw} OR sb.name ILIKE ${kw} OR sb.symbol ILIKE ${kw} OR sb.cnspell ILIKE ${kw})`,
-      )
-    }
+        if (query.keyword) {
+          const kw = `%${query.keyword}%`
+          conditions.push(
+            Prisma.sql`(sb.ts_code ILIKE ${kw} OR sb.name ILIKE ${kw} OR sb.symbol ILIKE ${kw} OR sb.cnspell ILIKE ${kw})`,
+          )
+        }
 
-    if (query.exchange) conditions.push(Prisma.sql`sb.exchange = ${query.exchange}::"StockExchange"`)
-    if (query.listStatus) conditions.push(Prisma.sql`sb.list_status = ${query.listStatus}::"StockListStatus"`)
-    if (query.industry) conditions.push(Prisma.sql`sb.industry ILIKE ${'%' + query.industry + '%'}`)
-    if (query.area) conditions.push(Prisma.sql`sb.area ILIKE ${'%' + query.area + '%'}`)
-    if (query.market) conditions.push(Prisma.sql`sb.market ILIKE ${'%' + query.market + '%'}`)
-    if (query.isHs) conditions.push(Prisma.sql`sb.is_hs = ${query.isHs}`)
-    if (query.minTotalMv !== undefined) conditions.push(Prisma.sql`db.total_mv >= ${query.minTotalMv}`)
-    if (query.maxTotalMv !== undefined) conditions.push(Prisma.sql`db.total_mv <= ${query.maxTotalMv}`)
-    if (query.maxPeTtm !== undefined) conditions.push(Prisma.sql`db.pe_ttm <= ${query.maxPeTtm}`)
-    if (query.minPb !== undefined) conditions.push(Prisma.sql`db.pb >= ${query.minPb}`)
-    if (query.maxPb !== undefined) conditions.push(Prisma.sql`db.pb <= ${query.maxPb}`)
-    if (query.minDvTtm !== undefined) conditions.push(Prisma.sql`db.dv_ttm >= ${query.minDvTtm}`)
-    if (query.minTurnoverRate !== undefined) conditions.push(Prisma.sql`db.turnover_rate >= ${query.minTurnoverRate}`)
-    if (query.maxTurnoverRate !== undefined) conditions.push(Prisma.sql`db.turnover_rate <= ${query.maxTurnoverRate}`)
-    if (query.minPctChg !== undefined) conditions.push(Prisma.sql`d.pct_chg >= ${query.minPctChg}`)
-    if (query.maxPctChg !== undefined) conditions.push(Prisma.sql`d.pct_chg <= ${query.maxPctChg}`)
-    if (query.minAmount !== undefined) conditions.push(Prisma.sql`d.amount >= ${query.minAmount}`)
-    if (query.maxAmount !== undefined) conditions.push(Prisma.sql`d.amount <= ${query.maxAmount}`)
+        if (query.exchange) conditions.push(Prisma.sql`sb.exchange = ${query.exchange}::"StockExchange"`)
+        if (query.listStatus) conditions.push(Prisma.sql`sb.list_status = ${query.listStatus}::"StockListStatus"`)
+        if (query.industry) conditions.push(Prisma.sql`sb.industry ILIKE ${'%' + query.industry + '%'}`)
+        if (query.area) conditions.push(Prisma.sql`sb.area ILIKE ${'%' + query.area + '%'}`)
+        if (query.market) conditions.push(Prisma.sql`sb.market ILIKE ${'%' + query.market + '%'}`)
+        if (query.isHs) conditions.push(Prisma.sql`sb.is_hs = ${query.isHs}`)
+        if (query.minTotalMv !== undefined) conditions.push(Prisma.sql`db.total_mv >= ${query.minTotalMv}`)
+        if (query.maxTotalMv !== undefined) conditions.push(Prisma.sql`db.total_mv <= ${query.maxTotalMv}`)
+        if (query.maxPeTtm !== undefined) conditions.push(Prisma.sql`db.pe_ttm <= ${query.maxPeTtm}`)
+        if (query.minPb !== undefined) conditions.push(Prisma.sql`db.pb >= ${query.minPb}`)
+        if (query.maxPb !== undefined) conditions.push(Prisma.sql`db.pb <= ${query.maxPb}`)
+        if (query.minDvTtm !== undefined) conditions.push(Prisma.sql`db.dv_ttm >= ${query.minDvTtm}`)
+        if (query.minTurnoverRate !== undefined)
+          conditions.push(Prisma.sql`db.turnover_rate >= ${query.minTurnoverRate}`)
+        if (query.maxTurnoverRate !== undefined)
+          conditions.push(Prisma.sql`db.turnover_rate <= ${query.maxTurnoverRate}`)
+        if (query.minPctChg !== undefined) conditions.push(Prisma.sql`d.pct_chg >= ${query.minPctChg}`)
+        if (query.maxPctChg !== undefined) conditions.push(Prisma.sql`d.pct_chg <= ${query.maxPctChg}`)
+        if (query.minAmount !== undefined) conditions.push(Prisma.sql`d.amount >= ${query.minAmount}`)
+        if (query.maxAmount !== undefined) conditions.push(Prisma.sql`d.amount <= ${query.maxAmount}`)
 
-    const whereClause = conditions.length > 0 ? Prisma.sql`WHERE ${Prisma.join(conditions, ' AND ')}` : Prisma.empty
-    const sortCol = Prisma.raw(SORT_COLUMN_MAP[sortBy])
-    const sortDir = Prisma.raw(sortOrder === 'asc' ? 'ASC NULLS LAST' : 'DESC NULLS LAST')
+        const whereClause = conditions.length > 0 ? Prisma.sql`WHERE ${Prisma.join(conditions, ' AND ')}` : Prisma.empty
+        const sortCol = Prisma.raw(SORT_COLUMN_MAP[sortBy])
+        const sortDir = Prisma.raw(sortOrder === 'asc' ? 'ASC NULLS LAST' : 'DESC NULLS LAST')
 
-    const requiresMetricJoinForCount =
-      query.minTotalMv !== undefined ||
-      query.maxTotalMv !== undefined ||
-      query.maxPeTtm !== undefined ||
-      query.minPb !== undefined ||
-      query.maxPb !== undefined ||
-      query.minDvTtm !== undefined ||
-      query.minTurnoverRate !== undefined ||
-      query.maxTurnoverRate !== undefined ||
-      query.minPctChg !== undefined ||
-      query.maxPctChg !== undefined ||
-      query.minAmount !== undefined ||
-      query.maxAmount !== undefined
+        const requiresMetricJoinForCount =
+          query.minTotalMv !== undefined ||
+          query.maxTotalMv !== undefined ||
+          query.maxPeTtm !== undefined ||
+          query.minPb !== undefined ||
+          query.maxPb !== undefined ||
+          query.minDvTtm !== undefined ||
+          query.minTurnoverRate !== undefined ||
+          query.maxTurnoverRate !== undefined ||
+          query.minPctChg !== undefined ||
+          query.maxPctChg !== undefined ||
+          query.minAmount !== undefined ||
+          query.maxAmount !== undefined
 
-    const countPromise = requiresMetricJoinForCount
-      ? this.prisma.$queryRaw<[{ count: bigint }]>`
-          SELECT COUNT(*)::bigint AS count
-          FROM stock_basic_profiles sb
-          LEFT JOIN LATERAL (
-            SELECT pe_ttm, pb, dv_ttm, total_mv, circ_mv, turnover_rate
-            FROM stock_daily_valuation_metrics WHERE ts_code = sb.ts_code ORDER BY trade_date DESC LIMIT 1
-          ) db ON true
-          LEFT JOIN LATERAL (
-            SELECT pct_chg, amount, close, vol
-            FROM stock_daily_prices WHERE ts_code = sb.ts_code ORDER BY trade_date DESC LIMIT 1
-          ) d ON true
-          ${whereClause}
-        `
-      : this.prisma.$queryRaw<[{ count: bigint }]>`
-          SELECT COUNT(*)::bigint AS count
-          FROM stock_basic_profiles sb
-          ${whereClause}
-        `
+        const countPromise = requiresMetricJoinForCount
+          ? this.prisma.$queryRaw<[{ count: bigint }]>`
+              SELECT COUNT(*)::bigint AS count
+              FROM stock_basic_profiles sb
+              LEFT JOIN LATERAL (
+                SELECT pe_ttm, pb, dv_ttm, total_mv, circ_mv, turnover_rate
+                FROM stock_daily_valuation_metrics WHERE ts_code = sb.ts_code ORDER BY trade_date DESC LIMIT 1
+              ) db ON true
+              LEFT JOIN LATERAL (
+                SELECT pct_chg, amount, close, vol
+                FROM stock_daily_prices WHERE ts_code = sb.ts_code ORDER BY trade_date DESC LIMIT 1
+              ) d ON true
+              ${whereClause}
+            `
+          : this.prisma.$queryRaw<[{ count: bigint }]>`
+              SELECT COUNT(*)::bigint AS count
+              FROM stock_basic_profiles sb
+              ${whereClause}
+            `
 
-    const [countResult, items] = await Promise.all([
-      countPromise,
-      this.prisma.$queryRaw<StockListRow[]>`
-        SELECT
-          sb.ts_code            AS "tsCode",   sb.symbol,    sb.name, sb.fullname,
-          sb.exchange::text     AS "exchange",  sb.curr_type AS "currType", sb.market,    sb.industry,
-          sb.area,              sb.list_status::text AS "listStatus",
-          sb.list_date          AS "listDate",  d.trade_date AS "latestTradeDate", sb.is_hs AS "isHs", sb.cnspell,
-          db.pe_ttm AS "peTtm", db.pb,          db.dv_ttm AS "dvTtm",
-          db.total_mv AS "totalMv", db.circ_mv AS "circMv", db.turnover_rate AS "turnoverRate",
-          d.pct_chg AS "pctChg", d.amount, d.close, d.vol
-        FROM stock_basic_profiles sb
-        LEFT JOIN LATERAL (
-          SELECT pe_ttm, pb, dv_ttm, total_mv, circ_mv, turnover_rate
-          FROM stock_daily_valuation_metrics WHERE ts_code = sb.ts_code ORDER BY trade_date DESC LIMIT 1
-        ) db ON true
-        LEFT JOIN LATERAL (
-          SELECT trade_date, pct_chg, amount, close, vol
-          FROM stock_daily_prices WHERE ts_code = sb.ts_code ORDER BY trade_date DESC LIMIT 1
-        ) d ON true
-        ${whereClause}
-        ORDER BY ${sortCol} ${sortDir}
-        LIMIT ${pageSize} OFFSET ${offset}
-      `,
-    ])
+        const [countResult, items] = await Promise.all([
+          countPromise,
+          this.prisma.$queryRaw<StockListRow[]>`
+            SELECT
+              sb.ts_code            AS "tsCode",   sb.symbol,    sb.name, sb.fullname,
+              sb.exchange::text     AS "exchange",  sb.curr_type AS "currType", sb.market,    sb.industry,
+              sb.area,              sb.list_status::text AS "listStatus",
+              sb.list_date          AS "listDate",  d.trade_date AS "latestTradeDate", sb.is_hs AS "isHs", sb.cnspell,
+              db.pe_ttm AS "peTtm", db.pb,          db.dv_ttm AS "dvTtm",
+              db.total_mv AS "totalMv", db.circ_mv AS "circMv", db.turnover_rate AS "turnoverRate",
+              d.pct_chg AS "pctChg", d.amount, d.close, d.vol
+            FROM stock_basic_profiles sb
+            LEFT JOIN LATERAL (
+              SELECT pe_ttm, pb, dv_ttm, total_mv, circ_mv, turnover_rate
+              FROM stock_daily_valuation_metrics WHERE ts_code = sb.ts_code ORDER BY trade_date DESC LIMIT 1
+            ) db ON true
+            LEFT JOIN LATERAL (
+              SELECT trade_date, pct_chg, amount, close, vol
+              FROM stock_daily_prices WHERE ts_code = sb.ts_code ORDER BY trade_date DESC LIMIT 1
+            ) d ON true
+            ${whereClause}
+            ORDER BY ${sortCol} ${sortDir}
+            LIMIT ${pageSize} OFFSET ${offset}
+          `,
+        ])
 
-    return { page, pageSize, total: Number(countResult[0]?.count ?? 0), items }
+        return { page, pageSize, total: Number(countResult[0]?.count ?? 0), items }
+      },
+    })
   }
 
   // ─── 股票搜索 ─────────────────────────────────────────────────────────────────
 
   async search({ keyword, limit = 10 }: StockSearchDto) {
-    return this.prisma.stockBasic.findMany({
-      where: {
-        listStatus: 'L' as any,
-        OR: [
-          { tsCode: { contains: keyword, mode: 'insensitive' } },
-          { name: { contains: keyword, mode: 'insensitive' } },
-          { symbol: { contains: keyword, mode: 'insensitive' } },
-          { cnspell: { contains: keyword, mode: 'insensitive' } },
-        ],
-      },
-      select: { tsCode: true, symbol: true, name: true, exchange: true, market: true, industry: true },
-      take: Math.min(limit, 20),
-      orderBy: { tsCode: 'asc' },
+    const normalizedKeyword = keyword.trim()
+    const safeLimit = Math.min(limit, 20)
+
+    return this.cacheService.rememberJson({
+      namespace: CACHE_NAMESPACE.STOCK_SEARCH,
+      key: this.cacheService.buildKey(CACHE_KEY_PREFIX.STOCK_SEARCH, {
+        keyword: normalizedKeyword,
+        limit: safeLimit,
+      }),
+      ttlSeconds: CACHE_TTL_SECONDS.STOCK_SEARCH,
+      loader: () =>
+        this.prisma.stockBasic.findMany({
+          where: {
+            listStatus: 'L' as any,
+            OR: [
+              { tsCode: { contains: normalizedKeyword, mode: 'insensitive' } },
+              { name: { contains: normalizedKeyword, mode: 'insensitive' } },
+              { symbol: { contains: normalizedKeyword, mode: 'insensitive' } },
+              { cnspell: { contains: normalizedKeyword, mode: 'insensitive' } },
+            ],
+          },
+          select: { tsCode: true, symbol: true, name: true, exchange: true, market: true, industry: true },
+          take: safeLimit,
+          orderBy: { tsCode: 'asc' },
+        }),
     })
   }
 
   // ─── 股票详情：总览 ───────────────────────────────────────────────────────────
 
   async getDetailOverview(tsCode: string) {
-    const [basic, company, latestDaily, latestValuation, latestExpress] = await Promise.all([
-      this.prisma.stockBasic.findUnique({ where: { tsCode } }),
-      this.prisma.stockCompany.findUnique({ where: { tsCode } }),
-      this.prisma.daily.findFirst({ where: { tsCode }, orderBy: { tradeDate: 'desc' } }),
-      this.prisma.dailyBasic.findFirst({ where: { tsCode }, orderBy: { tradeDate: 'desc' } }),
-      this.prisma.express.findFirst({ where: { tsCode }, orderBy: { annDate: 'desc' } }),
-    ])
+    return this.cacheService.rememberJson({
+      namespace: CACHE_NAMESPACE.STOCK_OVERVIEW,
+      key: this.cacheService.buildKey(CACHE_KEY_PREFIX.STOCK_OVERVIEW, { tsCode }),
+      ttlSeconds: CACHE_TTL_SECONDS.STOCK_OVERVIEW,
+      loader: async () => {
+        const [basic, company, latestDaily, latestValuation, latestExpress] = await Promise.all([
+          this.prisma.stockBasic.findUnique({ where: { tsCode } }),
+          this.prisma.stockCompany.findUnique({ where: { tsCode } }),
+          this.prisma.daily.findFirst({ where: { tsCode }, orderBy: { tradeDate: 'desc' } }),
+          this.prisma.dailyBasic.findFirst({ where: { tsCode }, orderBy: { tradeDate: 'desc' } }),
+          this.prisma.express.findFirst({ where: { tsCode }, orderBy: { annDate: 'desc' } }),
+        ])
 
-    if (!basic) return null
+        if (!basic) return null
 
-    return {
-      basic: {
-        tsCode: basic.tsCode,
-        symbol: basic.symbol,
-        name: basic.name,
-        exchange: EXCHANGE_LABEL[basic.exchange as string] ?? basic.exchange,
-        industry: basic.industry,
-        market: basic.market,
-        area: basic.area,
-        listStatus: basic.listStatus,
-        listDate: basic.listDate,
-        isHs: basic.isHs,
+        return {
+          basic: {
+            tsCode: basic.tsCode,
+            symbol: basic.symbol,
+            name: basic.name,
+            exchange: EXCHANGE_LABEL[basic.exchange as string] ?? basic.exchange,
+            industry: basic.industry,
+            market: basic.market,
+            area: basic.area,
+            listStatus: basic.listStatus,
+            listDate: basic.listDate,
+            isHs: basic.isHs,
+          },
+          company: company
+            ? {
+                chairman: company.chairman,
+                manager: company.manager,
+                mainBusiness: company.mainBusiness,
+                introduction: company.introduction,
+                province: company.province,
+                city: company.city,
+                website: company.website,
+                employees: company.employees,
+                regCapital: company.regCapital,
+              }
+            : null,
+          latestQuote: latestDaily
+            ? {
+                tradeDate: latestDaily.tradeDate,
+                open: latestDaily.open,
+                high: latestDaily.high,
+                low: latestDaily.low,
+                close: latestDaily.close,
+                preClose: latestDaily.preClose,
+                change: latestDaily.change,
+                pctChg: latestDaily.pctChg,
+                vol: latestDaily.vol,
+                amount: latestDaily.amount,
+              }
+            : null,
+          latestValuation: latestValuation
+            ? {
+                tradeDate: latestValuation.tradeDate,
+                turnoverRate: latestValuation.turnoverRate,
+                turnoverRateF: latestValuation.turnoverRateF,
+                volumeRatio: latestValuation.volumeRatio,
+                pe: latestValuation.pe,
+                peTtm: latestValuation.peTtm,
+                pb: latestValuation.pb,
+                ps: latestValuation.ps,
+                psTtm: latestValuation.psTtm,
+                dvRatio: latestValuation.dvRatio,
+                dvTtm: latestValuation.dvTtm,
+                totalShare: latestValuation.totalShare,
+                floatShare: latestValuation.floatShare,
+                freeShare: latestValuation.freeShare,
+                totalMv: latestValuation.totalMv,
+                circMv: latestValuation.circMv,
+                limitStatus: latestValuation.limitStatus,
+              }
+            : null,
+          latestExpress: latestExpress
+            ? {
+                annDate: latestExpress.annDate,
+                endDate: latestExpress.endDate,
+                revenue: latestExpress.revenue,
+                nIncome: latestExpress.nIncome,
+                totalAssets: latestExpress.totalAssets,
+                dilutedEps: latestExpress.dilutedEps,
+                dilutedRoe: latestExpress.dilutedRoe,
+                yoyNetProfit: latestExpress.yoyNetProfit,
+                yoySales: latestExpress.yoySales,
+              }
+            : null,
+        }
       },
-      company: company
-        ? {
-            chairman: company.chairman,
-            manager: company.manager,
-            mainBusiness: company.mainBusiness,
-            introduction: company.introduction,
-            province: company.province,
-            city: company.city,
-            website: company.website,
-            employees: company.employees,
-            regCapital: company.regCapital,
-          }
-        : null,
-      latestQuote: latestDaily
-        ? {
-            tradeDate: latestDaily.tradeDate,
-            open: latestDaily.open,
-            high: latestDaily.high,
-            low: latestDaily.low,
-            close: latestDaily.close,
-            preClose: latestDaily.preClose,
-            change: latestDaily.change,
-            pctChg: latestDaily.pctChg,
-            vol: latestDaily.vol,
-            amount: latestDaily.amount,
-          }
-        : null,
-      latestValuation: latestValuation
-        ? {
-            tradeDate: latestValuation.tradeDate,
-            turnoverRate: latestValuation.turnoverRate,
-            turnoverRateF: latestValuation.turnoverRateF,
-            volumeRatio: latestValuation.volumeRatio,
-            pe: latestValuation.pe,
-            peTtm: latestValuation.peTtm,
-            pb: latestValuation.pb,
-            ps: latestValuation.ps,
-            psTtm: latestValuation.psTtm,
-            dvRatio: latestValuation.dvRatio,
-            dvTtm: latestValuation.dvTtm,
-            totalShare: latestValuation.totalShare,
-            floatShare: latestValuation.floatShare,
-            freeShare: latestValuation.freeShare,
-            totalMv: latestValuation.totalMv,
-            circMv: latestValuation.circMv,
-            limitStatus: latestValuation.limitStatus,
-          }
-        : null,
-      latestExpress: latestExpress
-        ? {
-            annDate: latestExpress.annDate,
-            endDate: latestExpress.endDate,
-            revenue: latestExpress.revenue,
-            nIncome: latestExpress.nIncome,
-            totalAssets: latestExpress.totalAssets,
-            dilutedEps: latestExpress.dilutedEps,
-            dilutedRoe: latestExpress.dilutedRoe,
-            yoyNetProfit: latestExpress.yoyNetProfit,
-            yoySales: latestExpress.yoySales,
-          }
-        : null,
-    }
+    })
   }
 
   // ─── 股票详情：K 线图 ────────────────────────────────────────────────────────
@@ -427,7 +464,7 @@ export class StockService {
 
     if (dto.limit) {
       // 分页模式：按 tradeDate 倒序取最新 N 条，再翻转为升序供 MA 计算
-      const cutoff = dto.endDate ? dayjs(dto.endDate, 'YYYYMMDD').toDate() : new Date()
+      const cutoff = dto.endDate ? this.parseCompactDate(dto.endDate, 'endDate') : new Date()
       const lim = dto.limit
       rows = (
         await this.prisma.$queryRaw<ChartRow[]>`
@@ -447,11 +484,7 @@ export class StockService {
       ).reverse()
     } else {
       // 范围模式：指定起止日期（默认最近 2 年/5 年）
-      const defaultDays = period === ChartPeriod.DAILY ? 730 : 1825
-      const startDate = dto.startDate
-        ? dayjs(dto.startDate, 'YYYYMMDD').toDate()
-        : dayjs().subtract(defaultDays, 'day').toDate()
-      const endDate = dto.endDate ? dayjs(dto.endDate, 'YYYYMMDD').toDate() : new Date()
+      const { startDate, endDate } = this.resolveChartDateRange(dto, period)
       rows = await this.prisma.$queryRaw<ChartRow[]>`
         SELECT
           t.trade_date  AS "tradeDate",
@@ -511,11 +544,14 @@ export class StockService {
 
     // 判断是否还有更早的历史数据
     const oldestDate = rows[0].tradeDate
-    const earlierCheck = await this.prisma.$queryRaw<[{ count: bigint }]>`
-      SELECT COUNT(*)::bigint AS count FROM ${tableName}
-      WHERE ts_code = ${tsCode} AND trade_date < ${oldestDate}
+    const earlierCheck = await this.prisma.$queryRaw<Array<{ hasMore: boolean }>>`
+      SELECT EXISTS(
+        SELECT 1
+        FROM ${tableName}
+        WHERE ts_code = ${tsCode} AND trade_date < ${oldestDate}
+      ) AS "hasMore"
     `
-    const hasMore = Number(earlierCheck[0]?.count ?? 0) > 0
+    const hasMore = Boolean(earlierCheck[0]?.hasMore)
 
     return { tsCode, period, adjustType, hasMore, items: seriesWithMa }
   }
@@ -870,34 +906,29 @@ export class StockService {
           }
         : null
 
-    // 取年末快照（每年最后一个交易日），最多返回最近 10 年，用于展示股本结构历史变化
-    const allRecords = await this.prisma.dailyBasic.findMany({
-      where: { tsCode },
-      orderBy: { tradeDate: 'desc' },
-      select: { tradeDate: true, totalShare: true, floatShare: true },
-    })
-
-    // 按年分组，保留每年最后一个交易日记录
-    const yearEndSnapshots = new Map<
-      number,
-      { tradeDate: Date; totalShare: number | null; floatShare: number | null }
-    >()
-    for (const r of allRecords) {
-      const year = r.tradeDate.getFullYear()
-      if (!yearEndSnapshots.has(year)) {
-        yearEndSnapshots.set(year, r)
-      }
+    interface ShareCapitalHistoryRow {
+      tradeDate: Date
+      totalShare: number | null
+      floatShare: number | null
     }
 
-    const history = [...yearEndSnapshots.values()]
-      .sort((a, b) => b.tradeDate.getTime() - a.tradeDate.getTime())
-      .slice(0, 10)
-      .map((r) => ({
-        changeDate: r.tradeDate,
-        totalShare: r.totalShare,
-        floatShare: r.floatShare,
-        changeReason: '定期披露',
-      }))
+    const historyRows = await this.prisma.$queryRaw<ShareCapitalHistoryRow[]>`
+      SELECT DISTINCT ON (EXTRACT(YEAR FROM trade_date))
+        trade_date AS "tradeDate",
+        total_share AS "totalShare",
+        float_share AS "floatShare"
+      FROM stock_daily_valuation_metrics
+      WHERE ts_code = ${tsCode}
+      ORDER BY EXTRACT(YEAR FROM trade_date) DESC, trade_date DESC
+      LIMIT 10
+    `
+
+    const history = historyRows.map((r) => ({
+      changeDate: r.tradeDate,
+      totalShare: r.totalShare,
+      floatShare: r.floatShare,
+      changeReason: '定期披露',
+    }))
 
     return { tsCode, latest, history }
   }
@@ -966,93 +997,144 @@ export class StockService {
     const sortBy = query.sortBy ?? ScreenerSortBy.TOTAL_MV
     const sortOrder = query.sortOrder ?? 'desc'
 
-    // 构建 WHERE 条件
-    const conditions: Prisma.Sql[] = [Prisma.sql`sb.list_status = 'L'`]
+    const stockConditions: Prisma.Sql[] = [Prisma.sql`sb.list_status = 'L'`]
+    const valuationConditions: Prisma.Sql[] = []
+    const marketConditions: Prisma.Sql[] = []
+    const financialConditions: Prisma.Sql[] = []
+    const moneyflowConditions: Prisma.Sql[] = []
 
-    if (query.exchange) conditions.push(Prisma.sql`sb.exchange = ${query.exchange}::"StockExchange"`)
-    if (query.market) conditions.push(Prisma.sql`sb.market = ${query.market}`)
-    if (query.industry) conditions.push(Prisma.sql`sb.industry = ${query.industry}`)
-    if (query.area) conditions.push(Prisma.sql`sb.area = ${query.area}`)
-    if (query.isHs) conditions.push(Prisma.sql`sb.is_hs = ${query.isHs}`)
+    if (query.exchange) stockConditions.push(Prisma.sql`sb.exchange = ${query.exchange}::"StockExchange"`)
+    if (query.market) stockConditions.push(Prisma.sql`sb.market = ${query.market}`)
+    if (query.industry) stockConditions.push(Prisma.sql`sb.industry = ${query.industry}`)
+    if (query.area) stockConditions.push(Prisma.sql`sb.area = ${query.area}`)
+    if (query.isHs) stockConditions.push(Prisma.sql`sb.is_hs = ${query.isHs}`)
 
     // 估值
-    if (query.minPeTtm !== undefined) conditions.push(Prisma.sql`db.pe_ttm >= ${query.minPeTtm}`)
-    if (query.maxPeTtm !== undefined) conditions.push(Prisma.sql`db.pe_ttm <= ${query.maxPeTtm}`)
-    if (query.minPb !== undefined) conditions.push(Prisma.sql`db.pb >= ${query.minPb}`)
-    if (query.maxPb !== undefined) conditions.push(Prisma.sql`db.pb <= ${query.maxPb}`)
-    if (query.minDvTtm !== undefined) conditions.push(Prisma.sql`db.dv_ttm >= ${query.minDvTtm}`)
-    if (query.minTotalMv !== undefined) conditions.push(Prisma.sql`db.total_mv >= ${query.minTotalMv}`)
-    if (query.maxTotalMv !== undefined) conditions.push(Prisma.sql`db.total_mv <= ${query.maxTotalMv}`)
-    if (query.minCircMv !== undefined) conditions.push(Prisma.sql`db.circ_mv >= ${query.minCircMv}`)
-    if (query.maxCircMv !== undefined) conditions.push(Prisma.sql`db.circ_mv <= ${query.maxCircMv}`)
-    if (query.minTurnoverRate !== undefined) conditions.push(Prisma.sql`db.turnover_rate >= ${query.minTurnoverRate}`)
-    if (query.maxTurnoverRate !== undefined) conditions.push(Prisma.sql`db.turnover_rate <= ${query.maxTurnoverRate}`)
+    if (query.minPeTtm !== undefined) valuationConditions.push(Prisma.sql`db.pe_ttm >= ${query.minPeTtm}`)
+    if (query.maxPeTtm !== undefined) valuationConditions.push(Prisma.sql`db.pe_ttm <= ${query.maxPeTtm}`)
+    if (query.minPb !== undefined) valuationConditions.push(Prisma.sql`db.pb >= ${query.minPb}`)
+    if (query.maxPb !== undefined) valuationConditions.push(Prisma.sql`db.pb <= ${query.maxPb}`)
+    if (query.minDvTtm !== undefined) valuationConditions.push(Prisma.sql`db.dv_ttm >= ${query.minDvTtm}`)
+    if (query.minTotalMv !== undefined) valuationConditions.push(Prisma.sql`db.total_mv >= ${query.minTotalMv}`)
+    if (query.maxTotalMv !== undefined) valuationConditions.push(Prisma.sql`db.total_mv <= ${query.maxTotalMv}`)
+    if (query.minCircMv !== undefined) valuationConditions.push(Prisma.sql`db.circ_mv >= ${query.minCircMv}`)
+    if (query.maxCircMv !== undefined) valuationConditions.push(Prisma.sql`db.circ_mv <= ${query.maxCircMv}`)
+    if (query.minTurnoverRate !== undefined)
+      valuationConditions.push(Prisma.sql`db.turnover_rate >= ${query.minTurnoverRate}`)
+    if (query.maxTurnoverRate !== undefined)
+      valuationConditions.push(Prisma.sql`db.turnover_rate <= ${query.maxTurnoverRate}`)
 
     // 行情
-    if (query.minPctChg !== undefined) conditions.push(Prisma.sql`d.pct_chg >= ${query.minPctChg}`)
-    if (query.maxPctChg !== undefined) conditions.push(Prisma.sql`d.pct_chg <= ${query.maxPctChg}`)
-    if (query.minAmount !== undefined) conditions.push(Prisma.sql`d.amount >= ${query.minAmount}`)
-    if (query.maxAmount !== undefined) conditions.push(Prisma.sql`d.amount <= ${query.maxAmount}`)
+    if (query.minPctChg !== undefined) marketConditions.push(Prisma.sql`d.pct_chg >= ${query.minPctChg}`)
+    if (query.maxPctChg !== undefined) marketConditions.push(Prisma.sql`d.pct_chg <= ${query.maxPctChg}`)
+    if (query.minAmount !== undefined) marketConditions.push(Prisma.sql`d.amount >= ${query.minAmount}`)
+    if (query.maxAmount !== undefined) marketConditions.push(Prisma.sql`d.amount <= ${query.maxAmount}`)
 
     // 成长
-    if (query.minRevenueYoy !== undefined) conditions.push(Prisma.sql`fi.revenue_yoy >= ${query.minRevenueYoy}`)
-    if (query.maxRevenueYoy !== undefined) conditions.push(Prisma.sql`fi.revenue_yoy <= ${query.maxRevenueYoy}`)
-    if (query.minNetprofitYoy !== undefined) conditions.push(Prisma.sql`fi.netprofit_yoy >= ${query.minNetprofitYoy}`)
-    if (query.maxNetprofitYoy !== undefined) conditions.push(Prisma.sql`fi.netprofit_yoy <= ${query.maxNetprofitYoy}`)
+    if (query.minRevenueYoy !== undefined)
+      financialConditions.push(Prisma.sql`fi.revenue_yoy >= ${query.minRevenueYoy}`)
+    if (query.maxRevenueYoy !== undefined)
+      financialConditions.push(Prisma.sql`fi.revenue_yoy <= ${query.maxRevenueYoy}`)
+    if (query.minNetprofitYoy !== undefined)
+      financialConditions.push(Prisma.sql`fi.netprofit_yoy >= ${query.minNetprofitYoy}`)
+    if (query.maxNetprofitYoy !== undefined)
+      financialConditions.push(Prisma.sql`fi.netprofit_yoy <= ${query.maxNetprofitYoy}`)
 
     // 盈利
-    if (query.minRoe !== undefined) conditions.push(Prisma.sql`fi.roe >= ${query.minRoe}`)
-    if (query.maxRoe !== undefined) conditions.push(Prisma.sql`fi.roe <= ${query.maxRoe}`)
+    if (query.minRoe !== undefined) financialConditions.push(Prisma.sql`fi.roe >= ${query.minRoe}`)
+    if (query.maxRoe !== undefined) financialConditions.push(Prisma.sql`fi.roe <= ${query.maxRoe}`)
     if (query.minGrossMargin !== undefined)
-      conditions.push(Prisma.sql`fi.grossprofit_margin >= ${query.minGrossMargin}`)
+      financialConditions.push(Prisma.sql`fi.grossprofit_margin >= ${query.minGrossMargin}`)
     if (query.maxGrossMargin !== undefined)
-      conditions.push(Prisma.sql`fi.grossprofit_margin <= ${query.maxGrossMargin}`)
-    if (query.minNetMargin !== undefined) conditions.push(Prisma.sql`fi.netprofit_margin >= ${query.minNetMargin}`)
-    if (query.maxNetMargin !== undefined) conditions.push(Prisma.sql`fi.netprofit_margin <= ${query.maxNetMargin}`)
+      financialConditions.push(Prisma.sql`fi.grossprofit_margin <= ${query.maxGrossMargin}`)
+    if (query.minNetMargin !== undefined)
+      financialConditions.push(Prisma.sql`fi.netprofit_margin >= ${query.minNetMargin}`)
+    if (query.maxNetMargin !== undefined)
+      financialConditions.push(Prisma.sql`fi.netprofit_margin <= ${query.maxNetMargin}`)
 
     // 财务健康
-    if (query.maxDebtToAssets !== undefined) conditions.push(Prisma.sql`fi.debt_to_assets <= ${query.maxDebtToAssets}`)
-    if (query.minCurrentRatio !== undefined) conditions.push(Prisma.sql`fi.current_ratio >= ${query.minCurrentRatio}`)
-    if (query.minQuickRatio !== undefined) conditions.push(Prisma.sql`fi.quick_ratio >= ${query.minQuickRatio}`)
+    if (query.maxDebtToAssets !== undefined)
+      financialConditions.push(Prisma.sql`fi.debt_to_assets <= ${query.maxDebtToAssets}`)
+    if (query.minCurrentRatio !== undefined)
+      financialConditions.push(Prisma.sql`fi.current_ratio >= ${query.minCurrentRatio}`)
+    if (query.minQuickRatio !== undefined)
+      financialConditions.push(Prisma.sql`fi.quick_ratio >= ${query.minQuickRatio}`)
 
     // 现金流
-    if (query.minOcfToNetprofit !== undefined)
-      conditions.push(Prisma.sql`fi.ocf_to_netprofit >= ${query.minOcfToNetprofit}`)
+    if (query.minOcfToNetprofit !== undefined) {
+      financialConditions.push(Prisma.sql`fi.ocf_to_netprofit >= ${query.minOcfToNetprofit}`)
+    }
 
     // 资金流
-    if (query.minMainNetInflow5d !== undefined)
-      conditions.push(Prisma.sql`mf_agg.main_net_5d >= ${query.minMainNetInflow5d}`)
-    if (query.minMainNetInflow20d !== undefined)
-      conditions.push(Prisma.sql`mf_agg.main_net_20d >= ${query.minMainNetInflow20d}`)
+    if (query.minMainNetInflow5d !== undefined) {
+      moneyflowConditions.push(Prisma.sql`mf_agg.main_net_5d >= ${query.minMainNetInflow5d}`)
+    }
+    if (query.minMainNetInflow20d !== undefined) {
+      moneyflowConditions.push(Prisma.sql`mf_agg.main_net_20d >= ${query.minMainNetInflow20d}`)
+    }
 
-    const whereClause = Prisma.sql`WHERE ${Prisma.join(conditions, ' AND ')}`
+    const whereClause = Prisma.sql`WHERE ${Prisma.join(
+      [...stockConditions, ...valuationConditions, ...marketConditions, ...financialConditions, ...moneyflowConditions],
+      ' AND ',
+    )}`
     const sortCol = Prisma.raw(SCREENER_SORT_MAP[sortBy])
     const sortDir = Prisma.raw(sortOrder === 'asc' ? 'ASC NULLS LAST' : 'DESC NULLS LAST')
 
+    const valuationJoin = Prisma.sql`
+      LEFT JOIN LATERAL (
+        SELECT pe_ttm, pb, dv_ttm, total_mv, circ_mv, turnover_rate
+        FROM stock_daily_valuation_metrics
+        WHERE ts_code = sb.ts_code
+        ORDER BY trade_date DESC LIMIT 1
+      ) db ON true`
+
+    const marketJoin = Prisma.sql`
+      LEFT JOIN LATERAL (
+        SELECT trade_date, close, pct_chg, amount, vol
+        FROM stock_daily_prices
+        WHERE ts_code = sb.ts_code
+        ORDER BY trade_date DESC LIMIT 1
+      ) d ON true`
+
+    const financialJoin = Prisma.sql`
+      LEFT JOIN LATERAL (
+        SELECT end_date, roe, grossprofit_margin, netprofit_margin,
+               revenue_yoy, netprofit_yoy, debt_to_assets,
+               current_ratio, quick_ratio, ocf_to_netprofit
+        FROM financial_indicator_snapshots
+        WHERE ts_code = sb.ts_code
+        ORDER BY end_date DESC LIMIT 1
+      ) fi ON true`
+
+    const moneyflowAggregateJoin = Prisma.sql`
+      LEFT JOIN LATERAL (
+        SELECT
+          SUM(CASE WHEN rn <= 5 THEN
+            (COALESCE(buy_elg_amount, 0) - COALESCE(sell_elg_amount, 0)
+             + COALESCE(buy_lg_amount, 0) - COALESCE(sell_lg_amount, 0))
+          ELSE 0 END) AS main_net_5d,
+          SUM(CASE WHEN rn <= 20 THEN
+            (COALESCE(buy_elg_amount, 0) - COALESCE(sell_elg_amount, 0)
+             + COALESCE(buy_lg_amount, 0) - COALESCE(sell_lg_amount, 0))
+          ELSE 0 END) AS main_net_20d
+        FROM (
+          SELECT *, ROW_NUMBER() OVER (ORDER BY trade_date DESC) AS rn
+          FROM stock_capital_flows
+          WHERE ts_code = sb.ts_code
+        ) sub
+        WHERE rn <= 20
+      ) mf_agg ON true`
+
     // 资金流 JOIN 按需拼接（聚合查询开销较高）
     const moneyflowJoin =
-      query.minMainNetInflow5d !== undefined ||
-      query.minMainNetInflow20d !== undefined ||
-      sortBy === ScreenerSortBy.MAIN_NET_INFLOW_5D
-        ? Prisma.sql`
-        LEFT JOIN LATERAL (
-          SELECT
-            SUM(CASE WHEN rn <= 5 THEN
-              (COALESCE(buy_elg_amount, 0) - COALESCE(sell_elg_amount, 0)
-               + COALESCE(buy_lg_amount, 0) - COALESCE(sell_lg_amount, 0))
-            ELSE 0 END) AS main_net_5d,
-            SUM(CASE WHEN rn <= 20 THEN
-              (COALESCE(buy_elg_amount, 0) - COALESCE(sell_elg_amount, 0)
-               + COALESCE(buy_lg_amount, 0) - COALESCE(sell_lg_amount, 0))
-            ELSE 0 END) AS main_net_20d
-          FROM (
-            SELECT *, ROW_NUMBER() OVER (ORDER BY trade_date DESC) AS rn
-            FROM stock_capital_flows
-            WHERE ts_code = sb.ts_code
-          ) sub
-          WHERE rn <= 20
-        ) mf_agg ON true`
+      moneyflowConditions.length > 0 || sortBy === ScreenerSortBy.MAIN_NET_INFLOW_5D
+        ? moneyflowAggregateJoin
         : Prisma.sql`LEFT JOIN LATERAL (SELECT NULL::numeric AS main_net_5d, NULL::numeric AS main_net_20d) mf_agg ON true`
+
+    const countValuationJoin = valuationConditions.length > 0 ? valuationJoin : Prisma.empty
+    const countMarketJoin = marketConditions.length > 0 ? marketJoin : Prisma.empty
+    const countFinancialJoin = financialConditions.length > 0 ? financialJoin : Prisma.empty
+    const countMoneyflowJoin = moneyflowConditions.length > 0 ? moneyflowAggregateJoin : Prisma.empty
 
     interface ScreenerRow {
       tsCode: string
@@ -1087,27 +1169,10 @@ export class StockService {
       this.prisma.$queryRaw<[{ count: bigint }]>`
         SELECT COUNT(*)::bigint AS count
         FROM stock_basic_profiles sb
-        LEFT JOIN LATERAL (
-          SELECT pe_ttm, pb, dv_ttm, total_mv, circ_mv, turnover_rate
-          FROM stock_daily_valuation_metrics
-          WHERE ts_code = sb.ts_code
-          ORDER BY trade_date DESC LIMIT 1
-        ) db ON true
-        LEFT JOIN LATERAL (
-          SELECT trade_date, close, pct_chg, amount, vol
-          FROM stock_daily_prices
-          WHERE ts_code = sb.ts_code
-          ORDER BY trade_date DESC LIMIT 1
-        ) d ON true
-        LEFT JOIN LATERAL (
-          SELECT end_date, roe, grossprofit_margin, netprofit_margin,
-                 revenue_yoy, netprofit_yoy, debt_to_assets,
-                 current_ratio, quick_ratio, ocf_to_netprofit
-          FROM financial_indicator_snapshots
-          WHERE ts_code = sb.ts_code
-          ORDER BY end_date DESC LIMIT 1
-        ) fi ON true
-        ${moneyflowJoin}
+        ${countValuationJoin}
+        ${countMarketJoin}
+        ${countFinancialJoin}
+        ${countMoneyflowJoin}
         ${whereClause}
       `,
       this.prisma.$queryRaw<ScreenerRow[]>`
@@ -1139,26 +1204,9 @@ export class StockService {
           mf_agg.main_net_5d    AS "mainNetInflow5d",
           mf_agg.main_net_20d   AS "mainNetInflow20d"
         FROM stock_basic_profiles sb
-        LEFT JOIN LATERAL (
-          SELECT pe_ttm, pb, dv_ttm, total_mv, circ_mv, turnover_rate
-          FROM stock_daily_valuation_metrics
-          WHERE ts_code = sb.ts_code
-          ORDER BY trade_date DESC LIMIT 1
-        ) db ON true
-        LEFT JOIN LATERAL (
-          SELECT trade_date, close, pct_chg, amount, vol
-          FROM stock_daily_prices
-          WHERE ts_code = sb.ts_code
-          ORDER BY trade_date DESC LIMIT 1
-        ) d ON true
-        LEFT JOIN LATERAL (
-          SELECT end_date, roe, grossprofit_margin, netprofit_margin,
-                 revenue_yoy, netprofit_yoy, debt_to_assets,
-                 current_ratio, quick_ratio, ocf_to_netprofit
-          FROM financial_indicator_snapshots
-          WHERE ts_code = sb.ts_code
-          ORDER BY end_date DESC LIMIT 1
-        ) fi ON true
+        ${valuationJoin}
+        ${marketJoin}
+        ${financialJoin}
         ${moneyflowJoin}
         ${whereClause}
         ORDER BY ${sortCol} ${sortDir}
@@ -1203,55 +1251,53 @@ export class StockService {
   // ─── 行业列表 ─────────────────────────────────────────────────────────────────
 
   async getIndustries() {
-    const cacheKey = 'stock:industries'
-    const cached = await this.redis.get(cacheKey)
-    if (cached) {
-      return JSON.parse(cached) as { industries: { name: string; count: number }[] }
-    }
+    return this.cacheService.rememberJson({
+      namespace: CACHE_NAMESPACE.STOCK_METADATA,
+      key: CACHE_KEY_PREFIX.STOCK_INDUSTRIES,
+      ttlSeconds: CACHE_TTL_SECONDS.STOCK_METADATA,
+      loader: async () => {
+        interface IndustryRow {
+          name: string
+          count: bigint
+        }
 
-    interface IndustryRow {
-      name: string
-      count: bigint
-    }
+        const rows = await this.prisma.$queryRaw<IndustryRow[]>`
+          SELECT industry AS name, COUNT(*)::bigint AS count
+          FROM stock_basic_profiles
+          WHERE list_status = 'L' AND industry IS NOT NULL AND industry != ''
+          GROUP BY industry
+          ORDER BY count DESC
+        `
 
-    const rows = await this.prisma.$queryRaw<IndustryRow[]>`
-      SELECT industry AS name, COUNT(*)::bigint AS count
-      FROM stock_basic_profiles
-      WHERE list_status = 'L' AND industry IS NOT NULL AND industry != ''
-      GROUP BY industry
-      ORDER BY count DESC
-    `
-
-    const result = { industries: rows.map((r) => ({ name: r.name, count: Number(r.count) })) }
-    await this.redis.setEx(cacheKey, 86400, JSON.stringify(result))
-    return result
+        return { industries: rows.map((r) => ({ name: r.name, count: Number(r.count) })) }
+      },
+    })
   }
 
   // ─── 地域列表 ─────────────────────────────────────────────────────────────────
 
   async getAreas() {
-    const cacheKey = 'stock:areas'
-    const cached = await this.redis.get(cacheKey)
-    if (cached) {
-      return JSON.parse(cached) as { areas: { name: string; count: number }[] }
-    }
+    return this.cacheService.rememberJson({
+      namespace: CACHE_NAMESPACE.STOCK_METADATA,
+      key: CACHE_KEY_PREFIX.STOCK_AREAS,
+      ttlSeconds: CACHE_TTL_SECONDS.STOCK_METADATA,
+      loader: async () => {
+        interface AreaRow {
+          name: string
+          count: bigint
+        }
 
-    interface AreaRow {
-      name: string
-      count: bigint
-    }
+        const rows = await this.prisma.$queryRaw<AreaRow[]>`
+          SELECT area AS name, COUNT(*)::bigint AS count
+          FROM stock_basic_profiles
+          WHERE list_status = 'L' AND area IS NOT NULL AND area != ''
+          GROUP BY area
+          ORDER BY count DESC
+        `
 
-    const rows = await this.prisma.$queryRaw<AreaRow[]>`
-      SELECT area AS name, COUNT(*)::bigint AS count
-      FROM stock_basic_profiles
-      WHERE list_status = 'L' AND area IS NOT NULL AND area != ''
-      GROUP BY area
-      ORDER BY count DESC
-    `
-
-    const result = { areas: rows.map((r) => ({ name: r.name, count: Number(r.count) })) }
-    await this.redis.setEx(cacheKey, 86400, JSON.stringify(result))
-    return result
+        return { areas: rows.map((r) => ({ name: r.name, count: Number(r.count) })) }
+      },
+    })
   }
 
   // ─── 选股预设 ─────────────────────────────────────────────────────────────────
@@ -1384,6 +1430,47 @@ export class StockService {
 
   private isStrategyNameConflict(error: unknown) {
     return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002'
+  }
+
+  private resolveChartDateRange(dto: StockDetailChartDto, period: ChartPeriod) {
+    const defaultDays = period === ChartPeriod.DAILY ? 730 : 1825
+    const today = new Date()
+    const endDate = dto.endDate ? this.parseCompactDate(dto.endDate, 'endDate') : today
+    const startDate = dto.startDate
+      ? this.parseCompactDate(dto.startDate, 'startDate')
+      : dayjs(endDate).subtract(defaultDays, 'day').toDate()
+
+    const rangeDays = Math.floor((endDate.getTime() - startDate.getTime()) / (24 * 60 * 60 * 1000))
+    if (rangeDays < 0 || rangeDays > MAX_CHART_RANGE_DAYS) {
+      throw new BusinessException(ErrorEnum.INVALID_DATE_RANGE)
+    }
+
+    return { startDate, endDate }
+  }
+
+  private parseCompactDate(value: string, fieldName: 'startDate' | 'endDate'): Date {
+    const normalized = value.trim()
+    if (!/^\d{8}$/.test(normalized)) {
+      const [code] = ErrorEnum.INVALID_DATE_RANGE.split(':')
+      throw new BusinessException(`${code}:${fieldName} 必须为 YYYYMMDD 格式`)
+    }
+
+    const year = Number(normalized.slice(0, 4))
+    const month = Number(normalized.slice(4, 6))
+    const day = Number(normalized.slice(6, 8))
+    const parsed = new Date(year, month - 1, day)
+
+    if (
+      Number.isNaN(parsed.getTime()) ||
+      parsed.getFullYear() !== year ||
+      parsed.getMonth() !== month - 1 ||
+      parsed.getDate() !== day
+    ) {
+      const [code] = ErrorEnum.INVALID_DATE_RANGE.split(':')
+      throw new BusinessException(`${code}:${fieldName} 不是有效日期`)
+    }
+
+    return parsed
   }
 }
 

@@ -3,6 +3,85 @@ export type BacktestStatus = 'QUEUED' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'CA
 export type PriceMode = 'NEXT_OPEN' | 'NEXT_CLOSE'
 export type RebalanceFrequency = 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'QUARTERLY'
 export type Universe = 'ALL_A' | 'HS300' | 'CSI500' | 'CSI1000' | 'SSE50' | 'CUSTOM'
+export type StrategyRankOrder = 'asc' | 'desc'
+export type CustomWeightMode = 'EQUAL' | 'CUSTOM'
+
+export const SCREENING_ROTATION_RANK_FIELDS = [
+  'totalMv',
+  'peTtm',
+  'pb',
+  'dvTtm',
+  'turnoverRate',
+  'turnoverRateF',
+] as const
+
+export type ScreeningRotationRankField = (typeof SCREENING_ROTATION_RANK_FIELDS)[number]
+
+export const FACTOR_RANKING_FACTOR_NAMES = [
+  'pe_ttm',
+  'pb',
+  'total_mv',
+  'turnover_rate_f',
+  'dv_ttm',
+  'turnover_rate',
+  'roe',
+  'roa',
+  'revenue_yoy',
+  'netprofit_yoy',
+  'grossprofit_margin',
+  'netprofit_margin',
+] as const
+
+export type FactorRankingFactorName = (typeof FACTOR_RANKING_FACTOR_NAMES)[number]
+
+export interface MaCrossSingleStrategyConfig {
+  tsCode: string
+  shortWindow?: number
+  longWindow?: number
+  priceField?: 'close'
+  allowFlat?: boolean
+}
+
+export interface ScreeningRotationStrategyConfig {
+  rankBy?: ScreeningRotationRankField
+  rankOrder?: StrategyRankOrder
+  topN?: number
+  minDaysListed?: number
+}
+
+export interface FactorRankingOptionalFilters {
+  minTotalMv?: number
+  minTurnoverRate?: number
+  maxPeTtm?: number
+}
+
+export interface FactorRankingStrategyConfig {
+  factorName: FactorRankingFactorName
+  rankOrder?: StrategyRankOrder
+  topN?: number
+  minDaysListed?: number
+  optionalFilters?: FactorRankingOptionalFilters
+}
+
+export interface CustomPoolWeight {
+  tsCode: string
+  weight: number
+}
+
+export interface CustomPoolRebalanceStrategyConfig {
+  tsCodes: string[]
+  weightMode?: CustomWeightMode
+  customWeights?: CustomPoolWeight[]
+}
+
+export interface BacktestStrategyConfigMap {
+  MA_CROSS_SINGLE: MaCrossSingleStrategyConfig
+  SCREENING_ROTATION: ScreeningRotationStrategyConfig
+  FACTOR_RANKING: FactorRankingStrategyConfig
+  CUSTOM_POOL_REBALANCE: CustomPoolRebalanceStrategyConfig
+}
+
+export type BacktestStrategyConfig = BacktestStrategyConfigMap[BacktestStrategyType]
 
 /** Map universe names to index codes */
 export const UNIVERSE_INDEX_CODE: Record<string, string> = {
@@ -89,10 +168,10 @@ export interface PositionSnapshot {
   holdingDays: number | null
 }
 
-export interface BacktestConfig {
+export interface BacktestConfig<T extends BacktestStrategyType = BacktestStrategyType> {
   runId: string
-  strategyType: BacktestStrategyType
-  strategyConfig: Record<string, unknown>
+  strategyType: T
+  strategyConfig: BacktestStrategyConfigMap[T]
   startDate: Date
   endDate: Date
   benchmarkTsCode: string

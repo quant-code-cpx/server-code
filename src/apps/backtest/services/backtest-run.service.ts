@@ -1,6 +1,9 @@
+import type { Prisma } from '@prisma/client'
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common'
 import { InjectQueue } from '@nestjs/bullmq'
 import { Queue } from 'bullmq'
+import { BusinessException } from 'src/common/exceptions/business.exception'
+import { ErrorEnum } from 'src/constant/response-code.constant'
 import { PrismaService } from 'src/shared/prisma.service'
 import { BACKTESTING_QUEUE, BacktestingJobName } from 'src/constant/queue.constant'
 import { CreateBacktestRunDto } from '../dto/create-backtest-run.dto'
@@ -10,6 +13,7 @@ import { BacktestTradeQueryDto } from '../dto/backtest-trade-query.dto'
 import { BacktestPositionQueryDto } from '../dto/backtest-position-query.dto'
 import { BacktestDataReadinessService } from './backtest-data-readiness.service'
 import { BacktestConfig } from '../types/backtest-engine.types'
+import { BacktestStrategyRegistryService } from './backtest-strategy-registry.service'
 
 interface BacktestingJobData {
   runId: string
@@ -23,34 +27,33 @@ export class BacktestRunService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly dataReadinessService: BacktestDataReadinessService,
+    private readonly strategyRegistry: BacktestStrategyRegistryService,
     @InjectQueue(BACKTESTING_QUEUE)
     private readonly backtestingQueue: Queue<BacktestingJobData>,
   ) {}
 
   async validateRun(dto: ValidateBacktestRunDto) {
+    this.assertValidDateRange(dto.startDate, dto.endDate)
+    this.strategyRegistry.validateStrategyConfig(dto.strategyType, dto.strategyConfig)
     return this.dataReadinessService.checkReadiness(dto)
   }
 
   async createRun(dto: CreateBacktestRunDto, userId: number) {
-    const startDate = this.parseDate(dto.startDate)
-    const endDate = this.parseDate(dto.endDate)
-
-    if (startDate >= endDate) {
-      throw new BadRequestException('startDate 必须早于 endDate')
-    }
+    const { startDate, endDate } = this.assertValidDateRange(dto.startDate, dto.endDate)
+    const strategyConfig = this.strategyRegistry.validateStrategyConfig(dto.strategyType, dto.strategyConfig)
 
     const run = await this.prisma.backtestRun.create({
       data: {
         userId,
         name: dto.name ?? null,
         strategyType: dto.strategyType,
-        strategyConfig: dto.strategyConfig as unknown as import('@prisma/client').Prisma.InputJsonValue,
+        strategyConfig: strategyConfig as unknown as Prisma.InputJsonValue,
         startDate,
         endDate,
         benchmarkTsCode: dto.benchmarkTsCode ?? '000300.SH',
         universe: dto.universe ?? 'ALL_A',
         customUniverse: dto.customUniverseTsCodes
-          ? (dto.customUniverseTsCodes as unknown as import('@prisma/client').Prisma.InputJsonValue)
+          ? (dto.customUniverseTsCodes as unknown as Prisma.InputJsonValue)
           : undefined,
         initialCapital: dto.initialCapital,
         rebalanceFrequency: dto.rebalanceFrequency ?? 'MONTHLY',
@@ -152,6 +155,9 @@ export class BacktestRunService {
     const run = await this.prisma.backtestRun.findUnique({ where: { id: runId } })
     if (!run) throw new NotFoundException(`BacktestRun ${runId} not found`)
 
+    const strategyType = run.strategyType as BacktestConfig['strategyType']
+    const strategyConfig = this.strategyRegistry.validateStrategyConfig(strategyType, run.strategyConfig)
+
     return {
       runId: run.id,
       jobId: run.jobId,
@@ -159,8 +165,8 @@ export class BacktestRunService {
       status: run.status,
       progress: run.progress,
       failedReason: run.failedReason,
-      strategyType: run.strategyType,
-      strategyConfig: run.strategyConfig as Record<string, unknown>,
+      strategyType,
+      strategyConfig,
       startDate: run.startDate.toISOString().slice(0, 10),
       endDate: run.endDate.toISOString().slice(0, 10),
       benchmarkTsCode: run.benchmarkTsCode,
@@ -204,8 +210,9 @@ export class BacktestRunService {
       try {
         const job = await this.backtestingQueue.getJob(run.jobId)
         if (job) await job.remove()
-      } catch (e) {
-        this.logger.warn(`Could not remove job ${run.jobId}: ${e.message}`)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        this.logger.warn(`Could not remove job ${run.jobId}: ${message}`)
       }
     }
 
@@ -337,10 +344,13 @@ export class BacktestRunService {
     const run = await this.prisma.backtestRun.findUnique({ where: { id: runId } })
     if (!run) throw new NotFoundException(`BacktestRun ${runId} not found`)
 
+    const strategyType = run.strategyType as BacktestConfig['strategyType']
+    const strategyConfig = this.strategyRegistry.validateStrategyConfig(strategyType, run.strategyConfig)
+
     return {
       runId: run.id,
-      strategyType: run.strategyType as BacktestConfig['strategyType'],
-      strategyConfig: run.strategyConfig as Record<string, unknown>,
+      strategyType,
+      strategyConfig,
       startDate: run.startDate,
       endDate: run.endDate,
       benchmarkTsCode: run.benchmarkTsCode,
@@ -358,6 +368,17 @@ export class BacktestRunService {
       minDaysListed: 60,
       enableTradeConstraints: true,
     }
+  }
+
+  private assertValidDateRange(startDateStr: string, endDateStr: string) {
+    const startDate = this.parseDate(startDateStr)
+    const endDate = this.parseDate(endDateStr)
+
+    if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime()) || startDate >= endDate) {
+      throw new BusinessException(ErrorEnum.INVALID_DATE_RANGE)
+    }
+
+    return { startDate, endDate }
   }
 
   private parseDate(dateStr: string): Date {

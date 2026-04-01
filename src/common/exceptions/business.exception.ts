@@ -4,7 +4,7 @@ import { ErrorEnum, SUCCESS_CODE } from 'src/constant/response-code.constant'
 export class BusinessException extends HttpException {
   private readonly errorCode: number
 
-  constructor(error: ErrorEnum | string, data?: Record<string, any>) {
+  constructor(error: ErrorEnum | string, data?: Record<string, unknown>) {
     if (!error.includes(':')) {
       super(
         HttpException.createBody({

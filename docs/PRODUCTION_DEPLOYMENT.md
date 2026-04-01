@@ -1,0 +1,258 @@
+# 生产环境部署分析报告
+
+> 分析时间：2026-04-01  
+> 后端仓库：`quant-code-cpx/server-code`  
+> 前端仓库：`quant-code-cpx/client-code`
+
+---
+
+## 一、系统全貌
+
+### 后端（server-code）
+
+| 维度 | 详情 |
+|------|------|
+| 框架 | NestJS 11 + TypeScript 5 |
+| 数据库 | PostgreSQL 17（Prisma 6.5 ORM） |
+| 缓存 / 消息队列 | Redis 7.4 + BullMQ |
+| 实时通信 | Socket.IO（WebSocket） |
+| 认证 | JWT 双令牌（Access Token + HttpOnly Cookie Refresh Token）|
+| 外部数据源 | Tushare Pro API（A 股行情、资金流向、财务数据，付费 token） |
+| 定时任务 | 每日 18:30（Asia/Shanghai）全量 / 增量同步 Tushare 数据 |
+| API 数量 | 100+ 接口（Auth / User / Stock / Market / Backtest / Factor / Heatmap / Tushare 管理）|
+| 数据规模 | 股票日线数据约 5000 只 × 8000 交易日 ≈ 4000 万行；资金流向 / 财务等数据合计 20–50 GB |
+| CPU 密集型任务 | 回测（BullMQ 异步队列，历史数据回放 + P&L 计算） |
+| 日志 | Winston + 日志轮转（winston-daily-rotate-file） |
+
+### 前端（client-code）
+
+| 维度 | 详情 |
+|------|------|
+| 框架 | React 19 + TypeScript + Vite 6 |
+| UI 库 | MUI v7 + ApexCharts |
+| 通信 | REST API（Fetch + 自动 token 刷新）+ Socket.IO Client |
+| 构建产物 | 纯静态 SPA（可部署到 CDN / Nginx / Vercel）|
+| API 地址配置 | 通过环境变量 `VITE_API_BASE_URL` 注入 |
+| 已有部署配置 | `vercel.json`（SPA 路由 rewrite） |
+
+---
+
+## 二、推荐服务器配置
+
+### 方案 A：单机部署（个人 / 小团队，≤30 人并发）
+
+**一台云服务器承载全部服务（NestJS App + PostgreSQL + Redis + Nginx）**
+
+| 资源 | 规格 | 说明 |
+|------|------|------|
+| vCPU | **4 核** | 回测任务 CPU 密集，建议 4 核起；若仅少量用户 2 核亦可启动 |
+| 内存 | **16 GB** | PostgreSQL 缓冲池 4–6 GB + NestJS 1–2 GB + Redis 1 GB + OS 3 GB + 余量 |
+| 系统盘 | 50 GB SSD | OS + 日志 + 应用代码 |
+| 数据盘 | **200 GB SSD** | PostgreSQL 数据（预估 20–50 GB，预留 4–5 倍空间应对增长） |
+| 带宽 | 5–10 Mbps 按量计费 | 行情图表数据包较大，建议弹性带宽 |
+| 操作系统 | Ubuntu 22.04 LTS | 经过充分验证的 Docker 运行环境 |
+
+**参考月费（国内主流云厂商，仅供参考）：**
+
+| 云厂商 | 机型 | 估价/月 |
+|--------|------|---------|
+| 阿里云 | ecs.c7.xlarge（4c16g）+ 200GB ESSD | ¥350–500 |
+| 腾讯云 | S6.XLARGE16（4c16g）+ 200GB SSD | ¥300–450 |
+| 华为云 | c6.xlarge.4（4c16g）+ 200GB SSD | ¥300–450 |
+
+> 如预算有限，可先用 **4c8g + 100GB SSD** 起步（约 ¥200/月），待数据量增大再扩容。
+
+---
+
+### 方案 B：分离部署（团队 / 生产级，50–200 人并发）
+
+将数据库与应用服务器分离，提升可维护性和扩展性。
+
+| 服务器 | 规格 | 用途 |
+|--------|------|------|
+| **应用服务器** | 4c16g + 100GB SSD | NestJS App + Redis + BullMQ Worker + Nginx |
+| **数据库服务器** | 4c16g + 500GB SSD | PostgreSQL 17 |
+| **（可选）托管 Redis** | 1c2g 托管实例 | 替代自建 Redis，减少运维成本 |
+
+**估价/月：** ¥700–1200
+
+---
+
+### 存储规模测算
+
+| 数据类型 | 估算大小 |
+|----------|----------|
+| 股票日线（`stock_daily_profiles`，5000 只 × 8000 日） | ~8 GB |
+| 每日指标（`daily_basic_profiles`） | ~4 GB |
+| 资金流向（`moneyflow_dc`等） | ~2 GB |
+| 周线 / 月线 / 复权因子 | ~2 GB |
+| 财务数据（三张报表 + 财务指标） | ~3 GB |
+| 回测结果（视使用量） | 1–20 GB |
+| 索引开销（约数据量 30%） | ~6 GB |
+| **合计（含冗余）** | **~30–50 GB** |
+
+建议数据盘预留 **200 GB** 以上，SSD（IOPS ≥ 3000）。
+
+---
+
+## 三、目前距离生产部署缺少什么
+
+### 3.1 必须补齐（阻塞上线）
+
+#### 1. 生产环境 Docker Compose / 部署脚本
+
+现有 `docker-compose.yml` 为开发环境（NestJS 热重载模式、源码 bind-mount），**不可直接用于生产**。
+
+需要新增：
+- `docker-compose.prod.yml`：NestJS 以 `pnpm build && node dist/main` 方式运行
+- 生产 Dockerfile 需多阶段构建（`builder` + `runner`），最终镜像不含 devDependencies
+- 生产环境 `NODE_ENV=production`
+
+#### 2. Nginx 反向代理配置
+
+前端为纯静态 SPA，需要 Nginx 提供：
+- 前端静态文件服务 + HTML5 路由 fallback（`try_files $uri /index.html`）
+- 后端 API 反向代理（`/api` → NestJS 3000 端口）
+- WebSocket 反向代理（`/socket.io` → NestJS，需 `proxy_http_version 1.1` + `Upgrade` 头）
+- HTTPS 支持（见下条）
+
+目前仓库中**不存在任何 Nginx 配置文件**。
+
+#### 3. HTTPS / SSL 证书
+
+所有生产流量必须走 HTTPS：
+- 需申请域名 + SSL 证书（Let's Encrypt 免费，或购买 DV/OV 证书）
+- Nginx 配置 443 端口 + HTTP→HTTPS 301 重定向
+- Cookie 的 `Secure` 属性（HttpOnly Refresh Token 在 HTTP 下无法使用）
+
+目前后端 `.env.example` 中 `CORS_ORIGIN` 已预留生产域名配置，但 HTTPS 本身**尚未搭建**。
+
+#### 4. 数据库迁移策略
+
+开发环境使用 `prisma db push`（会直接同步 schema 到数据库，生产环境有**数据丢失风险**）。
+
+生产环境需要：
+- 使用 `prisma migrate deploy` 执行版本化迁移
+- 需生成并提交 `prisma/migrations/` 目录（目前仓库中不存在）
+
+#### 5. 前端生产构建配置
+
+前端 `src/api/client.ts` 通过 `VITE_API_BASE_URL` 注入后端地址，但目前仓库中**不存在 `.env.production` 文件**，导致：
+- `vite build` 产物的 API 地址为空（走相对路径），若前后端不在同域则无法通信
+- 需在前端项目根目录创建 `.env.production`，设置 `VITE_API_BASE_URL=https://your-api-domain.com`
+
+#### 6. 生产环境变量清单
+
+`.env.example` 已有基础模板，但以下变量在生产环境需要特别关注：
+
+| 变量 | 生产要求 |
+|------|----------|
+| `NODE_ENV` | 必须设为 `production` |
+| `CORS_ORIGIN` | 必须设为前端生产域名（避免所有来源通配） |
+| `REFRESH_TOKEN_SECRET` / `ACCESS_TOKEN_SECRET` | 必须使用强随机密钥（32+ 位），**不可与开发环境相同** |
+| `REDIS_PASSWORD` | 必须设置强密码 |
+| `POSTGRES_PASSWORD` | 必须设置强密码 |
+| `TUSHARE_TOKEN` | 生产账号的 Tushare Pro token |
+| `SUPER_ADMIN_PASSWORD` | 强密码，首次启动后建议从代码逻辑中移除自动创建 |
+| `TUSHARE_SYNC_ENABLED` | 生产环境设为 `true` |
+
+---
+
+### 3.2 强烈建议补齐（影响稳定性）
+
+#### 7. 数据库备份
+
+目前无任何备份机制。建议：
+- 每日全量备份：`pg_dump` 定时任务 + 上传至对象存储（OSS / COS）
+- 至少保留 7 天备份
+
+#### 8. 健康检查接口（Health Check）
+
+TODO.md 中 `AdminModule` 的健康检查接口尚未创建。建议集成 `@nestjs/terminus`，暴露 `GET /api/health`（检查 PostgreSQL 和 Redis 连通性），用于：
+- Docker `HEALTHCHECK` 指令
+- 云负载均衡器存活探测
+- 监控报警
+
+#### 9. CI/CD 流水线
+
+目前仓库中**不存在 GitHub Actions 配置**（`.github/workflows/`）。建议建立：
+- 后端：`pnpm build` + `docker build` + 自动推送镜像至 Docker Hub / 阿里云 ACR
+- 前端：`yarn build` + 自动上传静态文件至 OSS 或 Vercel
+
+#### 10. 日志收集与监控
+
+- Winston 已集成日志轮转，但**无集中化日志收集**
+- 建议：Loki + Grafana（轻量），或使用云厂商日志服务（SLS / CLS）
+- 建议添加基础指标监控（CPU / 内存 / 磁盘 / 慢查询告警）
+
+---
+
+### 3.3 功能层面尚未完成（影响使用体验）
+
+以下功能在 TODO.md 中明确标记为未完成，但**不阻塞基础上线**（可迭代发布）：
+
+| 功能 | 影响 | 状态 |
+|------|------|------|
+| 技术指标接口（MACD / RSI / KDJ / BOLL）| 股票分析页技术指标 tab 不可用 | 需同步 Tushare `stk_factor` 数据 |
+| 热力图实际实现 | 热力图页仅有骨架，无真实数据 | `HeatmapSnapshot` 模型未创建 |
+| 沪深港通（HSGT）资金接口 | 部分市场资金流向接口缺数据 | 已有骨架 |
+| 龙虎榜 / 大宗交易 / 融资融券 | 高级分析功能缺失 | 未开始 |
+| 回测 WebSocket 进度推送 | 回测进度无法实时反馈前端 | WebSocket 骨架已有，未接入回测 |
+| 实时行情 WebSocket | 行情无实时更新 | 依赖第三方实时数据源 |
+| 指数行情模块（IndexModule） | 对标指数数据缺失 | 未创建 |
+| 策略管理模块（StrategyModule）| 策略库功能缺失 | 未创建 |
+| 风险控制模块（RiskModule）| 风险检测功能缺失 | 未创建 |
+| 通知告警模块（NotificationModule）| 价格预警功能缺失 | 未创建 |
+
+---
+
+## 四、部署路径建议
+
+### 最小化上线路径（2–4 周工作量）
+
+```
+阶段 1：基础设施准备（1 周）
+  ├── 购买云服务器 + 域名 + SSL 证书
+  ├── 安装 Docker + Docker Compose + Nginx
+  ├── 编写 docker-compose.prod.yml（生产多阶段构建）
+  ├── 编写 Nginx 配置（静态文件 + API 代理 + HTTPS）
+  └── 生成 prisma migrations
+
+阶段 2：配置与安全（3 天）
+  ├── 配置生产 .env（强密钥、正确 CORS、生产 DB/Redis 密码）
+  ├── 前端配置 .env.production（VITE_API_BASE_URL）
+  ├── 配置数据库备份脚本（pg_dump + cron）
+  └── 验证 HTTPS + Cookie 安全属性
+
+阶段 3：数据初始化（2–3 天，受 Tushare 限速影响）
+  ├── 首次启动后触发 Tushare 全量同步
+  └── 验证数据完整性（pnpm verify:moneyflow 等脚本）
+
+阶段 4：上线验证（2 天）
+  ├── 登录 / 用户管理 / 股票查询 / 市场概览功能验证
+  ├── 回测功能端到端验证
+  └── 性能基准测试
+```
+
+---
+
+## 五、关键外部依赖
+
+| 依赖 | 费用 | 说明 |
+|------|------|------|
+| **Tushare Pro Token** | 免费基础 / 付费高级 | 全量历史数据、资金流向需要高积分账号；建议至少 2000 积分 |
+| 域名 | ¥50–100/年 | |
+| SSL 证书 | 免费（Let's Encrypt） | 需定期续签，可用 Certbot 自动化 |
+| 对象存储（备份） | ¥10–30/月 | 用于 PostgreSQL 备份存储 |
+
+---
+
+## 六、总结
+
+| 方面 | 结论 |
+|------|------|
+| **推荐最低配置** | 4c16g + 200GB SSD 单机，约 ¥350–500/月 |
+| **阻塞上线的缺失项** | 生产 Docker Compose、Nginx 配置、HTTPS、Prisma 迁移、前端 `.env.production` |
+| **建议补齐的配置** | 数据库备份、健康检查接口、CI/CD 流水线、日志监控 |
+| **功能未完成但不阻塞上线** | 技术指标、热力图、实时行情、通知告警等进阶功能 |
+| **预估最小化上线工作量** | 2–4 周（基础设施 + 配置 + 数据初始化） |

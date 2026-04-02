@@ -10,10 +10,10 @@
 ```
 docs/
 ├── README.md                ← 本文件（文档导航索引）
+├── TODO.md                  ← 统一 TODO List（功能 + 工程 + 产品痛点）
 ├── design/                  ← 功能设计文档（面向 AI 代码生成模型）
-├── planning/                ← 规划与追踪（TODO、痛点分析）
 ├── operations/              ← 部署与运维
-└── archive/                 ← 历史快照
+└── archive/                 ← 历史快照（含已归档的旧规划文档）
 ```
 
 ---
@@ -39,13 +39,11 @@ docs/
 
 ---
 
-## 📋 planning/ — 规划与追踪
+## 📋 规划与追踪
 
 | 文档 | 说明 | 更新频率 |
 |------|------|---------|
-| [TODO.md](planning/TODO.md) | 模块级功能开发任务清单 | 持续更新 |
-| [SERVER_TODO.md](planning/SERVER_TODO.md) | 工程质量优化（测试 / CI / 安全 / 性能） | 持续更新 |
-| [FEATURE_GAP_ANALYSIS_2026-04-01.md](planning/FEATURE_GAP_ANALYSIS_2026-04-01.md) | 量化研究痛点分析与功能推荐（产品视角） | 每季度更新 |
+| [TODO.md](TODO.md) | 统一 TODO List（功能 + 工程质量 + 产品痛点），按优先级 P0-P3 组织 | 持续更新 |
 
 ---
 
@@ -62,6 +60,9 @@ docs/
 | 文档 | 说明 |
 |------|------|
 | [PROJECT_SUMMARY_AND_TREE.md](archive/PROJECT_SUMMARY_AND_TREE.md) | 2026-03-19 项目变更与目录快照 |
+| [planning_TODO_2026-04-01.md](archive/planning_TODO_2026-04-01.md) | 旧版功能规划 TODO（已合入 docs/TODO.md） |
+| [SERVER_TODO_2026-04-01.md](archive/SERVER_TODO_2026-04-01.md) | 旧版工程质量 TODO（已合入 docs/TODO.md） |
+| [FEATURE_GAP_ANALYSIS_2026-04-01.md](archive/FEATURE_GAP_ANALYSIS_2026-04-01.md) | 旧版产品痛点分析（已合入 docs/TODO.md） |
 
 ---
 

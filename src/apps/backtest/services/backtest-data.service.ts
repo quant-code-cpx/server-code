@@ -68,14 +68,13 @@ export class BacktestDataService {
     }
 
     // Find the latest adjFactor per tsCode (the one with the highest tradeDate)
-    const latestAdjByCode = new Map<string, { date: string; factor: number }>()
-    for (const r of adjRows) {
-      const dateStr = r.tradeDate.toISOString().slice(0, 10)
-      const existing = latestAdjByCode.get(r.tsCode)
-      if (!existing || dateStr > existing.date) {
-        latestAdjByCode.set(r.tsCode, { date: dateStr, factor: r.adjFactor ?? 1 })
+    // adjRows are ordered ascending by tradeDate, so the last entry per tsCode is the latest
+    const latestAdjByCode = adjRows.reduceRight<Map<string, number>>((map, r) => {
+      if (!map.has(r.tsCode)) {
+        map.set(r.tsCode, r.adjFactor ?? 1)
       }
-    }
+      return map
+    }, new Map<string, number>())
 
     const limitMap = new Map<string, { up: number | null; down: number | null }>()
     for (const r of limitRows) {
@@ -99,7 +98,7 @@ export class BacktestDataService {
       const key = `${r.tsCode}:${dateStr}`
       const limit = limitMap.get(key)
       const adjFactor = adjMap.get(key) ?? null
-      const latestAdj = latestAdjByCode.get(r.tsCode)?.factor ?? null
+      const latestAdj = latestAdjByCode.get(r.tsCode) ?? null
 
       // Compute forward-adjusted prices (前复权)
       let adjClose: number | null = null

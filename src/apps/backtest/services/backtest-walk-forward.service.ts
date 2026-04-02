@@ -395,8 +395,14 @@ export class BacktestWalkForwardService {
 
     // Compute IS/OOS return ratio
     const allWindows = await this.prisma.backtestWalkForwardWindow.findMany({ where: { wfRunId } })
-    const avgIsReturn = allWindows.reduce((s, w) => s + (w.isReturn ?? 0), 0) / (allWindows.length || 1)
-    const isOosReturnVsIs = avgIsReturn !== 0 ? (aggregatedMetrics.annualizedReturn ?? 0) / avgIsReturn : null
+    const validIsReturns = allWindows.map((w) => w.isReturn).filter((r): r is number => r !== null)
+    const avgIsReturn = validIsReturns.length > 0
+      ? validIsReturns.reduce((a, b) => a + b, 0) / validIsReturns.length
+      : null
+    const isOosReturnVsIs =
+      avgIsReturn !== null && avgIsReturn !== 0
+        ? (aggregatedMetrics.annualizedReturn ?? 0) / avgIsReturn
+        : null
 
     await this.prisma.backtestWalkForwardRun.update({
       where: { id: wfRunId },
@@ -449,9 +455,10 @@ export class BacktestWalkForwardService {
       const spec = searchSpace[name]
       if (spec.type === 'range') {
         const { min = 0, max = 0, step = 1 } = spec
+        const count = Math.round((max - min) / step) + 1
         const values: number[] = []
-        for (let v = min; v <= max + 1e-10; v += step) {
-          values.push(Math.round(v * 1e10) / 1e10)
+        for (let i = 0; i < count; i++) {
+          values.push(min + i * step)
         }
         return values
       } else {

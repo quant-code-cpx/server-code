@@ -8,6 +8,9 @@ import {
   SignalOutput,
 } from '../types/backtest-engine.types'
 
+/** A 股最小交易单位：1 手 = 100 股 */
+const LOT_SIZE = 100
+
 @Injectable()
 export class BacktestExecutionService {
   /**
@@ -152,8 +155,8 @@ export class BacktestExecutionService {
       const availableValue = config.partialFillEnabled ? Math.min(diffValue, portfolio.cash) : diffValue
       if (!config.partialFillEnabled && portfolio.cash < diffValue) continue
 
-      // A股最小交易单位为 100 股（1 手），买入数量必须是 100 的整数倍
-      const rawQty = Math.floor(availableValue / execPrice / 100) * 100
+      // 买入数量必须是 LOT_SIZE 的整数倍
+      const rawQty = Math.floor(availableValue / execPrice / LOT_SIZE) * LOT_SIZE
       if (rawQty <= 0) continue
 
       const amount = rawQty * execPrice

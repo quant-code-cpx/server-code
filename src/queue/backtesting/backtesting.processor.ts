@@ -150,10 +150,11 @@ export class BacktestingProcessor extends WorkerHost {
   }
 
   @OnWorkerEvent('failed')
-  async onFailed(job: Job<BacktestingJobData>, error: Error) {
+  async onFailed(job: Job<BacktestingJobData | WalkForwardJobData | ComparisonJobData>, error: Error) {
     const jobId = job.id!
-    const runId = job.data?.runId
-    this.logger.error(`Backtest job failed id=${jobId} runId=${runId}: ${error.message}`, error.stack)
+    const data = job.data as BacktestingJobData & WalkForwardJobData & ComparisonJobData
+    const runId = data?.runId
+    this.logger.error(`Backtest job failed id=${jobId}: ${error.message}`, error.stack)
 
     if (runId) {
       try {

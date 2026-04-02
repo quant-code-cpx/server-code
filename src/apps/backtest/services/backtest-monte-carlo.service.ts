@@ -29,6 +29,11 @@ export class BacktestMonteCarloService {
       throw new NotFoundException(`Not enough NAV data for backtest run ${runId}`)
     }
 
+    const firstNav = Number(navRows[0].nav ?? 0)
+    if (firstNav === 0) {
+      throw new NotFoundException(`Initial NAV is zero for backtest run ${runId}`)
+    }
+
     const options: MonteCarloOptions = {
       numSimulations: dto.numSimulations ?? 1000,
       confidenceLevels: [0.05, 0.25, 0.5, 0.75, 0.95],
@@ -85,7 +90,11 @@ export class BacktestMonteCarloService {
       const finalNav = path[path.length - 1]
       finalNavs.push(finalNav)
       maxDrawdowns.push(maxDd)
-      annualizedReturns.push(Math.pow(finalNav, TRADING_DAYS_PER_YEAR / dailyReturns.length) - 1)
+      if (dailyReturns.length > 0) {
+        annualizedReturns.push(Math.pow(finalNav, TRADING_DAYS_PER_YEAR / dailyReturns.length) - 1)
+      } else {
+        annualizedReturns.push(0)
+      }
       allPaths.push(path)
     }
 

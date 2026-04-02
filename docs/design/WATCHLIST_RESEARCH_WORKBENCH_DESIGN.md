@@ -103,7 +103,7 @@ model Watchlist {
   userId      Int              @map("user_id")
   name        String           @db.VarChar(50)
   description String?          @db.VarChar(200)
-  isDefault   Boolean          @default(false) @map("is_default")  /// 默认自选组（仅一个）
+  isDefault   Boolean          @default(false) @map("is_default")  /// 默认自选组（每用户最多一个）
   sortOrder   Int              @default(0) @map("sort_order")      /// 展示排序
   createdAt   DateTime         @default(now()) @map("created_at")
   updatedAt   DateTime         @updatedAt @map("updated_at")
@@ -115,6 +115,19 @@ model Watchlist {
   @@index([userId])
   @@unique([userId, name])  /// 同一用户不能有同名自选组
 }
+```
+
+> **`isDefault` 唯一性保障**：Prisma 不原生支持 partial unique index，因此需要在迁移后手动执行 SQL 添加条件唯一索引：
+>
+> ```sql
+> CREATE UNIQUE INDEX "watchlists_user_id_is_default_unique"
+>   ON "watchlists" ("user_id")
+>   WHERE "is_default" = true;
+> ```
+>
+> 这确保每个用户最多只能有一个 `isDefault = true` 的自选组，即使应用层逻辑出现并发竞争也不会产生脏数据。该 SQL 应写入 Prisma 迁移文件（在自动生成的迁移 SQL 末尾追加）。
+
+```prisma
 
 /// 自选股成员
 model WatchlistStock {

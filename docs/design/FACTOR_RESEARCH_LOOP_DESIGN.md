@@ -110,6 +110,7 @@ model FactorSnapshot {
 
   @@id([factorName, tradeDate, tsCode])
   @@index([factorName, tradeDate])
+  @@index([tradeDate, factorName])  /// 时间序列查询优化（按日期范围查时先命中此索引）
   @@index([tsCode, tradeDate])
   @@map("factor_snapshots")
 }

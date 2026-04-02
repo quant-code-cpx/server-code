@@ -1,0 +1,1253 @@
+# 因子研究闭环补全 — 开发方案设计
+
+> **目标读者**：AI 代码生成助手 / 开发者。请按照本文定义的分阶段方案、接口规格、Schema 变更进行实现。
+>
+> **对应痛点**：`FEATURE_GAP_ANALYSIS_2026-04-01.md` → 痛点三：因子研究闭环不完整
+>
+> **前置依赖**：`DATA_LAYER_GAP_DESIGN.md` Phase 1 完成（三张空表 `stk_limit` / `suspend_d` / `index_weight` 需有数据）
+>
+> **日期**：2026-04-02
+
+---
+
+## 目录
+
+1. [现状评估与差距分析](#一现状评估与差距分析)
+2. [总体分阶段规划](#二总体分阶段规划)
+3. [Phase 1：因子值批量预计算](#三phase-1因子值批量预计算)
+4. [Phase 2：自定义因子引擎](#四phase-2自定义因子引擎)
+5. [Phase 3：因子 → 选股 → 回测 全链路打通](#五phase-3因子--选股--回测-全链路打通)
+6. [Phase 4：因子正交化（多因子组合进阶）](#六phase-4因子正交化多因子组合进阶)
+7. [Phase 5：Barra 风格因子模型（远期）](#七phase-5barra-风格因子模型远期)
+8. [实施顺序与依赖关系](#八实施顺序与依赖关系)
+9. [文件变更汇总](#九文件变更汇总)
+
+---
+
+## 一、现状评估与差距分析
+
+### 1.1 已建成能力
+
+| 能力 | 状态 | 实现位置 | 说明 |
+|------|------|---------|------|
+| **因子定义库** | ✅ 已完成 | `factor-library.service.ts` | 49 个内置因子，12 个分类，3 种来源类型 |
+| **因子值实时计算** | ✅ 已完成 | `factor-compute.service.ts` | 支持 FIELD_REF / DERIVED / CUSTOM_SQL，含 Point-in-Time 逻辑 |
+| **IC 分析** | ✅ 已完成 | `factor-analysis.service.ts` | Spearman/Pearson IC 时间序列，缓存 24h |
+| **分位回测** | ✅ 已完成 | 同上 | N 分位组合 + 多空组合收益曲线 |
+| **衰减分析** | ✅ 已完成 | 同上 | 多持有期 IC 比较 |
+| **分布统计** | ✅ 已完成 | 同上 | 直方图 + 偏度/峰度 |
+| **相关矩阵** | ✅ 已完成 | 同上 | 多因子 Spearman/Pearson 相关性 |
+| **因子选股** | ✅ 已完成 | `factor-screening.service.ts` | 多条件组合筛选，支持 top_pct/bottom_pct |
+| **9 个 API 端点** | ✅ 已完成 | `factor.controller.ts` | library / detail / values / ic / quantile / decay / distribution / correlation / screening |
+
+### 1.2 🔴 底层数据空缺
+
+所有分析接口依赖的辅助数据（涨跌停 / 停牌 / 指数权重）当前为空表，导致：
+
+- 停牌过滤无效 → 因子截面包含停牌股票，IC 计算失真
+- 涨跌停过滤无效 → 分层回测中涨跌停日无法交易的偏差未被剔除
+- Universe 过滤无效 → 无法按沪深300/中证500筛选股票池
+
+> **解决方案**：见 `DATA_LAYER_GAP_DESIGN.md` Phase 1（修复编排器 Bug），完成后本模块所有现有分析接口将自动产出有效结果。
+
+### 1.3 功能差距矩阵
+
+| 缺失环节 | 当前状态 | 影响 | 本文覆盖阶段 |
+|---------|---------|------|------------|
+| **因子值批量预计算** | 每次查询实时计算全市场截面 | 分析接口慢（秒级 → 分钟级），重复计算浪费资源 | Phase 1 |
+| **自定义因子引擎** | 仅支持 FIELD_REF + 硬编码 DERIVED | 用户无法定义新因子，研究灵活度受限 | Phase 2 |
+| **因子 → 回测全链路** | 因子选股与回测模块各自独立 | 无法一键从因子筛选出发运行回测，研究流程断裂 | Phase 3 |
+| **因子正交化** | 无 | 多因子组合存在共线性，组合效果不如预期 | Phase 4 |
+| **Barra 风险模型** | 无 | 无法做标准化的风格因子分解和风险归因 | Phase 5（远期） |
+
+---
+
+## 二、总体分阶段规划
+
+| 阶段 | 目标 | 预估工时 | 前置依赖 |
+|------|------|----------|----------|
+| **Phase 1** | 因子值批量预计算 + 定时落库 + 查询切换到预计算表 | 1-1.5 周 | 数据层空表修复（`DATA_LAYER_GAP_DESIGN.md` Phase 1） |
+| **Phase 2** | 自定义因子引擎（安全表达式解析 + 计算 + 落库） | 1.5-2 周 | Phase 1 |
+| **Phase 3** | 因子→选股→回测全链路打通 | 1 周 | Phase 1 + 回测引擎基础就绪 |
+| **Phase 4** | 因子正交化（截面回归 / Fama-MacBeth） | 1-1.5 周 | Phase 1 |
+| **Phase 5** | Barra 风格因子模型（远期规划，本文仅做架构预留） | 3-4 周 | Phase 1 + Phase 4 |
+
+> Phase 2 / Phase 3 / Phase 4 互不依赖，可并行开发。Phase 5 为远期规划。
+
+---
+
+## 三、Phase 1：因子值批量预计算
+
+### 3.1 问题分析
+
+当前因子值在每次 API 请求时实时计算：
+
+```
+用户请求 → FactorComputeService → 实时 SQL 查询底层数据 → 聚合统计 → 返回
+```
+
+**问题**：
+- IC 分析需要对每个交易日计算全市场截面，1 年约 250 个交易日 × ~5000 股，单因子分析可能需要数分钟
+- 多用户同时分析同一因子同一日期时存在大量重复计算
+- DERIVED 类因子（动量、波动率）需要窗口计算，SQL 复杂度高
+- 缓存 24h 虽能缓解，但首次请求仍然慢
+
+**目标**：将因子值的**计算**与**查询**分离，通过定时批量预计算实现秒级响应。
+
+### 3.2 Prisma Schema 新增
+
+**文件**：`prisma/factor_snapshot.prisma`（🆕 新建）
+
+```prisma
+/// 因子截面值快照（预计算结果）
+model FactorSnapshot {
+  factorName String   @map("factor_name")
+  tradeDate  String   @map("trade_date")
+  tsCode     String   @map("ts_code")
+  value      Decimal? @map("value")      @db.Decimal(20, 6)
+  percentile Decimal? @map("percentile") @db.Decimal(6, 4)  /// 截面百分位 0~1
+  syncedAt   DateTime @default(now())     @map("synced_at")
+
+  @@id([factorName, tradeDate, tsCode])
+  @@index([factorName, tradeDate])
+  @@index([tradeDate, factorName])  /// 时间序列查询优化（按日期范围查时先命中此索引）
+  @@index([tsCode, tradeDate])
+  @@map("factor_snapshots")
+}
+
+/// 因子截面统计摘要（每日每因子一条）
+model FactorSnapshotSummary {
+  factorName String   @map("factor_name")
+  tradeDate  String   @map("trade_date")
+  count      Int      @map("count")            /// 有效值数量
+  missing    Int      @map("missing")          /// 缺失数量
+  mean       Decimal? @map("mean")      @db.Decimal(20, 6)
+  median     Decimal? @map("median")    @db.Decimal(20, 6)
+  stdDev     Decimal? @map("std_dev")   @db.Decimal(20, 6)
+  min        Decimal? @map("min")       @db.Decimal(20, 6)
+  max        Decimal? @map("max")       @db.Decimal(20, 6)
+  q25        Decimal? @map("q25")       @db.Decimal(20, 6)
+  q75        Decimal? @map("q75")       @db.Decimal(20, 6)
+  skewness   Decimal? @map("skewness")  @db.Decimal(10, 6)
+  kurtosis   Decimal? @map("kurtosis")  @db.Decimal(10, 6)
+  syncedAt   DateTime @default(now())   @map("synced_at")
+
+  @@id([factorName, tradeDate])
+  @@map("factor_snapshot_summaries")
+}
+```
+
+**预计数据量**：
+
+| 指标 | 估算 |
+|------|------|
+| 因子数量 | 49 个内置（Phase 1），后续可能 100+ |
+| 每日每因子有效记录 | ~4,500-5,000（剔除停牌/ST/新股后） |
+| 每日新增行数 | ~245,000（49 × 5,000） |
+| 每年新增行数 | ~6,000 万 |
+| 首次历史回补（3 年） | ~1.8 亿行 |
+
+> **存储预估**：每行约 60 bytes，1.8 亿行 ≈ 10-12 GB（含索引）。需确保 PostgreSQL 存储卷有足够空间。
+
+### 3.3 预计算服务设计
+
+**文件**：`src/apps/factor/services/factor-precompute.service.ts`（🆕 新建）
+
+```typescript
+@Injectable()
+export class FactorPrecomputeService {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly compute: FactorComputeService,
+    private readonly library: FactorLibraryService,
+  ) {}
+
+  /**
+   * 批量预计算指定日期所有已启用因子的截面值。
+   * 由定时任务在每日盘后触发。
+   */
+  async precomputeAllFactors(tradeDate: string): Promise<PrecomputeResult> {
+    // 1. 获取所有已启用因子列表
+    // 2. 对每个因子调用 computeAndStore()
+    // 3. 记录结果摘要
+  }
+
+  /**
+   * 预计算单个因子在指定日期的全市场截面值并落库。
+   */
+  async computeAndStore(factorName: string, tradeDate: string): Promise<void> {
+    // 1. 调用现有 compute.getRawFactorValuesForDate() 获取原始值
+    // 2. 计算截面百分位排名
+    // 3. 计算截面统计量（mean/median/std/skew/kurt/q25/q75）
+    // 4. 事务写入：deleteMany({ factorName, tradeDate }) + createMany
+    // 5. 写入 FactorSnapshotSummary 摘要
+  }
+
+  /**
+   * 历史回补：补算指定日期范围内所有交易日的因子值。
+   * 支持断点续传（跳过已计算的日期）。
+   */
+  async backfill(startDate: string, endDate: string, options?: {
+    factorNames?: string[]   // 指定因子，不传则全部
+    skipExisting?: boolean   // 跳过已存在日期（默认 true）
+    batchSize?: number       // 每批处理交易日数（默认 5）
+  }): Promise<BackfillResult> {
+    // 1. 获取日期范围内的交易日列表
+    // 2. 如果 skipExisting=true，查询已有快照日期并排除
+    // 3. 分批执行 precomputeAllFactors
+    // 4. 每批之间可考虑 yield 控制内存/CPU
+  }
+}
+```
+
+### 3.4 定时任务注册
+
+在因子模块中注册每日预计算任务，通过 `@nestjs/schedule` 的 `@Cron` 或者集成到现有 Tushare 同步编排器中。
+
+**推荐方案：独立 Cron 任务**（不通过 Tushare 同步编排器，因为预计算依赖同步数据已就位）
+
+```typescript
+// factor-precompute.service.ts 中
+
+@Cron('0 0 20 * * 1-5', { timeZone: 'Asia/Shanghai' })
+async dailyPrecompute(): Promise<void> {
+  // 1. 获取最近一个已完成交易日
+  // 2. 检查该日因子快照是否已存在
+  // 3. 如果不存在，执行预计算
+  this.logger.log('因子预计算定时任务开始')
+  const targetDate = await this.resolveTargetTradeDate()
+  if (!targetDate) return
+  await this.precomputeAllFactors(targetDate)
+}
+```
+
+**时序关系**：
+
+```
+18:30  Tushare 数据同步（daily, daily_basic, adj_factor, stk_limit, suspend_d 等）
+       ↓ 同步完成
+20:00  因子值批量预计算（依赖最新行情 + 辅助数据）
+       ↓ 预计算完成
+       用户可查询最新因子截面值（直接查表，秒级响应）
+```
+
+### 3.5 管理 API
+
+在 `FactorController` 中新增管理端点（需要 Admin 权限或 JwtAuth）：
+
+| 端点 | 方法 | 说明 |
+|------|------|------|
+| `POST /factor/admin/precompute` | POST | 手动触发指定日期的预计算 |
+| `POST /factor/admin/backfill` | POST | 触发历史回补（指定日期范围 + 可选因子列表） |
+| `GET /factor/admin/precompute/status` | GET | 查询预计算状态（最新已计算日期、各因子覆盖情况） |
+
+#### 手动预计算请求 DTO
+
+```typescript
+class FactorPrecomputeTriggerDto {
+  @IsString()
+  @Matches(/^\d{8}$/)
+  tradeDate: string                      // 目标交易日 YYYYMMDD
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  factorNames?: string[]                 // 可选：仅预计算指定因子
+}
+```
+
+#### 历史回补请求 DTO
+
+```typescript
+class FactorBackfillDto {
+  @IsString()
+  @Matches(/^\d{8}$/)
+  startDate: string
+
+  @IsString()
+  @Matches(/^\d{8}$/)
+  endDate: string
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  factorNames?: string[]                 // 可选：仅回补指定因子
+
+  @IsOptional()
+  @IsBoolean()
+  skipExisting?: boolean = true          // 跳过已存在日期
+}
+```
+
+### 3.6 查询层切换
+
+改造现有 `FactorComputeService` 和 `FactorAnalysisService`，优先从预计算表读取，降级到实时计算：
+
+```typescript
+// factor-compute.service.ts 改造
+
+async getFactorValuesForDate(
+  factorName: string,
+  tradeDate: string,
+  universe?: string,
+): Promise<FactorValueItem[]> {
+  // 1. 先查 factor_snapshots 表
+  const snapshot = await this.prisma.factorSnapshot.findMany({
+    where: { factorName, tradeDate },
+  })
+
+  if (snapshot.length > 0) {
+    // 2a. 有预计算数据 → 直接返回（可选 universe 过滤）
+    return this.applyUniverseFilter(snapshot, universe)
+  }
+
+  // 2b. 无预计算数据 → 降级到实时计算（保持现有逻辑）
+  this.logger.warn(`[${factorName}] ${tradeDate} 无预计算快照，降级实时计算`)
+  return this.computeRealtime(factorName, tradeDate, universe)
+}
+```
+
+**性能对比预估**：
+
+| 场景 | 实时计算 | 预计算后查表 |
+|------|---------|------------|
+| 单因子单日截面值 | 200-800ms | 20-50ms |
+| IC 分析（1 年 250 日） | 30-120s | 2-5s |
+| 分位回测（1 年） | 60-300s | 5-15s |
+| 因子相关矩阵（5 因子） | 1-5s | 100-300ms |
+
+### 3.7 现有代码复用评估
+
+| 组件 | 复用方式 |
+|------|---------|
+| `FactorComputeService.getRawFactorValuesForDate()` | ✅ 直接复用，作为预计算的计算引擎 |
+| `FactorComputeService.buildResponse()` | ✅ 改造为支持从快照表构建响应 |
+| `FactorAnalysisService.getAdjReturns()` | ✅ 不变，收益率计算独立于因子值 |
+| `FactorAnalysisService` 各分析方法 | ⚠️ 需改造内部因子值获取路径，从直接计算改为优先查快照 |
+| `CacheService` | ✅ 预计算后缓存需求降低，但仍保留作为二级缓存 |
+
+### 3.8 迁移策略
+
+1. **新增 Prisma Schema** → `prisma migrate dev`
+2. **新增 `FactorPrecomputeService`** → 不影响现有服务
+3. **改造 `FactorComputeService`** → 添加「优先查快照表」逻辑，保留实时计算作为降级
+4. **验证**：手动触发一天的预计算 → 对比快照值与实时计算值是否一致
+5. **历史回补**：通过管理 API 触发 3 年回补
+6. **启用定时任务**：确认日常预计算稳定后开启 Cron
+
+---
+
+## 四、Phase 2：自定义因子引擎
+
+### 4.1 问题分析
+
+当前 49 个内置因子均为硬编码：
+- `FIELD_REF` 类型映射在 `factor-compute.service.ts` 的 `FIELD_REF_MAP` 中
+- `DERIVED` 类型映射在 `DERIVED_DAILY_BASIC_MAP` / `DERIVED_MONEYFLOW_MAP` 中
+- 用户无法通过 API 添加新因子表达式
+
+**目标**：允许用户通过表达式语言定义新因子，后端安全解析、验证、计算、落库。
+
+### 4.2 表达式语言设计
+
+#### 4.2.1 语法规范
+
+采用类金融量化 DSL（类似 WorldQuant Alpha 语法），以 SQL 安全子集为基础：
+
+```
+// 算术运算
+rank(close / delay(close, 20))                    // 20日动量排名
+ts_mean(turnover_rate_f, 5)                       // 5日平均换手率
+(close - ts_min(close, 20)) / (ts_max(close, 20) - ts_min(close, 20))  // 位置指标
+
+// 支持的字段引用（安全白名单）
+close, open, high, low, vol, amount                // daily 行情
+pe_ttm, pb, ps_ttm, dv_ttm, total_mv, circ_mv     // daily_basic
+turnover_rate_f, volume_ratio                      // daily_basic
+roe, roa, revenue_yoy, net_profit_yoy              // fina_indicator (PIT)
+
+// 支持的函数
+rank(x)                // 截面排名 (0~1)
+zscore(x)              // 截面 Z-Score 标准化
+ts_mean(x, n)          // 时间序列均值（过去 n 日）
+ts_std(x, n)           // 时间序列标准差
+ts_sum(x, n)           // 时间序列求和
+ts_min(x, n)           // 时间序列最小值
+ts_max(x, n)           // 时间序列最大值
+ts_rank(x, n)          // 时间序列排名（过去 n 日内的百分位）
+delay(x, n)            // 滞后 n 日的值
+delta(x, n)            // x - delay(x, n)
+ts_corr(x, y, n)       // 时间序列相关系数
+ts_cov(x, y, n)        // 时间序列协方差
+log(x)                 // 自然对数
+abs(x)                 // 绝对值
+sign(x)                // 符号函数 (-1, 0, 1)
+max(x, y)              // 取较大值
+min(x, y)              // 取较小值
+if_else(cond, x, y)    // 条件表达式
+```
+
+#### 4.2.2 安全约束
+
+| 约束 | 说明 |
+|------|------|
+| **白名单字段** | 仅允许引用预定义字段列表中的数据列 |
+| **白名单函数** | 仅允许使用上述预定义函数 |
+| **无副作用** | 不允许 INSERT/UPDATE/DELETE/DROP 等修改语句 |
+| **窗口长度限制** | 时序函数窗口 n ∈ [1, 250]（最多回看 1 年） |
+| **表达式长度限制** | 最大 500 字符 |
+| **嵌套深度限制** | 最大嵌套 5 层 |
+| **无子查询** | 不允许 SELECT/FROM/WHERE 等 SQL 关键词 |
+
+### 4.3 表达式解析器
+
+**文件**：`src/apps/factor/services/factor-expression.service.ts`（🆕 新建）
+
+```typescript
+@Injectable()
+export class FactorExpressionService {
+  /**
+   * 解析用户表达式为 AST（Abstract Syntax Tree）。
+   * 验证安全约束并返回结构化表示。
+   */
+  parse(expression: string): ExpressionAST {
+    // 1. 词法分析（Tokenizer）
+    // 2. 语法分析（Recursive Descent Parser）
+    // 3. 安全验证（白名单检查 + 深度检查 + 长度检查）
+    // 4. 返回 AST
+  }
+
+  /**
+   * 将 AST 编译为 PostgreSQL SQL 表达式。
+   * 截面函数（rank, zscore）→ PERCENT_RANK() / Z-Score 窗口函数
+   * 时序函数（ts_mean, delay）→ 子查询或 LAG/AVG OVER(ROWS BETWEEN)
+   */
+  compile(ast: ExpressionAST, tradeDate: string): CompiledQuery {
+    // 返回 { sql: string, params: unknown[], requiredTables: string[] }
+  }
+
+  /**
+   * 验证表达式合法性（语法 + 安全 + 字段引用），不执行计算。
+   */
+  validate(expression: string): ValidationResult {
+    // 返回 { valid: boolean, errors: string[], warnings: string[] }
+  }
+}
+```
+
+#### AST 类型定义
+
+```typescript
+// src/apps/factor/types/expression.types.ts
+
+type ExpressionNode =
+  | { type: 'literal'; value: number }
+  | { type: 'field'; name: string }                       // 字段引用
+  | { type: 'binary'; op: '+' | '-' | '*' | '/'; left: ExpressionNode; right: ExpressionNode }
+  | { type: 'unary'; op: '-'; operand: ExpressionNode }
+  | { type: 'call'; fn: string; args: ExpressionNode[] }  // 函数调用
+  | { type: 'conditional'; condition: ExpressionNode; then: ExpressionNode; else: ExpressionNode }
+
+interface ExpressionAST {
+  root: ExpressionNode
+  referencedFields: string[]    // 引用的字段列表
+  referencedTables: Set<string> // 需要 JOIN 的表
+  maxWindowSize: number         // 最大回看窗口
+  nestingDepth: number          // 嵌套深度
+}
+
+interface CompiledQuery {
+  sql: string                   // 编译后的 SQL 表达式
+  params: unknown[]             // 参数化查询参数
+  requiredTables: string[]      // 需要 JOIN 的表名
+  requiresWindow: boolean       // 是否需要时间序列窗口数据
+  windowSize: number            // 所需的最大窗口大小
+}
+
+interface ValidationResult {
+  valid: boolean
+  errors: string[]              // 致命错误（无法编译）
+  warnings: string[]            // 可能影响计算质量的警告
+}
+```
+
+### 4.4 编译到 SQL 的策略
+
+不同类型的函数编译为不同的 SQL 模式：
+
+#### 截面函数 → 窗口函数
+
+```sql
+-- rank(pe_ttm) 编译为：
+PERCENT_RANK() OVER (ORDER BY db.pe_ttm) AS factor_value
+
+-- zscore(pe_ttm) 编译为：
+(db.pe_ttm - AVG(db.pe_ttm) OVER ()) / NULLIF(STDDEV_SAMP(db.pe_ttm) OVER (), 0)
+```
+
+#### 时序函数 → 子查询或窗口函数
+
+```sql
+-- ts_mean(close, 20) 编译为：
+(SELECT AVG(d2.close * af2.adj_factor)
+ FROM stock_daily_prices d2
+ JOIN stock_adjustment_factors af2 ON d2.ts_code = af2.ts_code AND d2.trade_date = af2.trade_date
+ WHERE d2.ts_code = d.ts_code
+   AND d2.trade_date <= :tradeDate
+ ORDER BY d2.trade_date DESC
+ LIMIT 20)
+
+-- delay(close, 5) 编译为：
+(SELECT d2.close * af2.adj_factor
+ FROM stock_daily_prices d2
+ JOIN stock_adjustment_factors af2 ON ...
+ WHERE d2.ts_code = d.ts_code
+   AND d2.trade_date < :tradeDate
+ ORDER BY d2.trade_date DESC
+ OFFSET 4 LIMIT 1)
+```
+
+#### 复合表达式 → 递归组合
+
+```sql
+-- rank(close / delay(close, 20)) 编译为：
+PERCENT_RANK() OVER (
+  ORDER BY
+    (d.close * af.adj_factor) / NULLIF(
+      (SELECT d2.close * af2.adj_factor FROM ... OFFSET 19 LIMIT 1),
+      0
+    )
+)
+```
+
+### 4.5 用户自定义因子 API
+
+#### `POST /factor/custom/create` — 创建自定义因子
+
+```typescript
+class CreateCustomFactorDto {
+  @IsString()
+  @Length(2, 50)
+  @Matches(/^[a-z][a-z0-9_]*$/)
+  name: string                           // 因子英文标识（小写字母+下划线+数字）
+
+  @IsString()
+  @Length(1, 50)
+  label: string                          // 因子中文名
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  description?: string                   // 描述
+
+  @IsEnum(FactorCategory)
+  category: FactorCategory               // 分类
+
+  @IsString()
+  @MaxLength(500)
+  expression: string                     // 因子表达式
+
+  @IsOptional()
+  @IsBoolean()
+  autoPrecompute?: boolean = false       // 是否加入每日预计算
+}
+```
+
+**处理流程**：
+
+1. **验证表达式**：调用 `FactorExpressionService.validate(expression)`
+2. **检查命名冲突**：确保 name 不与内置因子重复
+3. **试算验证**：对最近一个交易日执行一次计算，确认 SQL 可执行、结果合理
+4. **写入 `factor_definitions`**：`sourceType = CUSTOM_SQL`，`expression` 存储原始表达式
+5. **可选预计算**：如果 `autoPrecompute=true`，加入每日预计算队列
+
+#### `POST /factor/custom/test` — 试算（不落库）
+
+```typescript
+class TestCustomFactorDto {
+  @IsString()
+  @MaxLength(500)
+  expression: string                     // 因子表达式
+
+  @IsString()
+  @Matches(/^\d{8}$/)
+  tradeDate: string                      // 试算日期
+
+  @IsOptional()
+  @IsString()
+  universe?: string                      // 股票池
+}
+```
+
+**响应**：与 `/factor/values` 相同格式，但增加诊断信息：
+
+```typescript
+{
+  // ... 与 FactorValuesResponse 相同
+  diagnostics: {
+    compiledSql: string                  // 编译后的 SQL（便于调试）
+    executionTimeMs: number              // 执行耗时
+    warnings: string[]                   // 警告信息
+  }
+}
+```
+
+#### `PUT /factor/custom/:name` — 更新自定义因子
+
+#### `DELETE /factor/custom/:name` — 删除自定义因子
+
+#### `POST /factor/custom/:name/precompute` — 触发单因子预计算
+
+### 4.6 安全性保障
+
+**多层防御**：
+
+| 层级 | 措施 | 说明 |
+|------|------|------|
+| **L1 词法** | Token 白名单 | 仅允许数字、标识符（白名单）、运算符、括号、逗号 |
+| **L2 语法** | AST 验证 | 嵌套深度 ≤ 5，窗口大小 ≤ 250，表达式长度 ≤ 500 |
+| **L3 语义** | 字段/函数白名单 | 不允许引用非预定义字段或函数 |
+| **L4 编译** | 参数化查询 | 所有常量值通过参数化传递，防止 SQL 注入 |
+| **L5 运行** | 超时 + 行数限制 | SQL 执行 `SET statement_timeout` + `LIMIT` |
+| **L6 资源** | 每用户配额 | 每用户最多 50 个自定义因子；自动预计算最多 10 个 |
+
+### 4.7 实现建议
+
+**解析器实现方式选择**：
+
+| 方案 | 优点 | 缺点 | 推荐度 |
+|------|------|------|--------|
+| **手写递归下降解析器** | 无外部依赖，完全控制安全边界 | 实现工作量中等 | ⭐⭐⭐ 推荐 |
+| 使用 `pegjs` / `nearley` 解析器生成器 | 语法定义声明式，易维护 | 引入外部依赖 | ⭐⭐ 备选 |
+| 直接拼接 SQL | 实现最快 | 安全风险高，难以维护 | ❌ 不推荐 |
+
+**推荐使用手写递归下降解析器**，原因：
+1. 表达式语法相对简单（算术 + 函数调用 + 条件）
+2. 安全约束需要在解析过程中精确控制
+3. 无需引入额外 npm 依赖
+
+---
+
+## 五、Phase 3：因子 → 选股 → 回测 全链路打通
+
+### 5.1 问题分析
+
+当前因子模块和回测模块各自独立运作：
+
+```
+因子模块                             回测模块
+┌────────────────┐                  ┌─────────────────────┐
+│ /factor/screening                 │ /backtest/submit     │
+│ → 返回符合条件的股票列表          │ → 需要手动填写:      │
+│                                   │   - stockPool        │
+│ 用户看完就走，无法继续 ──────✕    │   - strategyType     │
+│                                   │   - 各种参数          │
+└────────────────┘                  └─────────────────────┘
+```
+
+**痛点**：用户在因子选股后，需要手动复制股票池、选择策略类型、填写参数，再提交回测。链路断裂，研究效率低。
+
+### 5.2 全链路流程设计
+
+```
+  ┌─────────────────────────────────────────────────────────┐
+  │                    因子研究全链路                         │
+  │                                                         │
+  │  Step 1: 选因子                                         │
+  │  POST /factor/library → 选择 pe_ttm + roe               │
+  │         ↓                                               │
+  │  Step 2: 分析因子                                       │
+  │  POST /factor/analysis/ic → 确认因子有效                │
+  │         ↓                                               │
+  │  Step 3: 组合选股                                       │
+  │  POST /factor/screening → 得到符合条件的股票池          │
+  │         ↓                                               │
+  │  Step 4: 一键提交回测        🆕                         │
+  │  POST /factor/backtest/submit                           │
+  │  → 自动将因子选股条件转为回测策略                       │
+  │         ↓                                               │
+  │  Step 5: 查看回测结果                                   │
+  │  GET /backtest/:id/summary                              │
+  │         ↓                                               │
+  │  Step 6: 归因分析           🆕                          │
+  │  POST /factor/backtest/:id/attribution                  │
+  │  → 分析回测收益中各因子的贡献                           │
+  └─────────────────────────────────────────────────────────┘
+```
+
+### 5.3 新增 API
+
+#### `POST /factor/backtest/submit` — 因子策略一键回测
+
+```typescript
+class FactorBacktestSubmitDto {
+  // ── 因子选股条件（复用现有 FactorScreeningDto 的条件格式）──
+  @IsArray()
+  @ValidateNested({ each: true })
+  conditions: FactorCondition[]          // 因子筛选条件（与 /factor/screening 一致）
+
+  @IsOptional()
+  @IsString()
+  universe?: string                      // 股票池
+
+  // ── 回测参数 ──
+  @IsString() @Matches(/^\d{8}$/)
+  startDate: string                      // 回测起始日期
+
+  @IsString() @Matches(/^\d{8}$/)
+  endDate: string                        // 回测结束日期
+
+  @IsOptional()
+  @IsNumber() @Min(10000)
+  initialCapital?: number = 1000000      // 初始资金（默认 100 万）
+
+  @IsOptional()
+  @IsInt() @Min(1) @Max(60)
+  rebalanceDays?: number = 5             // 调仓周期（交易日，默认 5 日 = 周频）
+
+  @IsOptional()
+  @IsEnum(['equal_weight', 'factor_weight'])
+  weightMethod?: string = 'equal_weight' // 权重方式：等权 | 按因子值加权
+
+  @IsOptional()
+  @IsString()
+  sortBy?: string                        // 排序因子（用于 factor_weight 或 top_n 选股）
+
+  @IsOptional()
+  @IsIn(['asc', 'desc'])
+  sortOrder?: 'asc' | 'desc' = 'desc'
+
+  @IsOptional()
+  @IsInt() @Min(5) @Max(100)
+  topN?: number = 20                     // 从筛选结果中取前 N 只
+
+  // ── 交易成本 ──
+  @IsOptional()
+  @IsNumber() @Min(0) @Max(0.01)
+  commissionRate?: number = 0.0003       // 手续费率（默认万三）
+
+  @IsOptional()
+  @IsNumber() @Min(0) @Max(0.01)
+  slippage?: number = 0.001              // 滑点（默认 0.1%）
+
+  @IsOptional()
+  @IsString()
+  benchmarkCode?: string = '000300.SH'   // 基准指数（默认沪深 300）
+
+  @IsOptional()
+  @IsString()
+  name?: string                          // 回测任务名称
+}
+```
+
+**处理流程**：
+
+1. **验证因子条件**：确认所有 `factorName` 存在且已启用
+2. **构建回测参数**：将因子选股条件转换为回测引擎可识别的策略配置
+3. **提交 BullMQ 任务**：复用现有回测队列基础设施
+4. **策略类型映射**：映射到现有 `FACTOR_RANKING` 或新增 `FACTOR_SCREENING_ROTATION` 策略模板
+
+#### 策略模板映射
+
+```typescript
+// 新增策略类型
+enum BacktestStrategyType {
+  // ... 现有
+  MA_CROSS_SINGLE = 'MA_CROSS_SINGLE',
+  SCREENING_ROTATION = 'SCREENING_ROTATION',
+  FACTOR_RANKING = 'FACTOR_RANKING',
+  CUSTOM_POOL_REBALANCE = 'CUSTOM_POOL_REBALANCE',
+
+  // 🆕 因子选股轮动（由因子模块触发）
+  FACTOR_SCREENING_ROTATION = 'FACTOR_SCREENING_ROTATION',
+}
+```
+
+**`FACTOR_SCREENING_ROTATION` 策略执行逻辑**：
+
+```
+在每个调仓日 T：
+  1. 以 T 为 tradeDate 执行因子选股（复用 FactorScreeningService）
+  2. 按 sortBy + sortOrder 排序，取 topN 只股票
+  3. 按 weightMethod 分配权重
+  4. 与当前持仓比较，生成买卖信号
+  5. 撮合引擎执行交易（考虑涨跌停 / 停牌 / 滑点 / 手续费）
+```
+
+#### `POST /factor/backtest/:id/attribution` — 因子归因分析
+
+```typescript
+class FactorAttributionDto {
+  @IsString()
+  backtestId: string                     // 回测任务 ID
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  factorNames?: string[]                 // 分析哪些因子的贡献（默认使用回测时的条件因子）
+}
+```
+
+**响应**：
+
+```typescript
+{
+  code: 200,
+  data: {
+    backtestId: "xxx",
+    totalReturn: 0.185,
+    factorContributions: [
+      {
+        factorName: "pe_ttm",
+        label: "市盈率TTM",
+        avgExposure: -0.45,              // 平均因子暴露
+        returnContribution: 0.082,       // 对总收益的贡献
+        contributionPct: 44.3,           // 贡献占比 %
+      },
+      {
+        factorName: "roe",
+        label: "净资产收益率",
+        avgExposure: 0.68,
+        returnContribution: 0.065,
+        contributionPct: 35.1,
+      },
+    ],
+    residualReturn: 0.038,               // 残差收益（无法被因子解释的部分）
+    residualPct: 20.5,
+  }
+}
+```
+
+### 5.4 回测模块集成点
+
+需要在回测模块中添加以下改动：
+
+| 文件 | 改动 | 说明 |
+|------|------|------|
+| `src/apps/backtest/strategies/` | 🆕 `factor-screening-rotation.strategy.ts` | 新增因子选股轮动策略 |
+| `src/apps/backtest/services/backtest-strategy-registry.service.ts` | 注册新策略类型 | 添加 `FACTOR_SCREENING_ROTATION` |
+| `src/apps/backtest/dto/` | 扩展回测提交 DTO | 支持因子条件参数 |
+| `src/apps/factor/factor.controller.ts` | 🆕 添加 2 个端点 | `/factor/backtest/submit` + `/factor/backtest/:id/attribution` |
+| `src/apps/factor/services/` | 🆕 `factor-backtest.service.ts` | 编排因子→回测→归因的全流程 |
+
+### 5.5 依赖关系
+
+```
+Factor Module                        Backtest Module
+┌──────────────────┐                 ┌─────────────────────┐
+│ FactorBacktest   │ ───depends───→  │ BacktestService     │
+│ Service          │                 │ (BullMQ 提交)       │
+│                  │ ───depends───→  │ StrategyRegistry    │
+│                  │                 │ (策略注册)          │
+│                  │                 └─────────────────────┘
+│                  │
+│ FactorScreening  │ ←───reused-by── FactorScreeningRotation
+│ Service          │                  Strategy
+└──────────────────┘
+```
+
+> **循环依赖风险**：`FactorModule` 依赖 `BacktestModule` 的提交能力，而 `BacktestModule` 的新策略依赖 `FactorModule` 的选股能力。需要通过 `forwardRef()` 或提取公共接口模块来解决。
+
+**推荐方案**：将因子选股条件序列化为 JSON 存储在回测任务参数中，策略执行时直接注入 `FactorScreeningService`，避免模块级循环依赖。
+
+---
+
+## 六、Phase 4：因子正交化（多因子组合进阶）
+
+### 6.1 问题分析
+
+当多因子组合选股时，因子之间可能存在高度相关性（共线性），例如：
+- `pe_ttm` 与 `pb` 正相关（都反映估值水平）
+- `ln_market_cap` 与 `amount` 正相关（大市值股票成交额高）
+- `roe` 与 `net_profit_margin` 正相关（盈利能力指标间关联）
+
+共线性导致：
+- 多因子合成评分时信息重复叠加
+- 因子权重估计不稳定
+- IC 分析高估因子增量贡献
+
+**目标**：提供因子正交化（去共线性）能力，让多因子组合更合理。
+
+### 6.2 正交化方法
+
+#### 方法 A：截面回归正交化（推荐优先实现）
+
+对于目标因子 $f_i$，相对于基准因子集 $\{f_1, ..., f_{i-1}\}$ 做截面回归，取残差作为正交化后的因子值：
+
+$$f_i^{orth} = f_i - \hat{f_i} = f_i - X \cdot \beta$$
+
+其中 $X$ 为基准因子矩阵，$\beta$ 为 OLS 回归系数。
+
+**优点**：直觉清晰，实现相对简单
+**缺点**：结果依赖正交化顺序
+
+#### 方法 B：Symmetric Orthogonalization（对称正交化）
+
+$$F^{orth} = F \cdot \Sigma^{-1/2}$$
+
+其中 $\Sigma$ 是因子的相关矩阵。
+
+**优点**：不依赖顺序
+**缺点**：结果不易直观解释
+
+#### 方法 C：Fama-MacBeth 截面回归
+
+每个截面日对全市场做多因子回归：
+
+$$r_{i,t} = \alpha_t + \sum_{k} \beta_{k,t} f_{k,i,t-1} + \epsilon_{i,t}$$
+
+取因子溢价（$\beta_{k,t}$）的时间序列均值和 t 统计量作为因子有效性检验。
+
+**优点**：标准的多因子检验方法
+**缺点**：计算量大
+
+### 6.3 API 设计
+
+#### `POST /factor/analysis/orthogonalize` — 因子正交化
+
+```typescript
+class FactorOrthogonalizeDto {
+  @IsArray()
+  @IsString({ each: true })
+  @ArrayMinSize(2)
+  @ArrayMaxSize(20)
+  factorNames: string[]                  // 需要正交化的因子列表
+
+  @IsString() @Matches(/^\d{8}$/)
+  tradeDate: string                      // 计算日期
+
+  @IsOptional()
+  @IsString()
+  universe?: string                      // 股票池
+
+  @IsOptional()
+  @IsEnum(['regression', 'symmetric'])
+  method?: 'regression' | 'symmetric' = 'regression'
+}
+```
+
+**响应**：
+
+```typescript
+{
+  code: 200,
+  data: {
+    method: "regression",
+    tradeDate: "20260327",
+    originalCorrelation: {               // 正交化前的相关矩阵
+      factors: ["pe_ttm", "pb", "roe"],
+      matrix: [[1, 0.45, -0.21], [0.45, 1, -0.18], [-0.21, -0.18, 1]]
+    },
+    orthogonalCorrelation: {             // 正交化后的相关矩阵（应接近单位矩阵）
+      factors: ["pe_ttm", "pb_orth", "roe_orth"],
+      matrix: [[1, 0.02, -0.01], [0.02, 1, 0.03], [-0.01, 0.03, 1]]
+    },
+    factorValues: {                      // 正交化后的因子值（可供后续选股使用）
+      stockCount: 4856,
+      factors: {
+        pe_ttm: [...],                   // 原始值不变
+        pb_orth: [...],                  // 正交化后值
+        roe_orth: [...],                 // 正交化后值
+      }
+    }
+  }
+}
+```
+
+#### `POST /factor/analysis/fama-macbeth` — Fama-MacBeth 检验
+
+```typescript
+class FamaMacBethDto {
+  @IsArray()
+  @IsString({ each: true })
+  @ArrayMinSize(1)
+  @ArrayMaxSize(20)
+  factorNames: string[]                  // 待检验的因子列表
+
+  @IsString() @Matches(/^\d{8}$/)
+  startDate: string
+
+  @IsString() @Matches(/^\d{8}$/)
+  endDate: string
+
+  @IsOptional()
+  @IsString()
+  universe?: string
+
+  @IsOptional()
+  @IsInt() @Min(1) @Max(20)
+  forwardDays?: number = 5              // 未来收益窗口
+}
+```
+
+**响应**：
+
+```typescript
+{
+  code: 200,
+  data: {
+    startDate: "20250101",
+    endDate: "20260327",
+    forwardDays: 5,
+    results: [
+      {
+        factorName: "pe_ttm",
+        label: "市盈率TTM",
+        avgPremium: -0.0012,             // 因子溢价均值
+        tStat: -3.42,                    // t 统计量
+        pValue: 0.0007,                  // p 值
+        significant: true,               // |t| > 2
+      },
+      {
+        factorName: "roe",
+        label: "净资产收益率",
+        avgPremium: 0.0008,
+        tStat: 2.15,
+        pValue: 0.032,
+        significant: true,
+      },
+    ],
+    // 截面 R² 时间序列
+    r2Series: [
+      { tradeDate: "20250102", r2: 0.05 },
+      { tradeDate: "20250106", r2: 0.04 },
+      // ...
+    ],
+    avgR2: 0.042,                        // 平均截面 R²
+  }
+}
+```
+
+### 6.4 实现服务
+
+**文件**：`src/apps/factor/services/factor-orthogonal.service.ts`（🆕 新建）
+
+```typescript
+@Injectable()
+export class FactorOrthogonalService {
+  /**
+   * 截面回归正交化。
+   * 对 factorNames[1..n] 依次相对于前序因子做 OLS 回归取残差。
+   */
+  async orthogonalizeByRegression(
+    factorValues: Map<string, Map<string, number>>,  // factorName → tsCode → value
+    order: string[],
+  ): Promise<Map<string, Map<string, number>>>
+
+  /**
+   * 对称正交化（基于相关矩阵的 Σ^{-1/2} 变换）。
+   */
+  async orthogonalizeSymmetric(
+    factorValues: Map<string, Map<string, number>>,
+  ): Promise<Map<string, Map<string, number>>>
+
+  /**
+   * Fama-MacBeth 截面回归。
+   * 在每个截面日做 cross-sectional regression，收集时间序列。
+   */
+  async famaMacBeth(
+    factorNames: string[],
+    tradeDates: string[],
+    forwardDays: number,
+    universe?: string,
+  ): Promise<FamaMacBethResult>
+}
+```
+
+**数值计算**：
+
+OLS 回归和矩阵运算可通过以下方式实现：
+
+| 方案 | 说明 | 推荐度 |
+|------|------|--------|
+| **手写 OLS** | 实现 `(X'X)^{-1} X'y` 的数值计算，仅需基础线代运算 | ⭐⭐⭐ 推荐（因子数量 ≤20，矩阵很小） |
+| 使用 `ml-matrix` npm 包 | 提供矩阵运算（inverse, SVD, eigenvalue 等） | ⭐⭐ 备选 |
+| PostgreSQL 内计算 | 在 SQL 中实现回归（复杂但性能好） | ⭐ 特定场景 |
+
+> 因子正交化涉及的矩阵规模很小（最多 20×20），手写实现即可满足性能需求。
+
+---
+
+## 七、Phase 5：Barra 风格因子模型（远期）
+
+### 7.1 概述
+
+Barra 模型（CNE5/CNE6）是量化界标准的多因子风险模型，用于：
+
+1. **风格因子分解**：将个股收益分解为市场因子 + 行业因子 + 风格因子 + 特质收益
+2. **风险预测**：基于因子协方差矩阵预测组合风险
+3. **绩效归因**：将组合超额收益归因到各风格因子
+4. **组合优化**：在风险约束下优化组合权重
+
+### 7.2 标准 CNE5 风格因子
+
+| 因子 | 英文名 | 构成 |
+|------|--------|------|
+| **市值** | SIZE | ln(总市值) |
+| **Beta** | BETA | 对沪深300的 60 日 Beta |
+| **动量** | MOMENTUM | 252 日动量（剔除最近 21 日） |
+| **残差波动率** | RESIDUAL_VOL | 相对 CAPM 残差的波动率 |
+| **非线性市值** | NLSIZE | SIZE³ 正交化后的残差 |
+| **账面市值比** | BTOP | 1/PB |
+| **流动性** | LIQUIDITY | 对数换手率的时序均值 |
+| **盈利** | EARNINGS_YIELD | EP（盈利收益率）|
+| **成长** | GROWTH | 营收同比增长 |
+| **杠杆** | LEVERAGE | 资产负债率 |
+
+### 7.3 实现路径规划
+
+> **本阶段仅做架构预留，不含具体实现方案。** Barra 模型实现复杂度高，建议在 Phase 1-4 稳定运行后再启动。
+
+#### 架构预留
+
+1. **因子分类扩展**：在 `FactorCategory` 枚举中预留 `BARRA_STYLE` 分类
+2. **协方差矩阵存储**：预留 `factor_covariance_matrix` 表结构
+3. **风险模型服务接口**：定义 `RiskModelService` 接口，Phase 5 实现
+
+```typescript
+// 预留接口定义
+interface RiskModelService {
+  /**
+   * 计算因子协方差矩阵（使用 Newey-West 调整）
+   */
+  computeFactorCovariance(date: string): Promise<CovarianceMatrix>
+
+  /**
+   * 计算个股特质风险（specific risk）
+   */
+  computeSpecificRisk(date: string): Promise<Map<string, number>>
+
+  /**
+   * 计算组合风险分解
+   */
+  decomposePortfolioRisk(holdings: PortfolioHolding[], date: string): Promise<RiskDecomposition>
+
+  /**
+   * 绩效归因
+   */
+  attributeReturns(holdings: PortfolioHolding[], startDate: string, endDate: string): Promise<Attribution>
+}
+```
+
+#### Schema 预留
+
+```prisma
+// 未来实现时新增
+// model FactorCovariance { ... }
+// model FactorExposure { ... }
+// model SpecificRisk { ... }
+```
+
+### 7.4 外部依赖评估
+
+| 依赖 | 用途 | 说明 |
+|------|------|------|
+| 行业分类数据 | 行业因子矩阵 | 当前 `stock_basic_profiles.industry` 可用，但粒度可能不足。后续可能需要 `concept` / `concept_detail` 接口做更细分类映射 |
+| 行业指数收益 | 行业因子收益率 | 需要 Tushare 行业指数日线（`index_daily`，行业指数部分需额外接入） |
+| 较长历史数据 | 协方差估计 | 需要 252+ 个交易日的因子暴露和收益率数据 |
+
+---
+
+## 八、实施顺序与依赖关系
+
+```
+DATA_LAYER_GAP Phase 1 (修复空表)
+       │
+       │ 前置依赖：因子截面数据有效
+       ▼
+Phase 1: 因子值批量预计算（1-1.5 周）
+       │
+       │ 预计算表就绪
+       │
+       ├──────────────────┬──────────────────┐
+       │                  │                  │
+       ▼                  ▼                  ▼
+Phase 2: 自定义因子     Phase 3: 因子→回测  Phase 4: 因子正交化
+(1.5-2 周)             全链路 (1 周)       (1-1.5 周)
+       │                  │                  │
+       │   可以互相增强   │                  │
+       ▼                  ▼                  ▼
+       └──────────────────┴──────────────────┘
+                          │
+                     稳定运行后
+                          │
+                          ▼
+                    Phase 5: Barra 模型
+                    (远期 3-4 周)
+```
+
+### 各阶段验证标准
+
+| 阶段 | 验证方式 |
+|------|---------|
+| **Phase 1** | ① 预计算任务完成后 `factor_snapshots` 表有数据 ② 查询 `/factor/values` 响应时间从秒级降至毫秒级 ③ IC 分析与实时计算结果一致 |
+| **Phase 2** | ① 自定义因子表达式 `rank(close/delay(close,20))` 可解析、编译、执行 ② 恶意输入（SQL 注入、过深嵌套）被拒绝 ③ 自定义因子可加入预计算 |
+| **Phase 3** | ① `/factor/backtest/submit` 提交后在回测队列中可见 ② 回测结果与手动复制股票池提交的结果一致 ③ 归因分析各因子贡献之和接近总收益 |
+| **Phase 4** | ① 正交化后相关矩阵非对角元素接近 0 ② Fama-MacBeth t 统计量与单因子 IC 分析方向一致 |
+
+---
+
+## 九、文件变更汇总
+
+### 新增文件
+
+| 文件路径 | 阶段 | 说明 |
+|---------|------|------|
+| `prisma/factor_snapshot.prisma` | P1 | 因子快照 + 快照摘要两个模型 |
+| `src/apps/factor/services/factor-precompute.service.ts` | P1 | 批量预计算 + 历史回补 + 定时任务 |
+| `src/apps/factor/dto/factor-precompute.dto.ts` | P1 | 预计算 / 回补管理 DTO |
+| `src/apps/factor/types/expression.types.ts` | P2 | 表达式 AST 类型定义 |
+| `src/apps/factor/services/factor-expression.service.ts` | P2 | 表达式解析 / 编译 / 验证 |
+| `src/apps/factor/dto/factor-custom.dto.ts` | P2 | 自定义因子 CRUD DTO |
+| `src/apps/factor/services/factor-backtest.service.ts` | P3 | 因子→回测编排 + 归因分析 |
+| `src/apps/factor/dto/factor-backtest.dto.ts` | P3 | 因子回测 / 归因 DTO |
+| `src/apps/backtest/strategies/factor-screening-rotation.strategy.ts` | P3 | 因子选股轮动策略 |
+| `src/apps/factor/services/factor-orthogonal.service.ts` | P4 | 正交化 + Fama-MacBeth |
+| `src/apps/factor/dto/factor-orthogonal.dto.ts` | P4 | 正交化 / FM 检验 DTO |
+
+### 修改文件
+
+| 文件路径 | 阶段 | 改动说明 |
+|---------|------|---------|
+| `src/apps/factor/factor.module.ts` | P1-P4 | 逐步注册新增的 Service |
+| `src/apps/factor/factor.controller.ts` | P1-P4 | 逐步添加新端点 |
+| `src/apps/factor/services/factor-compute.service.ts` | P1 | 添加「优先查快照表」逻辑 |
+| `src/apps/factor/services/factor-analysis.service.ts` | P1 | 内部因子值获取改走快照 |
+| `src/apps/backtest/services/backtest-strategy-registry.service.ts` | P3 | 注册 `FACTOR_SCREENING_ROTATION` |
+
+### 新增端点汇总
+
+| 端点 | 方法 | 阶段 | 说明 |
+|------|------|------|------|
+| `/factor/admin/precompute` | POST | P1 | 手动触发预计算 |
+| `/factor/admin/backfill` | POST | P1 | 触发历史回补 |
+| `/factor/admin/precompute/status` | GET | P1 | 预计算状态查询 |
+| `/factor/custom/create` | POST | P2 | 创建自定义因子 |
+| `/factor/custom/test` | POST | P2 | 试算自定义因子 |
+| `/factor/custom/:name` | PUT | P2 | 更新自定义因子 |
+| `/factor/custom/:name` | DELETE | P2 | 删除自定义因子 |
+| `/factor/custom/:name/precompute` | POST | P2 | 触发单因子预计算 |
+| `/factor/backtest/submit` | POST | P3 | 因子策略一键回测 |
+| `/factor/backtest/:id/attribution` | POST | P3 | 因子归因分析 |
+| `/factor/analysis/orthogonalize` | POST | P4 | 因子正交化 |
+| `/factor/analysis/fama-macbeth` | POST | P4 | Fama-MacBeth 检验 |
+
+---
+
+## 附录：风险与注意事项
+
+1. **预计算存储膨胀**：49 因子 × 5000 股 × 252 日/年 ≈ 6000 万行/年。需要定期清理过旧数据或建分区表。建议只保留最近 3-5 年的快照。
+
+2. **首次回补时间**：3 年回补约 1.8 亿行，按 49 因子串行处理估计需要 2-4 小时。可考虑分因子并行（BullMQ 子任务）。
+
+3. **自定义因子安全性**：表达式引擎是本方案中安全风险最高的部分。务必通过多层白名单和参数化查询防止 SQL 注入。**严禁将用户输入直接拼接到 SQL 中**。
+
+4. **因子→回测循环依赖**：`FactorModule` 和 `BacktestModule` 之间需要合理解耦。推荐通过 JSON 参数序列化传递选股条件，而非直接模块级依赖。
+
+5. **Barra 模型复杂度**：Phase 5 涉及大量数值计算（矩阵分解、特征值分解、Newey-West 协方差调整），Node.js 不是最优运行时。如果性能不足，可考虑 Python 微服务或 PostgreSQL 存储过程计算。
+
+6. **预计算一致性**：切换到预计算查询后，需确保新增因子或修改因子定义时同步更新预计算。建议在因子定义变更时自动标记需要重新预计算的日期范围。
+
+---
+
+_本设计文档基于 `quant-code-cpx/server-code` 仓库当前代码状态编写，实施时请以最新代码为准。_

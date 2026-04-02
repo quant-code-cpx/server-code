@@ -1,0 +1,889 @@
+# 数据层缺口 — 开发方案设计
+
+> **目标读者**：AI 代码生成助手 / 开发者。请按照本文定义的分阶段方案、接口规格、Schema 变更进行实现。
+>
+> **对应痛点**：`FEATURE_GAP_ANALYSIS_2026-04-01.md` → 痛点一：数据层缺口
+>
+> **日期**：2026-04-02
+
+---
+
+## 目录
+
+1. [现状评估与根因分析](#一现状评估与根因分析)
+2. [总体分阶段规划](#二总体分阶段规划)
+3. [Phase 1：激活三张空表同步](#三phase-1激活三张空表同步)
+4. [Phase 2：高价值数据源接入](#四phase-2高价值数据源接入)
+5. [Phase 3：数据质量框架](#五phase-3数据质量框架)
+6. [Tushare 接口积分需求汇总](#六tushare-接口积分需求汇总)
+7. [实施顺序与依赖关系](#七实施顺序与依赖关系)
+
+---
+
+## 一、现状评估与根因分析
+
+### 1.1 三张空表现状
+
+| 表名 | Prisma Model | DB 表名 | Schema 文件 | 行数 | 状态 |
+|------|-------------|---------|------------|------|------|
+| `stk_limit` | `StkLimit` | `stock_limit_prices` | `prisma/tushare_stk_limit.prisma` | 0 | ❌ 空 |
+| `suspend_d` | `SuspendD` | `stock_suspend_events` | `prisma/tushare_suspend.prisma` | 0 | ❌ 空 |
+| `index_weight` | `IndexWeight` | `index_constituent_weights` | `prisma/tushare_index_weight.prisma` | 0 | ❌ 空 |
+
+### 1.2 已就绪的组件
+
+这三张表的**全部基础设施已经建好**，但从未被成功执行：
+
+| 组件 | 文件 | 状态 |
+|------|------|------|
+| **Prisma Schema** | `prisma/tushare_stk_limit.prisma` 等 | ✅ 已定义 |
+| **API 服务** | `src/tushare/api/factor-data-api.service.ts` | ✅ 已实现 |
+| **Mapper 函数** | `src/tushare/tushare-sync.mapper.ts`（`mapStkLimitRecord` / `mapSuspendDRecord` / `mapIndexWeightRecord`） | ✅ 已实现 |
+| **同步计划** | `src/tushare/sync/factor-data-sync.service.ts`（`getSyncPlans()` 返回 3 个计划） | ✅ 已注册 |
+| **常量定义** | `src/constant/tushare.constant.ts`（`TushareApiName.STK_LIMIT` 等） | ✅ 已定义 |
+| **注册收集** | `src/tushare/sync/sync-registry.service.ts`（`collectPlans()` 已含 `factorDataSync`） | ✅ 已收集 |
+
+### 1.3 🔴 根因：编排器分类遗漏
+
+**文件**：`src/tushare/sync/sync.service.ts`，第 255 行：
+
+```typescript
+for (const category of ['basic', 'market', 'financial', 'moneyflow'] as TushareSyncCategory[]) {
+```
+
+`TushareSyncCategory` 类型定义中包含 `'factor'`（见 `sync-plan.types.ts:7`），但**编排器执行循环中缺少 `'factor'` 分类**。
+
+因此 `FactorDataSyncService` 注册的 3 个同步计划（`STK_LIMIT` / `SUSPEND_D` / `INDEX_WEIGHT`）虽然被收集到了 `SyncRegistryService` 中，但在 `bootstrap`、`schedule`、`manual` 三种触发方式下**均不会被执行**。
+
+**同时**，`getCategoryLabel()` 方法（第 386-397 行）也缺少 `'factor'` 分支，会导致分类标签显示异常。
+
+### 1.4 影响范围
+
+- **因子分析**：所有 IC 分析 / 分位回测 / 衰减分析接口依赖 `stk_limit` 和 `suspend_d` 做极端样本剔除和停牌过滤，当前返回空结果
+- **回测引擎**：撮合逻辑需要 `stk_limit` 判断涨跌停不可交易，需要 `suspend_d` 跳过停牌标的
+- **基准对比**：需要 `index_weight` 构建沪深300/中证500等对标基准池
+
+---
+
+## 二、总体分阶段规划
+
+| 阶段 | 目标 | 预估工时 | 前置依赖 |
+|------|------|----------|----------|
+| **Phase 1** | 修复编排器 Bug，激活三张空表的自动同步 | 1-2 天 | 无 |
+| **Phase 2** | 接入龙虎榜、大宗交易、融资融券、限售解禁四类高价值数据 | 1-1.5 周 | Phase 1 完成；确认 Tushare 积分足够 |
+| **Phase 3** | 建立数据质量框架（校验、监控、修正） | 1-1.5 周 | Phase 1 完成 |
+
+> Phase 2 和 Phase 3 可并行开发，互不依赖。
+
+---
+
+## 三、Phase 1：激活三张空表同步
+
+### 3.1 Bug 修复：编排器分类遗漏
+
+#### 改动 1：`sync.service.ts` — 执行循环添加 `'factor'`
+
+```typescript
+// 修改前（第 255 行）：
+for (const category of ['basic', 'market', 'financial', 'moneyflow'] as TushareSyncCategory[]) {
+
+// 修改后：
+for (const category of ['basic', 'market', 'financial', 'moneyflow', 'factor'] as TushareSyncCategory[]) {
+```
+
+#### 改动 2：`sync.service.ts` — `getCategoryLabel()` 补充 `'factor'` 分支
+
+```typescript
+// 修改前（第 386-397 行）：
+private getCategoryLabel(category: TushareSyncCategory): string {
+  switch (category) {
+    case 'basic':
+      return '基础数据'
+    case 'market':
+      return '行情数据'
+    case 'financial':
+      return '财务数据'
+    case 'moneyflow':
+      return '资金流向'
+  }
+}
+
+// 修改后：
+private getCategoryLabel(category: TushareSyncCategory): string {
+  switch (category) {
+    case 'basic':
+      return '基础数据'
+    case 'market':
+      return '行情数据'
+    case 'financial':
+      return '财务数据'
+    case 'moneyflow':
+      return '资金流向'
+    case 'factor':
+      return '因子数据'
+  }
+}
+```
+
+#### 改动范围
+
+| 文件 | 改动点 | 改动量 |
+|------|--------|--------|
+| `src/tushare/sync/sync.service.ts` | 第 255 行：添加 `'factor'`；第 386-397 行：补充 `case 'factor'` | ~3 行 |
+
+### 3.2 验证步骤
+
+1. **编译验证**：`pnpm build` 确保无类型错误
+2. **启动验证**：Docker 重启后查看日志，确认 bootstrap 同步包含因子数据分类
+3. **数据验证**：bootstrap 完成后查询三张表行数
+   ```sql
+   SELECT 'stk_limit' AS tbl, COUNT(*) FROM stock_limit_prices
+   UNION ALL SELECT 'suspend_d', COUNT(*) FROM stock_suspend_events
+   UNION ALL SELECT 'index_weight', COUNT(*) FROM index_constituent_weights;
+   ```
+4. **手动触发验证**：通过管理 API 手动触发单任务同步，确认 `STK_LIMIT` / `SUSPEND_D` / `INDEX_WEIGHT` 可独立执行
+5. **日志观察**：确认编排器输出 `─── 因子数据 ───` 分类标题
+
+### 3.3 历史数据回补预估
+
+| 数据 | 起始日期 | 预估行数 | 回补耗时预估 | 说明 |
+|------|---------|---------|-------------|------|
+| `stk_limit` | `syncStartDate`（默认 20100101） | ~7,800 万 | 数小时（~3,900 交易日 × 每日 ~5,000 股） | 按交易日逐日拉取，受频控约束 |
+| `suspend_d` | `syncStartDate`（默认 20100101） | ~100-200 万 | 1-2 小时 | 停牌股票数量远少于全市场 |
+| `index_weight` | `20150101`（硬编码起始） | ~200-300 万 | 30-60 分钟 | 4 个指数 × 每月 1 次批量拉取 |
+
+> **频控注意**：首次 bootstrap 会触发大量历史回补。当前 `requestIntervalMs=350ms`，即约 2.8 次/秒。`stk_limit` 按每日 1 次请求计算，3,900 日 ÷ 2.8 ≈ 1,400 秒（~23 分钟纯 API 时间）加上数据库写入开销。建议首次回补在非交易时段进行。
+
+### 3.4 现有代码复用评估
+
+| 组件 | 可复用性 | 备注 |
+|------|---------|------|
+| `FactorDataSyncService.syncStkLimit()` | ✅ 完全可用 | 使用 `syncByTradeDateString` 通用模板 |
+| `FactorDataSyncService.syncSuspendD()` | ✅ 完全可用 | 同上 |
+| `FactorDataSyncService.syncIndexWeight()` | ✅ 完全可用 | 按指数代码 × 月度批量拉取 |
+| `FactorDataApiService` | ✅ 完全可用 | 三个 API 调用方法已实现 |
+| Mapper 函数 | ⚠️ 需验证 | 建议首次同步后抽查几条记录，核对字段映射与 Tushare 真实返回是否一致 |
+
+### 3.5 Tushare 接口字段核对清单
+
+在首次同步成功后，需人工抽查验证以下映射正确性：
+
+#### `stk_limit`（涨跌停价格）
+
+| Tushare 字段 | Prisma 字段 | 类型 | 说明 |
+|-------------|-------------|------|------|
+| `ts_code` | `tsCode` | `String` | 股票代码 |
+| `trade_date` | `tradeDate` | `String` | 交易日期 YYYYMMDD |
+| `up_limit` | `upLimit` | `Decimal?(20,4)` | 涨停价 |
+| `down_limit` | `downLimit` | `Decimal?(20,4)` | 跌停价 |
+
+> **注意**：Tushare `stk_limit` 接口实际返回字段可能还包含 `pre_close`（昨收价）等，当前 Schema 只取了 4 个核心字段。如后续回测需要昨收价，需扩展 Schema。
+
+#### `suspend_d`（停牌信息）
+
+| Tushare 字段 | Prisma 字段 | 类型 | 说明 |
+|-------------|-------------|------|------|
+| `ts_code` | `tsCode` | `String` | 股票代码 |
+| `trade_date` | `tradeDate` | `String` | 交易日期 |
+| `suspend_timing` | `suspendTiming` | `String?` | 停牌时点（全天/上午/下午） |
+| `suspend_type` | `suspendType` | `String?` | 停牌类型 |
+
+#### `index_weight`（指数成分权重）
+
+| Tushare 字段 | Prisma 字段 | 类型 | 说明 |
+|-------------|-------------|------|------|
+| `index_code` | `indexCode` | `String` | 指数代码 |
+| `con_code` | `conCode` | `String` | 成分股代码 |
+| `trade_date` | `tradeDate` | `String` | 日期 |
+| `weight` | `weight` | `Decimal?(10,6)` | 权重（百分比） |
+
+---
+
+## 四、Phase 2：高价值数据源接入
+
+### 4.1 数据选型与优先级
+
+根据痛点分析，从量化研究价值和实现复杂度综合评估，推荐首批接入以下 4 类数据：
+
+| 序号 | 数据 | Tushare 接口 | 研究价值 | 实现难度 | 本阶段优先级 |
+|------|------|-------------|---------|---------|------------|
+| 1 | **龙虎榜** | `top_list` / `top_inst` | 游资追踪、异动分析 | ★★☆ | 🔴 高 |
+| 2 | **大宗交易** | `block_trade` | 机构减持信号、折价分析 | ★★☆ | 🔴 高 |
+| 3 | **融资融券** | `margin_detail` | 杠杆水平、做空情绪 | ★★☆ | 🟡 中 |
+| 4 | **限售股解禁** | `share_float` | 解禁压力日历、事件策略 | ★☆☆ | 🟡 中 |
+
+> **行业分类映射**（`concept` / `concept_detail`）和**宏观数据**（`cn_cpi` 等）归为 Phase 2 扩展，本设计不含具体实现方案，待首批数据接入稳定后再规划。
+
+### 4.2 龙虎榜数据
+
+#### 4.2.1 Tushare 接口说明
+
+| 接口 | 说明 | 请求方式 | 所需积分 |
+|------|------|---------|---------|
+| `top_list` | 龙虎榜每日明细 | `trade_date` 按日查询 | 2000 |
+| `top_inst` | 龙虎榜机构交易明细 | `trade_date` 按日查询 | 2000 |
+
+#### 4.2.2 Prisma Schema 设计
+
+**文件**：`prisma/tushare_top_list.prisma`
+
+```prisma
+/// 龙虎榜每日明细
+model TopList {
+  tradeDate    String   @map("trade_date")
+  tsCode       String   @map("ts_code")
+  name         String?  @map("name")
+  close        Decimal? @map("close")        @db.Decimal(20, 4)
+  pctChange    Decimal? @map("pct_change")   @db.Decimal(10, 4)
+  turnoverRate Decimal? @map("turnover_rate") @db.Decimal(10, 4)
+  amount       Decimal? @map("amount")       @db.Decimal(20, 4)
+  lSell        Decimal? @map("l_sell")       @db.Decimal(20, 4)
+  lBuy         Decimal? @map("l_buy")        @db.Decimal(20, 4)
+  lAmount      Decimal? @map("l_amount")     @db.Decimal(20, 4)
+  netAmount    Decimal? @map("net_amount")   @db.Decimal(20, 4)
+  netRate      Decimal? @map("net_rate")     @db.Decimal(10, 6)
+  amountRate   Decimal? @map("amount_rate")  @db.Decimal(10, 6)
+  floatValues  Decimal? @map("float_values") @db.Decimal(20, 4)
+  reason       String?  @map("reason")
+  syncedAt     DateTime @default(now())       @map("synced_at")
+
+  @@id([tradeDate, tsCode])
+  @@index([tsCode])
+  @@map("top_list_daily")
+}
+```
+
+**文件**：`prisma/tushare_top_inst.prisma`
+
+```prisma
+/// 龙虎榜机构交易明细
+model TopInst {
+  tradeDate String   @map("trade_date")
+  tsCode    String   @map("ts_code")
+  exalter   String   @map("exalter")          /// 营业部名称
+  buy       Decimal? @map("buy")       @db.Decimal(20, 4)
+  buyCost   Decimal? @map("buy_cost")  @db.Decimal(20, 4)
+  sell      Decimal? @map("sell")      @db.Decimal(20, 4)
+  sellCost  Decimal? @map("sell_cost") @db.Decimal(20, 4)
+  netBuy    Decimal? @map("net_buy")   @db.Decimal(20, 4)
+  side      String?  @map("side")              /// 买卖方向
+  reason    String?  @map("reason")
+  syncedAt  DateTime @default(now())   @map("synced_at")
+
+  @@id([tradeDate, tsCode, exalter])
+  @@index([tsCode])
+  @@index([exalter])
+  @@map("top_inst_details")
+}
+```
+
+#### 4.2.3 同步计划配置
+
+```typescript
+// 新增到 FactorDataSyncService 或拆分为 TopListSyncService
+
+{
+  task: TushareSyncTaskName.TOP_LIST,
+  label: '龙虎榜明细',
+  category: 'factor',          // 或新建 'alternative' 分类
+  order: 540,
+  bootstrapEnabled: false,     // 历史数据量大，建议手动触发全量回补
+  supportsManual: true,
+  supportsFullSync: true,
+  requiresTradeDate: true,
+  schedule: {
+    cron: '0 0 20 * * 1-5',
+    timeZone: this.helper.syncTimeZone,
+    description: '交易日盘后同步龙虎榜数据',
+    tradingDayOnly: true,
+  },
+  execute: ({ mode, targetTradeDate }) =>
+    this.syncTopList(this.requireTradeDate(targetTradeDate), mode),
+},
+```
+
+#### 4.2.4 Mapper 函数
+
+```typescript
+export function mapTopListRecord(record: TushareRecord): Prisma.TopListCreateManyInput | null {
+  const tradeDate = readString(record, 'trade_date')
+  const tsCode = readString(record, 'ts_code')
+  if (!tradeDate || !tsCode) return null
+  return {
+    tradeDate,
+    tsCode,
+    name: readString(record, 'name'),
+    close: readNumber(record, 'close'),
+    pctChange: readNumber(record, 'pct_change'),
+    turnoverRate: readNumber(record, 'turnover_rate'),
+    amount: readNumber(record, 'amount'),
+    lSell: readNumber(record, 'l_sell'),
+    lBuy: readNumber(record, 'l_buy'),
+    lAmount: readNumber(record, 'l_amount'),
+    netAmount: readNumber(record, 'net_amount'),
+    netRate: readNumber(record, 'net_rate'),
+    amountRate: readNumber(record, 'amount_rate'),
+    floatValues: readNumber(record, 'float_values'),
+    reason: readString(record, 'reason'),
+  }
+}
+```
+
+### 4.3 大宗交易数据
+
+#### 4.3.1 Tushare 接口说明
+
+| 接口 | 说明 | 请求方式 | 所需积分 |
+|------|------|---------|---------|
+| `block_trade` | 大宗交易每日明细 | `trade_date` 按日查询 | 2000 |
+
+#### 4.3.2 Prisma Schema 设计
+
+**文件**：`prisma/tushare_block_trade.prisma`
+
+```prisma
+/// 大宗交易明细
+model BlockTrade {
+  id         Int      @id @default(autoincrement())
+  tradeDate  String   @map("trade_date")
+  tsCode     String   @map("ts_code")
+  price      Decimal? @map("price")      @db.Decimal(20, 4)
+  vol        Decimal? @map("vol")        @db.Decimal(20, 4)
+  amount     Decimal? @map("amount")     @db.Decimal(20, 4)
+  buyer      String?  @map("buyer")            /// 买方营业部
+  seller     String?  @map("seller")           /// 卖方营业部
+  syncedAt   DateTime @default(now())    @map("synced_at")
+
+  @@unique([tradeDate, tsCode, buyer, seller])
+  @@index([tsCode])
+  @@index([tradeDate])
+  @@map("block_trade_daily")
+}
+```
+
+> **注意**：大宗交易同一交易日同一股票可能有多笔，且同一买卖营业部组合可能出现多次成交。使用自增 `id` 作为主键确保安全，`@@unique` 约束仅用于去重参考。实施时需先核实 Tushare `block_trade` 实际返回字段，若存在唯一序号字段则应替换此约束方案。同步采用 `deleteMany({ where: { tradeDate } })` + `createMany` 的整日覆盖策略，避免重复。
+
+#### 4.3.3 同步计划配置
+
+```typescript
+{
+  task: TushareSyncTaskName.BLOCK_TRADE,
+  label: '大宗交易',
+  category: 'factor',
+  order: 550,
+  bootstrapEnabled: false,
+  supportsManual: true,
+  supportsFullSync: true,
+  requiresTradeDate: true,
+  schedule: {
+    cron: '0 10 20 * * 1-5',
+    timeZone: this.helper.syncTimeZone,
+    description: '交易日盘后同步大宗交易',
+    tradingDayOnly: true,
+  },
+  execute: ({ mode, targetTradeDate }) =>
+    this.syncBlockTrade(this.requireTradeDate(targetTradeDate), mode),
+},
+```
+
+### 4.4 融资融券数据
+
+#### 4.4.1 Tushare 接口说明
+
+| 接口 | 说明 | 请求方式 | 所需积分 |
+|------|------|---------|---------|
+| `margin_detail` | 融资融券交易明细 | `trade_date` 按日查询 | 2000 |
+
+> **注意**：当前项目 `MarketSyncService` 已注册 `MARGIN_DETAIL` 同步任务（见 `market-sync.service.ts`），但属于 `'market'` 分类。如果该任务已经实现且可正常运行，则此处仅做验证和复用评估，无需重复开发。
+
+#### 4.4.2 复用评估
+
+先检查 `MarketSyncService` 中 `MARGIN_DETAIL` 的实现状态：
+- 如果**已完整实现**（含 Schema + API + Mapper + 同步逻辑）→ 仅验证数据完整性
+- 如果**仅有骨架**（计划已注册但执行逻辑为空或 TODO）→ 按下方方案补全
+
+#### 4.4.3 Prisma Schema 设计（如需新建）
+
+**文件**：`prisma/tushare_margin_detail.prisma`
+
+```prisma
+/// 融资融券交易明细
+model MarginDetail {
+  tradeDate   String   @map("trade_date")
+  tsCode      String   @map("ts_code")
+  rzye        Decimal? @map("rzye")        @db.Decimal(20, 4)  /// 融资余额（元）
+  rqye        Decimal? @map("rqye")        @db.Decimal(20, 4)  /// 融券余额（元）
+  rzmre       Decimal? @map("rzmre")       @db.Decimal(20, 4)  /// 融资买入额（元）
+  rqyl        Decimal? @map("rqyl")        @db.Decimal(20, 4)  /// 融券余量（股）
+  rzche       Decimal? @map("rzche")       @db.Decimal(20, 4)  /// 融资偿还额（元）
+  rqchl       Decimal? @map("rqchl")       @db.Decimal(20, 4)  /// 融券偿还量（股）
+  rqmcl       Decimal? @map("rqmcl")       @db.Decimal(20, 4)  /// 融券卖出量（股）
+  rzrqye      Decimal? @map("rzrqye")      @db.Decimal(20, 4)  /// 融资融券余额（元）
+  syncedAt    DateTime @default(now())      @map("synced_at")
+
+  @@id([tradeDate, tsCode])
+  @@index([tsCode])
+  @@map("margin_trading_details")
+}
+```
+
+### 4.5 限售股解禁数据
+
+#### 4.5.1 Tushare 接口说明
+
+| 接口 | 说明 | 请求方式 | 所需积分 |
+|------|------|---------|---------|
+| `share_float` | 限售股解禁计划 | `ts_code` 按个股查询 | 2000 |
+
+#### 4.5.2 Prisma Schema 设计
+
+**文件**：`prisma/tushare_share_float.prisma`
+
+```prisma
+/// 限售股解禁
+model ShareFloat {
+  id          Int      @id @default(autoincrement())
+  tsCode      String   @map("ts_code")
+  annDate     String?  @map("ann_date")          /// 公告日期
+  floatDate   String   @map("float_date")        /// 解禁日期
+  floatShare  Decimal? @map("float_share")  @db.Decimal(20, 4)  /// 流通股份（万股）
+  floatRatio  Decimal? @map("float_ratio") @db.Decimal(10, 6)  /// 流通股份占总股本比(%)
+  holderName  String?  @map("holder_name")        /// 股东名称
+  shareType   String?  @map("share_type")         /// 股份类型
+  syncedAt    DateTime @default(now())      @map("synced_at")
+
+  @@unique([tsCode, floatDate, holderName])
+  @@index([floatDate])
+  @@map("share_float_schedule")
+}
+```
+
+> **注意**：使用自增 `id` 作为主键，避免 `holderName` 为 NULL 或重复时的主键冲突问题。`@@unique` 约束用于去重参考。同步采用按 `tsCode` 整体覆盖策略：`deleteMany({ where: { tsCode } })` + `createMany`。实施前需核实 Tushare `share_float` 实际返回，确认组合唯一性。
+
+> **注意**：`share_float` 接口按个股查询，与其他按交易日查询的接口不同。同步策略需改为**遍历全部上市股票列表**，每只股票拉取其解禁计划。建议每月全量同步一次，增量同步间隔可设为每周。
+
+#### 4.5.3 同步策略差异
+
+`share_float` 不同于其他接口（按交易日查询），需要特殊同步模式：
+
+```typescript
+async syncShareFloat(mode: TushareSyncMode = 'incremental'): Promise<void> {
+  // 1. 获取全部上市股票列表（从 stock_basic_profiles 查询 list_status = 'L'）
+  // 2. 增量模式：仅查询最近 1 年内有解禁计划的股票（过滤已同步的）
+  //    全量模式：遍历全部股票
+  // 3. 对每只股票调用 share_float API
+  // 4. 频控：使用现有 requestIntervalMs 自动节流
+  // 5. 按 tsCode 做 delete + insert 事务
+}
+```
+
+### 4.6 常量与枚举扩展
+
+#### `tushare.constant.ts` 新增
+
+```typescript
+// TushareApiName 新增
+TOP_LIST = 'top_list',
+TOP_INST = 'top_inst',
+BLOCK_TRADE = 'block_trade',
+SHARE_FLOAT = 'share_float',
+
+// TushareSyncTaskName 新增
+TOP_LIST = 'TOP_LIST',
+TOP_INST = 'TOP_INST',
+BLOCK_TRADE = 'BLOCK_TRADE',
+SHARE_FLOAT = 'SHARE_FLOAT',
+
+// 字段常量新增
+export const TUSHARE_TOP_LIST_FIELDS = [
+  'trade_date', 'ts_code', 'name', 'close', 'pct_change',
+  'turnover_rate', 'amount', 'l_sell', 'l_buy', 'l_amount',
+  'net_amount', 'net_rate', 'amount_rate', 'float_values', 'reason',
+] as const
+
+export const TUSHARE_TOP_INST_FIELDS = [
+  'trade_date', 'ts_code', 'exalter', 'buy', 'buy_cost',
+  'sell', 'sell_cost', 'net_buy', 'side', 'reason',
+] as const
+
+export const TUSHARE_BLOCK_TRADE_FIELDS = [
+  'trade_date', 'ts_code', 'price', 'vol', 'amount',
+  'buyer', 'seller',
+] as const
+
+export const TUSHARE_SHARE_FLOAT_FIELDS = [
+  'ts_code', 'ann_date', 'float_date', 'float_share',
+  'float_ratio', 'holder_name', 'share_type',
+] as const
+```
+
+### 4.7 模块拆分建议
+
+当前 `FactorDataSyncService` 负责 3 个同步任务（`stk_limit` / `suspend_d` / `index_weight`），新增 4 类数据后如果全部放入同一个 service，会膨胀到 ~500+ 行。建议：
+
+```
+src/tushare/sync/
+├── factor-data-sync.service.ts      // 保留：stk_limit, suspend_d, index_weight
+├── alternative-data-sync.service.ts // 🆕 新建：top_list, top_inst, block_trade, share_float
+```
+
+同时扩展 `TushareSyncCategory`：
+
+```typescript
+// sync-plan.types.ts
+export type TushareSyncCategory = 'basic' | 'market' | 'financial' | 'moneyflow' | 'factor' | 'alternative'
+```
+
+并在编排器的分类循环和 `getCategoryLabel()` 中同步添加 `'alternative'` → `'另类数据'`。
+
+### 4.8 API 服务层扩展
+
+**文件**：`src/tushare/api/alternative-data-api.service.ts`（🆕 新建）
+
+```typescript
+@Injectable()
+export class AlternativeDataApiService {
+  constructor(private readonly client: TushareClient) {}
+
+  getTopListByTradeDate(tradeDate: string) {
+    return this.client.call({
+      api_name: TushareApiName.TOP_LIST,
+      params: { trade_date: tradeDate },
+      fields: [...TUSHARE_TOP_LIST_FIELDS],
+    })
+  }
+
+  getTopInstByTradeDate(tradeDate: string) {
+    return this.client.call({
+      api_name: TushareApiName.TOP_INST,
+      params: { trade_date: tradeDate },
+      fields: [...TUSHARE_TOP_INST_FIELDS],
+    })
+  }
+
+  getBlockTradeByTradeDate(tradeDate: string) {
+    return this.client.call({
+      api_name: TushareApiName.BLOCK_TRADE,
+      params: { trade_date: tradeDate },
+      fields: [...TUSHARE_BLOCK_TRADE_FIELDS],
+    })
+  }
+
+  getShareFloat(tsCode: string) {
+    return this.client.call({
+      api_name: TushareApiName.SHARE_FLOAT,
+      params: { ts_code: tsCode },
+      fields: [...TUSHARE_SHARE_FLOAT_FIELDS],
+    })
+  }
+}
+```
+
+---
+
+## 五、Phase 3：数据质量框架
+
+### 5.1 目标
+
+建立从 **入库校验 → 完整性监控 → 异常告警 → 修正机制** 的数据质量闭环。
+
+### 5.2 架构设计
+
+```
+┌──────────────────────────────────────────────┐
+│             Tushare API Response              │
+└──────────────┬───────────────────────────────┘
+               │
+         ┌─────▼──────┐
+         │  Validator  │  ← 入库前校验层（新增）
+         └─────┬──────┘
+               │ 通过
+         ┌─────▼──────┐
+         │   Mapper    │  ← 现有映射层
+         └─────┬──────┘
+               │
+         ┌─────▼──────┐
+         │   Prisma    │  ← 入库
+         └─────┬──────┘
+               │
+         ┌─────▼──────┐
+         │  Monitor    │  ← 入库后完整性检查（新增）
+         └─────┬──────┘
+               │ 异常
+         ┌─────▼──────┐
+         │   Alert     │  ← 告警通知（新增）
+         └─────────────┘
+```
+
+### 5.3 入库校验层（Validator）
+
+#### 5.3.1 设计原则
+
+- 校验在 Mapper 之后、Prisma 写入之前执行
+- 不阻塞正常同步流程，仅记录校验失败的记录
+- 校验规则可配置，按数据集区分
+
+#### 5.3.2 校验规则示例
+
+**文件**：`src/tushare/sync/validation/sync-validator.service.ts`（🆕 新建）
+
+```typescript
+interface ValidationRule<T> {
+  name: string
+  validate: (record: T) => boolean
+  severity: 'warn' | 'error'   // warn: 记录但入库，error: 跳过入库
+  message: (record: T) => string
+}
+
+// 行情数据校验规则示例
+const DAILY_VALIDATION_RULES: ValidationRule<DailyRecord>[] = [
+  {
+    name: 'price_positive',
+    validate: (r) => r.close == null || r.close > 0,
+    severity: 'warn',
+    message: (r) => `${r.tsCode} ${r.tradeDate}: close=${r.close} 非正数`,
+  },
+  {
+    name: 'volume_non_negative',
+    validate: (r) => r.vol == null || r.vol >= 0,
+    severity: 'warn',
+    message: (r) => `${r.tsCode} ${r.tradeDate}: vol=${r.vol} 为负`,
+  },
+  {
+    name: 'pct_change_range',
+    validate: (r) => r.pctChg == null || (r.pctChg >= -30 && r.pctChg <= 30),
+    severity: 'warn',
+    message: (r) => `${r.tsCode} ${r.tradeDate}: pctChg=${r.pctChg} 超出合理范围`,
+  },
+]
+```
+
+> **涨跌幅校验说明**：±30% 为宽松阈值，覆盖创业板/科创板 ±20% 和首日上市 ±44% 等特殊情况。如需更精确校验，应根据 `stock_basic_profiles` 中的 `market` 字段区分板块后应用不同阈值（主板 ±10%、创业板/科创板 ±20%、北交所 ±30%、ST ±5%）。建议校验规则支持按股票类型动态配置。
+
+#### 5.3.3 集成方式
+
+在 `syncByTradeDateString` 通用模板的 `fetchAndMap` 回调后插入校验步骤：
+
+```typescript
+// 伪代码
+const raw = await fetchAndMap(td)
+const { valid, invalid } = this.validator.validate(raw, rules)
+if (invalid.length > 0) {
+  this.logger.warn(`[${label}] ${td}: ${invalid.length} 条记录校验异常`)
+  await this.validator.logInvalidRecords(task, td, invalid)
+}
+// 仅入库通过校验的记录
+await model.createMany({ data: valid })
+```
+
+### 5.4 数据完整性监控（Monitor）
+
+#### 5.4.1 Prisma Schema
+
+**文件**：`prisma/data_quality.prisma`（🆕 新建）
+
+```prisma
+/// 数据完整性检查结果
+model DataQualityCheck {
+  id          Int      @id @default(autoincrement())
+  checkDate   DateTime @map("check_date")
+  dataSet     String   @map("data_set")       /// 数据集名称（如 'daily', 'stk_limit'）
+  checkType   String   @map("check_type")     /// 检查类型（如 'completeness', 'timeliness'）
+  status      String   @map("status")         /// 'pass' | 'warn' | 'fail'
+  message     String?  @map("message")
+  details     Json?    @map("details")        /// 详细信息（缺失日期列表等）
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([dataSet, checkDate])
+  @@index([status])
+  @@map("data_quality_checks")
+}
+
+/// 数据校验异常记录
+model DataValidationLog {
+  id         Int      @id @default(autoincrement())
+  task       String   @map("task")
+  tradeDate  String   @map("trade_date")
+  tsCode     String?  @map("ts_code")
+  ruleName   String   @map("rule_name")
+  severity   String   @map("severity")
+  message    String   @map("message")
+  rawData    Json?    @map("raw_data")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([task, tradeDate])
+  @@map("data_validation_logs")
+}
+```
+
+#### 5.4.2 完整性检查服务
+
+**文件**：`src/tushare/sync/quality/data-quality.service.ts`（🆕 新建）
+
+核心检查项：
+
+| 检查类型 | 说明 | 检查逻辑 |
+|---------|------|---------|
+| **完整性** | 某只股票某天数据是否缺失 | 对比交易日历与实际数据日期，找出缺口 |
+| **时效性** | 数据是否及时更新 | 检查最新同步日期是否为最近一个完成交易日 |
+| **一致性** | 跨表数据是否匹配 | 如 `daily` 有数据的交易日，`daily_basic` 是否也有 |
+| **去重** | 是否存在重复记录 | 对复合主键做 GROUP BY HAVING COUNT > 1 检查 |
+
+```typescript
+@Injectable()
+export class DataQualityService {
+  /**
+   * 检查指定数据集的数据完整性
+   * @param dataSet 数据集名称
+   * @param startDate 检查起始日期
+   * @param endDate 检查截止日期
+   */
+  async checkCompleteness(dataSet: string, startDate: string, endDate: string): Promise<void> {
+    // 1. 获取 startDate~endDate 之间的全部交易日
+    // 2. 查询数据表中该范围内有数据的日期
+    // 3. 计算缺失日期
+    // 4. 写入 DataQualityCheck 记录
+  }
+
+  /**
+   * 检查数据时效性
+   */
+  async checkTimeliness(dataSet: string): Promise<void> {
+    // 1. 查询该数据集最新的同步日期
+    // 2. 与最近完成交易日对比
+    // 3. 如果落后 > 1 天，标记为 warn/fail
+  }
+
+  /**
+   * 运行所有数据集的全部检查
+   * 建议注册为每日定时任务，在盘后同步完成后执行
+   */
+  async runAllChecks(): Promise<void> {
+    const datasets = ['daily', 'dailyBasic', 'adjFactor', 'stkLimit', 'suspendD', 'indexWeight', ...]
+    for (const ds of datasets) {
+      await this.checkTimeliness(ds)
+      await this.checkCompleteness(ds, last30TradeDays, today)
+    }
+  }
+}
+```
+
+#### 5.4.3 定时任务注册
+
+```typescript
+// 注册为同步计划或独立 cron
+{
+  task: TushareSyncTaskName.DATA_QUALITY_CHECK,
+  label: '数据质量检查',
+  category: 'basic',
+  order: 999,  // 最后执行
+  bootstrapEnabled: false,
+  supportsManual: true,
+  supportsFullSync: false,
+  requiresTradeDate: false,
+  schedule: {
+    cron: '0 0 21 * * 1-5',   // 每交易日 21:00 执行
+    timeZone: this.helper.syncTimeZone,
+    description: '每日盘后数据质量检查',
+    tradingDayOnly: true,
+  },
+  execute: () => this.dataQualityService.runAllChecks(),
+}
+```
+
+### 5.5 管理 API 扩展
+
+在现有 Tushare Admin Controller 中新增端点：
+
+| 端点 | 方法 | 说明 |
+|------|------|------|
+| `/tushare/admin/quality/check` | `POST` | 手动触发数据质量检查 |
+| `/tushare/admin/quality/report` | `GET` | 查询最近 N 天的质量检查结果 |
+| `/tushare/admin/quality/gaps` | `GET` | 查询指定数据集的缺失日期列表 |
+| `/tushare/admin/validation-logs` | `GET` | 查询数据校验异常日志 |
+
+### 5.6 历史数据修正机制
+
+#### 5.6.1 修正触发方式
+
+- **自动修正**：数据质量检查发现缺口后，自动加入重试队列
+- **手动修正**：管理员通过 API 指定数据集 + 日期范围触发重新同步
+
+#### 5.6.2 管理 API
+
+```
+POST /tushare/admin/repair
+Body: {
+  "task": "DAILY",              // 同步任务名
+  "startDate": "20260301",      // 修正起始日期
+  "endDate": "20260315",        // 修正截止日期
+  "mode": "full"                // 强制全量覆盖
+}
+```
+
+实现逻辑：对指定日期范围内的每个交易日，重新拉取数据并 delete+insert，与现有 `syncByTradeDateString` 逻辑一致。
+
+---
+
+## 六、Tushare 接口积分需求汇总
+
+在决定 Phase 2 实施范围前，请核对当前 Tushare 账户积分是否满足以下要求：
+
+| 接口 | 所需积分 | Phase | 当前状态 |
+|------|---------|-------|---------|
+| `stk_limit` | 2000 | Phase 1 | ✅ 已配置 |
+| `suspend_d` | 2000 | Phase 1 | ✅ 已配置 |
+| `index_weight` | 2000 | Phase 1 | ✅ 已配置 |
+| `top_list` | 2000 | Phase 2 | 🆕 待确认 |
+| `top_inst` | 2000 | Phase 2 | 🆕 待确认 |
+| `block_trade` | 2000 | Phase 2 | 🆕 待确认 |
+| `margin_detail` | 2000 | Phase 2 | ⚠️ 可能已有 |
+| `share_float` | 2000 | Phase 2 | 🆕 待确认 |
+
+> **建议**：在实施前通过 Tushare 网站确认当前账户积分和各接口的调用权限。Phase 1 的三个接口已在代码中配置，积分应已足够。
+
+---
+
+## 七、实施顺序与依赖关系
+
+```
+Phase 1（1-2 天）
+  │
+  ├─ Step 1: 修复 sync.service.ts 编排器 Bug（添加 'factor' 分类）
+  ├─ Step 2: 编译验证 pnpm build
+  ├─ Step 3: Docker 重启，观察 bootstrap 日志
+  ├─ Step 4: 验证三张表数据行数
+  └─ Step 5: 抽查字段映射正确性
+  │
+  ├─────────────────────┬──────────────────────┐
+  │                     │                      │
+  ▼                     ▼                      │
+Phase 2（1-1.5 周）    Phase 3（1-1.5 周）     │
+  │                     │                      │
+  ├─ Step A: 扩展常量   ├─ Step A: Schema       │
+  │   与枚举            │   (DataQualityCheck   │
+  ├─ Step B: Schema     │    + ValidationLog)   │
+  │   (4 张新表)        ├─ Step B: Validator    │
+  ├─ Step C: Mapper     │   校验服务             │
+  │   函数              ├─ Step C: Monitor      │
+  ├─ Step D: API        │   完整性检查           │
+  │   服务层            ├─ Step D: 管理 API     │
+  ├─ Step E: Sync       │   扩展                │
+  │   服务 + 计划注册   ├─ Step E: 修正机制     │
+  ├─ Step F: 编排器     └─ Step F: 编译 +      │
+  │   分类更新               验证               │
+  └─ Step G: 编译 +                            │
+       验证 + 抽查                              │
+```
+
+### 风险与注意事项
+
+1. **首次历史回补耗时**：`stk_limit` 回补 ~3,900 个交易日，按 350ms 间隔约需 23 分钟纯 API 时间。建议首次在非交易时段执行。
+2. **频控风险**：多个数据集同时回补可能触发 Tushare 频率限制。现有 `TushareClient` 已有自动重试机制（`rateLimitRetryDelayMs=65000ms`，`maxRetries=3`），但大批量回补时仍需关注。
+3. **Mapper 验证**：虽然 Mapper 已实现，但从未在真实数据上运行过。首次同步后务必抽查验证字段映射。
+4. **Schema 变更注意**：Phase 2 和 Phase 3 新增 Prisma Model 后需执行 `prisma migrate dev` 生成迁移文件，部署时通过 `prisma migrate deploy` 应用。
+5. **磁盘空间**：`stk_limit` 全量约 7,800 万行，单条约 50 bytes，预估 ~4-5 GB（含索引）。确保 PostgreSQL 存储卷有足够空间。
+
+---
+
+_本设计文档基于 `quant-code-cpx/server-code` 仓库当前代码状态编写，实施时请以最新代码为准。_

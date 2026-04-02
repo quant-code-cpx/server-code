@@ -1,0 +1,17 @@
+/// 大宗交易明细
+model BlockTrade {
+  id        Int      @id @default(autoincrement())
+  tradeDate String   @map("trade_date")
+  tsCode    String   @map("ts_code")
+  price     Decimal? @map("price")  @db.Decimal(20, 4)
+  vol       Decimal? @map("vol")    @db.Decimal(20, 4)
+  amount    Decimal? @map("amount") @db.Decimal(20, 4)
+  buyer     String?  @map("buyer")           /// 买方营业部
+  seller    String?  @map("seller")          /// 卖方营业部
+  syncedAt  DateTime @default(now()) @map("synced_at")
+
+  @@unique([tradeDate, tsCode, buyer, seller])
+  @@index([tsCode])
+  @@index([tradeDate])
+  @@map("block_trade_daily")
+}

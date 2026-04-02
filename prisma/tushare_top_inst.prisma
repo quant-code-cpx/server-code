@@ -1,0 +1,19 @@
+/// 龙虎榜机构交易明细
+model TopInst {
+  tradeDate String   @map("trade_date")
+  tsCode    String   @map("ts_code")
+  exalter   String   @map("exalter")           /// 营业部名称
+  buy       Decimal? @map("buy")       @db.Decimal(20, 4)
+  buyCost   Decimal? @map("buy_cost")  @db.Decimal(20, 4)
+  sell      Decimal? @map("sell")      @db.Decimal(20, 4)
+  sellCost  Decimal? @map("sell_cost") @db.Decimal(20, 4)
+  netBuy    Decimal? @map("net_buy")   @db.Decimal(20, 4)
+  side      String?  @map("side")               /// 买卖方向
+  reason    String?  @map("reason")
+  syncedAt  DateTime @default(now())   @map("synced_at")
+
+  @@id([tradeDate, tsCode, exalter])
+  @@index([tsCode])
+  @@index([exalter])
+  @@map("top_inst_details")
+}

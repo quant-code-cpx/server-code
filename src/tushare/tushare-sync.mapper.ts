@@ -971,3 +971,75 @@ export function mapMarginDetailRecord(record: TushareRecord): Prisma.MarginDetai
     rzrqyl: readNumber(record, 'rzrqyl'),
   }
 }
+
+export function mapTopListRecord(record: TushareRecord): Prisma.TopListCreateManyInput | null {
+  const tradeDate = readString(record, 'trade_date')
+  const tsCode = readString(record, 'ts_code')
+  if (!tradeDate || !tsCode) return null
+  return {
+    tradeDate,
+    tsCode,
+    name: readString(record, 'name'),
+    close: readNumber(record, 'close'),
+    pctChange: readNumber(record, 'pct_change'),
+    turnoverRate: readNumber(record, 'turnover_rate'),
+    amount: readNumber(record, 'amount'),
+    lSell: readNumber(record, 'l_sell'),
+    lBuy: readNumber(record, 'l_buy'),
+    lAmount: readNumber(record, 'l_amount'),
+    netAmount: readNumber(record, 'net_amount'),
+    netRate: readNumber(record, 'net_rate'),
+    amountRate: readNumber(record, 'amount_rate'),
+    floatValues: readNumber(record, 'float_values'),
+    reason: readString(record, 'reason'),
+  }
+}
+
+export function mapTopInstRecord(record: TushareRecord): Prisma.TopInstCreateManyInput | null {
+  const tradeDate = readString(record, 'trade_date')
+  const tsCode = readString(record, 'ts_code')
+  const exalter = readString(record, 'exalter')
+  if (!tradeDate || !tsCode || !exalter) return null
+  return {
+    tradeDate,
+    tsCode,
+    exalter,
+    buy: readNumber(record, 'buy'),
+    buyCost: readNumber(record, 'buy_cost'),
+    sell: readNumber(record, 'sell'),
+    sellCost: readNumber(record, 'sell_cost'),
+    netBuy: readNumber(record, 'net_buy'),
+    side: readString(record, 'side'),
+    reason: readString(record, 'reason'),
+  }
+}
+
+export function mapBlockTradeRecord(record: TushareRecord): Prisma.BlockTradeCreateManyInput | null {
+  const tradeDate = readString(record, 'trade_date')
+  const tsCode = readString(record, 'ts_code')
+  if (!tradeDate || !tsCode) return null
+  return {
+    tradeDate,
+    tsCode,
+    price: readNumber(record, 'price'),
+    vol: readNumber(record, 'vol'),
+    amount: readNumber(record, 'amount'),
+    buyer: readString(record, 'buyer'),
+    seller: readString(record, 'seller'),
+  }
+}
+
+export function mapShareFloatRecord(record: TushareRecord): Prisma.ShareFloatCreateManyInput | null {
+  const tsCode = readString(record, 'ts_code')
+  const floatDate = readString(record, 'float_date')
+  if (!tsCode || !floatDate) return null
+  return {
+    tsCode,
+    annDate: readString(record, 'ann_date'),
+    floatDate,
+    floatShare: readNumber(record, 'float_share'),
+    floatRatio: readNumber(record, 'float_ratio'),
+    holderName: readString(record, 'holder_name'),
+    shareType: readString(record, 'share_type'),
+  }
+}

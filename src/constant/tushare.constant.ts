@@ -24,6 +24,10 @@ export enum TushareApiName {
   STK_LIMIT = 'stk_limit',
   SUSPEND_D = 'suspend_d',
   INDEX_WEIGHT = 'index_weight',
+  TOP_LIST = 'top_list',
+  TOP_INST = 'top_inst',
+  BLOCK_TRADE = 'block_trade',
+  SHARE_FLOAT = 'share_float',
 }
 
 /** A 股常用交易所代码 */
@@ -81,6 +85,11 @@ export enum TushareSyncTaskName {
   SUSPEND_D = 'SUSPEND_D',
   INDEX_WEIGHT = 'INDEX_WEIGHT',
   MARGIN_DETAIL = 'MARGIN_DETAIL',
+  TOP_LIST = 'TOP_LIST',
+  TOP_INST = 'TOP_INST',
+  BLOCK_TRADE = 'BLOCK_TRADE',
+  SHARE_FLOAT = 'SHARE_FLOAT',
+  DATA_QUALITY_CHECK = 'DATA_QUALITY_CHECK',
 }
 
 /** 同步执行状态 */
@@ -782,5 +791,56 @@ export const FACTOR_UNIVERSE_INDEX_CODES = [
   '000905.SH', // 中证500
   '000852.SH', // 中证1000
   '000016.SH', // 上证50
+] as const
+
+export const TUSHARE_TOP_LIST_FIELDS = [
+  'trade_date',
+  'ts_code',
+  'name',
+  'close',
+  'pct_change',
+  'turnover_rate',
+  'amount',
+  'l_sell',
+  'l_buy',
+  'l_amount',
+  'net_amount',
+  'net_rate',
+  'amount_rate',
+  'float_values',
+  'reason',
+] as const
+
+export const TUSHARE_TOP_INST_FIELDS = [
+  'trade_date',
+  'ts_code',
+  'exalter',
+  'buy',
+  'buy_cost',
+  'sell',
+  'sell_cost',
+  'net_buy',
+  'side',
+  'reason',
+] as const
+
+export const TUSHARE_BLOCK_TRADE_FIELDS = [
+  'trade_date',
+  'ts_code',
+  'price',
+  'vol',
+  'amount',
+  'buyer',
+  'seller',
+] as const
+
+export const TUSHARE_SHARE_FLOAT_FIELDS = [
+  'ts_code',
+  'ann_date',
+  'float_date',
+  'float_share',
+  'float_ratio',
+  'holder_name',
+  'share_type',
 ] as const
 

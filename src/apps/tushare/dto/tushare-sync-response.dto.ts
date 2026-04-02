@@ -23,7 +23,7 @@ export class TushareSyncPlanDto {
   @ApiProperty()
   label!: string
 
-  @ApiProperty({ enum: ['basic', 'market', 'financial', 'moneyflow'] })
+  @ApiProperty({ enum: ['basic', 'market', 'financial', 'moneyflow', 'factor', 'alternative'] })
   category!: TushareSyncCategory
 
   @ApiProperty()

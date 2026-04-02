@@ -1,0 +1,16 @@
+/// 限售股解禁计划
+model ShareFloat {
+  id         Int      @id @default(autoincrement())
+  tsCode     String   @map("ts_code")
+  annDate    String?  @map("ann_date")          /// 公告日期
+  floatDate  String   @map("float_date")        /// 解禁日期
+  floatShare Decimal? @map("float_share") @db.Decimal(20, 4)  /// 流通股份（万股）
+  floatRatio Decimal? @map("float_ratio") @db.Decimal(10, 6)  /// 流通股份占总股本比(%)
+  holderName String?  @map("holder_name")        /// 股东名称
+  shareType  String?  @map("share_type")         /// 股份类型
+  syncedAt   DateTime @default(now())     @map("synced_at")
+
+  @@unique([tsCode, floatDate, holderName])
+  @@index([floatDate])
+  @@map("share_float_schedule")
+}

@@ -7,6 +7,7 @@ import { MarketApiService } from './api/market-api.service'
 import { FinancialApiService } from './api/financial-api.service'
 import { MoneyflowApiService } from './api/moneyflow-api.service'
 import { FactorDataApiService } from './api/factor-data-api.service'
+import { AlternativeDataApiService } from './api/alternative-data-api.service'
 
 // 同步层
 import { SyncHelperService } from './sync/sync-helper.service'
@@ -15,14 +16,16 @@ import { MarketSyncService } from './sync/market-sync.service'
 import { FinancialSyncService } from './sync/financial-sync.service'
 import { MoneyflowSyncService } from './sync/moneyflow-sync.service'
 import { FactorDataSyncService } from './sync/factor-data-sync.service'
+import { AlternativeDataSyncService } from './sync/alternative-data-sync.service'
 import { TushareSyncRegistryService } from './sync/sync-registry.service'
 import { TushareSyncService } from './sync/sync.service'
+import { DataQualityService } from './sync/quality/data-quality.service'
 import { WebsocketModule } from 'src/websocket/websocket.module'
 
 /**
  * TushareModule
  *
- * API 层按 Tushare 文档分类：基础数据 / 行情 / 财务 / 资金流向
+ * API 层按 Tushare 文档分类：基础数据 / 行情 / 财务 / 资金流向 / 因子 / 另类数据
  * 同步层按分类独立维护，由 TushareSyncService 统一编排
  */
 @Module({
@@ -35,6 +38,7 @@ import { WebsocketModule } from 'src/websocket/websocket.module'
     FinancialApiService,
     MoneyflowApiService,
     FactorDataApiService,
+    AlternativeDataApiService,
     // Sync
     SyncHelperService,
     BasicSyncService,
@@ -42,9 +46,11 @@ import { WebsocketModule } from 'src/websocket/websocket.module'
     FinancialSyncService,
     MoneyflowSyncService,
     FactorDataSyncService,
+    AlternativeDataSyncService,
     TushareSyncRegistryService,
     TushareSyncService,
+    DataQualityService,
   ],
-  exports: [TushareClient, FinancialSyncService, TushareSyncRegistryService, TushareSyncService],
+  exports: [TushareClient, FinancialSyncService, TushareSyncRegistryService, TushareSyncService, DataQualityService],
 })
 export class TushareModule {}

@@ -49,6 +49,11 @@ enum TushareSyncTask {
   SUSPEND_D
   INDEX_WEIGHT
   MARGIN_DETAIL
+  TOP_LIST
+  TOP_INST
+  BLOCK_TRADE
+  SHARE_FLOAT
+  DATA_QUALITY_CHECK
 }
 
 // 同步任务执行结果

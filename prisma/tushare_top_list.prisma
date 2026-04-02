@@ -1,0 +1,23 @@
+/// 龙虎榜每日明细
+model TopList {
+  tradeDate    String   @map("trade_date")
+  tsCode       String   @map("ts_code")
+  name         String?  @map("name")
+  close        Decimal? @map("close")         @db.Decimal(20, 4)
+  pctChange    Decimal? @map("pct_change")    @db.Decimal(10, 4)
+  turnoverRate Decimal? @map("turnover_rate") @db.Decimal(10, 4)
+  amount       Decimal? @map("amount")        @db.Decimal(20, 4)
+  lSell        Decimal? @map("l_sell")        @db.Decimal(20, 4)
+  lBuy         Decimal? @map("l_buy")         @db.Decimal(20, 4)
+  lAmount      Decimal? @map("l_amount")      @db.Decimal(20, 4)
+  netAmount    Decimal? @map("net_amount")    @db.Decimal(20, 4)
+  netRate      Decimal? @map("net_rate")      @db.Decimal(10, 6)
+  amountRate   Decimal? @map("amount_rate")   @db.Decimal(10, 6)
+  floatValues  Decimal? @map("float_values")  @db.Decimal(20, 4)
+  reason       String?  @map("reason")
+  syncedAt     DateTime @default(now())        @map("synced_at")
+
+  @@id([tradeDate, tsCode])
+  @@index([tsCode])
+  @@map("top_list_daily")
+}

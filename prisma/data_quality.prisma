@@ -1,0 +1,31 @@
+/// 数据完整性检查结果
+model DataQualityCheck {
+  id        Int      @id @default(autoincrement())
+  checkDate DateTime @map("check_date")
+  dataSet   String   @map("data_set")    /// 数据集名称（如 'daily', 'stk_limit'）
+  checkType String   @map("check_type")  /// 检查类型（如 'completeness', 'timeliness'）
+  status    String   @map("status")      /// 'pass' | 'warn' | 'fail'
+  message   String?  @map("message")
+  details   Json?    @map("details")     /// 详细信息（缺失日期列表等）
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([dataSet, checkDate])
+  @@index([status])
+  @@map("data_quality_checks")
+}
+
+/// 数据校验异常记录
+model DataValidationLog {
+  id        Int      @id @default(autoincrement())
+  task      String   @map("task")
+  tradeDate String   @map("trade_date")
+  tsCode    String?  @map("ts_code")
+  ruleName  String   @map("rule_name")
+  severity  String   @map("severity")
+  message   String   @map("message")
+  rawData   Json?    @map("raw_data")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([task, tradeDate])
+  @@map("data_validation_logs")
+}

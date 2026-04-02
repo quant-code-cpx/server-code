@@ -344,6 +344,7 @@ export function mapTopListRecord(record: TushareRecord): Prisma.TopListCreateMan
 ```prisma
 /// 大宗交易明细
 model BlockTrade {
+  id         Int      @id @default(autoincrement())
   tradeDate  String   @map("trade_date")
   tsCode     String   @map("ts_code")
   price      Decimal? @map("price")      @db.Decimal(20, 4)
@@ -353,14 +354,14 @@ model BlockTrade {
   seller     String?  @map("seller")           /// 卖方营业部
   syncedAt   DateTime @default(now())    @map("synced_at")
 
-  @@id([tradeDate, tsCode, buyer, seller])
+  @@unique([tradeDate, tsCode, buyer, seller])
   @@index([tsCode])
   @@index([tradeDate])
   @@map("block_trade_daily")
 }
 ```
 
-> **注意**：大宗交易同一交易日同一股票可能有多笔，不同买卖营业部组合。复合主键需根据 Tushare 实际返回确认是否足以唯一标识。如 Tushare 返回中包含唯一序号字段，应优先使用该字段作为主键。
+> **注意**：大宗交易同一交易日同一股票可能有多笔，且同一买卖营业部组合可能出现多次成交。使用自增 `id` 作为主键确保安全，`@@unique` 约束仅用于去重参考。实施时需先核实 Tushare `block_trade` 实际返回字段，若存在唯一序号字段则应替换此约束方案。同步采用 `deleteMany({ where: { tradeDate } })` + `createMany` 的整日覆盖策略，避免重复。
 
 #### 4.3.3 同步计划配置
 
@@ -441,6 +442,7 @@ model MarginDetail {
 ```prisma
 /// 限售股解禁
 model ShareFloat {
+  id          Int      @id @default(autoincrement())
   tsCode      String   @map("ts_code")
   annDate     String?  @map("ann_date")          /// 公告日期
   floatDate   String   @map("float_date")        /// 解禁日期
@@ -450,11 +452,13 @@ model ShareFloat {
   shareType   String?  @map("share_type")         /// 股份类型
   syncedAt    DateTime @default(now())      @map("synced_at")
 
-  @@id([tsCode, floatDate, holderName])
+  @@unique([tsCode, floatDate, holderName])
   @@index([floatDate])
   @@map("share_float_schedule")
 }
 ```
+
+> **注意**：使用自增 `id` 作为主键，避免 `holderName` 为 NULL 或重复时的主键冲突问题。`@@unique` 约束用于去重参考。同步采用按 `tsCode` 整体覆盖策略：`deleteMany({ where: { tsCode } })` + `createMany`。实施前需核实 Tushare `share_float` 实际返回，确认组合唯一性。
 
 > **注意**：`share_float` 接口按个股查询，与其他按交易日查询的接口不同。同步策略需改为**遍历全部上市股票列表**，每只股票拉取其解禁计划。建议每月全量同步一次，增量同步间隔可设为每周。
 
@@ -647,12 +651,14 @@ const DAILY_VALIDATION_RULES: ValidationRule<DailyRecord>[] = [
   },
   {
     name: 'pct_change_range',
-    validate: (r) => r.pctChg == null || (r.pctChg >= -22 && r.pctChg <= 22),
+    validate: (r) => r.pctChg == null || (r.pctChg >= -30 && r.pctChg <= 30),
     severity: 'warn',
     message: (r) => `${r.tsCode} ${r.tradeDate}: pctChg=${r.pctChg} 超出合理范围`,
   },
 ]
 ```
+
+> **涨跌幅校验说明**：±30% 为宽松阈值，覆盖创业板/科创板 ±20% 和首日上市 ±44% 等特殊情况。如需更精确校验，应根据 `stock_basic_profiles` 中的 `market` 字段区分板块后应用不同阈值（主板 ±10%、创业板/科创板 ±20%、北交所 ±30%、ST ±5%）。建议校验规则支持按股票类型动态配置。
 
 #### 5.3.3 集成方式
 

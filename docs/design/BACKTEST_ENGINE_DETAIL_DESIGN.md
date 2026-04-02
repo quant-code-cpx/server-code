@@ -1,0 +1,1169 @@
+# 回测撮合引擎 — 详细设计文档
+
+> **版本**：v1.0 | **日期**：2026-04-01
+> **目标读者**：AI 代码生成模型（Copilot / Claude / GPT 等）
+> **定位**：基于已有骨架代码，指导 AI 模型完成回测引擎剩余功能的实现与增强。
+> **前置文档**：`docs/design/BACKTESTING_BACKEND.md`（模块整体规划）
+
+---
+
+## 目录
+
+1. [现状评估与实现差距](#一现状评估与实现差距)
+2. [核心引擎增强：复权价格计算](#二核心引擎增强复权价格计算)
+3. [核心引擎增强：撮合与执行优化](#三核心引擎增强撮合与执行优化)
+4. [新功能：Walk-Forward 滚动验证](#四新功能walk-forward-滚动验证)
+5. [新功能：多策略对比回测](#五新功能多策略对比回测)
+6. [新功能：蒙特卡洛模拟](#六新功能蒙特卡洛模拟)
+7. [新功能：滚动窗口回测](#七新功能滚动窗口回测)
+8. [单元测试与集成测试设计](#八单元测试与集成测试设计)
+9. [性能优化与内存管理](#九性能优化与内存管理)
+10. [Schema 与 API 变更汇总](#十schema-与-api-变更汇总)
+
+---
+
+## 一、现状评估与实现差距
+
+### 1.1 已完成的能力
+
+以下组件**已实现且可用**（无需重写，仅需增强）：
+
+| 组件 | 文件路径 | 状态 |
+|------|----------|------|
+| 主循环编排 | `src/apps/backtest/services/backtest-engine.service.ts` | ✅ 7 阶段完整 |
+| 交易执行 | `src/apps/backtest/services/backtest-execution.service.ts` | ✅ 含涨跌停/停牌/滑点/手续费/100 股整手 |
+| 风险指标计算 | `src/apps/backtest/services/backtest-metrics.service.ts` | ✅ 15 项指标 |
+| 数据加载 | `src/apps/backtest/services/backtest-data.service.ts` | ✅ 并行加载 Daily/AdjFactor/StkLimit/SuspendD |
+| 数据就绪校验 | `src/apps/backtest/services/backtest-data-readiness.service.ts` | ✅ 7 维度检查 |
+| 结果持久化 | `src/apps/backtest/services/backtest-report.service.ts` | ✅ NavRecord/Trade/Position/RebalanceLog |
+| BullMQ 异步调度 | `src/queue/backtesting/backtesting.processor.ts` | ✅ 含进度推送/失败处理 |
+| 4 种策略模板 | `src/apps/backtest/strategies/*.strategy.ts` | ✅ 均线交叉/选股轮动/因子排名/自定义池 |
+| 9 个 API 端点 | `src/apps/backtest/backtest.controller.ts` | ✅ CRUD + 净值/交易/持仓查询 |
+| 5 张 Prisma 模型 | `prisma/backtest.prisma` | ✅ Run/DailyNav/Trade/PositionSnapshot/RebalanceLog |
+
+### 1.2 需要增强的能力
+
+| # | 缺口 | 优先级 | 预估复杂度 | 所在章节 |
+|---|------|--------|-----------|---------|
+| 1 | 复权价格未应用于撮合计算（adjFactor 已加载但未使用） | P0 | ★★☆ | [第二章](#二核心引擎增强复权价格计算) |
+| 2 | 卖出时印花税计算、买入时无印花税的区分 | P0 | ★☆☆ | [第三章](#三核心引擎增强撮合与执行优化) |
+| 3 | 仓位成本价未用复权价追踪，导致盈亏计算在除权后失真 | P0 | ★★☆ | [第二章](#二核心引擎增强复权价格计算) |
+| 4 | Walk-Forward 滚动验证 | P1 | ★★★ | [第四章](#四新功能walk-forward-滚动验证) |
+| 5 | 多策略对比回测 | P1 | ★★☆ | [第五章](#五新功能多策略对比回测) |
+| 6 | 蒙特卡洛模拟 | P2 | ★★★ | [第六章](#六新功能蒙特卡洛模拟) |
+| 7 | 滚动窗口回测 | P2 | ★★★ | [第七章](#七新功能滚动窗口回测) |
+| 8 | 单元测试覆盖 | P0 | ★★★ | [第八章](#八单元测试与集成测试设计) |
+| 9 | 大规模回测性能优化 | P1 | ★★★ | [第九章](#九性能优化与内存管理) |
+
+### 1.3 外部数据依赖
+
+> **重要**：以下三张表当前数据量为 0，需先完成数据同步（参考 `FEATURE_GAP_ANALYSIS` 痛点一），否则引擎的涨跌停/停牌/指数成分判断将全部失效。
+
+| 表名 | Prisma 模型 | DB 表名 | 同步状态 |
+|------|------------|---------|---------|
+| `StkLimit` | `prisma/tushare_stk_limit.prisma` | `stock_limit_prices` | ❌ 0 行 |
+| `SuspendD` | `prisma/tushare_suspend.prisma` | `stock_suspend_events` | ❌ 0 行 |
+| `IndexWeight` | `prisma/tushare_index_weight.prisma` | `index_constituent_weights` | ❌ 0 行 |
+
+---
+
+## 二、核心引擎增强：复权价格计算
+
+### 2.1 问题描述
+
+当前 `BacktestDataService.loadDailyBars()` 已加载 `adjFactor`，但 `BacktestEngineService` 和 `BacktestExecutionService` 中**未使用复权因子**进行价格调整。这导致：
+
+1. 在股票发生送股/配股/转增时，历史价格不连续
+2. 均线策略（`MaCrossSingleStrategy`）的 MA 计算在除权日前后产生错误交叉信号
+3. 持仓盈亏计算在除权后失真（costPrice 基于原始价格，但 close 已变化）
+
+### 2.2 实现方案
+
+#### 2.2.1 在 `DailyBar` 中添加复权价字段
+
+**文件**：`src/apps/backtest/types/backtest-engine.types.ts`
+
+在 `DailyBar` 接口中添加以下字段：
+
+```typescript
+export interface DailyBar {
+  // ... 保留现有字段 ...
+
+  // ── 新增：前复权价格（用于信号生成） ──
+  adjClose: number | null   // close * adjFactor / latestAdjFactor
+  adjOpen: number | null    // open  * adjFactor / latestAdjFactor
+  adjHigh: number | null    // high  * adjFactor / latestAdjFactor
+  adjLow: number | null     // low   * adjFactor / latestAdjFactor
+}
+```
+
+#### 2.2.2 在 `BacktestDataService.loadDailyBars()` 中计算前复权价
+
+**文件**：`src/apps/backtest/services/backtest-data.service.ts`
+
+在构建 `DailyBar` 对象的循环中，为每只股票找到该股票在返回数据中的**最新 adjFactor**（即 `latestAdjFactor`），然后计算前复权价：
+
+```
+对于每只股票 tsCode:
+  latestAdjFactor = 该股票所有日期中 adjFactor 的最大 tradeDate 对应值
+  对于该股票的每个 DailyBar:
+    ratio = bar.adjFactor / latestAdjFactor
+    bar.adjClose = bar.close * ratio
+    bar.adjOpen  = bar.open  * ratio
+    bar.adjHigh  = bar.high  * ratio
+    bar.adjLow   = bar.low   * ratio
+```
+
+**注意**：`latestAdjFactor` 的计算需要基于数据加载范围中该股票的最新交易日的复权因子，而非全局最新。建议在构建结果 Map 时，先遍历一次 `adjRows` 按 `tsCode` 分组并找到最新值。
+
+#### 2.2.3 策略信号使用复权价
+
+**文件**：`src/apps/backtest/strategies/ma-cross-single.strategy.ts`
+
+将 `generateSignal` 中的 `b.close` 改为 `b.adjClose ?? b.close`：
+
+```
+当前：const closes = history.map((b) => b.close as number)
+改为：const closes = history.map((b) => (b.adjClose ?? b.close) as number)
+```
+
+#### 2.2.4 撮合执行继续使用原始价格
+
+**文件**：`src/apps/backtest/services/backtest-execution.service.ts`
+
+`getExecutionPrice()` 保持使用 `bar.open` / `bar.close`（原始价格），因为实际交易以原始报价成交。涨跌停判断也使用原始的 `upLimit` / `downLimit`。
+
+#### 2.2.5 持仓盈亏计算调整
+
+**文件**：`src/apps/backtest/services/backtest-engine.service.ts`
+
+`computePositionValueWithAdjFactor()` 当前使用 `bar.close`（原始收盘价），这是**正确的**——因为持仓市值应基于当日实际价格。`costPrice` 也是基于实际成交价记录的。因此在除权场景下，需要在成本价上体现除权的影响：
+
+在 `BacktestExecutionService` 的买入逻辑中，`costPrice` 应当记录实际成交价（当前已正确）。在除权发生时（即 `adjFactor` 发生跳变），需要同步调整已有持仓的 `costPrice`。
+
+**新增方法** 在 `BacktestEngineService` 的主循环中，在每日 mark-to-market 之前插入：
+
+```
+adjustCostPriceForSplits(portfolio, todayBars, yesterdayBars):
+  对于 portfolio.positions 中的每个持仓 pos:
+    todayBar = todayBars.get(pos.tsCode)
+    yesterdayBar = previousDayBars.get(pos.tsCode)
+    if todayBar.adjFactor 和 yesterdayBar.adjFactor 都不为 null:
+      if todayBar.adjFactor !== yesterdayBar.adjFactor:
+        ratio = todayBar.adjFactor / yesterdayBar.adjFactor
+        pos.costPrice = pos.costPrice / ratio
+        pos.quantity = Math.round(pos.quantity * ratio)  // 送股导致数量变化
+```
+
+---
+
+## 三、核心引擎增强：撮合与执行优化
+
+### 3.1 印花税方向修正
+
+**文件**：`src/apps/backtest/services/backtest-execution.service.ts`
+
+**当前问题**：买入时也收取了印花税（L154 `stampDuty: 0` 已正确设为 0，但卖出时 L96 的计算方式需确认正确性）。
+
+**A 股规则**：
+- 印花税**仅在卖出时收取**，税率 0.05%（2023 年 8 月后）
+- 佣金买卖双向收取，有最低 5 元限制
+- 过户费双向收取（可忽略或纳入佣金）
+
+**确认**：当前卖出逻辑（L96）`stampDuty = amount * config.stampDutyRate` 是正确的；买入逻辑（L154）`stampDuty: 0` 也是正确的。此项无需改动，仅记录确认。
+
+### 3.2 买入资金不足时的优先级排序
+
+**文件**：`src/apps/backtest/services/backtest-execution.service.ts`
+
+**当前问题**：买入循环按 `effectiveWeights` Map 的迭代顺序执行，当资金不足时，后面的标的无法买入。但 Map 的迭代顺序不稳定（取决于排序后的 `set` 顺序）。
+
+**改进方案**：将买入列表按**目标权重降序**排列后执行，确保高权重标的优先获得资金分配：
+
+```
+当前：for (const [tsCode, targetWeight] of effectiveWeights) { ... }
+改为：
+  const sortedTargets = [...effectiveWeights.entries()]
+    .sort((a, b) => b[1] - a[1])  // 按权重降序
+  for (const [tsCode, targetWeight] of sortedTargets) { ... }
+```
+
+### 3.3 部分成交处理（资金不足场景）
+
+**当前行为**：如果资金不足以买入目标数量，则完全跳过该标的。
+
+**改进方案**：当 `portfolio.cash < diffValue` 时，不是跳过，而是使用剩余资金买入能买的最大整手数量：
+
+```
+当前逻辑：
+  if (portfolio.cash < diffValue) continue // 直接跳过
+
+改进逻辑：
+  const availableValue = Math.min(diffValue, portfolio.cash)
+  const rawQty = Math.floor(availableValue / execPrice / 100) * 100
+  if (rawQty <= 0) continue  // 真的不够一手才跳过
+```
+
+### 3.4 T+1 卖出限制
+
+**当前问题**：A 股 T+1 制度下，当日买入的股票不能当日卖出。当前实现中，买入和卖出在同一个 `executeTrades()` 调用中完成（同一天），而 T+1 执行模型意味着信号在 T 日生成、T+1 日执行，所以**所有执行都发生在 T+1 日**——同一天可能同时有 sell 和 buy 操作。
+
+**确认**：由于 `pendingSignal` 机制保证信号 T 日生成、T+1 日执行，且 SELL 发生在 BUY 之前（先卖后买），理论上不存在"当日买当日卖"的问题。但需确保**一只股票不会在同一轮 `executeTrades` 中被 sell 后又被 buy**。
+
+**校验建议**：在 BUY 步骤开始前，记录 SELL 步骤中售出的 `tsCode` 列表（`soldToday`），在 BUY 循环中跳过 `soldToday` 中的标的：
+
+```
+改进：在 STEP 2: BUYS 循环中增加判断：
+  const soldToday = new Set(trades.filter(t => t.side === 'SELL').map(t => t.tsCode))
+  // 在 BUY 循环中：
+  if (soldToday.has(tsCode)) continue  // 今天刚卖的不能买回
+```
+
+> **注意**：此约束仅适用于 A 股 T+1 制度。如未来扩展到 T+0 市场（如港股、美股），应通过配置开关控制。
+
+### 3.5 新增配置字段
+
+**文件**：`src/apps/backtest/types/backtest-engine.types.ts`
+
+在 `BacktestConfig` 接口中新增：
+
+```typescript
+export interface BacktestConfig<T extends BacktestStrategyType = BacktestStrategyType> {
+  // ... 保留现有字段 ...
+
+  // ── 新增 ──
+  enableT1Restriction: boolean     // 是否启用 T+1 限制（默认 true）
+  partialFillEnabled: boolean      // 是否允许部分成交（默认 true）
+}
+```
+
+**文件**：`src/apps/backtest/dto/create-backtest-run.dto.ts`
+
+在 DTO 中新增对应字段：
+
+```typescript
+@IsOptional()
+@IsBoolean()
+enableT1Restriction?: boolean = true
+
+@IsOptional()
+@IsBoolean()
+partialFillEnabled?: boolean = true
+```
+
+---
+
+## 四、新功能：Walk-Forward 滚动验证
+
+### 4.1 概念
+
+Walk-Forward 验证将回测期间分为多个滚动窗口，每个窗口包含：
+- **样本内（In-Sample, IS）**：用于策略参数优化
+- **样本外（Out-of-Sample, OOS）**：用于评估优化后的参数
+
+通过多次 IS→OOS 迭代，检验策略在未知数据上的泛化能力，防止过拟合。
+
+### 4.2 数据模型
+
+#### 4.2.1 新增 Prisma 模型
+
+**文件**：`prisma/backtest.prisma`，在文件末尾追加：
+
+```prisma
+model BacktestWalkForwardRun {
+  id                   String    @id @default(cuid())
+  userId               Int       @map("user_id")
+  name                 String?   @db.VarChar(128)
+
+  baseStrategyType     String    @map("base_strategy_type") @db.VarChar(64)
+  baseStrategyConfig   Json      @map("base_strategy_config")
+  paramSearchSpace     Json      @map("param_search_space")        // 参数搜索空间定义
+  optimizeMetric       String    @map("optimize_metric") @db.VarChar(64) // 优化目标指标名
+
+  fullStartDate        DateTime  @map("full_start_date") @db.Date
+  fullEndDate          DateTime  @map("full_end_date") @db.Date
+  inSampleDays         Int       @map("in_sample_days")            // 样本内窗口天数
+  outOfSampleDays      Int       @map("out_of_sample_days")        // 样本外窗口天数
+  stepDays             Int       @map("step_days")                 // 滚动步长天数
+
+  benchmarkTsCode      String    @map("benchmark_ts_code") @db.VarChar(16)
+  universe             String    @db.VarChar(32)
+  initialCapital       Decimal   @map("initial_capital") @db.Decimal(20, 4)
+  rebalanceFrequency   String    @map("rebalance_frequency") @db.VarChar(32)
+
+  status               String    @db.VarChar(32)       // QUEUED|RUNNING|COMPLETED|FAILED
+  progress             Int       @default(0)
+  failedReason         String?   @map("failed_reason") @db.Text
+  windowCount          Int?      @map("window_count")
+  completedWindows     Int?      @map("completed_windows") @default(0)
+
+  // 汇总指标（OOS 拼接后计算）
+  oosAnnualizedReturn  Float?    @map("oos_annualized_return")
+  oosSharpeRatio       Float?    @map("oos_sharpe_ratio")
+  oosMaxDrawdown       Float?    @map("oos_max_drawdown")
+  isOosReturnVsIs      Float?    @map("is_oos_return_vs_is")       // OOS/IS 收益比
+
+  createdAt            DateTime  @default(now()) @map("created_at")
+  completedAt          DateTime? @map("completed_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
+
+  windows              BacktestWalkForwardWindow[]
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@map("backtest_walk_forward_runs")
+}
+
+model BacktestWalkForwardWindow {
+  id                 String    @id @default(cuid())
+  wfRunId            String    @map("wf_run_id")
+  windowIndex        Int       @map("window_index")
+
+  isStartDate        DateTime  @map("is_start_date") @db.Date
+  isEndDate          DateTime  @map("is_end_date") @db.Date
+  oosStartDate       DateTime  @map("oos_start_date") @db.Date
+  oosEndDate         DateTime  @map("oos_end_date") @db.Date
+
+  optimizedParams    Json?     @map("optimized_params")            // IS 阶段优化出的最佳参数
+  isBacktestRunId    String?   @map("is_backtest_run_id")          // 关联的 IS 回测
+  oosBacktestRunId   String?   @map("oos_backtest_run_id")         // 关联的 OOS 回测
+
+  // IS 阶段指标
+  isReturn           Float?    @map("is_return")
+  isSharpe           Float?    @map("is_sharpe")
+
+  // OOS 阶段指标
+  oosReturn          Float?    @map("oos_return")
+  oosSharpe          Float?    @map("oos_sharpe")
+  oosMaxDrawdown     Float?    @map("oos_max_drawdown")
+
+  wfRun              BacktestWalkForwardRun @relation(fields: [wfRunId], references: [id], onDelete: Cascade)
+
+  @@unique([wfRunId, windowIndex])
+  @@map("backtest_walk_forward_windows")
+}
+```
+
+#### 4.2.2 参数搜索空间定义（JSON Schema）
+
+`paramSearchSpace` 字段的结构定义：
+
+```typescript
+/** 参数搜索空间，每个 key 对应 strategyConfig 中的一个参数 */
+interface ParamSearchSpace {
+  [paramName: string]: {
+    type: 'range' | 'enum'
+    /** type='range' 时必填 */
+    min?: number
+    max?: number
+    step?: number
+    /** type='enum' 时必填 */
+    values?: (string | number | boolean)[]
+  }
+}
+
+// 示例：均线交叉策略的参数搜索空间
+const example: ParamSearchSpace = {
+  shortWindow: { type: 'range', min: 3, max: 20, step: 1 },
+  longWindow:  { type: 'range', min: 10, max: 60, step: 5 },
+}
+```
+
+### 4.3 服务实现
+
+#### 4.3.1 新增文件
+
+**文件路径**：`src/apps/backtest/services/backtest-walk-forward.service.ts`
+
+```typescript
+@Injectable()
+export class BacktestWalkForwardService {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly engineService: BacktestEngineService,
+    private readonly metricsService: BacktestMetricsService,
+    private readonly reportService: BacktestReportService,
+    private readonly dataService: BacktestDataService,
+  ) {}
+
+  /**
+   * 执行 Walk-Forward 验证主流程
+   *
+   * 算法：
+   * 1. 划分窗口：从 fullStartDate 开始，每次滚动 stepDays 天
+   *    窗口 i: IS=[startDate + i*stepDays, startDate + i*stepDays + inSampleDays)
+   *            OOS=[IS.end, IS.end + outOfSampleDays)
+   *    持续到 OOS.end <= fullEndDate
+   *
+   * 2. 对每个窗口：
+   *    a. 枚举 paramSearchSpace 的所有参数组合（网格搜索）
+   *    b. 对每个组合，在 IS 期间运行回测
+   *    c. 选择 optimizeMetric 最优的参数组合
+   *    d. 用最优参数在 OOS 期间运行回测
+   *    e. 记录 IS/OOS 指标
+   *
+   * 3. 拼接所有 OOS 期间的净值曲线，计算汇总指标
+   */
+  async runWalkForward(wfRunId: string, onProgress?: ProgressCallback): Promise<void>
+
+  /**
+   * 网格搜索：枚举参数空间中的所有组合
+   * @returns 参数组合数组，每个元素是 Record<string, unknown>
+   */
+  private generateParamCombinations(searchSpace: ParamSearchSpace): Record<string, unknown>[]
+
+  /**
+   * 在指定日期范围内运行一次回测并返回指标
+   * 复用 BacktestEngineService.runBacktest()
+   */
+  private async runSingleBacktest(
+    config: BacktestConfig,
+    startDate: Date,
+    endDate: Date,
+  ): Promise<{ result: BacktestResult; metrics: BacktestMetrics }>
+
+  /**
+   * 拼接多个 OOS 窗口的 navRecords，重新计算汇总指标
+   */
+  private computeAggregatedOosMetrics(
+    windows: Array<{ oosNavRecords: DailyNavRecord[]; oosTrades: TradeRecord[] }>,
+    config: BacktestConfig,
+  ): BacktestMetrics
+}
+```
+
+#### 4.3.2 网格搜索算法
+
+```
+generateParamCombinations(searchSpace):
+  paramNames = Object.keys(searchSpace)
+  paramValues = paramNames.map(name => {
+    spec = searchSpace[name]
+    if spec.type === 'range':
+      values = []
+      for v = spec.min; v <= spec.max; v += spec.step:
+        values.push(v)
+      return values
+    else:  // 'enum'
+      return spec.values
+  })
+
+  // 笛卡尔积
+  combinations = cartesianProduct(paramValues)
+  return combinations.map(combo => {
+    result = {}
+    for i in range(paramNames.length):
+      result[paramNames[i]] = combo[i]
+    return result
+  })
+
+  // 限制：组合数量不超过 1000，超过则报错提示缩小搜索空间
+```
+
+### 4.4 API 端点
+
+**文件**：`src/apps/backtest/backtest.controller.ts`，新增以下端点：
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| `POST` | `/backtests/walk-forward/runs` | 创建 Walk-Forward 验证任务 |
+| `GET` | `/backtests/walk-forward/runs` | 列表（分页） |
+| `GET` | `/backtests/walk-forward/runs/:wfRunId` | 详情（含各窗口 IS/OOS 指标） |
+| `GET` | `/backtests/walk-forward/runs/:wfRunId/equity` | 拼接后的 OOS 净值曲线 |
+
+### 4.5 DTO 定义
+
+**新增文件**：`src/apps/backtest/dto/walk-forward.dto.ts`
+
+```typescript
+export class CreateWalkForwardRunDto {
+  @IsOptional() @IsString() @MaxLength(128)
+  name?: string
+
+  @IsEnum(/* BacktestStrategyType */)
+  baseStrategyType: BacktestStrategyType
+
+  @IsObject()
+  baseStrategyConfig: Record<string, unknown>  // 基础参数（搜索空间外的固定参数）
+
+  @IsObject()
+  paramSearchSpace: Record<string, ParamSearchSpaceItem>
+
+  @IsString() @Matches(/^\d{8}$/)
+  fullStartDate: string
+
+  @IsString() @Matches(/^\d{8}$/)
+  fullEndDate: string
+
+  @IsNumber() @Min(60) @Max(2520)   // 60天~10年
+  inSampleDays: number
+
+  @IsNumber() @Min(20) @Max(504)    // 20天~2年
+  outOfSampleDays: number
+
+  @IsNumber() @Min(20) @Max(504)
+  stepDays: number
+
+  @IsString() @Matches(/^\d{8}$/)
+  optimizeMetric: string = 'sharpeRatio'  // 允许值: totalReturn | sharpeRatio | sortinoRatio | calmarRatio
+
+  // 以下继承回测通用参数
+  @IsOptional() @IsString()
+  benchmarkTsCode?: string = '000300.SH'
+
+  @IsOptional() @IsEnum(/* Universe */)
+  universe?: Universe = 'ALL_A'
+
+  @IsNumber() @Min(1000)
+  initialCapital: number
+
+  @IsOptional() @IsEnum(/* RebalanceFrequency */)
+  rebalanceFrequency?: RebalanceFrequency = 'MONTHLY'
+}
+```
+
+### 4.6 BullMQ 任务
+
+**文件**：`src/constant/queue.constant.ts`
+
+```typescript
+export enum BacktestingJobName {
+  RUN_BACKTEST = 'run-backtest',
+  RUN_WALK_FORWARD = 'run-walk-forward',    // 新增
+}
+```
+
+**文件**：`src/queue/backtesting/backtesting.processor.ts`
+
+在 `process()` 方法的 switch 中新增 case：
+
+```typescript
+case BacktestingJobName.RUN_WALK_FORWARD:
+  return this.runWalkForward(job)
+```
+
+---
+
+## 五、新功能：多策略对比回测
+
+### 5.1 概念
+
+允许用户同时提交多组策略配置，在**完全相同的时间范围和市场环境**下运行回测，然后将结果并排比较。
+
+### 5.2 实现方案
+
+#### 5.2.1 数据模型
+
+**文件**：`prisma/backtest.prisma`，追加：
+
+```prisma
+model BacktestComparisonGroup {
+  id              String   @id @default(cuid())
+  userId          Int      @map("user_id")
+  name            String?  @db.VarChar(128)
+
+  startDate       DateTime @map("start_date") @db.Date
+  endDate         DateTime @map("end_date") @db.Date
+  benchmarkTsCode String   @map("benchmark_ts_code") @db.VarChar(16)
+  universe        String   @db.VarChar(32)
+  initialCapital  Decimal  @map("initial_capital") @db.Decimal(20, 4)
+
+  status          String   @db.VarChar(32)   // QUEUED|RUNNING|COMPLETED|FAILED
+  runIds          Json     @map("run_ids")   // string[] — 关联的 BacktestRun IDs
+
+  createdAt       DateTime @default(now()) @map("created_at")
+  completedAt     DateTime? @map("completed_at")
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@map("backtest_comparison_groups")
+}
+```
+
+#### 5.2.2 API
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| `POST` | `/backtests/comparisons` | 创建对比组（提交多个策略配置） |
+| `GET` | `/backtests/comparisons/:groupId` | 获取对比组详情（含各策略指标对比表） |
+| `GET` | `/backtests/comparisons/:groupId/equity` | 所有策略的净值曲线叠加数据 |
+
+#### 5.2.3 请求 DTO
+
+**新增文件**：`src/apps/backtest/dto/backtest-comparison.dto.ts`
+
+```typescript
+export class CreateBacktestComparisonDto {
+  @IsOptional() @IsString() @MaxLength(128)
+  name?: string
+
+  @ArrayMinSize(2)
+  @ArrayMaxSize(10)
+  @ValidateNested({ each: true })
+  @Type(() => ComparisonStrategyItem)
+  strategies: ComparisonStrategyItem[]
+
+  @IsString() @Matches(/^\d{8}$/)
+  startDate: string
+
+  @IsString() @Matches(/^\d{8}$/)
+  endDate: string
+
+  @IsOptional() @IsString()
+  benchmarkTsCode?: string = '000300.SH'
+
+  @IsOptional() @IsEnum(/* Universe */)
+  universe?: Universe = 'ALL_A'
+
+  @IsNumber() @Min(1000)
+  initialCapital: number
+}
+
+export class ComparisonStrategyItem {
+  @IsOptional() @IsString() @MaxLength(64)
+  label?: string   // 策略标签，用于前端区分
+
+  @IsEnum(/* BacktestStrategyType */)
+  strategyType: BacktestStrategyType
+
+  @IsObject()
+  strategyConfig: Record<string, unknown>
+
+  @IsOptional() @IsEnum(/* RebalanceFrequency */)
+  rebalanceFrequency?: RebalanceFrequency = 'MONTHLY'
+}
+```
+
+#### 5.2.4 实现逻辑
+
+```
+createComparison(dto, userId):
+  1. 创建 BacktestComparisonGroup 记录（status='QUEUED'）
+  2. 对 dto.strategies 中的每个策略，创建 BacktestRun 记录（复用现有逻辑）
+  3. 将所有 runId 保存到 group.runIds
+  4. 提交一个 BullMQ 任务，任务内容为依次运行所有 BacktestRun
+  5. 所有运行完成后，更新 group.status = 'COMPLETED'
+```
+
+**响应 DTO 要点**：对比结果响应应包含指标对比矩阵：
+
+```typescript
+interface ComparisonMetricsRow {
+  runId: string
+  label: string
+  strategyType: string
+  totalReturn: number
+  annualizedReturn: number
+  sharpeRatio: number
+  maxDrawdown: number
+  volatility: number
+  alpha: number
+  beta: number
+  winRate: number
+  // ... 所有 BacktestMetrics 字段
+}
+```
+
+---
+
+## 六、新功能：蒙特卡洛模拟
+
+### 6.1 概念
+
+通过对回测产生的每日收益率序列进行随机重采样（Bootstrap），生成大量模拟路径，评估策略的鲁棒性和尾部风险。
+
+### 6.2 实现方案
+
+#### 6.2.1 不新增 Prisma 模型
+
+蒙特卡洛模拟结果为**实时计算、不持久化**（结果量大且可随时重新生成）。响应直接返回统计摘要和分位数曲线。
+
+#### 6.2.2 服务实现
+
+**新增文件**：`src/apps/backtest/services/backtest-monte-carlo.service.ts`
+
+```typescript
+@Injectable()
+export class BacktestMonteCarloService {
+  constructor(private readonly prisma: PrismaService) {}
+
+  /**
+   * 对已完成的回测运行进行蒙特卡洛模拟
+   *
+   * 算法：
+   * 1. 从 BacktestDailyNav 获取该 runId 的所有 dailyReturn
+   * 2. 执行 numSimulations 次 Bootstrap 重采样：
+   *    a. 有放回地从 dailyReturn 数组中随机抽取 N 个（N = 原始长度）
+   *    b. 用重采样的收益率序列重新计算累积净值曲线
+   *    c. 计算该路径的终值、最大回撤、年化收益、Sharpe
+   * 3. 汇总所有模拟路径：
+   *    a. 终值分布的 5/25/50/75/95 百分位
+   *    b. 最大回撤分布的均值和 95 百分位
+   *    c. 正收益概率（终值 > 初始资本的模拟路径占比）
+   *    d. 按时间步聚合的净值分位数曲线（用于画扇形图）
+   */
+  async runMonteCarloSimulation(
+    runId: string,
+    options: MonteCarloOptions,
+  ): Promise<MonteCarloResult>
+}
+
+interface MonteCarloOptions {
+  numSimulations: number  // 默认 1000，最大 10000
+  confidenceLevels: number[]  // 默认 [0.05, 0.25, 0.5, 0.75, 0.95]
+  seed?: number  // 可选随机种子（用于结果复现）
+}
+
+interface MonteCarloResult {
+  numSimulations: number
+  originalFinalNav: number
+  originalTotalReturn: number
+
+  // 终值分布
+  finalNavDistribution: {
+    mean: number
+    median: number
+    std: number
+    percentiles: Record<string, number>   // e.g. {"5": 0.85, "50": 1.12, "95": 1.45}
+    positiveReturnProbability: number     // 终值 > 初始资本的概率
+  }
+
+  // 最大回撤分布
+  maxDrawdownDistribution: {
+    mean: number
+    median: number
+    percentile95: number
+  }
+
+  // 年化收益分布
+  annualizedReturnDistribution: {
+    mean: number
+    median: number
+    std: number
+    percentiles: Record<string, number>
+  }
+
+  // 时序分位数曲线（用于前端扇形图）
+  timeSeries: Array<{
+    dayIndex: number
+    percentiles: Record<string, number>   // 每个置信水平对应的 NAV 值
+  }>
+}
+```
+
+#### 6.2.3 性能考量
+
+- 1000 次模拟 × 500 交易日 = 50 万个数据点，纯 JS 计算约 100-200ms
+- 10000 次模拟约 1-2 秒
+- 无需异步队列，可同步计算后返回
+- 如果性能不够，可考虑使用 `worker_threads` 并行化
+
+#### 6.2.4 API
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| `POST` | `/backtests/runs/:runId/monte-carlo` | 对已完成回测运行蒙特卡洛模拟 |
+
+**请求 DTO**：
+
+```typescript
+export class RunMonteCarloDto {
+  @IsOptional() @IsNumber() @Min(100) @Max(10000)
+  numSimulations?: number = 1000
+
+  @IsOptional() @IsNumber()
+  seed?: number
+}
+```
+
+---
+
+## 七、新功能：滚动窗口回测
+
+### 7.1 概念
+
+滚动窗口回测（Rolling Backtest）模拟真实投研流程：每隔固定周期重新执行策略的参数选择或选股逻辑，使用最近 N 天的数据作为参考窗口。这与 Walk-Forward 类似但更侧重于**单一策略的动态参数适应**。
+
+### 7.2 实现方案
+
+滚动窗口回测本质上是 Walk-Forward 的简化版（固定一种优化策略）。建议**复用 Walk-Forward 基础设施**，通过以下参数组合实现：
+
+- `inSampleDays` = 回望窗口
+- `outOfSampleDays` = 持有期
+- `stepDays` = `outOfSampleDays`（无重叠）
+- `paramSearchSpace` = 单个参数的有限范围
+
+**实现**：不需要新增独立模块。在前端或 API 层面提供一个简化的入口，内部调用 Walk-Forward 服务即可。
+
+**新增 API**：
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| `POST` | `/backtests/rolling/runs` | 创建滚动窗口回测（内部转化为 Walk-Forward 任务） |
+
+**请求 DTO**：
+
+```typescript
+export class CreateRollingBacktestDto {
+  @IsOptional() @IsString() @MaxLength(128)
+  name?: string
+
+  @IsEnum(/* BacktestStrategyType */)
+  strategyType: BacktestStrategyType
+
+  @IsObject()
+  strategyConfig: Record<string, unknown>
+
+  @IsObject()
+  rollingParamSpace: Record<string, ParamSearchSpaceItem>  // 滚动优化的参数
+
+  @IsString() @Matches(/^\d{8}$/)
+  startDate: string
+
+  @IsString() @Matches(/^\d{8}$/)
+  endDate: string
+
+  @IsNumber() @Min(60)
+  lookbackDays: number      // 回望窗口天数
+
+  @IsNumber() @Min(20)
+  holdingPeriodDays: number // 持有期天数
+
+  @IsOptional() @IsString()
+  optimizeMetric?: string = 'sharpeRatio'
+
+  // 通用参数
+  @IsOptional() @IsString()
+  benchmarkTsCode?: string = '000300.SH'
+
+  @IsOptional() @IsEnum(/* Universe */)
+  universe?: Universe = 'ALL_A'
+
+  @IsNumber() @Min(1000)
+  initialCapital: number
+
+  @IsOptional() @IsEnum(/* RebalanceFrequency */)
+  rebalanceFrequency?: RebalanceFrequency = 'MONTHLY'
+}
+```
+
+**转化逻辑**：
+
+```
+createRollingBacktest(dto):
+  转化为 CreateWalkForwardRunDto:
+    inSampleDays = dto.lookbackDays
+    outOfSampleDays = dto.holdingPeriodDays
+    stepDays = dto.holdingPeriodDays   // 无重叠
+    paramSearchSpace = dto.rollingParamSpace
+    optimizeMetric = dto.optimizeMetric
+    其余字段直接映射
+  调用 walkForwardService.create(...)
+```
+
+---
+
+## 八、单元测试与集成测试设计
+
+### 8.1 测试策略
+
+| 层级 | 目标 | 测试框架 | 数量预估 |
+|------|------|---------|---------|
+| **单元测试** | 各 Service 方法的独立逻辑 | Jest + Mock | ~40 个 |
+| **集成测试** | 完整回测流程（数据 → 引擎 → 持久化） | Jest + Prisma Test DB | ~10 个 |
+| **快照测试** | API 响应格式 | Jest | ~5 个 |
+
+### 8.2 单元测试用例清单
+
+#### 8.2.1 `BacktestMetricsService`（最高优先级）
+
+**文件**：`src/apps/backtest/services/__tests__/backtest-metrics.service.spec.ts`
+
+| # | 测试用例 | 输入 | 预期 |
+|---|---------|------|------|
+| 1 | 空 navRecords 返回零值指标 | `navRecords=[]` | 所有指标为 0 |
+| 2 | 单条 navRecord 返回零值指标 | 1 条记录 | totalReturn=0, sharpe=0 |
+| 3 | 稳定上涨的净值曲线 | 每天 +0.1% | annualizedReturn≈28.3%, volatility>0, sharpe>2 |
+| 4 | 稳定下跌的净值曲线 | 每天 -0.1% | annualizedReturn<0, maxDrawdown<0, sharpe<0 |
+| 5 | 50% 回撤后恢复 | 先跌 50% 再涨 100% | maxDrawdown=-0.5, totalReturn≈0 |
+| 6 | 与基准完全一致 | dailyReturn=benchmarkReturn | excessReturn≈0, alpha≈0, beta≈1, IR≈0 |
+| 7 | 无交易的回测 | trades=[] | tradeCount=0, turnoverRate=0 |
+| 8 | 计算精度验证 | 手工计算的小样本 | 与手工结果误差 < 1e-6 |
+
+#### 8.2.2 `BacktestExecutionService`
+
+**文件**：`src/apps/backtest/services/__tests__/backtest-execution.service.spec.ts`
+
+| # | 测试用例 | 关键验证 |
+|---|---------|---------|
+| 1 | 正常买入（资金充足） | 数量为 100 的整数倍，cash 扣减正确（含佣金+滑点） |
+| 2 | 正常卖出 | cash 增加正确（扣除佣金+印花税+滑点） |
+| 3 | 买入时不收印花税 | stampDuty=0 |
+| 4 | 卖出时收印花税 | stampDuty=amount*stampDutyRate |
+| 5 | 涨停不可买入 | enableTradeConstraints=true, price>=upLimit → 跳过 |
+| 6 | 跌停不可卖出 | enableTradeConstraints=true, price<=downLimit → 跳过 |
+| 7 | 停牌跳过交易 | isSuspended=true → 跳过，skippedSuspendCount+1 |
+| 8 | 最低佣金限制 | 当 amount*commissionRate < minCommission 时，使用 minCommission |
+| 9 | 资金不足跳过 | cash 不够一手 → 跳过买入 |
+| 10 | maxPositions 上限 | 目标标的数 > maxPositions → 只买入前 N 个 |
+| 11 | maxWeightPerStock 上限 | 单票权重被 cap 到 maxWeightPerStock |
+| 12 | 等权分配 | 不指定 weight 时均匀分配 |
+| 13 | 自定义权重 | 指定 weight 时按指定比例分配 |
+| 14 | 空信号（全卖出） | targets=[] → 卖出所有持仓 |
+
+#### 8.2.3 `BacktestEngineService`
+
+**文件**：`src/apps/backtest/services/__tests__/backtest-engine.service.spec.ts`
+
+| # | 测试用例 | 关键验证 |
+|---|---------|---------|
+| 1 | checkRebalanceDay: DAILY | 每天都返回 true |
+| 2 | checkRebalanceDay: WEEKLY | 仅周一（或节后第一天）返回 true |
+| 3 | checkRebalanceDay: MONTHLY | 仅月初第一个交易日返回 true |
+| 4 | checkRebalanceDay: QUARTERLY | 仅季初（1/4/7/10 月）返回 true |
+| 5 | T+1 执行模型 | 信号 T 日生成，T+1 日执行 |
+| 6 | 基准净值计算 | benchmarkNav 基于 indexDaily 正确归一化 |
+| 7 | drawdown 计算 | 高水位标记和回撤计算正确 |
+
+#### 8.2.4 策略测试
+
+每个策略至少 2 个测试：
+
+- **MaCrossSingleStrategy**：短 MA > 长 MA 时买入，否则空仓
+- **ScreeningRotationStrategy**：按指定字段排序取 topN
+- **FactorRankingStrategy**：按因子值排序取 topN
+- **CustomPoolRebalanceStrategy**：等权 / 自定义权重
+
+### 8.3 集成测试
+
+**文件**：`src/apps/backtest/__tests__/backtest-integration.spec.ts`
+
+使用内存中的测试数据（通过 Prisma 批量插入），执行完整回测流程。需要准备的测试 fixtures：
+
+```
+测试数据集：
+- 5 只股票 × 60 个交易日
+- 包含涨跌停场景（某日 upLimit = close）
+- 包含停牌场景（某只股票某日在 suspend_d 中）
+- 包含除权场景（adjFactor 发生跳变）
+- 包含退市场景（某只股票中途从 stockBasic 移除）
+```
+
+---
+
+## 九、性能优化与内存管理
+
+### 9.1 当前瓶颈分析
+
+| 场景 | 数据量 | 潜在问题 |
+|------|--------|---------|
+| ALL_A 宇宙 + 10 年回测 | ~5000 股 × 2500 天 = 1250 万 bar | 内存占用 ~2-4GB |
+| Walk-Forward 网格搜索 | 100 参数组合 × 10 窗口 = 1000 次回测 | 耗时数小时 |
+| 多策略对比 | 10 个策略 × 全 A 宇宙 | 10 倍回测开销 |
+
+### 9.2 优化措施
+
+#### 9.2.1 内存优化：流式数据加载
+
+**当前实现**：`loadDailyBars()` 一次性加载所有股票的全部日期数据到内存。
+
+**优化方案**：对于超大宇宙（>1000 只），改为**按时间分段加载**：
+
+```
+优化后的 loadDailyBars:
+  if tsCodes.length <= 1000:
+    沿用当前的一次性加载
+  else:
+    改为每次只加载 30 个交易日的数据
+    在主循环中按需滚动加载下一批
+    释放已过期的历史数据（超过 lookback 窗口外的数据）
+```
+
+**实现位置**：`src/apps/backtest/services/backtest-data.service.ts`
+
+#### 9.2.2 Walk-Forward 优化：IS 数据复用
+
+Walk-Forward 的相邻窗口存在大量数据重叠。优化方案：
+
+```
+优化策略：
+  1. 第一个窗口加载全量数据
+  2. 后续窗口：
+     - 释放过期的数据（< 新窗口 startDate - lookback）
+     - 增量加载新增的数据（> 上个窗口 endDate）
+```
+
+#### 9.2.3 数据库查询优化
+
+为回测高频查询的表添加覆盖索引：
+
+```sql
+-- 回测最常用的查询模式：按 ts_code + trade_date 范围查 OHLCV
+-- 当前索引已覆盖，但如果需要更多字段可以考虑：
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_daily_backtest_cover
+  ON stock_daily_prices (ts_code, trade_date)
+  INCLUDE (open, high, low, close, pre_close, vol);
+```
+
+#### 9.2.4 进度反馈优化
+
+当前进度回调 `onProgress` 在每 20 个交易日调用一次。对于 Walk-Forward（多次回测叠加），进度应按以下粒度报告：
+
+```
+Walk-Forward 进度：
+  总进度 = (completedWindows / totalWindows) * 90 + 10（数据加载占 10%）
+  每个窗口内部：
+    IS 优化进度 = (completedCombinations / totalCombinations) * 60
+    OOS 回测 = 60-90
+    保存结果 = 90-100
+```
+
+### 9.3 超时与取消
+
+**当前实现**：BullMQ 的 `attempts: 3` 和 `backoff` 配置仅处理重试。
+
+**新增**：为长时间运行的任务添加超时配置：
+
+```typescript
+// 在提交任务时
+{
+  ...existingOptions,
+  timeout: 30 * 60 * 1000,  // 单次回测最大 30 分钟
+}
+
+// Walk-Forward 任务
+{
+  ...existingOptions,
+  timeout: 4 * 60 * 60 * 1000,  // WF 最大 4 小时
+}
+```
+
+**取消支持**：在引擎主循环中定期检查任务是否被取消：
+
+```
+在 BacktestEngineService.runBacktest() 的主循环中：
+  每 50 个交易日检查一次：
+    const job = await queue.getJob(jobId)
+    if (job?.data?.cancelled) throw new BusinessException(ErrorEnum.BACKTEST_CANCELLED)
+```
+
+---
+
+## 十、Schema 与 API 变更汇总
+
+### 10.1 新增 Prisma 模型
+
+| 模型名 | DB 表名 | 用途 |
+|--------|---------|------|
+| `BacktestWalkForwardRun` | `backtest_walk_forward_runs` | WF 验证主记录 |
+| `BacktestWalkForwardWindow` | `backtest_walk_forward_windows` | WF 各窗口记录 |
+| `BacktestComparisonGroup` | `backtest_comparison_groups` | 多策略对比组 |
+
+### 10.2 修改的 Prisma 模型
+
+无需修改现有模型。新功能的回测运行复用 `BacktestRun` 及其关联表。
+
+### 10.3 `BacktestConfig` 新增字段
+
+| 字段 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `enableT1Restriction` | `boolean` | `true` | 是否启用 T+1 卖出限制 |
+| `partialFillEnabled` | `boolean` | `true` | 资金不足时是否允许部分成交 |
+
+### 10.4 `DailyBar` 新增字段
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `adjClose` | `number \| null` | 前复权收盘价 |
+| `adjOpen` | `number \| null` | 前复权开盘价 |
+| `adjHigh` | `number \| null` | 前复权最高价 |
+| `adjLow` | `number \| null` | 前复权最低价 |
+
+### 10.5 新增 API 端点汇总
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| `POST` | `/backtests/walk-forward/runs` | 创建 Walk-Forward 验证 |
+| `GET` | `/backtests/walk-forward/runs` | 列表 WF 验证 |
+| `GET` | `/backtests/walk-forward/runs/:wfRunId` | WF 验证详情 |
+| `GET` | `/backtests/walk-forward/runs/:wfRunId/equity` | WF OOS 净值曲线 |
+| `POST` | `/backtests/comparisons` | 创建多策略对比 |
+| `GET` | `/backtests/comparisons/:groupId` | 对比组详情 |
+| `GET` | `/backtests/comparisons/:groupId/equity` | 对比净值曲线 |
+| `POST` | `/backtests/runs/:runId/monte-carlo` | 蒙特卡洛模拟 |
+| `POST` | `/backtests/rolling/runs` | 创建滚动窗口回测 |
+
+### 10.6 新增文件清单
+
+| 文件路径 | 说明 |
+|----------|------|
+| `src/apps/backtest/services/backtest-walk-forward.service.ts` | Walk-Forward 服务 |
+| `src/apps/backtest/services/backtest-monte-carlo.service.ts` | 蒙特卡洛模拟服务 |
+| `src/apps/backtest/dto/walk-forward.dto.ts` | WF 请求/响应 DTO |
+| `src/apps/backtest/dto/backtest-comparison.dto.ts` | 对比请求/响应 DTO |
+| `src/apps/backtest/dto/monte-carlo.dto.ts` | 蒙特卡洛请求/响应 DTO |
+| `src/apps/backtest/dto/rolling-backtest.dto.ts` | 滚动回测请求 DTO |
+| `src/apps/backtest/services/__tests__/backtest-metrics.service.spec.ts` | 指标计算测试 |
+| `src/apps/backtest/services/__tests__/backtest-execution.service.spec.ts` | 执行服务测试 |
+| `src/apps/backtest/services/__tests__/backtest-engine.service.spec.ts` | 引擎服务测试 |
+| `src/apps/backtest/__tests__/backtest-integration.spec.ts` | 集成测试 |
+
+### 10.7 模块注册
+
+**文件**：`src/apps/backtest/backtest.module.ts`
+
+需新增注册的 providers：
+
+```typescript
+providers: [
+  // ... 现有 providers ...
+  BacktestWalkForwardService,
+  BacktestMonteCarloService,
+]
+```
+
+---
+
+## 附录 A：实现顺序建议
+
+```
+Phase 1 (P0) — 核心引擎增强（1 周）
+  ├── 2.2 复权价格计算
+  ├── 3.2 买入优先级排序
+  ├── 3.3 部分成交处理
+  ├── 3.4 T+1 卖出限制
+  └── 8.2 单元测试（MetricsService + ExecutionService）
+
+Phase 2 (P1) — Walk-Forward 与多策略对比（2 周）
+  ├── 4.x Walk-Forward 完整实现
+  ├── 5.x 多策略对比
+  ├── 7.x 滚动窗口（复用 WF）
+  └── 8.3 集成测试
+
+Phase 3 (P2) — 蒙特卡洛与性能优化（1 周）
+  ├── 6.x 蒙特卡洛模拟
+  └── 9.x 性能优化
+```
+
+---
+
+## 附录 B：关键常量参考
+
+```typescript
+// src/constant/queue.constant.ts
+BACKTESTING_QUEUE = 'backtesting'
+
+// src/apps/backtest/services/backtest-metrics.service.ts
+RISK_FREE_RATE = 0.02          // 年化无风险利率 2%
+TRADING_DAYS_PER_YEAR = 252    // A 股年交易日
+
+// A 股交易规则常量（建议新增到 src/constant/backtest.constant.ts）
+MIN_LOT_SIZE = 100             // 最小交易单位：1 手 = 100 股
+STAMP_DUTY_SELL_ONLY = true    // 印花税仅卖出时收取
+DEFAULT_COMMISSION_RATE = 0.0003   // 默认佣金率 0.03%
+DEFAULT_STAMP_DUTY_RATE = 0.0005   // 默认印花税率 0.05%
+DEFAULT_MIN_COMMISSION = 5         // 最低佣金 5 元
+DEFAULT_SLIPPAGE_BPS = 5           // 默认滑点 5 基点
+```
+
+---
+
+_本文档为 AI 代码生成模型提供精确的实现指导。每个改动均标注了目标文件路径、接口签名和算法伪代码。实现时请逐章推进，每完成一个 Phase 运行测试后再进入下一阶段。_

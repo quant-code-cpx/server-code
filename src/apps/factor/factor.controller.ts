@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common'
+import { Body, Controller, Delete, Get, Param, Post, Put, UseGuards } from '@nestjs/common'
 import { ApiOperation, ApiTags } from '@nestjs/swagger'
 import { JwtAuthGuard } from 'src/lifecycle/guard/jwt-auth.guard'
 import { FactorService } from './factor.service'
@@ -13,6 +13,7 @@ import {
 } from './dto/factor-analysis.dto'
 import { FactorScreeningDto } from './dto/factor-screening.dto'
 import { FactorBackfillDto, FactorPrecomputeTriggerDto } from './dto/factor-precompute.dto'
+import { CreateCustomFactorDto, TestCustomFactorDto, UpdateCustomFactorDto } from './dto/factor-custom.dto'
 
 @ApiTags('Factor - 因子市场')
 @UseGuards(JwtAuthGuard)
@@ -78,6 +79,38 @@ export class FactorController {
   @ApiOperation({ summary: '多因子选股（条件组合筛选）' })
   screening(@Body() dto: FactorScreeningDto) {
     return this.factorService.screening(dto)
+  }
+
+  // ── Phase 2 (Custom Factor Engine) ──────────────────────────────────────
+
+  @Post('custom/create')
+  @ApiOperation({ summary: '创建自定义因子（表达式引擎）' })
+  createCustomFactor(@Body() dto: CreateCustomFactorDto) {
+    return this.factorService.createCustomFactor(dto)
+  }
+
+  @Post('custom/test')
+  @ApiOperation({ summary: '试算自定义因子表达式（不落库）' })
+  testCustomFactor(@Body() dto: TestCustomFactorDto) {
+    return this.factorService.testCustomFactor(dto)
+  }
+
+  @Put('custom/:name')
+  @ApiOperation({ summary: '更新自定义因子' })
+  updateCustomFactor(@Param('name') name: string, @Body() dto: UpdateCustomFactorDto) {
+    return this.factorService.updateCustomFactor(name, dto)
+  }
+
+  @Delete('custom/:name')
+  @ApiOperation({ summary: '删除自定义因子（同时清除预计算快照）' })
+  deleteCustomFactor(@Param('name') name: string) {
+    return this.factorService.deleteCustomFactor(name)
+  }
+
+  @Post('custom/:name/precompute')
+  @ApiOperation({ summary: '触发单因子预计算' })
+  triggerSinglePrecompute(@Param('name') name: string, @Body() dto: FactorPrecomputeTriggerDto) {
+    return this.factorService.triggerSinglePrecompute(name, dto.tradeDate)
   }
 
   // ── Admin: Precompute (Phase 1) ──────────────────────────────────────────

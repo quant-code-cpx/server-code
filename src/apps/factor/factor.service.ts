@@ -10,11 +10,13 @@ import {
 } from './dto/factor-analysis.dto'
 import { FactorScreeningDto } from './dto/factor-screening.dto'
 import { FactorBackfillDto, FactorPrecomputeTriggerDto } from './dto/factor-precompute.dto'
+import { CreateCustomFactorDto, TestCustomFactorDto, UpdateCustomFactorDto } from './dto/factor-custom.dto'
 import { FactorLibraryService } from './services/factor-library.service'
 import { FactorComputeService } from './services/factor-compute.service'
 import { FactorAnalysisService } from './services/factor-analysis.service'
 import { FactorScreeningService } from './services/factor-screening.service'
 import { FactorPrecomputeService } from './services/factor-precompute.service'
+import { FactorCustomService } from './services/factor-custom.service'
 import { PrismaService } from 'src/shared/prisma.service'
 
 @Injectable()
@@ -25,6 +27,7 @@ export class FactorService {
     private readonly analysis: FactorAnalysisService,
     private readonly screeningSvc: FactorScreeningService,
     private readonly precompute: FactorPrecomputeService,
+    private readonly customSvc: FactorCustomService,
     private readonly prisma: PrismaService,
   ) {}
 
@@ -78,6 +81,28 @@ export class FactorService {
 
   screening(dto: FactorScreeningDto) {
     return this.screeningSvc.screening(dto)
+  }
+
+  // ── Phase 2 (Custom Factor Engine) ──────────────────────────────────────
+
+  createCustomFactor(dto: CreateCustomFactorDto) {
+    return this.customSvc.createCustomFactor(dto)
+  }
+
+  testCustomFactor(dto: TestCustomFactorDto) {
+    return this.customSvc.testCustomFactor(dto)
+  }
+
+  updateCustomFactor(name: string, dto: UpdateCustomFactorDto) {
+    return this.customSvc.updateCustomFactor(name, dto)
+  }
+
+  deleteCustomFactor(name: string) {
+    return this.customSvc.deleteCustomFactor(name)
+  }
+
+  triggerSinglePrecompute(name: string, tradeDate: string) {
+    return this.customSvc.triggerSinglePrecompute(name, tradeDate)
   }
 
   // ── Admin: Precompute ────────────────────────────────────────────────────

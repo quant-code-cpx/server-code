@@ -4,6 +4,7 @@ import { Prisma } from '@prisma/client'
 import { PrismaService } from 'src/shared/prisma.service'
 import { FactorValuesQueryDto } from '../dto/factor-values.dto'
 import { FactorFieldMapping, FactorValueItem, FactorValueSummary } from '../types/factor.types'
+import { FactorExpressionService } from './factor-expression.service'
 
 /** Days after IPO to exclude new listings from factor analysis */
 const NEW_LISTING_EXCLUSION_DAYS = 60
@@ -71,7 +72,10 @@ interface StatsRow {
 export class FactorComputeService {
   private readonly logger = new Logger(FactorComputeService.name)
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly expressionSvc: FactorExpressionService,
+  ) {}
 
   // ── Snapshot-aware public entry points ───────────────────────────────────
 
@@ -101,7 +105,127 @@ export class FactorComputeService {
       return this.getDerivedMoneyflowValues(dto, factorName, page, pageSize, offset, sortDir)
     }
 
+    // CUSTOM_SQL: load expression from DB and compile
+    if (factorSourceType === FactorSourceType.CUSTOM_SQL) {
+      return this.getCustomSqlValues(dto, factorName, page, pageSize, offset, sortDir)
+    }
+
     throw new NotFoundException(`因子 "${factorName}" 的计算逻辑尚未实现（复杂派生因子需要时序窗口）`)
+  }
+
+  // ── CUSTOM_SQL factor compute ─────────────────────────────────────────────
+
+  private buildUniverseJoinStr(universe: string | undefined, tradeDate: string, alias: string): string {
+    if (!universe) return ''
+    return `INNER JOIN index_constituent_weights iw
+  ON iw.con_code = ${alias}.ts_code
+  AND iw.index_code = '${universe}'
+  AND iw.trade_date = (
+    SELECT MAX(trade_date) FROM index_constituent_weights
+    WHERE index_code = '${universe}' AND trade_date <= '${tradeDate}'
+  )`
+  }
+
+  private async getCustomSqlValues(
+    dto: FactorValuesQueryDto,
+    factorName: string,
+    page: number,
+    pageSize: number,
+    offset: number,
+    sortDir: string,
+  ) {
+    const factor = await this.prisma.factorDefinition.findUnique({ where: { name: factorName } })
+    if (!factor?.expression) throw new NotFoundException(`因子 "${factorName}" 未配置表达式`)
+
+    const tradeDate = dto.tradeDate
+    const ast = this.expressionSvc.parse(factor.expression)
+    const compiled = this.expressionSvc.compile(ast, tradeDate)
+    const universeJoinStr = this.buildUniverseJoinStr(dto.universe, tradeDate, 'db')
+
+    interface FactorRow {
+      ts_code: string
+      stock_name: string | null
+      industry: string | null
+      factor_value: number | null
+      percentile: number | null
+    }
+    interface StatsRow {
+      cnt: number | bigint
+      missing: number | bigint
+      mean_val: number | null
+      median_val: number | null
+      std_val: number | null
+      min_val: number | null
+      max_val: number | null
+      q25_val: number | null
+      q75_val: number | null
+    }
+
+    const pagedSql = this.expressionSvc.buildPagedQuery(compiled, tradeDate, universeJoinStr, pageSize, offset, sortDir as 'ASC' | 'DESC')
+    const statsSql = this.expressionSvc.buildStatsQuery(compiled, tradeDate, universeJoinStr)
+
+    const [rows, statsRows] = await Promise.all([
+      this.prisma.$queryRawUnsafe<FactorRow[]>(pagedSql),
+      this.prisma.$queryRawUnsafe<StatsRow[]>(statsSql),
+    ])
+
+    const items: FactorValueItem[] = rows.map((r) => ({
+      tsCode: r.ts_code,
+      name: r.stock_name,
+      industry: r.industry,
+      value: r.factor_value != null ? Number(r.factor_value) : null,
+      percentile: r.percentile != null ? Number(r.percentile) : null,
+    }))
+
+    const stats = statsRows[0]
+    const summary: FactorValueSummary = {
+      count: stats ? Number(stats.cnt) : 0,
+      missing: stats ? Number(stats.missing) : 0,
+      mean: stats?.mean_val != null ? Number(stats.mean_val) : null,
+      median: stats?.median_val != null ? Number(stats.median_val) : null,
+      stdDev: stats?.std_val != null ? Number(stats.std_val) : null,
+      min: stats?.min_val != null ? Number(stats.min_val) : null,
+      max: stats?.max_val != null ? Number(stats.max_val) : null,
+      q25: stats?.q25_val != null ? Number(stats.q25_val) : null,
+      q75: stats?.q75_val != null ? Number(stats.q75_val) : null,
+    }
+
+    return {
+      factorName,
+      tradeDate,
+      universe: dto.universe ?? null,
+      total: summary.count,
+      page,
+      pageSize,
+      items,
+      summary,
+    }
+  }
+
+  /**
+   * Compute CUSTOM_SQL factor raw values for a date, without pagination.
+   * Used by FactorPrecomputeService and FactorCustomService.test.
+   */
+  async computeCustomSqlForDate(
+    expression: string,
+    tradeDate: string,
+    universe?: string,
+  ): Promise<Array<{ tsCode: string; factorValue: number | null }>> {
+    interface RawRow {
+      ts_code: string
+      factor_value: number | null
+    }
+
+    const ast = this.expressionSvc.parse(expression)
+    const compiled = this.expressionSvc.compile(ast, tradeDate)
+    const universeJoinStr = this.buildUniverseJoinStr(universe, tradeDate, 'db')
+    const sql = this.expressionSvc.buildRawQuery(compiled, tradeDate, universeJoinStr)
+
+    const rows = await this.prisma.$queryRawUnsafe<RawRow[]>(sql)
+    return rows.map((r) => ({
+      tsCode: r.ts_code,
+      factorValue: r.factor_value != null ? Number(r.factor_value) : null,
+    }))
   }
 
   /**
@@ -869,6 +993,12 @@ export class FactorComputeService {
           AND (sb.list_date IS NULL OR sb.list_date <= (${tradeDate}::date - INTERVAL '60 days'))
       `)
       return rows.map((r) => ({ tsCode: r.ts_code, factorValue: r.factor_value != null ? Number(r.factor_value) : null }))
+    }
+
+    // CUSTOM_SQL: expression-based compute (universe join from Prisma.sql not available here, use string)
+    const factorDef = await this.prisma.factorDefinition.findUnique({ where: { name: factorName } })
+    if (factorDef?.sourceType === FactorSourceType.CUSTOM_SQL && factorDef.expression) {
+      return this.computeCustomSqlForDate(factorDef.expression, tradeDate, universe)
     }
 
     return []

@@ -124,3 +124,102 @@ model BacktestRebalanceLog {
   @@index([runId, signalDate(sort: Desc)])
   @@map("backtest_rebalance_logs")
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Walk-Forward 滚动验证
+// ─────────────────────────────────────────────────────────────────────────────
+
+model BacktestWalkForwardRun {
+  id                   String    @id @default(cuid())
+  userId               Int       @map("user_id")
+  name                 String?   @db.VarChar(128)
+
+  baseStrategyType     String    @map("base_strategy_type") @db.VarChar(64)
+  baseStrategyConfig   Json      @map("base_strategy_config")
+  paramSearchSpace     Json      @map("param_search_space")
+  optimizeMetric       String    @map("optimize_metric") @db.VarChar(64)
+
+  fullStartDate        DateTime  @map("full_start_date") @db.Date
+  fullEndDate          DateTime  @map("full_end_date") @db.Date
+  inSampleDays         Int       @map("in_sample_days")
+  outOfSampleDays      Int       @map("out_of_sample_days")
+  stepDays             Int       @map("step_days")
+
+  benchmarkTsCode      String    @map("benchmark_ts_code") @db.VarChar(16)
+  universe             String    @db.VarChar(32)
+  initialCapital       Decimal   @map("initial_capital") @db.Decimal(20, 4)
+  rebalanceFrequency   String    @map("rebalance_frequency") @db.VarChar(32)
+
+  status               String    @db.VarChar(32)
+  progress             Int       @default(0)
+  failedReason         String?   @map("failed_reason") @db.Text
+  windowCount          Int?      @map("window_count")
+  completedWindows     Int?      @map("completed_windows") @default(0)
+
+  oosAnnualizedReturn  Float?    @map("oos_annualized_return")
+  oosSharpeRatio       Float?    @map("oos_sharpe_ratio")
+  oosMaxDrawdown       Float?    @map("oos_max_drawdown")
+  isOosReturnVsIs      Float?    @map("is_oos_return_vs_is")
+
+  createdAt            DateTime  @default(now()) @map("created_at")
+  completedAt          DateTime? @map("completed_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
+
+  windows              BacktestWalkForwardWindow[]
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@map("backtest_walk_forward_runs")
+}
+
+model BacktestWalkForwardWindow {
+  id                 String    @id @default(cuid())
+  wfRunId            String    @map("wf_run_id")
+  windowIndex        Int       @map("window_index")
+
+  isStartDate        DateTime  @map("is_start_date") @db.Date
+  isEndDate          DateTime  @map("is_end_date") @db.Date
+  oosStartDate       DateTime  @map("oos_start_date") @db.Date
+  oosEndDate         DateTime  @map("oos_end_date") @db.Date
+
+  optimizedParams    Json?     @map("optimized_params")
+  isBacktestRunId    String?   @map("is_backtest_run_id")
+  oosBacktestRunId   String?   @map("oos_backtest_run_id")
+
+  isReturn           Float?    @map("is_return")
+  isSharpe           Float?    @map("is_sharpe")
+
+  oosReturn          Float?    @map("oos_return")
+  oosSharpe          Float?    @map("oos_sharpe")
+  oosMaxDrawdown     Float?    @map("oos_max_drawdown")
+
+  wfRun              BacktestWalkForwardRun @relation(fields: [wfRunId], references: [id], onDelete: Cascade)
+
+  @@unique([wfRunId, windowIndex])
+  @@map("backtest_walk_forward_windows")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 多策略对比回测
+// ─────────────────────────────────────────────────────────────────────────────
+
+model BacktestComparisonGroup {
+  id              String   @id @default(cuid())
+  userId          Int      @map("user_id")
+  name            String?  @db.VarChar(128)
+
+  startDate       DateTime @map("start_date") @db.Date
+  endDate         DateTime @map("end_date") @db.Date
+  benchmarkTsCode String   @map("benchmark_ts_code") @db.VarChar(16)
+  universe        String   @db.VarChar(32)
+  initialCapital  Decimal  @map("initial_capital") @db.Decimal(20, 4)
+
+  status          String   @db.VarChar(32)
+  runIds          Json     @map("run_ids")
+
+  createdAt       DateTime  @default(now()) @map("created_at")
+  completedAt     DateTime? @map("completed_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@map("backtest_comparison_groups")
+}

@@ -63,7 +63,18 @@ export class BacktestDataService {
     // Build lookup maps
     const adjMap = new Map<string, number>()
     for (const r of adjRows) {
-      adjMap.set(`${r.tsCode}:${r.tradeDate.toISOString().slice(0, 10)}`, r.adjFactor ?? 1)
+      const key = `${r.tsCode}:${r.tradeDate.toISOString().slice(0, 10)}`
+      adjMap.set(key, r.adjFactor ?? 1)
+    }
+
+    // Find the latest adjFactor per tsCode (the one with the highest tradeDate)
+    const latestAdjByCode = new Map<string, { date: string; factor: number }>()
+    for (const r of adjRows) {
+      const dateStr = r.tradeDate.toISOString().slice(0, 10)
+      const existing = latestAdjByCode.get(r.tsCode)
+      if (!existing || dateStr > existing.date) {
+        latestAdjByCode.set(r.tsCode, { date: dateStr, factor: r.adjFactor ?? 1 })
+      }
     }
 
     const limitMap = new Map<string, { up: number | null; down: number | null }>()
@@ -87,6 +98,22 @@ export class BacktestDataService {
       const dateStr = r.tradeDate.toISOString().slice(0, 10)
       const key = `${r.tsCode}:${dateStr}`
       const limit = limitMap.get(key)
+      const adjFactor = adjMap.get(key) ?? null
+      const latestAdj = latestAdjByCode.get(r.tsCode)?.factor ?? null
+
+      // Compute forward-adjusted prices (前复权)
+      let adjClose: number | null = null
+      let adjOpen: number | null = null
+      let adjHigh: number | null = null
+      let adjLow: number | null = null
+      if (adjFactor !== null && latestAdj !== null && latestAdj !== 0) {
+        const ratio = adjFactor / latestAdj
+        adjClose = r.close !== null ? Number(r.close) * ratio : null
+        adjOpen  = r.open  !== null ? Number(r.open)  * ratio : null
+        adjHigh  = r.high  !== null ? Number(r.high)  * ratio : null
+        adjLow   = r.low   !== null ? Number(r.low)   * ratio : null
+      }
+
       const bar: DailyBar = {
         tsCode: r.tsCode,
         tradeDate: r.tradeDate,
@@ -96,10 +123,14 @@ export class BacktestDataService {
         close: r.close,
         preClose: r.preClose,
         vol: r.vol,
-        adjFactor: adjMap.get(key) ?? null,
+        adjFactor,
         upLimit: limit?.up ?? null,
         downLimit: limit?.down ?? null,
         isSuspended: suspendSet.has(key),
+        adjClose,
+        adjOpen,
+        adjHigh,
+        adjLow,
       }
 
       if (!result.has(r.tsCode)) result.set(r.tsCode, new Map())

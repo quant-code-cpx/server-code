@@ -115,7 +115,16 @@ export class BacktestExecutionService {
     const totalNav = portfolio.cash + this.computePositionValue(portfolio, bars, config)
     let executedBuyCount = 0
 
-    for (const [tsCode, targetWeight] of effectiveWeights) {
+    // Track stocks sold today to enforce T+1 restriction
+    const soldToday = new Set(trades.filter((t) => t.side === 'SELL').map((t) => t.tsCode))
+
+    // Sort by target weight descending so high-weight targets get cash priority
+    const sortedTargets = [...effectiveWeights.entries()].sort((a, b) => b[1] - a[1])
+
+    for (const [tsCode, targetWeight] of sortedTargets) {
+      // T+1: skip stocks sold in this same execution round
+      if (config.enableT1Restriction && soldToday.has(tsCode)) continue
+
       const bar = bars.get(tsCode)
       const execPrice = this.getExecutionPrice(bar, config)
 
@@ -138,10 +147,13 @@ export class BacktestExecutionService {
       const diffValue = targetValue - currentValue
 
       if (diffValue <= 0) continue // already at or above target
-      if (portfolio.cash < diffValue) continue // not enough cash
+
+      // Partial fill: use available cash if insufficient for full target
+      const availableValue = config.partialFillEnabled ? Math.min(diffValue, portfolio.cash) : diffValue
+      if (!config.partialFillEnabled && portfolio.cash < diffValue) continue
 
       // A股最小交易单位为 100 股（1 手），买入数量必须是 100 的整数倍
-      const rawQty = Math.floor(diffValue / execPrice / 100) * 100
+      const rawQty = Math.floor(availableValue / execPrice / 100) * 100
       if (rawQty <= 0) continue
 
       const amount = rawQty * execPrice

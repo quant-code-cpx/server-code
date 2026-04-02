@@ -25,7 +25,7 @@ docs/
 | 文档 | 说明 | 状态 |
 |------|------|------|
 | [BACKTESTING_BACKEND.md](design/BACKTESTING_BACKEND.md) | 策略回测模块整体规划（API / Schema / 架构） | ✅ 已实现 |
-| [BACKTEST_ENGINE_DETAIL_DESIGN.md](design/BACKTEST_ENGINE_DETAIL_DESIGN.md) | 回测撮合引擎增强与高级功能设计（复权 / Walk-Forward / 蒙特卡洛） | 🔧 待实现 |
+| [BACKTEST_ENGINE_DETAIL_DESIGN.md](design/BACKTEST_ENGINE_DETAIL_DESIGN.md) | 回测撮合引擎增强与高级功能设计（复权 / Walk-Forward / 蒙特卡洛） | ✅ 已实现 |
 | [CAPITAL_FLOW_BACKEND.md](design/CAPITAL_FLOW_BACKEND.md) | 资金动态模块后端实现规划 | ✅ 已实现 |
 | [FACTOR_MARKET_BACKEND.md](design/FACTOR_MARKET_BACKEND.md) | 因子市场模块后端实现规划 | ✅ 已实现 |
 | [MARKET_OVERVIEW_BACKEND.md](design/MARKET_OVERVIEW_BACKEND.md) | 市场概览模块后端实现规划 | ✅ 已实现 |

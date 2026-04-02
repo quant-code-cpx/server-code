@@ -22,7 +22,7 @@ export class MaCrossSingleStrategy implements IBacktestStrategy<'MA_CROSS_SINGLE
       return { targets: [] }
     }
 
-    const closes = history.map((b) => b.close as number)
+    const closes = history.map((b) => (b.adjClose ?? b.close) as number)
     const shortMa = closes.slice(-shortWindow).reduce((a, b) => a + b, 0) / shortWindow
     const longMa = closes.slice(-longWindow).reduce((a, b) => a + b, 0) / longWindow
 

@@ -104,6 +104,11 @@ export interface DailyBar {
   upLimit: number | null
   downLimit: number | null
   isSuspended: boolean
+  // ── 前复权价格（用于信号生成）──
+  adjClose: number | null   // close * adjFactor / latestAdjFactor
+  adjOpen: number | null    // open  * adjFactor / latestAdjFactor
+  adjHigh: number | null    // high  * adjFactor / latestAdjFactor
+  adjLow: number | null     // low   * adjFactor / latestAdjFactor
 }
 
 export interface Position {
@@ -188,6 +193,9 @@ export interface BacktestConfig<T extends BacktestStrategyType = BacktestStrateg
   maxWeightPerStock: number
   minDaysListed: number
   enableTradeConstraints: boolean
+  // ── 新增 ──
+  enableT1Restriction: boolean     // 是否启用 T+1 限制（默认 true）
+  partialFillEnabled: boolean      // 是否允许部分成交（默认 true）
 }
 
 export interface BacktestResult {

@@ -11,6 +11,9 @@ import { BacktestMetricsService } from './services/backtest-metrics.service'
 import { BacktestReportService } from './services/backtest-report.service'
 import { BacktestStrategyRegistryService } from './services/backtest-strategy-registry.service'
 import { BacktestEngineService } from './services/backtest-engine.service'
+import { BacktestWalkForwardService } from './services/backtest-walk-forward.service'
+import { BacktestComparisonService } from './services/backtest-comparison.service'
+import { BacktestMonteCarloService } from './services/backtest-monte-carlo.service'
 
 @Module({
   imports: [
@@ -27,11 +30,16 @@ import { BacktestEngineService } from './services/backtest-engine.service'
     BacktestReportService,
     BacktestStrategyRegistryService,
     BacktestEngineService,
+    BacktestWalkForwardService,
+    BacktestComparisonService,
+    BacktestMonteCarloService,
   ],
   exports: [
     BacktestRunService,
     BacktestEngineService,
     BacktestReportService,
+    BacktestWalkForwardService,
+    BacktestComparisonService,
   ],
 })
 export class BacktestModule {}

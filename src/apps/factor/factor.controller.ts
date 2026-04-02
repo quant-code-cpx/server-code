@@ -1,6 +1,8 @@
 import { Body, Controller, Delete, Get, Param, Post, Put, UseGuards } from '@nestjs/common'
 import { ApiOperation, ApiTags } from '@nestjs/swagger'
 import { JwtAuthGuard } from 'src/lifecycle/guard/jwt-auth.guard'
+import { CurrentUser } from 'src/common/decorators/current-user.decorator'
+import { TokenPayload } from 'src/shared/token.interface'
 import { FactorService } from './factor.service'
 import { FactorDetailQueryDto, FactorLibraryQueryDto } from './dto/factor-library.dto'
 import { FactorValuesQueryDto } from './dto/factor-values.dto'
@@ -14,6 +16,8 @@ import {
 import { FactorScreeningDto } from './dto/factor-screening.dto'
 import { FactorBackfillDto, FactorPrecomputeTriggerDto } from './dto/factor-precompute.dto'
 import { CreateCustomFactorDto, TestCustomFactorDto, UpdateCustomFactorDto } from './dto/factor-custom.dto'
+import { FactorBacktestSubmitDto, FactorAttributionDto } from './dto/factor-backtest.dto'
+import { FactorOrthogonalizeDto, FamaMacBethDto } from './dto/factor-orthogonal.dto'
 
 @ApiTags('Factor - 因子市场')
 @UseGuards(JwtAuthGuard)
@@ -131,5 +135,34 @@ export class FactorController {
   @ApiOperation({ summary: '[管理] 查询预计算状态（最新日期、各因子覆盖情况）' })
   getPrecomputeStatus() {
     return this.factorService.getPrecomputeStatus()
+  }
+
+  // ── Phase 3: Factor → Backtest full pipeline ────────────────────────────
+
+  @Post('backtest/submit')
+  @ApiOperation({ summary: '因子策略一键回测（因子选股条件→回测任务）' })
+  submitBacktest(@Body() dto: FactorBacktestSubmitDto, @CurrentUser() user: TokenPayload) {
+    return this.factorService.submitBacktest(dto, user.id)
+  }
+
+  @Post('backtest/:id/attribution')
+  @ApiOperation({ summary: '因子归因分析（分析回测收益中各因子的贡献）' })
+  attribution(@Param('id') id: string, @Body() dto: FactorAttributionDto) {
+    dto.backtestId = id
+    return this.factorService.attribution(dto)
+  }
+
+  // ── Phase 4: Factor orthogonalization ───────────────────────────────────
+
+  @Post('analysis/orthogonalize')
+  @ApiOperation({ summary: '因子正交化（截面回归 / 对称正交化）' })
+  orthogonalize(@Body() dto: FactorOrthogonalizeDto) {
+    return this.factorService.orthogonalize(dto)
+  }
+
+  @Post('analysis/fama-macbeth')
+  @ApiOperation({ summary: 'Fama-MacBeth 截面回归检验（多因子有效性检验）' })
+  famaMacBeth(@Body() dto: FamaMacBethDto) {
+    return this.factorService.famaMacBeth(dto)
   }
 }

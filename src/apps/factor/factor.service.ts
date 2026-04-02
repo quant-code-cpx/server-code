@@ -11,12 +11,16 @@ import {
 import { FactorScreeningDto } from './dto/factor-screening.dto'
 import { FactorBackfillDto, FactorPrecomputeTriggerDto } from './dto/factor-precompute.dto'
 import { CreateCustomFactorDto, TestCustomFactorDto, UpdateCustomFactorDto } from './dto/factor-custom.dto'
+import { FactorBacktestSubmitDto, FactorAttributionDto } from './dto/factor-backtest.dto'
+import { FactorOrthogonalizeDto, FamaMacBethDto } from './dto/factor-orthogonal.dto'
 import { FactorLibraryService } from './services/factor-library.service'
 import { FactorComputeService } from './services/factor-compute.service'
 import { FactorAnalysisService } from './services/factor-analysis.service'
 import { FactorScreeningService } from './services/factor-screening.service'
 import { FactorPrecomputeService } from './services/factor-precompute.service'
 import { FactorCustomService } from './services/factor-custom.service'
+import { FactorBacktestService } from './services/factor-backtest.service'
+import { FactorOrthogonalService } from './services/factor-orthogonal.service'
 import { PrismaService } from 'src/shared/prisma.service'
 
 @Injectable()
@@ -28,6 +32,8 @@ export class FactorService {
     private readonly screeningSvc: FactorScreeningService,
     private readonly precompute: FactorPrecomputeService,
     private readonly customSvc: FactorCustomService,
+    private readonly backtestSvc: FactorBacktestService,
+    private readonly orthogonalSvc: FactorOrthogonalService,
     private readonly prisma: PrismaService,
   ) {}
 
@@ -120,5 +126,25 @@ export class FactorService {
 
   getPrecomputeStatus() {
     return this.precompute.getPrecomputeStatus()
+  }
+
+  // ── Phase 3: Factor → Backtest ────────────────────────────────────────────
+
+  submitBacktest(dto: FactorBacktestSubmitDto, userId: number) {
+    return this.backtestSvc.submitBacktest(dto, userId)
+  }
+
+  attribution(dto: FactorAttributionDto) {
+    return this.backtestSvc.attribution(dto)
+  }
+
+  // ── Phase 4: Orthogonalization ────────────────────────────────────────────
+
+  orthogonalize(dto: FactorOrthogonalizeDto) {
+    return this.orthogonalSvc.orthogonalize(dto)
+  }
+
+  famaMacBeth(dto: FamaMacBethDto) {
+    return this.orthogonalSvc.famaMacBeth(dto)
   }
 }

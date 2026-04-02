@@ -7,6 +7,7 @@ import {
   CustomPoolRebalanceStrategyConfig,
   FACTOR_RANKING_FACTOR_NAMES,
   FactorRankingStrategyConfig,
+  FactorScreeningRotationStrategyConfig,
   MaCrossSingleStrategyConfig,
   ScreeningRotationStrategyConfig,
   SCREENING_ROTATION_RANK_FIELDS,
@@ -17,6 +18,7 @@ import { MaCrossSingleStrategy } from '../strategies/ma-cross-single.strategy'
 import { ScreeningRotationStrategy } from '../strategies/screening-rotation.strategy'
 import { FactorRankingStrategy } from '../strategies/factor-ranking.strategy'
 import { CustomPoolRebalanceStrategy } from '../strategies/custom-pool-rebalance.strategy'
+import { FactorScreeningRotationStrategy } from '../strategies/factor-screening-rotation.strategy'
 
 @Injectable()
 export class BacktestStrategyRegistryService {
@@ -30,6 +32,8 @@ export class BacktestStrategyRegistryService {
         return new FactorRankingStrategy() as IBacktestStrategy<T>
       case 'CUSTOM_POOL_REBALANCE':
         return new CustomPoolRebalanceStrategy() as IBacktestStrategy<T>
+      case 'FACTOR_SCREENING_ROTATION':
+        return new FactorScreeningRotationStrategy() as IBacktestStrategy<T>
       default:
         throw new BusinessException(ErrorEnum.BACKTEST_UNKNOWN_STRATEGY)
     }
@@ -48,6 +52,8 @@ export class BacktestStrategyRegistryService {
         return this.validateFactorRankingConfig(strategyConfig) as BacktestStrategyConfigMap[T]
       case 'CUSTOM_POOL_REBALANCE':
         return this.validateCustomPoolConfig(strategyConfig) as BacktestStrategyConfigMap[T]
+      case 'FACTOR_SCREENING_ROTATION':
+        return this.validateFactorScreeningRotationConfig(strategyConfig) as BacktestStrategyConfigMap[T]
       default:
         throw new BusinessException(ErrorEnum.BACKTEST_UNKNOWN_STRATEGY)
     }
@@ -221,6 +227,57 @@ export class BacktestStrategyRegistryService {
             },
           ],
         },
+        {
+          id: 'FACTOR_SCREENING_ROTATION',
+          name: '因子选股轮动（多条件）',
+          description: '基于多因子筛选条件组合选股，定期轮动持有 TopN 股票。由因子模块 /factor/backtest/submit 端点触发。',
+          category: 'FACTOR',
+          parameterSchema: [
+            {
+              field: 'conditions',
+              label: '因子筛选条件',
+              type: 'json',
+              required: true,
+              helpText: '因子条件数组，格式与 /factor/screening 一致',
+            },
+            {
+              field: 'sortBy',
+              label: '排序因子',
+              type: 'string',
+              required: false,
+              helpText: '用于 TopN 排序的因子名',
+            },
+            {
+              field: 'sortOrder',
+              label: '排序方向',
+              type: 'select',
+              required: false,
+              defaultValue: 'desc',
+              options: [
+                { label: '从大到小', value: 'desc' },
+                { label: '从小到大', value: 'asc' },
+              ],
+            },
+            {
+              field: 'topN',
+              label: '持仓数量',
+              type: 'number',
+              required: false,
+              defaultValue: 20,
+            },
+            {
+              field: 'weightMethod',
+              label: '权重方式',
+              type: 'select',
+              required: false,
+              defaultValue: 'equal_weight',
+              options: [
+                { label: '等权', value: 'equal_weight' },
+                { label: '因子值加权', value: 'factor_weight' },
+              ],
+            },
+          ],
+        },
       ],
     }
   }
@@ -365,6 +422,44 @@ export class BacktestStrategyRegistryService {
       weightMode,
       ...(customWeights ? { customWeights } : {}),
     }
+  }
+
+  private validateFactorScreeningRotationConfig(strategyConfig: unknown): FactorScreeningRotationStrategyConfig {
+    const config = this.assertObject(strategyConfig)
+    if (!Array.isArray(config.conditions) || config.conditions.length === 0) {
+      throw this.invalidStrategyConfig('strategyConfig.conditions 必须为非空数组')
+    }
+
+    const conditions = config.conditions.map((c, i) => {
+      const cond = this.assertObject(c, `strategyConfig.conditions[${i}]`)
+      const factorName = this.assertNonEmptyString(cond.factorName, `strategyConfig.conditions[${i}].factorName`)
+      const operator = this.assertStringLiteral(
+        cond.operator,
+        ['gt', 'gte', 'lt', 'lte', 'between', 'top_pct', 'bottom_pct'] as const,
+        `strategyConfig.conditions[${i}].operator`,
+      )
+      return {
+        factorName,
+        operator,
+        ...(cond.value !== undefined ? { value: Number(cond.value) } : {}),
+        ...(cond.min !== undefined ? { min: Number(cond.min) } : {}),
+        ...(cond.max !== undefined ? { max: Number(cond.max) } : {}),
+        ...(cond.percent !== undefined ? { percent: Number(cond.percent) } : {}),
+      }
+    })
+
+    const sortBy = config.sortBy !== undefined ? this.assertNonEmptyString(config.sortBy, 'strategyConfig.sortBy') : undefined
+    const sortOrder =
+      config.sortOrder === undefined
+        ? 'desc'
+        : this.assertStringLiteral(config.sortOrder, ['asc', 'desc'] as const, 'strategyConfig.sortOrder')
+    const topN = this.toPositiveInteger(config.topN, 'strategyConfig.topN', 20, 200)
+    const weightMethod =
+      config.weightMethod === undefined
+        ? 'equal_weight'
+        : this.assertStringLiteral(config.weightMethod, ['equal_weight', 'factor_weight'] as const, 'strategyConfig.weightMethod')
+
+    return { conditions, sortBy, sortOrder, topN, weightMethod }
   }
 
   private assertObject(value: unknown, field = 'strategyConfig'): Record<string, unknown> {

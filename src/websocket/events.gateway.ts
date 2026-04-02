@@ -9,6 +9,7 @@ import {
   WebSocketServer,
 } from '@nestjs/websockets'
 import { Logger } from '@nestjs/common'
+import { JwtService } from '@nestjs/jwt'
 import { Server, Socket } from 'socket.io'
 
 /**
@@ -27,6 +28,7 @@ import { Server, Socket } from 'socket.io'
  *   - tushare_sync_completed Tushare 同步完成 { trigger, mode, executedTasks, skippedTasks, failedTasks, targetTradeDate, elapsedSeconds }
  *   - tushare_sync_failed    Tushare 同步异常 { trigger, mode, reason }
  *   - notification           通用通知消息
+ *   - screener_subscription_alert  条件订阅命中新股票 { subscriptionId, name, tradeDate, newEntryCodes, exitCodes, totalMatch }
  */
 @WebSocketGateway({
   namespace: '/ws',
@@ -39,16 +41,37 @@ export class EventsGateway implements OnGatewayInit, OnGatewayConnection, OnGate
 
   private readonly logger = new Logger(EventsGateway.name)
 
+  constructor(private readonly jwtService: JwtService) {}
+
   afterInit() {
     this.logger.log('WebSocket gateway initialized on namespace /ws')
   }
 
   handleConnection(client: Socket) {
     this.logger.log(`Client connected: ${client.id}`)
+    // 尝试从 token 中解析 userId，加入用户专属房间
+    const userId = this.extractUserId(client)
+    if (userId) {
+      client.join(`user:${userId}`)
+      this.logger.debug(`Client ${client.id} joined user:${userId}`)
+    }
   }
 
   handleDisconnect(client: Socket) {
     this.logger.log(`Client disconnected: ${client.id}`)
+  }
+
+  private extractUserId(client: Socket): number | null {
+    try {
+      const token =
+        (client.handshake.auth?.token as string) ||
+        (client.handshake.headers?.authorization as string)?.replace('Bearer ', '')
+      if (!token) return null
+      const payload = this.jwtService.decode(token) as { id?: number } | null
+      return payload?.id ?? null
+    } catch {
+      return null
+    }
   }
 
   // ---------- 客户端 -> 服务端 ----------
@@ -79,7 +102,7 @@ export class EventsGateway implements OnGatewayInit, OnGatewayConnection, OnGate
   }
 
   /** 推送回测完成结果 */
-  emitBacktestCompleted(jobId: string, result: any) {
+  emitBacktestCompleted(jobId: string, result: unknown) {
     this.server.to(`backtest:${jobId}`).emit('backtest_completed', { jobId, result })
   }
 
@@ -89,7 +112,7 @@ export class EventsGateway implements OnGatewayInit, OnGatewayConnection, OnGate
   }
 
   /** 向所有在线客户端广播通知 */
-  broadcastNotification(message: string, data?: any) {
+  broadcastNotification(message: string, data?: unknown) {
     this.server.emit('notification', { message, data })
   }
 
@@ -114,5 +137,13 @@ export class EventsGateway implements OnGatewayInit, OnGatewayConnection, OnGate
   /** 广播 Tushare 同步异常终止 */
   broadcastSyncFailed(trigger: string, mode: string, reason: string) {
     this.server.emit('tushare_sync_failed', { trigger, mode, reason })
+  }
+
+  /**
+   * 向指定用户推送消息（通过 user:${userId} 房间）。
+   * 客户端连接时自动加入该房间（若携带有效 JWT token）。
+   */
+  emitToUser(userId: number, event: string, data: unknown) {
+    this.server.to(`user:${userId}`).emit(event, data)
   }
 }

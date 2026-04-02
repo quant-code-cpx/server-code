@@ -8,5 +8,6 @@ import { TushareModule } from 'src/tushare/tushare.module'
   imports: [TushareModule],
   controllers: [StockController],
   providers: [StockService, StockAnalysisService],
+  exports: [StockService],
 })
 export class StockModule {}

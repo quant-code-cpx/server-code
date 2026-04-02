@@ -107,6 +107,13 @@ export class BacktestEngineService {
       // Build today's bar snapshot
       const todayBars = this.getTodayBars(allBarsMap, todayStr)
 
+      // Adjust cost price and quantity for stock splits/dividends before mark-to-market
+      if (idx > 0) {
+        const prevTodayStr = tradingDays[idx - 1].toISOString().slice(0, 10)
+        const prevBars = this.getTodayBars(allBarsMap, prevTodayStr)
+        this.adjustCostPriceForSplits(portfolio, todayBars, prevBars)
+      }
+
       // Execute pending signal (T+1 execution)
       if (pendingSignal) {
         const { trades, rebalanceLog } = this.executionService.executeTrades(
@@ -281,6 +288,33 @@ export class BacktestEngineService {
       })
     }
     return snapshots
+  }
+
+  /**
+   * Adjust existing position cost price and quantity when adjFactor changes (splits/dividends).
+   * Called once per trading day before mark-to-market.
+   */
+  private adjustCostPriceForSplits(
+    portfolio: PortfolioState,
+    todayBars: Map<string, DailyBar>,
+    yesterdayBars: Map<string, DailyBar>,
+  ): void {
+    for (const [tsCode, pos] of portfolio.positions) {
+      const todayBar = todayBars.get(tsCode)
+      const yesterdayBar = yesterdayBars.get(tsCode)
+      if (
+        todayBar?.adjFactor !== null &&
+        todayBar?.adjFactor !== undefined &&
+        yesterdayBar?.adjFactor !== null &&
+        yesterdayBar?.adjFactor !== undefined &&
+        yesterdayBar.adjFactor !== 0 &&
+        todayBar.adjFactor !== yesterdayBar.adjFactor
+      ) {
+        const ratio = todayBar.adjFactor / yesterdayBar.adjFactor
+        pos.costPrice = pos.costPrice / ratio
+        pos.quantity = Math.round(pos.quantity * ratio)
+      }
+    }
   }
 
   private checkRebalanceDay(date: Date, tradingDays: Date[], idx: number, frequency: RebalanceFrequency): boolean {

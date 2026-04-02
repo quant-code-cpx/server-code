@@ -123,4 +123,14 @@ export class CreateBacktestRunDto {
   @IsOptional()
   @IsBoolean()
   enableTradeConstraints?: boolean = true
+
+  @ApiPropertyOptional({ default: true, description: '是否启用 T+1 卖出限制' })
+  @IsOptional()
+  @IsBoolean()
+  enableT1Restriction?: boolean = true
+
+  @ApiPropertyOptional({ default: true, description: '资金不足时是否允许部分成交' })
+  @IsOptional()
+  @IsBoolean()
+  partialFillEnabled?: boolean = true
 }

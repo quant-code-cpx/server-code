@@ -367,6 +367,8 @@ export class BacktestRunService {
       maxWeightPerStock: 0.1,
       minDaysListed: 60,
       enableTradeConstraints: true,
+      enableT1Restriction: true,
+      partialFillEnabled: true,
     }
   }
 

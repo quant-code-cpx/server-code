@@ -9,7 +9,19 @@ import { EventsGateway } from 'src/websocket/events.gateway'
 import { BacktestEngineService } from 'src/apps/backtest/services/backtest-engine.service'
 import { BacktestRunService } from 'src/apps/backtest/services/backtest-run.service'
 import { BacktestReportService } from 'src/apps/backtest/services/backtest-report.service'
+import { BacktestWalkForwardService } from 'src/apps/backtest/services/backtest-walk-forward.service'
+import { BacktestComparisonService } from 'src/apps/backtest/services/backtest-comparison.service'
 import { PrismaService } from 'src/shared/prisma.service'
+
+interface WalkForwardJobData {
+  wfRunId: string
+  userId: number
+}
+
+interface ComparisonJobData {
+  groupId: string
+  userId: number
+}
 
 @Processor(BACKTESTING_QUEUE)
 export class BacktestingProcessor extends WorkerHost {
@@ -20,17 +32,25 @@ export class BacktestingProcessor extends WorkerHost {
     private readonly engineService: BacktestEngineService,
     private readonly runService: BacktestRunService,
     private readonly reportService: BacktestReportService,
+    private readonly walkForwardService: BacktestWalkForwardService,
+    private readonly comparisonService: BacktestComparisonService,
     private readonly prisma: PrismaService,
   ) {
     super()
   }
 
-  async process(job: Job<BacktestingJobData, BacktestingJobResult>): Promise<BacktestingJobResult> {
-    this.logger.log(`Processing job [${job.name}] id=${job.id} runId=${job.data.runId}`)
+  async process(
+    job: Job<BacktestingJobData | WalkForwardJobData | ComparisonJobData, BacktestingJobResult>,
+  ): Promise<BacktestingJobResult> {
+    this.logger.log(`Processing job [${job.name}] id=${job.id}`)
 
     switch (job.name) {
       case BacktestingJobName.RUN_BACKTEST:
-        return this.runBacktest(job)
+        return this.runBacktest(job as Job<BacktestingJobData, BacktestingJobResult>)
+      case BacktestingJobName.RUN_WALK_FORWARD:
+        return this.runWalkForward(job as Job<WalkForwardJobData, BacktestingJobResult>)
+      case BacktestingJobName.RUN_COMPARISON:
+        return this.runComparison(job as Job<ComparisonJobData, BacktestingJobResult>)
       default:
         throw new BusinessException(ErrorEnum.BACKTEST_UNKNOWN_JOB)
     }
@@ -73,11 +93,68 @@ export class BacktestingProcessor extends WorkerHost {
     return { runId, completedAt }
   }
 
-  @OnWorkerEvent('failed')
-  async onFailed(job: Job<BacktestingJobData>, error: Error) {
+  private async runWalkForward(job: Job<WalkForwardJobData, BacktestingJobResult>): Promise<BacktestingJobResult> {
+    const { wfRunId } = job.data
     const jobId = job.id!
-    const runId = job.data?.runId
-    this.logger.error(`Backtest job failed id=${jobId} runId=${runId}: ${error.message}`, error.stack)
+
+    const emitProgress = async (pct: number, step: string) => {
+      await job.updateProgress(pct)
+      this.eventsGateway.emitBacktestProgress(jobId, pct, step)
+    }
+
+    this.logger.log(`Starting WalkForward wfRunId=${wfRunId}`)
+
+    try {
+      await this.walkForwardService.runWalkForward(wfRunId, emitProgress)
+    } catch (err) {
+      await this.prisma.backtestWalkForwardRun.update({
+        where: { id: wfRunId },
+        data: { status: 'FAILED', failedReason: err instanceof Error ? err.message : String(err) },
+      })
+      throw err
+    }
+
+    const completedAt = new Date().toISOString()
+    this.eventsGateway.emitBacktestCompleted(jobId, { runId: wfRunId, completedAt })
+    this.logger.log(`WalkForward completed wfRunId=${wfRunId}`)
+
+    return { runId: wfRunId, completedAt }
+  }
+
+  private async runComparison(job: Job<ComparisonJobData, BacktestingJobResult>): Promise<BacktestingJobResult> {
+    const { groupId } = job.data
+    const jobId = job.id!
+
+    const emitProgress = async (pct: number, step: string) => {
+      await job.updateProgress(pct)
+      this.eventsGateway.emitBacktestProgress(jobId, pct, step)
+    }
+
+    this.logger.log(`Starting Comparison groupId=${groupId}`)
+
+    try {
+      await this.comparisonService.runComparison(groupId, emitProgress)
+    } catch (err) {
+      await this.prisma.backtestComparisonGroup.update({
+        where: { id: groupId },
+        data: { status: 'FAILED' },
+      })
+      throw err
+    }
+
+    const completedAt = new Date().toISOString()
+    this.eventsGateway.emitBacktestCompleted(jobId, { runId: groupId, completedAt })
+    this.logger.log(`Comparison completed groupId=${groupId}`)
+
+    return { runId: groupId, completedAt }
+  }
+
+  @OnWorkerEvent('failed')
+  async onFailed(job: Job<BacktestingJobData | WalkForwardJobData | ComparisonJobData>, error: Error) {
+    const jobId = job.id!
+    const data = job.data as BacktestingJobData & WalkForwardJobData & ComparisonJobData
+    const runId = data?.runId
+    this.logger.error(`Backtest job failed id=${jobId}: ${error.message}`, error.stack)
 
     if (runId) {
       try {

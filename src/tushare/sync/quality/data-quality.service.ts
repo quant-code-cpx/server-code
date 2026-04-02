@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common'
+import { Prisma } from '@prisma/client'
 import { PrismaService } from 'src/shared/prisma.service'
 import { SyncHelperService } from '../sync-helper.service'
 
@@ -8,6 +9,11 @@ export interface DataQualityReport {
   status: 'pass' | 'warn' | 'fail'
   message: string
   details?: Record<string, unknown>
+}
+
+interface CompletenessDetails {
+  missingDates: string[]
+  totalMissing: number
 }
 
 /**
@@ -157,7 +163,7 @@ export class DataQualityService {
         checkType: report.checkType,
         status: report.status,
         message: report.message,
-        details: (report.details ?? null) as object | null,
+        details: (report.details ?? null) as Prisma.InputJsonValue | null,
       },
     })
   }
@@ -227,8 +233,8 @@ export class DataQualityService {
       orderBy: { checkDate: 'desc' },
     })
     if (!latest) return { dataSet, gaps: [] }
-    const details = latest.details as Record<string, unknown> | null
-    return { dataSet, gaps: (details?.missingDates as string[]) ?? [], total: details?.totalMissing ?? 0 }
+    const details = latest.details as unknown as CompletenessDetails | null
+    return { dataSet, gaps: details?.missingDates ?? [], total: details?.totalMissing ?? 0 }
   }
 
   /**

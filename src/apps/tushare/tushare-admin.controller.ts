@@ -60,7 +60,7 @@ export class TushareAdminController {
   @Get('quality/report')
   @ApiOperation({ summary: '查询最近 N 天数据质量检查结果（仅超级管理员）' })
   @ApiQuery({ name: 'days', required: false, description: '查询天数，默认 7', type: Number })
-  @ApiSuccessRawResponse({ type: 'null', nullable: true })
+  @ApiSuccessRawResponse({ type: 'array', items: { type: 'object' } })
   async getQualityReport(@Query('days') days?: string) {
     const parsedDays = days ? parseInt(days, 10) : 7
     return this.dataQualityService.getRecentChecks(parsedDays)
@@ -69,7 +69,7 @@ export class TushareAdminController {
   @Get('quality/gaps')
   @ApiOperation({ summary: '查询指定数据集的缺失日期（仅超级管理员）' })
   @ApiQuery({ name: 'dataSet', required: true, description: '数据集名称，如 daily, stkLimit', type: String })
-  @ApiSuccessRawResponse({ type: 'null', nullable: true })
+  @ApiSuccessRawResponse({ type: 'object' })
   async getDataGaps(@Query('dataSet') dataSet: string) {
     return this.dataQualityService.getDataGaps(dataSet)
   }
@@ -78,7 +78,7 @@ export class TushareAdminController {
   @ApiOperation({ summary: '查询数据校验异常日志（仅超级管理员）' })
   @ApiQuery({ name: 'task', required: false, description: '过滤指定任务，如 DAILY', type: String })
   @ApiQuery({ name: 'limit', required: false, description: '返回条数上限，默认 100', type: Number })
-  @ApiSuccessRawResponse({ type: 'null', nullable: true })
+  @ApiSuccessRawResponse({ type: 'array', items: { type: 'object' } })
   async getValidationLogs(@Query('task') task?: string, @Query('limit') limit?: string) {
     return this.dataQualityService.getValidationLogs({ task, limit: limit ? parseInt(limit, 10) : undefined })
   }

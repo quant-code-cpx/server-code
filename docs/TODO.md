@@ -12,23 +12,23 @@
 
 ### 数据层补全
 
-- [ ] **同步 `stk_limit`（涨跌停价格）**：新增 Prisma Model、Tushare `stk_limit` 接口封装、注册到 SyncService 每日同步任务
-- [ ] **同步 `suspend_d`（停牌日历）**：新增 Prisma Model、Tushare `suspend_d` 接口封装、注册到 SyncService 每日同步任务
-- [ ] **同步 `index_weight`（指数成分权重）**：新增 Prisma Model、Tushare `index_weight` 接口封装、注册到 SyncService 定期同步任务
-- [ ] **数据校验层：Tushare 入库前清洗**：在 sync 流程中添加通用校验中间件，处理空值、异常值、重复记录，记录校验失败日志
+- [x] **同步 `stk_limit`（涨跌停价格）**：新增 Prisma Model、Tushare `stk_limit` 接口封装、注册到 SyncService 每日同步任务（设计文档：`DATA_LAYER_GAP_DESIGN.md` Phase 1）
+- [x] **同步 `suspend_d`（停牌日历）**：新增 Prisma Model、Tushare `suspend_d` 接口封装、注册到 SyncService 每日同步任务（设计文档：`DATA_LAYER_GAP_DESIGN.md` Phase 1）
+- [x] **同步 `index_weight`（指数成分权重）**：新增 Prisma Model、Tushare `index_weight` 接口封装、注册到 SyncService 定期同步任务（设计文档：`DATA_LAYER_GAP_DESIGN.md` Phase 1）
+- [x] **数据校验层：Tushare 入库前清洗**：在 sync 流程中添加通用校验中间件，处理空值、异常值、重复记录，记录校验失败日志（设计文档：`DATA_LAYER_GAP_DESIGN.md` Phase 3）
 
 ### 回测撮合引擎
 
-- [ ] **日频撮合引擎核心实现**：实现按日模拟买卖，处理涨跌停不可交易、停牌跳过、滑点模型、手续费扣减（依赖 `stk_limit` / `suspend_d` 数据）
-- [ ] **组合管理与仓位跟踪**：实现多标的仓位记录、现金管理、权重再平衡逻辑，供撮合引擎调用
-- [ ] **策略信号生成框架**：将 4 种策略模板（均线交叉/选股轮动/因子排名/自定义池）翻译为可执行买卖信号
-- [ ] **基准对比与超额收益计算**：在回测流程中同步计算基准净值曲线，输出超额收益、跟踪误差
-- [ ] **风险指标计算模块**：实现 Sharpe / Sortino / Calmar / Max Drawdown / 年化波动率等指标的引擎内计算
-- [ ] **回测参数验证**：添加回测区间数据完整性检查、起止日期合理性校验、资金量边界校验
+- [x] **日频撮合引擎核心实现**：实现按日模拟买卖，处理涨跌停不可交易、停牌跳过、滑点模型、手续费扣减（依赖 `stk_limit` / `suspend_d` 数据）（设计文档：`BACKTESTING_BACKEND.md`）
+- [x] **组合管理与仓位跟踪**：实现多标的仓位记录、现金管理、权重再平衡逻辑，供撮合引擎调用（设计文档：`BACKTESTING_BACKEND.md`）
+- [x] **策略信号生成框架**：将 4 种策略模板（均线交叉/选股轮动/因子排名/自定义池）翻译为可执行买卖信号（设计文档：`BACKTESTING_BACKEND.md` 第六节）
+- [x] **基准对比与超额收益计算**：在回测流程中同步计算基准净值曲线，输出超额收益、跟踪误差（设计文档：`BACKTESTING_BACKEND.md`）
+- [x] **风险指标计算模块**：实现 Sharpe / Sortino / Calmar / Max Drawdown / 年化波动率等指标的引擎内计算（设计文档：`BACKTESTING_BACKEND.md`）
+- [x] **回测参数验证**：添加回测区间数据完整性检查、起止日期合理性校验、资金量边界校验（设计文档：`BACKTESTING_BACKEND.md` 第 8.2 节）
 
 ### 因子预计算
 
-- [ ] **因子值批量预计算定时任务**：每日收盘后批量计算全市场因子截面值并落库，避免查询时实时计算，为因子分析接口提供数据基础
+- [x] **因子值批量预计算定时任务**：每日收盘后批量计算全市场因子截面值并落库，避免查询时实时计算，为因子分析接口提供数据基础（设计文档：`FACTOR_RESEARCH_LOOP_DESIGN.md` Phase 1）
 
 ---
 
@@ -36,11 +36,11 @@
 
 ### 数据接入
 
-- [ ] **同步龙虎榜数据（`top_list` / `top_inst`）**：新增 Prisma Model、Tushare 接口封装、注册同步任务
-- [ ] **同步大宗交易数据（`block_trade`）**：新增 Prisma Model、Tushare 接口封装、注册同步任务
-- [ ] **同步融资融券数据（`margin_detail`）**：新增 Prisma Model、Tushare 接口封装、注册同步任务
+- [x] **同步龙虎榜数据（`top_list` / `top_inst`）**：新增 Prisma Model、Tushare 接口封装、注册同步任务（设计文档：`DATA_LAYER_GAP_DESIGN.md` Phase 2）
+- [x] **同步大宗交易数据（`block_trade`）**：新增 Prisma Model、Tushare 接口封装、注册同步任务（设计文档：`DATA_LAYER_GAP_DESIGN.md` Phase 2）
+- [x] **同步融资融券数据（`margin_detail`）**：新增 Prisma Model、Tushare 接口封装、注册同步任务（设计文档：`DATA_LAYER_GAP_DESIGN.md` Phase 2）
 - [ ] **同步沪深港通资金数据（北向/南向）**：新增 Prisma Model、Tushare 接口封装、注册同步任务、对外 API
-- [ ] **同步限售股解禁数据（`share_float`）**：新增 Prisma Model、Tushare 接口封装、注册同步任务
+- [x] **同步限售股解禁数据（`share_float`）**：新增 Prisma Model、Tushare 接口封装、注册同步任务（设计文档：`DATA_LAYER_GAP_DESIGN.md` Phase 2）
 - [ ] **同步概念板块映射（`concept` / `concept_detail`）**：新增 Prisma Model、Tushare 接口封装、注册同步任务
 
 ### 指数模块
@@ -55,9 +55,9 @@
 
 ### 自选股与研究工作台
 
-- [ ] **自选股管理 CRUD**：新增 `Watchlist` + `WatchlistItem` Prisma Model，实现创建/查询/更新/删除自选股分组及标的（设计文档：`WATCHLIST_RESEARCH_WORKBENCH_DESIGN.md`）
-- [ ] **研究笔记 CRUD**：新增 `ResearchNote` Prisma Model，实现按股票/标签查询的笔记管理接口
-- [ ] **选股条件订阅**：新增 `ScreenerSubscription` Model，支持保存筛选条件并设置定时执行推送
+- [x] **自选股管理 CRUD**：新增 `Watchlist` + `WatchlistItem` Prisma Model，实现创建/查询/更新/删除自选股分组及标的（设计文档：`WATCHLIST_RESEARCH_WORKBENCH_DESIGN.md` Phase 1）
+- [x] **研究笔记 CRUD**：新增 `ResearchNote` Prisma Model，实现按股票/标签查询的笔记管理接口（设计文档：`WATCHLIST_RESEARCH_WORKBENCH_DESIGN.md` Phase 2）
+- [x] **选股条件订阅**：新增 `ScreenerSubscription` Model，支持保存筛选条件并设置定时执行推送（设计文档：`WATCHLIST_RESEARCH_WORKBENCH_DESIGN.md` Phase 3）
 
 ### 数据导出
 
@@ -84,7 +84,7 @@
 - [ ] **Auth 模块单元测试**：覆盖登录、注册、Token 刷新、验证码、账户锁定流程
 - [ ] **User 模块单元测试**：覆盖 CRUD、角色权限校验、密码重置
 - [ ] **Stock 模块单元测试**：覆盖列表查询、搜索、详情接口
-- [ ] **Backtest 模块单元测试**：覆盖任务提交、引擎计算、指标计算
+- [x] **Backtest 模块单元测试**：覆盖任务提交、引擎计算、指标计算（设计文档：`BACKTEST_ENGINE_DETAIL_DESIGN.md` 第八节）
 - [ ] **Tushare Client 单元测试**：Mock HTTP 调用、频控重试逻辑
 - [ ] **E2E 测试套件**：至少覆盖 Auth 流程、股票查询、回测提交等关键路径
 - [ ] **Jest 覆盖率阈值配置**：设置 >60% 阈值，集成到 CI
@@ -107,18 +107,18 @@
 
 ### 回测系统进阶
 
-- [ ] **回测结果持久化**：将回测结果写入 `BacktestResult` 数据库表，支持历史查询
-- [ ] **回测报告接口**：提供收益曲线、最大回撤、夏普比率、胜率等报告数据 API
-- [ ] **WebSocket 实时推送回测进度**：通过 Socket.IO 向前端推送回测执行进度百分比
-- [ ] **回测任务超时机制**：添加 BullMQ 任务超时配置，防止长时间挂起
-- [ ] **Walk-forward 验证**：实现样本内优化 + 样本外验证流程，防止过拟合
-- [ ] **多策略对比**：同一时间段多组回测结果并排比较接口
+- [x] **回测结果持久化**：将回测结果写入 `BacktestResult` 数据库表，支持历史查询（设计文档：`BACKTESTING_BACKEND.md` 第九节）
+- [x] **回测报告接口**：提供收益曲线、最大回撤、夏普比率、胜率等报告数据 API（设计文档：`BACKTESTING_BACKEND.md` 第八节）
+- [x] **WebSocket 实时推送回测进度**：通过 Socket.IO 向前端推送回测执行进度百分比（设计文档：`BACKTESTING_BACKEND.md` 第十节）
+- [x] **回测任务超时机制**：添加 BullMQ 任务超时配置，防止长时间挂起（设计文档：`BACKTEST_ENGINE_DETAIL_DESIGN.md` 第 9.3 节）
+- [x] **Walk-forward 验证**：实现样本内优化 + 样本外验证流程，防止过拟合（设计文档：`BACKTEST_ENGINE_DETAIL_DESIGN.md` 第四节）
+- [x] **多策略对比**：同一时间段多组回测结果并排比较接口（设计文档：`BACKTEST_ENGINE_DETAIL_DESIGN.md` 第五节）
 
 ### 因子研究
 
-- [ ] **自定义因子表达式引擎**：支持用户通过表达式语言（如 `rank(close/delay(close,20))`）定义新因子，后端实时计算
-- [ ] **因子正交化**：实现 Fama-MacBeth / 截面回归的多因子正交能力
-- [ ] **因子到回测全链路**：打通"因子 → 选股 → 组合 → 回测"闭环
+- [x] **自定义因子表达式引擎**：支持用户通过表达式语言（如 `rank(close/delay(close,20))`）定义新因子，后端实时计算（设计文档：`FACTOR_RESEARCH_LOOP_DESIGN.md` Phase 2）
+- [x] **因子正交化**：实现 Fama-MacBeth / 截面回归的多因子正交能力（设计文档：`FACTOR_RESEARCH_LOOP_DESIGN.md` Phase 4）
+- [x] **因子到回测全链路**：打通"因子 → 选股 → 组合 → 回测"闭环（设计文档：`FACTOR_RESEARCH_LOOP_DESIGN.md` Phase 3）
 
 ### 行业轮动分析
 
@@ -147,7 +147,7 @@
 ### 架构优化
 
 - [ ] **拆分 `stock.service.ts`**：将 1500+ 行的 StockService 拆分为 `StockListService` / `StockDetailService` / `StockFinancialService` 等子服务
-- [ ] **WebSocket 推送用户/角色过滤**：同步状态消息应仅推送给管理员，非广播给所有连接
+- [x] **WebSocket 推送用户/角色过滤**：同步状态消息应仅推送给管理员，非广播给所有连接（设计文档：`WATCHLIST_RESEARCH_WORKBENCH_DESIGN.md` 第 7.2 节）
 
 ### 可观测性（P1 级）
 
@@ -164,7 +164,7 @@
 ### 数据管理
 
 - [ ] **手动触发单表同步接口**：管理端可触发指定数据表的即时同步（当前仅全量触发）
-- [ ] **数据完整性监控**：自动发现某只股票某天数据缺失，生成完整性检查报告
+- [x] **数据完整性监控**：自动发现某只股票某天数据缺失，生成完整性检查报告（设计文档：`DATA_LAYER_GAP_DESIGN.md` Phase 3）
 - [ ] **历史行情分区表**：对 `daily` / `weekly` / `monthly` 等大表按年份做分区，优化查询性能
 
 ---
@@ -181,7 +181,7 @@
 
 - [ ] **创建 StrategyModule CRUD**：新增 `Strategy` Prisma Model（name / description / params / userId），实现策略创建/读取/更新/删除
 - [ ] **策略参数 JSON Schema 校验**：回测策略配置 JSON 添加 Schema 校验，拒绝不合法的参数配置
-- [ ] **策略草稿自动保存**：新增 `StrategyDraft` Model，支持未完成的回测参数配置暂存与加载
+- [x] **策略草稿自动保存**：新增 `StrategyDraft` Model，支持未完成的回测参数配置暂存与加载（设计文档：`WATCHLIST_RESEARCH_WORKBENCH_DESIGN.md` Phase 4）
 
 ### 热力图增强
 
@@ -196,7 +196,7 @@
 
 ### 高级量化工具
 
-- [ ] **蒙特卡洛模拟**：随机重采样估算策略鲁棒性
+- [x] **蒙特卡洛模拟**：随机重采样估算策略鲁棒性（设计文档：`BACKTEST_ENGINE_DETAIL_DESIGN.md` 第六节）
 - [ ] **相似 K 线形态匹配**：基于 DTW 或归一化欧氏距离的全市场历史形态搜索
 - [ ] **智能选股助手（LLM 驱动）**：接入 LLM，支持自然语言选股并转换为选股器 JSON 配置
 - [ ] **量化报告生成引擎**：提供研究报告模板机制，自动拉取数据组装 PDF / Markdown / HTML 报告
@@ -208,7 +208,7 @@
 ### 数据同步管理台
 
 - [ ] **数据同步状态总览接口**：各数据表最后同步时间、数据行数、缺失天数的聚合查询
-- [ ] **异常数据标记与修正入口**：管理端可标记异常数据并提供人工修正接口
+- [x] **异常数据标记与修正入口**：管理端可标记异常数据并提供人工修正接口（设计文档：`DATA_LAYER_GAP_DESIGN.md` Phase 3）
 
 ### 运维与部署
 

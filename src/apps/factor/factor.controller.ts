@@ -1,4 +1,4 @@
-import { Body, Controller, Post, UseGuards } from '@nestjs/common'
+import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common'
 import { ApiOperation, ApiTags } from '@nestjs/swagger'
 import { JwtAuthGuard } from 'src/lifecycle/guard/jwt-auth.guard'
 import { FactorService } from './factor.service'
@@ -12,6 +12,7 @@ import {
   FactorQuantileAnalysisDto,
 } from './dto/factor-analysis.dto'
 import { FactorScreeningDto } from './dto/factor-screening.dto'
+import { FactorBackfillDto, FactorPrecomputeTriggerDto } from './dto/factor-precompute.dto'
 
 @ApiTags('Factor - 因子市场')
 @UseGuards(JwtAuthGuard)
@@ -77,5 +78,25 @@ export class FactorController {
   @ApiOperation({ summary: '多因子选股（条件组合筛选）' })
   screening(@Body() dto: FactorScreeningDto) {
     return this.factorService.screening(dto)
+  }
+
+  // ── Admin: Precompute (Phase 1) ──────────────────────────────────────────
+
+  @Post('admin/precompute')
+  @ApiOperation({ summary: '[管理] 手动触发指定日期的因子预计算' })
+  triggerPrecompute(@Body() dto: FactorPrecomputeTriggerDto) {
+    return this.factorService.triggerPrecompute(dto)
+  }
+
+  @Post('admin/backfill')
+  @ApiOperation({ summary: '[管理] 触发历史因子值回补（指定日期范围）' })
+  triggerBackfill(@Body() dto: FactorBackfillDto) {
+    return this.factorService.triggerBackfill(dto)
+  }
+
+  @Get('admin/precompute/status')
+  @ApiOperation({ summary: '[管理] 查询预计算状态（最新日期、各因子覆盖情况）' })
+  getPrecomputeStatus() {
+    return this.factorService.getPrecomputeStatus()
   }
 }

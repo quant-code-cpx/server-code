@@ -1,0 +1,36 @@
+/// 因子截面值快照（预计算结果）
+model FactorSnapshot {
+  factorName String   @map("factor_name")
+  tradeDate  String   @map("trade_date")
+  tsCode     String   @map("ts_code")
+  value      Decimal? @map("value")      @db.Decimal(20, 6)
+  percentile Decimal? @map("percentile") @db.Decimal(6, 4) /// 截面百分位 0~1
+  syncedAt   DateTime @default(now())    @map("synced_at")
+
+  @@id([factorName, tradeDate, tsCode])
+  @@index([factorName, tradeDate])
+  @@index([tradeDate, factorName]) /// 时间序列查询优化（按日期范围查时先命中此索引）
+  @@index([tsCode, tradeDate])
+  @@map("factor_snapshots")
+}
+
+/// 因子截面统计摘要（每日每因子一条）
+model FactorSnapshotSummary {
+  factorName String   @map("factor_name")
+  tradeDate  String   @map("trade_date")
+  count      Int      @map("count") /// 有效值数量
+  missing    Int      @map("missing") /// 缺失数量
+  mean       Decimal? @map("mean")     @db.Decimal(20, 6)
+  median     Decimal? @map("median")   @db.Decimal(20, 6)
+  stdDev     Decimal? @map("std_dev")  @db.Decimal(20, 6)
+  min        Decimal? @map("min")      @db.Decimal(20, 6)
+  max        Decimal? @map("max")      @db.Decimal(20, 6)
+  q25        Decimal? @map("q25")      @db.Decimal(20, 6)
+  q75        Decimal? @map("q75")      @db.Decimal(20, 6)
+  skewness   Decimal? @map("skewness") @db.Decimal(10, 6)
+  kurtosis   Decimal? @map("kurtosis") @db.Decimal(10, 6)
+  syncedAt   DateTime @default(now())  @map("synced_at")
+
+  @@id([factorName, tradeDate])
+  @@map("factor_snapshot_summaries")
+}

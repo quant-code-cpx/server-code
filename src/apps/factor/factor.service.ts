@@ -9,10 +9,12 @@ import {
   FactorQuantileAnalysisDto,
 } from './dto/factor-analysis.dto'
 import { FactorScreeningDto } from './dto/factor-screening.dto'
+import { FactorBackfillDto, FactorPrecomputeTriggerDto } from './dto/factor-precompute.dto'
 import { FactorLibraryService } from './services/factor-library.service'
 import { FactorComputeService } from './services/factor-compute.service'
 import { FactorAnalysisService } from './services/factor-analysis.service'
 import { FactorScreeningService } from './services/factor-screening.service'
+import { FactorPrecomputeService } from './services/factor-precompute.service'
 import { PrismaService } from 'src/shared/prisma.service'
 
 @Injectable()
@@ -22,6 +24,7 @@ export class FactorService {
     private readonly compute: FactorComputeService,
     private readonly analysis: FactorAnalysisService,
     private readonly screeningSvc: FactorScreeningService,
+    private readonly precompute: FactorPrecomputeService,
     private readonly prisma: PrismaService,
   ) {}
 
@@ -75,5 +78,23 @@ export class FactorService {
 
   screening(dto: FactorScreeningDto) {
     return this.screeningSvc.screening(dto)
+  }
+
+  // ── Admin: Precompute ────────────────────────────────────────────────────
+
+  triggerPrecompute(dto: FactorPrecomputeTriggerDto) {
+    return this.precompute.precomputeAllFactors(dto.tradeDate, dto.factorNames)
+  }
+
+  triggerBackfill(dto: FactorBackfillDto) {
+    return this.precompute.backfill(dto.startDate, dto.endDate, {
+      factorNames: dto.factorNames,
+      skipExisting: dto.skipExisting,
+      batchSize: dto.batchSize,
+    })
+  }
+
+  getPrecomputeStatus() {
+    return this.precompute.getPrecomputeStatus()
   }
 }

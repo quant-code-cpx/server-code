@@ -109,7 +109,7 @@ function rSquared(y: number[], yHat: number[]): number {
   return 1 - ssRes / ssTot
 }
 
-/** Compute matrix square root inverse Σ^{-1/2} via eigenvalue decomposition (Jacobi iterative for symmetric). */
+/** Compute Cholesky decomposition L, then return L^{-1} for symmetric orthogonalization. */
 function symmetricMatSqrtInv(C: number[][]): number[][] | null {
   const n = C.length
   // Simple approach: Cholesky decomposition L, then L^{-1}
@@ -146,6 +146,9 @@ function formatDateStr(d: Date): string {
 }
 
 // ── Service ──────────────────────────────────────────────────────────────────
+
+/** Hard cap on number of factors to prevent unbounded iteration */
+const MAX_FACTORS = 20
 
 @Injectable()
 export class FactorOrthogonalService {
@@ -452,9 +455,10 @@ export class FactorOrthogonalService {
     factorNames: string[],
   ): { matrix: number[][]; names: string[] } {
     const n = matrix.length
-    const k = factorNames.length
+    // Cap k to MAX_FACTORS (validated by DTO @ArrayMaxSize but enforce here for safety)
+    const k = Math.min(factorNames.length, MAX_FACTORS)
     const orthMatrix = matrix.map((row) => [...row])
-    const orthNames = [factorNames[0], ...factorNames.slice(1).map((fn) => `${fn}_orth`)]
+    const orthNames = [factorNames[0], ...factorNames.slice(1, k).map((fn) => `${fn}_orth`)]
 
     for (let j = 1; j < k; j++) {
       // Regress column j on columns 0..j-1
@@ -473,7 +477,7 @@ export class FactorOrthogonalService {
   }
 
   /**
-   * Symmetric orthogonalization: F_orth = F * Σ^{-1/2}
+   * Symmetric orthogonalization via Cholesky decomposition: F_orth = F * L^{-1}
    */
   private symmetricOrthogonalize(
     matrix: number[][],
@@ -485,7 +489,8 @@ export class FactorOrthogonalService {
 
     // F_orth = F * L^{-1}
     const n = matrix.length
-    const k = factorNames.length
+    // Cap k to MAX_FACTORS
+    const k = Math.min(factorNames.length, MAX_FACTORS)
     const orthMatrix: number[][] = Array.from({ length: n }, () => new Array(k).fill(0))
 
     for (let i = 0; i < n; i++) {

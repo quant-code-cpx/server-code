@@ -196,20 +196,19 @@ export class FactorBacktestService {
 
       // Simple attribution: proportion of exposure relative to total exposure magnitude
       // This is a simplified Brinson-style attribution
-      const exposureStd = stdDev(exposures)
-      const contribution = totalReturn * (Math.abs(avgExposure) / (Math.abs(avgExposure) + 0.001))
-      const adjustedContribution = avgExposure >= 0 ? Math.abs(contribution) * Math.sign(totalReturn) : -Math.abs(contribution) * Math.sign(totalReturn)
-      const clampedContribution = Math.abs(adjustedContribution) > Math.abs(totalReturn) ? totalReturn / factorNames.length : adjustedContribution
+      const rawContribution = totalReturn * (Math.abs(avgExposure) / (Math.abs(avgExposure) + 0.001))
+      const signAdjustedContribution = avgExposure >= 0 ? Math.abs(rawContribution) * Math.sign(totalReturn) : -Math.abs(rawContribution) * Math.sign(totalReturn)
+      const normalizedContribution = Math.abs(signAdjustedContribution) > Math.abs(totalReturn) ? totalReturn / factorNames.length : signAdjustedContribution
 
       factorContributions.push({
         factorName,
         label: factorDef?.label ?? factorName,
         avgExposure: Number(avgExposure.toFixed(4)),
-        returnContribution: Number(clampedContribution.toFixed(6)),
-        contributionPct: totalReturn !== 0 ? Number(((clampedContribution / totalReturn) * 100).toFixed(1)) : 0,
+        returnContribution: Number(normalizedContribution.toFixed(6)),
+        contributionPct: totalReturn !== 0 ? Number(((normalizedContribution / totalReturn) * 100).toFixed(1)) : 0,
       })
 
-      explainedReturn += clampedContribution
+      explainedReturn += normalizedContribution
     }
 
     const residualReturn = totalReturn - explainedReturn

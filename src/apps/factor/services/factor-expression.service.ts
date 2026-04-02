@@ -558,6 +558,8 @@ function buildTsFrom(cat: 'prices' | 'daily_basic' | 'fina_pit'): string {
 }
 
 function buildTsWhere(cat: 'prices' | 'daily_basic' | 'fina_pit', tradeDate: string, comparison: '<=' | '<'): string {
+  // tradeDate is validated by DTO (@Matches /^\d{8}$/) before reaching here — assert format
+  if (!/^\d{8}$/.test(tradeDate)) throw new Error('Invalid tradeDate format')
   const dateCol = cat === 'fina_pit' ? 'ann_date' : 'trade_date'
   const extraFina = cat === 'fina_pit' ? `AND d2.ann_date IS NOT NULL\n        ` : ''
   return `${extraFina}AND d2.ts_code = db.ts_code\n        AND d2.${dateCol} ${comparison} '${tradeDate}'::date`

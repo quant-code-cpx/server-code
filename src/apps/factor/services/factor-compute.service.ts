@@ -117,6 +117,9 @@ export class FactorComputeService {
 
   private buildUniverseJoinStr(universe: string | undefined, tradeDate: string, alias: string): string {
     if (!universe) return ''
+    // Validate inputs to prevent SQL injection (DTO validates format, but assert here for safety)
+    if (!/^\d{6}\.\w{2}$/.test(universe)) throw new Error('Invalid universe format')
+    if (!/^\d{8}$/.test(tradeDate)) throw new Error('Invalid tradeDate format')
     return `INNER JOIN index_constituent_weights iw
   ON iw.con_code = ${alias}.ts_code
   AND iw.index_code = '${universe}'

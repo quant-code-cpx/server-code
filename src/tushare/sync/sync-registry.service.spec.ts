@@ -24,6 +24,7 @@ describe('TushareSyncRegistryService', () => {
       { getSyncPlans: () => [] } as never,
       { getSyncPlans: () => [] } as never,
       { getSyncPlans: () => [] } as never,
+      { getSyncPlans: () => [] } as never,
     )
 
     expect(registry.getPlans().map((plan) => plan.task)).toEqual([
@@ -41,7 +42,8 @@ describe('TushareSyncRegistryService', () => {
           { getSyncPlans: () => [] } as never,
           { getSyncPlans: () => [] } as never,
           { getSyncPlans: () => [] } as never,
+          { getSyncPlans: () => [] } as never,
         ),
-    ).toThrow('Duplicate Tushare sync plan detected: DAILY')
+    ).toThrow('Tushare 同步任务注册重复')
   })
 })

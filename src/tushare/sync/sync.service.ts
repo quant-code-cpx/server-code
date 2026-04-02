@@ -252,7 +252,7 @@ export class TushareSyncService implements OnApplicationBootstrap {
     this.eventsGateway.broadcastSyncStarted(trigger, mode)
 
     try {
-      for (const category of ['basic', 'market', 'financial', 'moneyflow'] as TushareSyncCategory[]) {
+      for (const category of ['basic', 'market', 'financial', 'moneyflow', 'factor', 'alternative'] as TushareSyncCategory[]) {
         const categoryPlans = sortedPlans.filter((plan) => plan.category === category)
         if (!categoryPlans.length) continue
 
@@ -393,6 +393,10 @@ export class TushareSyncService implements OnApplicationBootstrap {
         return '财务数据'
       case 'moneyflow':
         return '资金流向'
+      case 'factor':
+        return '因子数据'
+      case 'alternative':
+        return '另类数据'
     }
   }
 

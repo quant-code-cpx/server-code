@@ -1,0 +1,274 @@
+# 量化研究后端 — 统一 TODO List
+
+> **来源**：整合自 `planning/TODO.md`（功能规划）、`planning/SERVER_TODO.md`（工程质量）、`planning/FEATURE_GAP_ANALYSIS_2026-04-01.md`（产品痛点），原文件已归档至 `archive/`。
+>
+> **颗粒度约定**：每一项 TODO 应可独立出一份技术设计方案，且适合在**一次 agent 任务**中完成。
+>
+> 格式：`- [ ]` 待完成，`- [x]` 已完成。
+
+---
+
+## P0 — 核心链路瓶颈（不做则关键功能空转）
+
+### 数据层补全
+
+- [ ] **同步 `stk_limit`（涨跌停价格）**：新增 Prisma Model、Tushare `stk_limit` 接口封装、注册到 SyncService 每日同步任务
+- [ ] **同步 `suspend_d`（停牌日历）**：新增 Prisma Model、Tushare `suspend_d` 接口封装、注册到 SyncService 每日同步任务
+- [ ] **同步 `index_weight`（指数成分权重）**：新增 Prisma Model、Tushare `index_weight` 接口封装、注册到 SyncService 定期同步任务
+- [ ] **数据校验层：Tushare 入库前清洗**：在 sync 流程中添加通用校验中间件，处理空值、异常值、重复记录，记录校验失败日志
+
+### 回测撮合引擎
+
+- [ ] **日频撮合引擎核心实现**：实现按日模拟买卖，处理涨跌停不可交易、停牌跳过、滑点模型、手续费扣减（依赖 `stk_limit` / `suspend_d` 数据）
+- [ ] **组合管理与仓位跟踪**：实现多标的仓位记录、现金管理、权重再平衡逻辑，供撮合引擎调用
+- [ ] **策略信号生成框架**：将 4 种策略模板（均线交叉/选股轮动/因子排名/自定义池）翻译为可执行买卖信号
+- [ ] **基准对比与超额收益计算**：在回测流程中同步计算基准净值曲线，输出超额收益、跟踪误差
+- [ ] **风险指标计算模块**：实现 Sharpe / Sortino / Calmar / Max Drawdown / 年化波动率等指标的引擎内计算
+- [ ] **回测参数验证**：添加回测区间数据完整性检查、起止日期合理性校验、资金量边界校验
+
+### 因子预计算
+
+- [ ] **因子值批量预计算定时任务**：每日收盘后批量计算全市场因子截面值并落库，避免查询时实时计算，为因子分析接口提供数据基础
+
+---
+
+## P1 — 显著提升产品可用性与工程质量
+
+### 数据接入
+
+- [ ] **同步龙虎榜数据（`top_list` / `top_inst`）**：新增 Prisma Model、Tushare 接口封装、注册同步任务
+- [ ] **同步大宗交易数据（`block_trade`）**：新增 Prisma Model、Tushare 接口封装、注册同步任务
+- [ ] **同步融资融券数据（`margin_detail`）**：新增 Prisma Model、Tushare 接口封装、注册同步任务
+- [ ] **同步沪深港通资金数据（北向/南向）**：新增 Prisma Model、Tushare 接口封装、注册同步任务、对外 API
+- [ ] **同步限售股解禁数据（`share_float`）**：新增 Prisma Model、Tushare 接口封装、注册同步任务
+- [ ] **同步概念板块映射（`concept` / `concept_detail`）**：新增 Prisma Model、Tushare 接口封装、注册同步任务
+
+### 指数模块
+
+- [ ] **创建 IndexModule 骨架与指数列表接口**：新建 `src/apps/index/` 模块，提供支持的指数列表查询接口（沪深300 / 中证500 / 上证50 / 创业板指等）
+- [ ] **指数日线行情接口**：封装 Tushare `index_daily`，同步指数日线数据，提供查询 API
+- [ ] **指数成分股查询接口**：基于已同步的 `index_weight` 提供指数成分股及权重查询 API
+
+### 股票模块补全
+
+- [ ] **技术指标接口（MACD / RSI / KDJ / 布林带）**：接入 Tushare `stk_factor` 数据同步，提供技术指标查询 API
+
+### 自选股与研究工作台
+
+- [ ] **自选股管理 CRUD**：新增 `Watchlist` + `WatchlistItem` Prisma Model，实现创建/查询/更新/删除自选股分组及标的（设计文档：`WATCHLIST_RESEARCH_WORKBENCH_DESIGN.md`）
+- [ ] **研究笔记 CRUD**：新增 `ResearchNote` Prisma Model，实现按股票/标签查询的笔记管理接口
+- [ ] **选股条件订阅**：新增 `ScreenerSubscription` Model，支持保存筛选条件并设置定时执行推送
+
+### 数据导出
+
+- [ ] **CSV/Excel 导出功能**：在股票列表、选股结果、因子截面值等接口添加 `format=csv` 支持，基于 `exceljs` 或流式 CSV 输出
+- [ ] **批量数据下载 API**：提供按日期范围 + 代码列表的批量数据下载接口，供 Python 等外部工具调用
+
+### 安全加固
+
+- [ ] **JWT Secret 启动校验**：移除代码级默认值，缺失环境变量时启动报错
+- [ ] **细粒度限流**：添加每接口/每用户级别的限流策略（当前仅全局 20 req/10s）
+- [ ] **Redis ACL 密码环境变量化**：将 Redis 密码从硬编码 entrypoint 改为环境变量注入
+- [ ] **CORS 生产环境配置审查**：修复 `false` 作为 falsy 值的问题，配置明确的白名单
+- [ ] **请求体大小限制**：添加全局请求体大小限制，防止大 JSON 攻击
+- [ ] **管理员操作审计日志**：记录用户创建/删除/角色变更/密码重置等操作到审计表
+
+### 可观测性（P0 级）
+
+- [ ] **健康检查端点**：使用 `@nestjs/terminus` 实现 `/health` + `/ready`，检查 DB / Redis / BullMQ 状态
+- [ ] **结构化日志**：Winston 输出 JSON 格式，包含 traceId / userId / latency 字段，便于日志聚合解析
+- [ ] **生产环境请求/响应日志**：扩展 LoggingInterceptor 支持生产环境（当前仅 dev），添加可配置开关
+
+### 测试覆盖
+
+- [ ] **Auth 模块单元测试**：覆盖登录、注册、Token 刷新、验证码、账户锁定流程
+- [ ] **User 模块单元测试**：覆盖 CRUD、角色权限校验、密码重置
+- [ ] **Stock 模块单元测试**：覆盖列表查询、搜索、详情接口
+- [ ] **Backtest 模块单元测试**：覆盖任务提交、引擎计算、指标计算
+- [ ] **Tushare Client 单元测试**：Mock HTTP 调用、频控重试逻辑
+- [ ] **E2E 测试套件**：至少覆盖 Auth 流程、股票查询、回测提交等关键路径
+- [ ] **Jest 覆盖率阈值配置**：设置 >60% 阈值，集成到 CI
+
+### CI/CD
+
+- [ ] **添加 CI 工作流**：创建 `.github/workflows/ci.yml`，包含 lint → build → test 流水线
+- [ ] **Docker 镜像构建工作流**：添加 GitHub Actions 工作流，构建并推送生产镜像到 GHCR
+- [ ] **Prisma migration 一致性检查**：CI 中验证 schema 与 migration 文件一致
+- [ ] **修复 pre-push hook Redis 依赖**：`swagger:generate` 启动完整 NestJS 应用依赖 Redis，改为 mock 或跳过
+
+### 生产部署
+
+- [ ] **生产环境 Dockerfile**：编写多阶段构建 Dockerfile（当前仅 dev 版本使用 `start:dev`）
+- [ ] **优雅关闭（Graceful Shutdown）**：停止接受新请求 → 等待进行中回测任务完成 → 关闭 Redis / DB 连接
+
+---
+
+## P2 — 差异化竞争力
+
+### 回测系统进阶
+
+- [ ] **回测结果持久化**：将回测结果写入 `BacktestResult` 数据库表，支持历史查询
+- [ ] **回测报告接口**：提供收益曲线、最大回撤、夏普比率、胜率等报告数据 API
+- [ ] **WebSocket 实时推送回测进度**：通过 Socket.IO 向前端推送回测执行进度百分比
+- [ ] **回测任务超时机制**：添加 BullMQ 任务超时配置，防止长时间挂起
+- [ ] **Walk-forward 验证**：实现样本内优化 + 样本外验证流程，防止过拟合
+- [ ] **多策略对比**：同一时间段多组回测结果并排比较接口
+
+### 因子研究
+
+- [ ] **自定义因子表达式引擎**：支持用户通过表达式语言（如 `rank(close/delay(close,20))`）定义新因子，后端实时计算
+- [ ] **因子正交化**：实现 Fama-MacBeth / 截面回归的多因子正交能力
+- [ ] **因子到回测全链路**：打通"因子 → 选股 → 组合 → 回测"闭环
+
+### 行业轮动分析
+
+- [ ] **行业轮动分析模块**：行业指数收益对比（近 5/20/60 日）、行业动量排名、行业间资金流转分析、行业 PE/PB 历史分位
+
+### 组合管理与风控
+
+- [ ] **虚拟组合管理**：创建组合 → 添加/调整持仓 → 自动计算每日盈亏
+- [ ] **组合风险分析接口**：行业分布、个股集中度、市值分布、Beta 暴露分析
+- [ ] **风控规则引擎**：单票仓位上限、回撤止损线、行业集中度限制的规则管理
+
+### 实时行情与预警
+
+- [ ] **价格预警规则管理**：新增 `PriceAlert` Model，支持设置涨跌幅阈值触发 WebSocket + 邮件通知
+- [ ] **异动监控引擎**：基于 moneyflow 数据，实现成交量异常放大、连板监测、大单成交预警
+- [ ] **事件日历接口**：聚合财报发布日、解禁日、分红除权日，提供日历视图 API
+
+### 数据同步增强
+
+- [ ] **Tushare 并行批量同步**：按不同数据集并行调用 Tushare API（当前串行 350ms 间隔），提升同步效率
+- [ ] **同步断点续传**：记录同步进度，失败后支持从断点恢复（当前部分失败需全量重做）
+- [ ] **同步进度百分比估算**：基于已知总量提供同步进度百分比信息
+- [ ] **失败任务自动重试队列**：独立于主同步流程的失败任务重试机制
+- [ ] **同步日志查询接口**：管理端可查看历史同步记录和错误详情
+
+### 架构优化
+
+- [ ] **拆分 `stock.service.ts`**：将 1500+ 行的 StockService 拆分为 `StockListService` / `StockDetailService` / `StockFinancialService` 等子服务
+- [ ] **WebSocket 推送用户/角色过滤**：同步状态消息应仅推送给管理员，非广播给所有连接
+
+### 可观测性（P1 级）
+
+- [ ] **Prometheus 指标接入**：使用 `@willsoto/nestjs-prometheus` 暴露 HTTP 延迟、QPS、错误率、队列深度
+- [ ] **Grafana 仪表盘**：Docker Compose 添加 Grafana + Prometheus，预置量化后端仪表盘模板
+- [ ] **数据库查询性能日志**：添加慢查询告警（Prisma query event 监听）
+- [ ] **Tushare 同步耗时与成功率监控**：记录每次同步任务的耗时、成功/失败状态并暴露指标
+
+### 数据导出进阶
+
+- [ ] **回测报告 PDF 导出**：生成包含净值曲线、月度收益、交易明细的 PDF 报告
+- [ ] **分享链接**：回测结果生成只读分享链接（含过期时间）
+
+### 数据管理
+
+- [ ] **手动触发单表同步接口**：管理端可触发指定数据表的即时同步（当前仅全量触发）
+- [ ] **数据完整性监控**：自动发现某只股票某天数据缺失，生成完整性检查报告
+- [ ] **历史行情分区表**：对 `daily` / `weekly` / `monthly` 等大表按年份做分区，优化查询性能
+
+---
+
+## P3 — 锦上添花
+
+### 高级数据接入
+
+- [ ] **同步 ETF/LOF 净值数据（`fund_nav` / `fund_daily`）**：新增 Prisma Model、Tushare 接口封装、同步任务
+- [ ] **同步宏观经济指标（`cn_cpi` / `cn_ppi` / `cn_gdp` / `shibor`）**：新增 Prisma Model、Tushare 接口封装、同步任务
+- [ ] **同步期权数据（`opt_basic` / `opt_daily`）**：新增 Prisma Model、Tushare 接口封装、同步任务
+
+### 策略管理
+
+- [ ] **创建 StrategyModule CRUD**：新增 `Strategy` Prisma Model（name / description / params / userId），实现策略创建/读取/更新/删除
+- [ ] **策略参数 JSON Schema 校验**：回测策略配置 JSON 添加 Schema 校验，拒绝不合法的参数配置
+- [ ] **策略草稿自动保存**：新增 `StrategyDraft` Model，支持未完成的回测参数配置暂存与加载
+
+### 热力图增强
+
+- [ ] **HeatmapSnapshot 聚合模型**：新增 Prisma `HeatmapSnapshot` Model，定时任务每日聚合结果落库，避免实时聚合开销
+- [ ] **热力图多维度分组**：支持按行业 / 概念板块 / 指数三种分组维度
+- [ ] **历史热力图快照接口**：查询指定日期的热力图聚合数据
+
+### 事件驱动研究
+
+- [ ] **事件影响分析（Event Study）**：实现事件前后 N 日超额收益统计，支持业绩预告/分红公告/股东增减持等事件类型
+- [ ] **事件信号生成器**：符合条件的事件自动触发选股信号
+
+### 高级量化工具
+
+- [ ] **蒙特卡洛模拟**：随机重采样估算策略鲁棒性
+- [ ] **相似 K 线形态匹配**：基于 DTW 或归一化欧氏距离的全市场历史形态搜索
+- [ ] **智能选股助手（LLM 驱动）**：接入 LLM，支持自然语言选股并转换为选股器 JSON 配置
+- [ ] **量化报告生成引擎**：提供研究报告模板机制，自动拉取数据组装 PDF / Markdown / HTML 报告
+
+### Python SDK
+
+- [ ] **Python SDK 自动生成**：基于 OpenAPI spec 使用 `openapi-generator` 生成 Python SDK，封装鉴权与 pandas DataFrame 转换
+
+### 数据同步管理台
+
+- [ ] **数据同步状态总览接口**：各数据表最后同步时间、数据行数、缺失天数的聚合查询
+- [ ] **异常数据标记与修正入口**：管理端可标记异常数据并提供人工修正接口
+
+### 运维与部署
+
+- [ ] **Kubernetes 部署清单**：编写 Deployment + Service + ConfigMap + Secret 清单
+- [ ] **容器资源限制配置**：为 Docker 添加 CPU / Memory limits
+- [ ] **数据库自动备份**：pg_dump 定时任务 + 上传至对象存储（MinIO / S3）
+- [ ] **OpenTelemetry 链路追踪**：分布式追踪打通 NestJS → Prisma → PostgreSQL
+- [ ] **AlertManager 告警**：Tushare 同步失败、API 错误率飙升、磁盘空间不足等场景告警
+
+### 文档与开发体验
+
+- [ ] **添加 CONTRIBUTING.md**：开发环境搭建、代码规范、提交规范
+- [ ] **补充 .env.example 注释**：为各环境变量添加用途说明
+- [ ] **API 变更日志（CHANGELOG）**：建立接口变更记录规范
+- [ ] **Swagger 文档补充响应示例**：为核心接口补充更多响应示例
+- [ ] **TypeScript any 类型清理**：逐步消除 ~182 处 `any` 类型，添加明确的接口定义
+
+### 风控模块
+
+- [ ] **创建 RiskModule 骨架**：新建 `src/apps/risk/` 模块
+- [ ] **组合持仓风险检测接口**：实现集中度 / 行业暴露 / Beta 检测
+- [ ] **止损触发规则管理**：支持配置和管理止损触发规则
+
+### 通知系统
+
+- [ ] **站内消息系统**：基于 WebSocket 的站内消息推送机制
+- [ ] **邮件 / 微信 Webhook 告警**：可选的外部通知渠道集成
+
+---
+
+## 已完成模块参考（不再跟踪）
+
+<details>
+<summary>点击展开已完成项</summary>
+
+- [x] NestJS 骨架（ConfigModule / ThrottlerModule / Helmet / CORS）
+- [x] Prisma + PostgreSQL 接入
+- [x] Redis 接入
+- [x] JWT 鉴权体系（AccessToken + RefreshToken）
+- [x] 全局日志（Winston + 日志轮转）
+- [x] 全局异常过滤器 & 响应拦截器
+- [x] BullMQ 回测任务队列
+- [x] WebSocket 实时推送
+- [x] TushareService — 封装 Tushare Pro HTTP 接口基础调用
+- [x] TushareSyncService — 应用启动时检测数据新鲜度 + 交易日 18:30 定时同步
+- [x] 已接入 22 类 Tushare 数据（stock_basic / trade_cal / daily / weekly / monthly / adj_factor / daily_basic / moneyflow 等）
+- [x] 用户管理模块全部完成（CRUD / 角色权限 / 软删除 / @CurrentUser）
+- [x] 股票列表 / 详情 / 搜索 / K线 / 资金流 / 财务 / 股东分红接口
+- [x] 市场资金流向（大盘 / 行业板块）
+- [x] 热力图数据接口骨架
+- [x] 选股器（选股策略保存 / 执行）
+- [x] 因子库（12 分类，IC 分析 / 分位回测 / 衰减分析 / 分布 / 相关矩阵）
+- [x] 回测框架骨架（BullMQ 任务提交 / 状态查询）
+- [x] 缓存策略（Redis 缓存 + 同步后失效 + 命中率监控）
+- [x] 错误处理统一（BusinessException / Tushare 错误码 / 参数边界校验）
+- [x] 数据库索引优化 + 连接池配置
+- [x] ESLint `no-explicit-any` warn 级别已启用
+
+</details>
+
+---
+
+_最后更新：2026-04-02_

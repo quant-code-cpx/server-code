@@ -146,7 +146,7 @@ export class ScreenerSubscriptionService {
 
   getLatestTradeDateStr(): string {
     const now = new Date()
-    const d = now.getUTCFullYear() * 10000 + (now.getUTCMonth() + 1) * 100 + now.getUTCDate()
+    const d = now.getFullYear() * 10000 + (now.getMonth() + 1) * 100 + now.getDate()
     return String(d)
   }
 }

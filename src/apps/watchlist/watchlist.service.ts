@@ -323,7 +323,7 @@ export class WatchlistService {
           pe: r.pe_ttm,
           pb: r.pb,
           totalMv: r.total_mv,
-          tradeDate: d ? `${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, '0')}${String(d.getUTCDate()).padStart(2, '0')}` : null,
+          tradeDate: d ? `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}` : null,
         })
       }
     } catch (err) {

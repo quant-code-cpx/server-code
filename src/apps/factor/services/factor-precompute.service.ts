@@ -150,13 +150,13 @@ export class FactorPrecomputeService implements OnApplicationBootstrap {
     `)
     return rows.map((r) => {
       const d = r.cal_date instanceof Date ? r.cal_date : new Date(r.cal_date)
-      return `${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, '0')}${String(d.getUTCDate()).padStart(2, '0')}`
+      return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`
     })
   }
 
   private async getLatestTradeDate(): Promise<string | null> {
     const today = new Date()
-    const todayStr = `${today.getUTCFullYear()}${String(today.getUTCMonth() + 1).padStart(2, '0')}${String(today.getUTCDate()).padStart(2, '0')}`
+    const todayStr = `${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, '0')}${String(today.getDate()).padStart(2, '0')}`
 
     const rows = await this.prisma.$queryRaw<TradeCalRow[]>(Prisma.sql`
       SELECT cal_date
@@ -168,7 +168,7 @@ export class FactorPrecomputeService implements OnApplicationBootstrap {
     `)
     if (!rows.length) return null
     const r = rows[0].cal_date instanceof Date ? rows[0].cal_date : new Date(rows[0].cal_date)
-    return `${r.getUTCFullYear()}${String(r.getUTCMonth() + 1).padStart(2, '0')}${String(r.getUTCDate()).padStart(2, '0')}`
+    return `${r.getFullYear()}${String(r.getMonth() + 1).padStart(2, '0')}${String(r.getDate()).padStart(2, '0')}`
   }
 
   // ── Core compute & store ──────────────────────────────────────────────────

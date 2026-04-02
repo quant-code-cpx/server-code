@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, ParseIntPipe, Post, Put, Query, UseGuards } from '@nestjs/common'
+import { Body, Controller, Post, UseGuards } from '@nestjs/common'
 import { ApiOperation, ApiTags } from '@nestjs/swagger'
 import { JwtAuthGuard } from 'src/lifecycle/guard/jwt-auth.guard'
 import { CurrentUser } from 'src/common/decorators/current-user.decorator'
@@ -12,27 +12,27 @@ import { CreateResearchNoteDto, ResearchNoteQueryDto, UpdateResearchNoteDto } fr
 export class ResearchNoteController {
   constructor(private readonly noteService: ResearchNoteService) {}
 
-  @Get()
+  @Post('list')
   @ApiOperation({ summary: '查询笔记列表（分页 + 筛选）' })
-  findAll(@CurrentUser() user: TokenPayload, @Query() query: ResearchNoteQueryDto) {
+  findAll(@CurrentUser() user: TokenPayload, @Body() query: ResearchNoteQueryDto) {
     return this.noteService.findAll(user.id, query)
   }
 
-  @Get('tags')
+  @Post('tags')
   @ApiOperation({ summary: '获取当前用户使用过的所有标签' })
   getUserTags(@CurrentUser() user: TokenPayload) {
     return this.noteService.getUserTags(user.id)
   }
 
-  @Get('stock/:tsCode')
+  @Post('stock')
   @ApiOperation({ summary: '获取某只股票的所有研究笔记' })
-  findByStock(@CurrentUser() user: TokenPayload, @Param('tsCode') tsCode: string) {
+  findByStock(@CurrentUser() user: TokenPayload, @Body() { tsCode }: { tsCode: string }) {
     return this.noteService.findByStock(user.id, tsCode)
   }
 
-  @Get(':id')
+  @Post('detail')
   @ApiOperation({ summary: '获取单条笔记详情' })
-  findOne(@CurrentUser() user: TokenPayload, @Param('id', ParseIntPipe) id: number) {
+  findOne(@CurrentUser() user: TokenPayload, @Body() { id }: { id: number }) {
     return this.noteService.findOne(user.id, id)
   }
 
@@ -42,19 +42,15 @@ export class ResearchNoteController {
     return this.noteService.create(user.id, dto)
   }
 
-  @Put(':id')
+  @Post('update')
   @ApiOperation({ summary: '更新研究笔记' })
-  update(
-    @CurrentUser() user: TokenPayload,
-    @Param('id', ParseIntPipe) id: number,
-    @Body() dto: UpdateResearchNoteDto,
-  ) {
-    return this.noteService.update(user.id, id, dto)
+  update(@CurrentUser() user: TokenPayload, @Body() dto: UpdateResearchNoteDto & { id: number }) {
+    return this.noteService.update(user.id, dto.id, dto)
   }
 
-  @Delete(':id')
+  @Post('delete')
   @ApiOperation({ summary: '删除研究笔记' })
-  remove(@CurrentUser() user: TokenPayload, @Param('id', ParseIntPipe) id: number) {
+  remove(@CurrentUser() user: TokenPayload, @Body() { id }: { id: number }) {
     return this.noteService.remove(user.id, id)
   }
 }

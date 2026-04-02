@@ -6,7 +6,7 @@
 
 - `.agents/skills/quant-server-collaboration-style/SKILL.md`
 - `.agents/skills/nestjs-best-practices/SKILL.md`
-- `docs/TODO.md`
+- `docs/待办清单.md`
 
 ## 开发与验证原则
 

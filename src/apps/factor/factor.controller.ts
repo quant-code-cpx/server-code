@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Post, Put, UseGuards } from '@nestjs/common'
+import { Body, Controller, Post, UseGuards } from '@nestjs/common'
 import { ApiOperation, ApiTags } from '@nestjs/swagger'
 import { JwtAuthGuard } from 'src/lifecycle/guard/jwt-auth.guard'
 import { CurrentUser } from 'src/common/decorators/current-user.decorator'
@@ -99,22 +99,22 @@ export class FactorController {
     return this.factorService.testCustomFactor(dto)
   }
 
-  @Put('custom/:name')
+  @Post('custom/update')
   @ApiOperation({ summary: '更新自定义因子' })
-  updateCustomFactor(@Param('name') name: string, @Body() dto: UpdateCustomFactorDto) {
-    return this.factorService.updateCustomFactor(name, dto)
+  updateCustomFactor(@Body() dto: UpdateCustomFactorDto & { name: string }) {
+    return this.factorService.updateCustomFactor(dto.name, dto)
   }
 
-  @Delete('custom/:name')
+  @Post('custom/delete')
   @ApiOperation({ summary: '删除自定义因子（同时清除预计算快照）' })
-  deleteCustomFactor(@Param('name') name: string) {
+  deleteCustomFactor(@Body() { name }: { name: string }) {
     return this.factorService.deleteCustomFactor(name)
   }
 
-  @Post('custom/:name/precompute')
+  @Post('custom/precompute')
   @ApiOperation({ summary: '触发单因子预计算' })
-  triggerSinglePrecompute(@Param('name') name: string, @Body() dto: FactorPrecomputeTriggerDto) {
-    return this.factorService.triggerSinglePrecompute(name, dto.tradeDate)
+  triggerSinglePrecompute(@Body() dto: FactorPrecomputeTriggerDto & { name: string }) {
+    return this.factorService.triggerSinglePrecompute(dto.name, dto.tradeDate)
   }
 
   // ── Admin: Precompute (Phase 1) ──────────────────────────────────────────
@@ -131,7 +131,7 @@ export class FactorController {
     return this.factorService.triggerBackfill(dto)
   }
 
-  @Get('admin/precompute/status')
+  @Post('admin/precompute/status')
   @ApiOperation({ summary: '[管理] 查询预计算状态（最新日期、各因子覆盖情况）' })
   getPrecomputeStatus() {
     return this.factorService.getPrecomputeStatus()
@@ -145,10 +145,10 @@ export class FactorController {
     return this.factorService.submitBacktest(dto, user.id)
   }
 
-  @Post('backtest/:id/attribution')
+  @Post('backtest/attribution')
   @ApiOperation({ summary: '因子归因分析（分析回测收益中各因子的贡献）' })
-  attribution(@Param('id') id: string, @Body() dto: FactorAttributionDto) {
-    dto.backtestId = id
+  attribution(@Body() dto: FactorAttributionDto & { id: string }) {
+    dto.backtestId = dto.id
     return this.factorService.attribution(dto)
   }
 

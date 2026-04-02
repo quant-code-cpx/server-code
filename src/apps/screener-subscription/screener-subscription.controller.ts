@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, ParseIntPipe, Post, Put, Query, UseGuards } from '@nestjs/common'
+import { Body, Controller, Post, UseGuards } from '@nestjs/common'
 import { ApiOperation, ApiTags } from '@nestjs/swagger'
 import { JwtAuthGuard } from 'src/lifecycle/guard/jwt-auth.guard'
 import { CurrentUser } from 'src/common/decorators/current-user.decorator'
@@ -12,7 +12,7 @@ import { CreateSubscriptionDto, SubscriptionLogsQueryDto, UpdateSubscriptionDto 
 export class ScreenerSubscriptionController {
   constructor(private readonly subscriptionService: ScreenerSubscriptionService) {}
 
-  @Get()
+  @Post('list')
   @ApiOperation({ summary: '获取用户所有条件订阅' })
   findAll(@CurrentUser() user: TokenPayload) {
     return this.subscriptionService.findAll(user.id)
@@ -24,47 +24,39 @@ export class ScreenerSubscriptionController {
     return this.subscriptionService.create(user.id, dto)
   }
 
-  @Put(':id')
+  @Post('update')
   @ApiOperation({ summary: '更新条件订阅（名称/频率）' })
-  update(
-    @CurrentUser() user: TokenPayload,
-    @Param('id', ParseIntPipe) id: number,
-    @Body() dto: UpdateSubscriptionDto,
-  ) {
-    return this.subscriptionService.update(user.id, id, dto)
+  update(@CurrentUser() user: TokenPayload, @Body() dto: UpdateSubscriptionDto & { id: number }) {
+    return this.subscriptionService.update(user.id, dto.id, dto)
   }
 
-  @Delete(':id')
+  @Post('delete')
   @ApiOperation({ summary: '删除条件订阅' })
-  remove(@CurrentUser() user: TokenPayload, @Param('id', ParseIntPipe) id: number) {
+  remove(@CurrentUser() user: TokenPayload, @Body() { id }: { id: number }) {
     return this.subscriptionService.remove(user.id, id)
   }
 
-  @Post(':id/pause')
+  @Post('pause')
   @ApiOperation({ summary: '暂停订阅' })
-  pause(@CurrentUser() user: TokenPayload, @Param('id', ParseIntPipe) id: number) {
+  pause(@CurrentUser() user: TokenPayload, @Body() { id }: { id: number }) {
     return this.subscriptionService.pause(user.id, id)
   }
 
-  @Post(':id/resume')
+  @Post('resume')
   @ApiOperation({ summary: '恢复订阅' })
-  resume(@CurrentUser() user: TokenPayload, @Param('id', ParseIntPipe) id: number) {
+  resume(@CurrentUser() user: TokenPayload, @Body() { id }: { id: number }) {
     return this.subscriptionService.resume(user.id, id)
   }
 
-  @Post(':id/run')
+  @Post('run')
   @ApiOperation({ summary: '手动触发一次订阅执行' })
-  manualRun(@CurrentUser() user: TokenPayload, @Param('id', ParseIntPipe) id: number) {
+  manualRun(@CurrentUser() user: TokenPayload, @Body() { id }: { id: number }) {
     return this.subscriptionService.manualRun(user.id, id)
   }
 
-  @Get(':id/logs')
+  @Post('logs')
   @ApiOperation({ summary: '获取订阅执行日志' })
-  getLogs(
-    @CurrentUser() user: TokenPayload,
-    @Param('id', ParseIntPipe) id: number,
-    @Query() query: SubscriptionLogsQueryDto,
-  ) {
-    return this.subscriptionService.getLogs(user.id, id, query)
+  getLogs(@CurrentUser() user: TokenPayload, @Body() dto: SubscriptionLogsQueryDto & { id: number }) {
+    return this.subscriptionService.getLogs(user.id, dto.id, dto)
   }
 }

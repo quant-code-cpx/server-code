@@ -1,5 +1,5 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Post, Query, UseGuards } from '@nestjs/common'
-import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger'
+import { Body, Controller, HttpCode, HttpStatus, Post, UseGuards } from '@nestjs/common'
+import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger'
 import { UserRole } from '@prisma/client'
 import { ApiSuccessRawResponse, ApiSuccessResponse } from 'src/common/decorators/api-success-response.decorator'
 import { ResponseModel } from 'src/common/models/response.model'
@@ -21,14 +21,14 @@ export class TushareAdminController {
     private readonly dataQualityService: DataQualityService,
   ) {}
 
-  @Get('plans')
+  @Post('plans')
   @ApiOperation({ summary: '获取可用的 Tushare 同步任务计划（仅超级管理员）' })
   @ApiSuccessResponse(TushareSyncPlanDto, { isArray: true })
   getPlans() {
     return this.tushareSyncService.getAvailableSyncPlans()
   }
 
-  @Get('cache/stats')
+  @Post('cache/stats')
   @ApiOperation({ summary: '获取缓存命中率与当前缓存键统计（仅超级管理员）' })
   @ApiSuccessResponse(CacheMetricsDataDto)
   getCacheStats() {
@@ -57,29 +57,24 @@ export class TushareAdminController {
     return ResponseModel.success({ message: '数据质量检查已提交，请稍后查询结果' })
   }
 
-  @Get('quality/report')
+  @Post('quality/report')
   @ApiOperation({ summary: '查询最近 N 天数据质量检查结果（仅超级管理员）' })
-  @ApiQuery({ name: 'days', required: false, description: '查询天数，默认 7', type: Number })
   @ApiSuccessRawResponse({ type: 'array', items: { type: 'object' } })
-  async getQualityReport(@Query('days') days?: string) {
-    const parsedDays = days ? parseInt(days, 10) : 7
-    return this.dataQualityService.getRecentChecks(parsedDays)
+  async getQualityReport(@Body() dto: { days?: number }) {
+    return this.dataQualityService.getRecentChecks(dto.days ?? 7)
   }
 
-  @Get('quality/gaps')
+  @Post('quality/gaps')
   @ApiOperation({ summary: '查询指定数据集的缺失日期（仅超级管理员）' })
-  @ApiQuery({ name: 'dataSet', required: true, description: '数据集名称，如 daily, stkLimit', type: String })
   @ApiSuccessRawResponse({ type: 'object' })
-  async getDataGaps(@Query('dataSet') dataSet: string) {
-    return this.dataQualityService.getDataGaps(dataSet)
+  async getDataGaps(@Body() dto: { dataSet: string }) {
+    return this.dataQualityService.getDataGaps(dto.dataSet)
   }
 
-  @Get('validation-logs')
+  @Post('validation-logs')
   @ApiOperation({ summary: '查询数据校验异常日志（仅超级管理员）' })
-  @ApiQuery({ name: 'task', required: false, description: '过滤指定任务，如 DAILY', type: String })
-  @ApiQuery({ name: 'limit', required: false, description: '返回条数上限，默认 100', type: Number })
   @ApiSuccessRawResponse({ type: 'array', items: { type: 'object' } })
-  async getValidationLogs(@Query('task') task?: string, @Query('limit') limit?: string) {
-    return this.dataQualityService.getValidationLogs({ task, limit: limit ? parseInt(limit, 10) : undefined })
+  async getValidationLogs(@Body() dto: { task?: string; limit?: number }) {
+    return this.dataQualityService.getValidationLogs({ task: dto.task, limit: dto.limit })
   }
 }

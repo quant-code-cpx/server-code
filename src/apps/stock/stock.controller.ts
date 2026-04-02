@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, ParseIntPipe, Post, Put } from '@nestjs/common'
+import { Body, Controller, Post } from '@nestjs/common'
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger'
 import { StockService } from './stock.service'
 import { StockAnalysisService } from './stock-analysis.service'
@@ -206,7 +206,7 @@ export class StockController {
     return this.stockService.getScreenerPresets()
   }
 
-  @Get('screener/strategies')
+  @Post('screener/strategies/list')
   @ApiBearerAuth()
   @ApiOperation({ summary: '选股器 - 获取当前用户自定义策略列表' })
   @ApiSuccessResponse(ScreenerStrategyListDataDto)
@@ -222,34 +222,33 @@ export class StockController {
     return this.stockService.createStrategy(currentUser.id, dto)
   }
 
-  @Put('screener/strategies/:id')
+  @Post('screener/strategies/update')
   @ApiBearerAuth()
   @ApiOperation({ summary: '选股器 - 更新自定义策略' })
   @ApiSuccessResponse(ScreenerStrategyDataDto)
   updateScreenerStrategy(
     @CurrentUser() currentUser: TokenPayload,
-    @Param('id', ParseIntPipe) id: number,
-    @Body() dto: UpdateScreenerStrategyDto,
+    @Body() dto: UpdateScreenerStrategyDto & { id: number },
   ) {
-    return this.stockService.updateStrategy(currentUser.id, id, dto)
+    return this.stockService.updateStrategy(currentUser.id, dto.id, dto)
   }
 
-  @Delete('screener/strategies/:id')
+  @Post('screener/strategies/delete')
   @ApiBearerAuth()
   @ApiOperation({ summary: '选股器 - 删除自定义策略' })
   @ApiSuccessResponse(ScreenerStrategyDeleteDataDto)
-  deleteScreenerStrategy(@CurrentUser() currentUser: TokenPayload, @Param('id', ParseIntPipe) id: number) {
+  deleteScreenerStrategy(@CurrentUser() currentUser: TokenPayload, @Body() { id }: { id: number }) {
     return this.stockService.deleteStrategy(currentUser.id, id)
   }
 
-  @Get('industries')
+  @Post('industries')
   @ApiOperation({ summary: '行业列表（含股票数量，按数量降序）' })
   @ApiSuccessResponse(IndustryListDataDto)
   getIndustries() {
     return this.stockService.getIndustries()
   }
 
-  @Get('areas')
+  @Post('areas')
   @ApiOperation({ summary: '地域列表（含股票数量，按数量降序）' })
   @ApiSuccessResponse(AreaListDataDto)
   getAreas() {

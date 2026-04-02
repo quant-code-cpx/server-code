@@ -1,6 +1,6 @@
 ---
 name: quant-server-collaboration-style
-description: '适用于本量化交易 NestJS 后端（Prisma、Docker、Redis、Tushare sync）开发；use when working on tushare sync, prisma schema, docker startup, nestjs refactor。固化用户偏好：自动化启动与迁移、尽量少让用户手动跑终端、必须做编译/日志/运行验证、依据 Tushare 文档与真实返回修正 schema、保留全量同步并处理频控、避免泄露个人绝对路径、保持同步模块按分类与 plan-driven 架构扩展。'
+description: '适用于本量化交易 NestJS 后端（Prisma、Docker、Redis、Tushare sync）开发；use when working on tushare sync, prisma schema, docker startup, nestjs refactor, docs。固化用户偏好：自动化启动与迁移、尽量少让用户手动跑终端、必须做编译/日志/运行验证、依据 Tushare 文档与真实返回修正 schema、保留全量同步并处理频控、避免泄露个人绝对路径、保持同步模块按分类与 plan-driven 架构扩展、docs 文件除 README 外一律中文命名。'
 argument-hint: '可选关注点，例如：tushare sync、docker 启动、prisma schema、重构风格'
 ---
 
@@ -63,19 +63,38 @@ argument-hint: '可选关注点，例如：tushare sync、docker 启动、prisma
 - 状态标记规范：✅ 已实现 / 🔧 待实现 / 📋 需求稿 / 🗓️ 规划中。
 - 删除文档时，同步从 `docs/README.md` 移除对应条目。
 
-### 7. 以长期可维护性为目标
+### 7. docs/ 文件一律使用中文命名
+
+- 除 `README.md` 外，所有文档文件名必须使用中文。
+- 命名格式：`<模块名>-后端设计.md`（功能设计）、`<模块名>-需求.md`（需求稿）。
+- 文档内容也应以中文撰写。
+- 如需引用其他文档，使用中文文件名引用。
+
+### 8. 以长期可维护性为目标
 
 - 不要让单个同步服务膨胀成上千行文件。
 - Tushare 同步应尽量按照官方文档分类拆分。
 - 顶层编排优先采用配置驱动或 plan-driven 方式，这样以后新增数据集时不必频繁修改总控。
 - 公共同步工具逻辑放在 support 层，分类服务保持单一职责。
 
-### 8. 采用小步、可回退的改动方式
+### 9. 采用小步、可回退的改动方式
 
 - 优先做小而可验证的修改，而不是大面积重写。
 - 除非确有必要，尽量保持现有 API 和代码风格稳定。
 - 每完成一个逻辑步骤就验证一次，再继续深入。
 - 如果重构跨越多个 service，要同时确认编译与运行时行为。
+
+### 10. 所有 Controller 端点统一使用 POST
+
+- 本项目所有 NestJS Controller 端点**必须**使用 `@Post` 装饰器，禁止使用 `@Get`、`@Put`、`@Patch`、`@Delete`。
+- 此规则适用于全部功能模块（Auth 模块的登录/登出等已有 `@Post` 端点，无需变动）。
+- 查询参数一律通过请求 Body 传递（使用 `@Body()` DTO），禁止使用 `@Query()` 装饰器。
+- 资源 ID 可保留在 URL 路径参数中（`@Param()`），路径结构仍可反映资源层级。
+- 路径冲突处理规范：
+  - 列表查询端点（原 GET `/resource`）改为 `POST /resource/list`
+  - 更新端点（原 PUT `/:id`）保持 `POST /:id`；若与列表/详情路径冲突则追加 `/update`
+  - 删除端点（原 DELETE `/:id`）改为 `POST /:id/delete`
+  - 原 GET `/:id`（详情）改为 `POST /:id`，此时 PUT → `POST /:id/update`
 
 ## 推荐工作流程
 

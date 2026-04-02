@@ -21,6 +21,7 @@ import { WatchlistModule } from './apps/watchlist/watchlist.module'
 import { ResearchNoteModule } from './apps/research-note/research-note.module'
 import { ScreenerSubscriptionModule } from './apps/screener-subscription/screener-subscription.module'
 import { StrategyDraftModule } from './apps/strategy-draft/strategy-draft.module'
+import { IndexModule } from './apps/index/index.module'
 
 @Module({
   imports: [
@@ -53,6 +54,7 @@ import { StrategyDraftModule } from './apps/strategy-draft/strategy-draft.module
     UserModule,
     StockModule,
     MarketModule,
+    IndexModule,
     HeatmapModule,
     TushareAdminModule,
     FactorModule,

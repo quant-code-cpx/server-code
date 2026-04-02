@@ -1,10 +1,4 @@
-import {
-  BadRequestException,
-  ConflictException,
-  Injectable,
-  Logger,
-  NotFoundException,
-} from '@nestjs/common'
+import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common'
 import type { Prisma } from '@prisma/client'
 import { PrismaService } from 'src/shared/prisma.service'
 import { CacheService } from 'src/shared/cache.service'
@@ -18,9 +12,13 @@ import {
   UpdateWatchlistDto,
   UpdateWatchlistStockDto,
 } from './dto/watchlist.dto'
-import { MAX_STOCKS_PER_WATCHLIST, WATCHLIST_CACHE_TTL, WATCHLIST_QUOTE_CACHE_TTL } from './constants/watchlist.constant'
+import {
+  MAX_STOCKS_PER_WATCHLIST,
+  WATCHLIST_CACHE_TTL,
+  WATCHLIST_QUOTE_CACHE_TTL,
+} from './constants/watchlist.constant'
 
-interface StockQuote {
+export interface StockQuote {
   close: number | null
   pctChg: number | null
   vol: number | null
@@ -155,12 +153,19 @@ export class WatchlistService {
 
     try {
       const stock = await this.prisma.watchlistStock.create({
-        data: { watchlistId, tsCode: dto.tsCode, notes: dto.notes ?? null, tags: dto.tags ?? [], targetPrice: dto.targetPrice ?? null },
+        data: {
+          watchlistId,
+          tsCode: dto.tsCode,
+          notes: dto.notes ?? null,
+          tags: dto.tags ?? [],
+          targetPrice: dto.targetPrice ?? null,
+        },
       })
       await this.invalidateWatchlistCache(userId, watchlistId)
       return stock
     } catch (e: unknown) {
-      if ((e as Prisma.PrismaClientKnownRequestError).code === 'P2002') throw new ConflictException('该股票已在自选组中')
+      if ((e as Prisma.PrismaClientKnownRequestError).code === 'P2002')
+        throw new ConflictException('该股票已在自选组中')
       throw e
     }
   }
@@ -171,7 +176,9 @@ export class WatchlistService {
 
     const currentCount = await this.prisma.watchlistStock.count({ where: { watchlistId } })
     if (currentCount + dto.stocks.length > MAX_STOCKS_PER_WATCHLIST) {
-      throw new BadRequestException(`超出上限：当前 ${currentCount} 只，本次添加 ${dto.stocks.length} 只，上限 ${MAX_STOCKS_PER_WATCHLIST}`)
+      throw new BadRequestException(
+        `超出上限：当前 ${currentCount} 只，本次添加 ${dto.stocks.length} 只，上限 ${MAX_STOCKS_PER_WATCHLIST}`,
+      )
     }
 
     const result = await this.prisma.watchlistStock.createMany({
@@ -314,7 +321,7 @@ export class WatchlistService {
       `
 
       for (const r of rows) {
-        const d = r.trade_date instanceof Date ? r.trade_date : (r.trade_date ? new Date(r.trade_date) : null)
+        const d = r.trade_date instanceof Date ? r.trade_date : r.trade_date ? new Date(r.trade_date) : null
         map.set(r.ts_code, {
           close: r.close,
           pctChg: r.pct_chg,
@@ -323,7 +330,9 @@ export class WatchlistService {
           pe: r.pe_ttm,
           pb: r.pb,
           totalMv: r.total_mv,
-          tradeDate: d ? `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}` : null,
+          tradeDate: d
+            ? `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`
+            : null,
         })
       }
     } catch (err) {

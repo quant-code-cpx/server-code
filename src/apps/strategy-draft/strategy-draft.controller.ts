@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, ParseIntPipe, Post, Put, UseGuards } from '@nestjs/common'
+import { Body, Controller, Post, UseGuards } from '@nestjs/common'
 import { ApiOperation, ApiTags } from '@nestjs/swagger'
 import { JwtAuthGuard } from 'src/lifecycle/guard/jwt-auth.guard'
 import { CurrentUser } from 'src/common/decorators/current-user.decorator'
@@ -12,15 +12,15 @@ import { CreateStrategyDraftDto, SubmitDraftDto, UpdateStrategyDraftDto } from '
 export class StrategyDraftController {
   constructor(private readonly draftService: StrategyDraftService) {}
 
-  @Get()
+  @Post('list')
   @ApiOperation({ summary: '获取用户所有草稿（按更新时间倒序）' })
   getDrafts(@CurrentUser() user: TokenPayload) {
     return this.draftService.getDrafts(user.id)
   }
 
-  @Get(':id')
+  @Post('detail')
   @ApiOperation({ summary: '获取单个草稿详情' })
-  getDraft(@CurrentUser() user: TokenPayload, @Param('id', ParseIntPipe) id: number) {
+  getDraft(@CurrentUser() user: TokenPayload, @Body() { id }: { id: number }) {
     return this.draftService.getDraft(user.id, id)
   }
 
@@ -30,29 +30,21 @@ export class StrategyDraftController {
     return this.draftService.createDraft(user.id, dto)
   }
 
-  @Put(':id')
+  @Post('update')
   @ApiOperation({ summary: '更新草稿（前端自动保存调用此接口）' })
-  updateDraft(
-    @CurrentUser() user: TokenPayload,
-    @Param('id', ParseIntPipe) id: number,
-    @Body() dto: UpdateStrategyDraftDto,
-  ) {
-    return this.draftService.updateDraft(user.id, id, dto)
+  updateDraft(@CurrentUser() user: TokenPayload, @Body() dto: UpdateStrategyDraftDto & { id: number }) {
+    return this.draftService.updateDraft(user.id, dto.id, dto)
   }
 
-  @Delete(':id')
+  @Post('delete')
   @ApiOperation({ summary: '删除草稿' })
-  deleteDraft(@CurrentUser() user: TokenPayload, @Param('id', ParseIntPipe) id: number) {
+  deleteDraft(@CurrentUser() user: TokenPayload, @Body() { id }: { id: number }) {
     return this.draftService.deleteDraft(user.id, id)
   }
 
-  @Post(':id/submit')
+  @Post('submit')
   @ApiOperation({ summary: '从草稿提交回测任务' })
-  submitDraft(
-    @CurrentUser() user: TokenPayload,
-    @Param('id', ParseIntPipe) id: number,
-    @Body() dto: SubmitDraftDto,
-  ) {
-    return this.draftService.submitDraft(user.id, id, dto)
+  submitDraft(@CurrentUser() user: TokenPayload, @Body() dto: SubmitDraftDto & { id: number }) {
+    return this.draftService.submitDraft(user.id, dto.id, dto)
   }
 }

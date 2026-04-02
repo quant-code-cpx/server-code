@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common'
+import { Body, Controller, Post, UseGuards } from '@nestjs/common'
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger'
 import { JwtAuthGuard } from 'src/lifecycle/guard/jwt-auth.guard'
 import { CurrentUser } from 'src/common/decorators/current-user.decorator'
@@ -14,8 +14,19 @@ import { ValidateBacktestRunDto } from './dto/backtest-validate.dto'
 import { ListBacktestRunsDto } from './dto/list-backtest-runs.dto'
 import { BacktestTradeQueryDto } from './dto/backtest-trade-query.dto'
 import { BacktestPositionQueryDto } from './dto/backtest-position-query.dto'
-import { CreateWalkForwardRunDto, CreateWalkForwardRunResponseDto, WalkForwardEquityDto, WalkForwardRunDetailDto, WalkForwardRunListDto } from './dto/walk-forward.dto'
-import { BacktestComparisonEquityDto, BacktestComparisonGroupDetailDto, CreateBacktestComparisonDto, CreateBacktestComparisonResponseDto } from './dto/backtest-comparison.dto'
+import {
+  CreateWalkForwardRunDto,
+  CreateWalkForwardRunResponseDto,
+  WalkForwardEquityDto,
+  WalkForwardRunDetailDto,
+  WalkForwardRunListDto,
+} from './dto/walk-forward.dto'
+import {
+  BacktestComparisonEquityDto,
+  BacktestComparisonGroupDetailDto,
+  CreateBacktestComparisonDto,
+  CreateBacktestComparisonResponseDto,
+} from './dto/backtest-comparison.dto'
 import { CreateRollingBacktestDto } from './dto/rolling-backtest.dto'
 import { RunMonteCarloDto, MonteCarloResultDto } from './dto/monte-carlo.dto'
 import {
@@ -43,7 +54,7 @@ export class BacktestController {
     private readonly monteCarloService: BacktestMonteCarloService,
   ) {}
 
-  @Get('strategy-templates')
+  @Post('strategy-templates')
   @ApiOperation({ summary: '获取内置策略模板列表' })
   @ApiSuccessResponse(StrategyTemplateListResponseDto)
   getStrategyTemplates() {
@@ -64,53 +75,53 @@ export class BacktestController {
     return this.runService.createRun(dto, user.id)
   }
 
-  @Get('runs')
+  @Post('runs/list')
   @ApiOperation({ summary: '查询回测历史列表' })
   @ApiSuccessResponse(BacktestRunListResponseDto)
-  listRuns(@Query() dto: ListBacktestRunsDto, @CurrentUser() user: TokenPayload) {
+  listRuns(@Body() dto: ListBacktestRunsDto, @CurrentUser() user: TokenPayload) {
     return this.runService.listRuns(dto, user.id)
   }
 
-  @Get('runs/:runId')
+  @Post('runs/detail')
   @ApiOperation({ summary: '获取回测详情' })
   @ApiSuccessResponse(BacktestRunDetailResponseDto)
-  getRunDetail(@Param('runId') runId: string) {
+  getRunDetail(@Body() { runId }: { runId: string }) {
     return this.runService.getRunDetail(runId)
   }
 
-  @Get('runs/:runId/equity')
+  @Post('runs/equity')
   @ApiOperation({ summary: '获取日度净值曲线' })
   @ApiSuccessResponse(BacktestEquityResponseDto)
-  getEquity(@Param('runId') runId: string) {
+  getEquity(@Body() { runId }: { runId: string }) {
     return this.runService.getEquity(runId)
   }
 
-  @Get('runs/:runId/trades')
+  @Post('runs/trades')
   @ApiOperation({ summary: '分页查询交易明细' })
   @ApiSuccessResponse(BacktestTradeListResponseDto)
-  getTrades(@Param('runId') runId: string, @Query() dto: BacktestTradeQueryDto) {
-    return this.runService.getTrades(runId, dto)
+  getTrades(@Body() dto: BacktestTradeQueryDto & { runId: string }) {
+    return this.runService.getTrades(dto.runId, dto)
   }
 
-  @Get('runs/:runId/positions')
+  @Post('runs/positions')
   @ApiOperation({ summary: '查询持仓快照' })
   @ApiSuccessResponse(BacktestPositionResponseDto)
-  getPositions(@Param('runId') runId: string, @Query() dto: BacktestPositionQueryDto) {
-    return this.runService.getPositions(runId, dto)
+  getPositions(@Body() dto: BacktestPositionQueryDto & { runId: string }) {
+    return this.runService.getPositions(dto.runId, dto)
   }
 
-  @Post('runs/:runId/cancel')
+  @Post('runs/cancel')
   @ApiOperation({ summary: '取消回测任务' })
   @ApiSuccessResponse(CancelBacktestRunResponseDto)
-  cancelRun(@Param('runId') runId: string) {
+  cancelRun(@Body() { runId }: { runId: string }) {
     return this.runService.cancelRun(runId)
   }
 
-  @Post('runs/:runId/monte-carlo')
+  @Post('runs/monte-carlo')
   @ApiOperation({ summary: '对已完成回测运行蒙特卡洛模拟' })
   @ApiSuccessResponse(MonteCarloResultDto)
-  runMonteCarlo(@Param('runId') runId: string, @Body() dto: RunMonteCarloDto) {
-    return this.monteCarloService.runMonteCarloSimulation(runId, dto)
+  runMonteCarlo(@Body() dto: RunMonteCarloDto & { runId: string }) {
+    return this.monteCarloService.runMonteCarloSimulation(dto.runId, dto)
   }
 
   // ── Walk-Forward ────────────────────────────────────────────────────────────
@@ -122,28 +133,24 @@ export class BacktestController {
     return this.walkForwardService.createWalkForwardRun(dto, user.id)
   }
 
-  @Get('walk-forward/runs')
+  @Post('walk-forward/runs/list')
   @ApiOperation({ summary: 'Walk-Forward 验证列表（分页）' })
   @ApiSuccessResponse(WalkForwardRunListDto)
-  listWalkForwardRuns(
-    @Query('page') page: number,
-    @Query('pageSize') pageSize: number,
-    @CurrentUser() user: TokenPayload,
-  ) {
-    return this.walkForwardService.listWalkForwardRuns(user.id, page, pageSize)
+  listWalkForwardRuns(@Body() dto: { page?: number; pageSize?: number }, @CurrentUser() user: TokenPayload) {
+    return this.walkForwardService.listWalkForwardRuns(user.id, dto.page, dto.pageSize)
   }
 
-  @Get('walk-forward/runs/:wfRunId')
+  @Post('walk-forward/runs/detail')
   @ApiOperation({ summary: 'Walk-Forward 验证详情（含各窗口 IS/OOS 指标）' })
   @ApiSuccessResponse(WalkForwardRunDetailDto)
-  getWalkForwardRunDetail(@Param('wfRunId') wfRunId: string) {
+  getWalkForwardRunDetail(@Body() { wfRunId }: { wfRunId: string }) {
     return this.walkForwardService.getWalkForwardRunDetail(wfRunId)
   }
 
-  @Get('walk-forward/runs/:wfRunId/equity')
-  @ApiOperation({ summary: '拼接后的 OOS 净值曲线' })
+  @Post('walk-forward/runs/equity')
+  @ApiOperation({ summary: '拼接后的 OOS 净値曲线' })
   @ApiSuccessResponse(WalkForwardEquityDto)
-  getWalkForwardEquity(@Param('wfRunId') wfRunId: string) {
+  getWalkForwardEquity(@Body() { wfRunId }: { wfRunId: string }) {
     return this.walkForwardService.getWalkForwardEquity(wfRunId)
   }
 
@@ -156,17 +163,17 @@ export class BacktestController {
     return this.comparisonService.createComparison(dto, user.id)
   }
 
-  @Get('comparisons/:groupId')
+  @Post('comparisons/detail')
   @ApiOperation({ summary: '获取对比组详情（含各策略指标对比）' })
   @ApiSuccessResponse(BacktestComparisonGroupDetailDto)
-  getComparisonDetail(@Param('groupId') groupId: string) {
+  getComparisonDetail(@Body() { groupId }: { groupId: string }) {
     return this.comparisonService.getComparisonDetail(groupId)
   }
 
-  @Get('comparisons/:groupId/equity')
-  @ApiOperation({ summary: '所有策略的净值曲线叠加数据' })
+  @Post('comparisons/equity')
+  @ApiOperation({ summary: '所有策略的净値曲线叠加数据' })
   @ApiSuccessResponse(BacktestComparisonEquityDto)
-  getComparisonEquity(@Param('groupId') groupId: string) {
+  getComparisonEquity(@Body() { groupId }: { groupId: string }) {
     return this.comparisonService.getComparisonEquity(groupId)
   }
 

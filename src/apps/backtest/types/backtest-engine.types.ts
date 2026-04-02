@@ -1,4 +1,4 @@
-export type BacktestStrategyType = 'MA_CROSS_SINGLE' | 'SCREENING_ROTATION' | 'FACTOR_RANKING' | 'CUSTOM_POOL_REBALANCE'
+export type BacktestStrategyType = 'MA_CROSS_SINGLE' | 'SCREENING_ROTATION' | 'FACTOR_RANKING' | 'CUSTOM_POOL_REBALANCE' | 'FACTOR_SCREENING_ROTATION'
 export type BacktestStatus = 'QUEUED' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'CANCELLED'
 export type PriceMode = 'NEXT_OPEN' | 'NEXT_CLOSE'
 export type RebalanceFrequency = 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'QUARTERLY'
@@ -74,11 +74,30 @@ export interface CustomPoolRebalanceStrategyConfig {
   customWeights?: CustomPoolWeight[]
 }
 
+/** Factor screening rotation strategy (from factor module) */
+export interface FactorScreeningCondition {
+  factorName: string
+  operator: 'gt' | 'gte' | 'lt' | 'lte' | 'between' | 'top_pct' | 'bottom_pct'
+  value?: number
+  min?: number
+  max?: number
+  percent?: number
+}
+
+export interface FactorScreeningRotationStrategyConfig {
+  conditions: FactorScreeningCondition[]
+  sortBy?: string
+  sortOrder?: StrategyRankOrder
+  topN?: number
+  weightMethod?: 'equal_weight' | 'factor_weight'
+}
+
 export interface BacktestStrategyConfigMap {
   MA_CROSS_SINGLE: MaCrossSingleStrategyConfig
   SCREENING_ROTATION: ScreeningRotationStrategyConfig
   FACTOR_RANKING: FactorRankingStrategyConfig
   CUSTOM_POOL_REBALANCE: CustomPoolRebalanceStrategyConfig
+  FACTOR_SCREENING_ROTATION: FactorScreeningRotationStrategyConfig
 }
 
 export type BacktestStrategyConfig = BacktestStrategyConfigMap[BacktestStrategyType]

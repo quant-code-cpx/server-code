@@ -17,6 +17,10 @@ import { WebsocketModule } from './websocket/websocket.module'
 import { JwtAuthGuard } from './lifecycle/guard/jwt-auth.guard'
 import { TushareModule } from './tushare/tushare.module'
 import { BacktestModule } from './apps/backtest/backtest.module'
+import { WatchlistModule } from './apps/watchlist/watchlist.module'
+import { ResearchNoteModule } from './apps/research-note/research-note.module'
+import { ScreenerSubscriptionModule } from './apps/screener-subscription/screener-subscription.module'
+import { StrategyDraftModule } from './apps/strategy-draft/strategy-draft.module'
 
 @Module({
   imports: [
@@ -53,6 +57,10 @@ import { BacktestModule } from './apps/backtest/backtest.module'
     TushareAdminModule,
     FactorModule,
     BacktestModule,
+    WatchlistModule,
+    ResearchNoteModule,
+    ScreenerSubscriptionModule,
+    StrategyDraftModule,
 
     // ── 队列模块（BullMQ 回测任务） ──
     QueueModule,

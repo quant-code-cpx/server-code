@@ -1,0 +1,62 @@
+/// 订阅执行频率
+enum SubscriptionFrequency {
+  DAILY
+  WEEKLY
+  MONTHLY
+
+  @@map("subscription_frequency")
+}
+
+/// 订阅状态
+enum SubscriptionStatus {
+  ACTIVE
+  PAUSED
+  ERROR
+
+  @@map("subscription_status")
+}
+
+/// 条件订阅
+model ScreenerSubscription {
+  id               Int                   @id @default(autoincrement())
+  userId           Int                   @map("user_id")
+  name             String                @db.VarChar(50)
+  strategyId       Int?                  @map("strategy_id")
+  filters          Json                  @db.JsonB
+  sortBy           String?               @map("sort_by") @db.VarChar(30)
+  sortOrder        String?               @map("sort_order") @db.VarChar(4)
+  frequency        SubscriptionFrequency @default(DAILY)
+  status           SubscriptionStatus    @default(ACTIVE)
+  lastRunAt        DateTime?             @map("last_run_at")
+  lastRunResult    Json?                 @map("last_run_result") @db.JsonB
+  lastMatchCodes   String[]              @default([]) @map("last_match_codes")
+  consecutiveFails Int                   @default(0) @map("consecutive_fails")
+  createdAt        DateTime              @default(now()) @map("created_at")
+  updatedAt        DateTime              @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("screener_subscriptions")
+  @@index([userId])
+  @@index([status, frequency])
+}
+
+/// 订阅执行日志
+model ScreenerSubscriptionLog {
+  id             Int      @id @default(autoincrement())
+  subscriptionId Int      @map("subscription_id")
+  tradeDate      String   @map("trade_date") @db.VarChar(8)
+  matchCount     Int      @map("match_count")
+  newEntryCount  Int      @map("new_entry_count")
+  exitCount      Int      @map("exit_count")
+  newEntryCodes  String[] @default([]) @map("new_entry_codes")
+  exitCodes      String[] @default([]) @map("exit_codes")
+  executionMs    Int      @map("execution_ms")
+  success        Boolean  @default(true)
+  errorMessage   String?  @map("error_message") @db.Text
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@map("screener_subscription_logs")
+  @@index([subscriptionId, createdAt(sort: Desc)])
+  @@index([subscriptionId, tradeDate])
+}

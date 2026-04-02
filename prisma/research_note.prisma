@@ -1,0 +1,19 @@
+/// 研究笔记
+model ResearchNote {
+  id        Int       @id @default(autoincrement())
+  userId    Int       @map("user_id")
+  tsCode    String?   @map("ts_code") @db.VarChar(16)
+  title     String    @db.VarChar(100)
+  content   String    @db.Text
+  tags      String[]  @default([])
+  isPinned  Boolean   @default(false) @map("is_pinned")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("research_notes")
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([userId, tsCode])
+  @@index([userId, isPinned])
+}

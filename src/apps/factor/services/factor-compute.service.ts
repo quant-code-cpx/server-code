@@ -1,9 +1,10 @@
-import { Injectable, NotFoundException } from '@nestjs/common'
+import { Injectable, Logger, NotFoundException } from '@nestjs/common'
 import { FactorSourceType } from '@prisma/client'
 import { Prisma } from '@prisma/client'
 import { PrismaService } from 'src/shared/prisma.service'
 import { FactorValuesQueryDto } from '../dto/factor-values.dto'
 import { FactorFieldMapping, FactorValueItem, FactorValueSummary } from '../types/factor.types'
+import { FactorExpressionService } from './factor-expression.service'
 
 /** Days after IPO to exclude new listings from factor analysis */
 const NEW_LISTING_EXCLUSION_DAYS = 60
@@ -69,13 +70,29 @@ interface StatsRow {
 
 @Injectable()
 export class FactorComputeService {
-  constructor(private readonly prisma: PrismaService) {}
+  private readonly logger = new Logger(FactorComputeService.name)
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly expressionSvc: FactorExpressionService,
+  ) {}
+
+  // ── Snapshot-aware public entry points ───────────────────────────────────
 
   async getFactorValues(dto: FactorValuesQueryDto, factorSourceType: FactorSourceType, factorName: string) {
     const page = dto.page ?? 1
     const pageSize = dto.pageSize ?? 50
     const sortDir = dto.sortOrder === 'asc' ? 'ASC' : 'DESC'
     const offset = (page - 1) * pageSize
+
+    // 1. Try precomputed snapshot first (fast path)
+    const snapshotResult = await this.getFactorValuesFromSnapshot(dto, factorName, page, pageSize, offset, sortDir)
+    if (snapshotResult !== null) {
+      return snapshotResult
+    }
+
+    // 2. Fallback to realtime computation
+    this.logger.debug(`[${factorName}] ${dto.tradeDate} 无预计算快照，降级实时计算`)
 
     // Determine which query strategy to use
     if (FIELD_REF_MAP[factorName]) {
@@ -88,7 +105,216 @@ export class FactorComputeService {
       return this.getDerivedMoneyflowValues(dto, factorName, page, pageSize, offset, sortDir)
     }
 
+    // CUSTOM_SQL: load expression from DB and compile
+    if (factorSourceType === FactorSourceType.CUSTOM_SQL) {
+      return this.getCustomSqlValues(dto, factorName, page, pageSize, offset, sortDir)
+    }
+
     throw new NotFoundException(`因子 "${factorName}" 的计算逻辑尚未实现（复杂派生因子需要时序窗口）`)
+  }
+
+  // ── CUSTOM_SQL factor compute ─────────────────────────────────────────────
+
+  private buildUniverseJoinStr(universe: string | undefined, tradeDate: string, alias: string): string {
+    if (!universe) return ''
+    // Validate inputs to prevent SQL injection (DTO validates format, but assert here for safety)
+    if (!/^\d{6}\.\w{2}$/.test(universe)) throw new Error('Invalid universe format')
+    if (!/^\d{8}$/.test(tradeDate)) throw new Error('Invalid tradeDate format')
+    return `INNER JOIN index_constituent_weights iw
+  ON iw.con_code = ${alias}.ts_code
+  AND iw.index_code = '${universe}'
+  AND iw.trade_date = (
+    SELECT MAX(trade_date) FROM index_constituent_weights
+    WHERE index_code = '${universe}' AND trade_date <= '${tradeDate}'
+  )`
+  }
+
+  private async getCustomSqlValues(
+    dto: FactorValuesQueryDto,
+    factorName: string,
+    page: number,
+    pageSize: number,
+    offset: number,
+    sortDir: string,
+  ) {
+    const factor = await this.prisma.factorDefinition.findUnique({ where: { name: factorName } })
+    if (!factor?.expression) throw new NotFoundException(`因子 "${factorName}" 未配置表达式`)
+
+    const tradeDate = dto.tradeDate
+    const ast = this.expressionSvc.parse(factor.expression)
+    const compiled = this.expressionSvc.compile(ast, tradeDate)
+    const universeJoinStr = this.buildUniverseJoinStr(dto.universe, tradeDate, 'db')
+
+    interface FactorRow {
+      ts_code: string
+      stock_name: string | null
+      industry: string | null
+      factor_value: number | null
+      percentile: number | null
+    }
+    interface StatsRow {
+      cnt: number | bigint
+      missing: number | bigint
+      mean_val: number | null
+      median_val: number | null
+      std_val: number | null
+      min_val: number | null
+      max_val: number | null
+      q25_val: number | null
+      q75_val: number | null
+    }
+
+    const pagedSql = this.expressionSvc.buildPagedQuery(compiled, tradeDate, universeJoinStr, pageSize, offset, sortDir as 'ASC' | 'DESC')
+    const statsSql = this.expressionSvc.buildStatsQuery(compiled, tradeDate, universeJoinStr)
+
+    const [rows, statsRows] = await Promise.all([
+      this.prisma.$queryRawUnsafe<FactorRow[]>(pagedSql),
+      this.prisma.$queryRawUnsafe<StatsRow[]>(statsSql),
+    ])
+
+    const items: FactorValueItem[] = rows.map((r) => ({
+      tsCode: r.ts_code,
+      name: r.stock_name,
+      industry: r.industry,
+      value: r.factor_value != null ? Number(r.factor_value) : null,
+      percentile: r.percentile != null ? Number(r.percentile) : null,
+    }))
+
+    const stats = statsRows[0]
+    const summary: FactorValueSummary = {
+      count: stats ? Number(stats.cnt) : 0,
+      missing: stats ? Number(stats.missing) : 0,
+      mean: stats?.mean_val != null ? Number(stats.mean_val) : null,
+      median: stats?.median_val != null ? Number(stats.median_val) : null,
+      stdDev: stats?.std_val != null ? Number(stats.std_val) : null,
+      min: stats?.min_val != null ? Number(stats.min_val) : null,
+      max: stats?.max_val != null ? Number(stats.max_val) : null,
+      q25: stats?.q25_val != null ? Number(stats.q25_val) : null,
+      q75: stats?.q75_val != null ? Number(stats.q75_val) : null,
+    }
+
+    return {
+      factorName,
+      tradeDate,
+      universe: dto.universe ?? null,
+      total: summary.count,
+      page,
+      pageSize,
+      items,
+      summary,
+    }
+  }
+
+  /**
+   * Compute CUSTOM_SQL factor raw values for a date, without pagination.
+   * Used by FactorPrecomputeService and FactorCustomService.test.
+   */
+  async computeCustomSqlForDate(
+    expression: string,
+    tradeDate: string,
+    universe?: string,
+  ): Promise<Array<{ tsCode: string; factorValue: number | null }>> {
+    interface RawRow {
+      ts_code: string
+      factor_value: number | null
+    }
+
+    const ast = this.expressionSvc.parse(expression)
+    const compiled = this.expressionSvc.compile(ast, tradeDate)
+    const universeJoinStr = this.buildUniverseJoinStr(universe, tradeDate, 'db')
+    const sql = this.expressionSvc.buildRawQuery(compiled, tradeDate, universeJoinStr)
+
+    const rows = await this.prisma.$queryRawUnsafe<RawRow[]>(sql)
+    return rows.map((r) => ({
+      tsCode: r.ts_code,
+      factorValue: r.factor_value != null ? Number(r.factor_value) : null,
+    }))
+  }
+
+  /**
+   * Try to serve factor values page from precomputed snapshot table.
+   * Returns null if no snapshot data exists for the requested (factorName, tradeDate).
+   */
+  private async getFactorValuesFromSnapshot(
+    dto: FactorValuesQueryDto,
+    factorName: string,
+    page: number,
+    pageSize: number,
+    offset: number,
+    sortDir: string,
+  ) {
+    interface SnapshotRow {
+      ts_code: string
+      stock_name: string | null
+      industry: string | null
+      factor_value: number | null
+      percentile: number | null
+    }
+
+    const tradeDate = dto.tradeDate
+
+    const universeJoin = dto.universe
+      ? Prisma.sql`INNER JOIN index_constituent_weights iw
+          ON iw.con_code = fs.ts_code
+          AND iw.index_code = ${dto.universe}
+          AND iw.trade_date = (
+            SELECT MAX(trade_date) FROM index_constituent_weights
+            WHERE index_code = ${dto.universe} AND trade_date <= ${tradeDate}
+          )`
+      : Prisma.sql``
+
+    // Check if snapshot exists for this (factorName, tradeDate) without universe filter
+    const summaryCheck = await this.prisma.factorSnapshotSummary.findUnique({
+      where: { factorName_tradeDate: { factorName, tradeDate } },
+    })
+    if (!summaryCheck) return null
+
+    const rows = await this.prisma.$queryRaw<SnapshotRow[]>(Prisma.sql`
+      SELECT
+        fs.ts_code,
+        sb.name AS stock_name,
+        sb.industry,
+        fs.value::float AS factor_value,
+        fs.percentile::float AS percentile
+      FROM factor_snapshots fs
+      INNER JOIN stock_basic_profiles sb ON sb.ts_code = fs.ts_code
+      ${universeJoin}
+      WHERE fs.factor_name = ${factorName}
+        AND fs.trade_date = ${tradeDate}
+      ORDER BY fs.value ${Prisma.raw(sortDir)} NULLS LAST
+      LIMIT ${pageSize} OFFSET ${offset}
+    `)
+
+    const items: FactorValueItem[] = rows.map((r) => ({
+      tsCode: r.ts_code,
+      name: r.stock_name,
+      industry: r.industry,
+      value: r.factor_value != null ? Number(r.factor_value) : null,
+      percentile: r.percentile != null ? Number(r.percentile) : null,
+    }))
+
+    const summary: FactorValueSummary = {
+      count: summaryCheck.count,
+      missing: summaryCheck.missing,
+      mean: summaryCheck.mean != null ? Number(summaryCheck.mean) : null,
+      median: summaryCheck.median != null ? Number(summaryCheck.median) : null,
+      stdDev: summaryCheck.stdDev != null ? Number(summaryCheck.stdDev) : null,
+      min: summaryCheck.min != null ? Number(summaryCheck.min) : null,
+      max: summaryCheck.max != null ? Number(summaryCheck.max) : null,
+      q25: summaryCheck.q25 != null ? Number(summaryCheck.q25) : null,
+      q75: summaryCheck.q75 != null ? Number(summaryCheck.q75) : null,
+    }
+
+    return {
+      factorName,
+      tradeDate,
+      universe: dto.universe ?? null,
+      total: summaryCheck.count,
+      page,
+      pageSize,
+      items,
+      summary,
+    }
   }
 
   private async getFieldRefValues(
@@ -588,8 +814,75 @@ export class FactorComputeService {
   /**
    * Get raw factor values for a given date without pagination.
    * Used by analysis services for IC/quantile/correlation computations.
+   * Checks precomputed snapshot table first, falls back to realtime.
    */
   async getRawFactorValuesForDate(
+    factorName: string,
+    tradeDate: string,
+    universe?: string,
+  ): Promise<Array<{ tsCode: string; factorValue: number | null }>> {
+    // 1. Try precomputed snapshot first
+    const snapshot = await this.getRawFromSnapshot(factorName, tradeDate, universe)
+    if (snapshot !== null) {
+      return snapshot
+    }
+
+    // 2. Fallback to realtime computation
+    this.logger.debug(`[${factorName}] ${tradeDate} 无预计算快照，降级实时计算`)
+    return this.computeRealtimeRaw(factorName, tradeDate, universe)
+  }
+
+  private async getRawFromSnapshot(
+    factorName: string,
+    tradeDate: string,
+    universe?: string,
+  ): Promise<Array<{ tsCode: string; factorValue: number | null }> | null> {
+    interface SnapshotRawRow {
+      ts_code: string
+      factor_value: number | null
+    }
+
+    const summaryCheck = await this.prisma.factorSnapshotSummary.findUnique({
+      where: { factorName_tradeDate: { factorName, tradeDate } },
+    })
+    if (!summaryCheck) return null
+
+    const universeJoin = universe
+      ? Prisma.sql`INNER JOIN index_constituent_weights iw
+          ON iw.con_code = fs.ts_code
+          AND iw.index_code = ${universe}
+          AND iw.trade_date = (
+            SELECT MAX(trade_date) FROM index_constituent_weights
+            WHERE index_code = ${universe} AND trade_date <= ${tradeDate}
+          )`
+      : Prisma.sql``
+
+    const rows = await this.prisma.$queryRaw<SnapshotRawRow[]>(Prisma.sql`
+      SELECT fs.ts_code, fs.value::float AS factor_value
+      FROM factor_snapshots fs
+      ${universeJoin}
+      WHERE fs.factor_name = ${factorName}
+        AND fs.trade_date = ${tradeDate}
+    `)
+
+    return rows.map((r) => ({
+      tsCode: r.ts_code,
+      factorValue: r.factor_value != null ? Number(r.factor_value) : null,
+    }))
+  }
+
+  /**
+   * Compute realtime raw factor values without snapshot lookup.
+   * Used by FactorPrecomputeService to generate new snapshots.
+   */
+  async computeRealtimeForDate(
+    factorName: string,
+    tradeDate: string,
+  ): Promise<Array<{ tsCode: string; factorValue: number | null }>> {
+    return this.computeRealtimeRaw(factorName, tradeDate)
+  }
+
+  private async computeRealtimeRaw(
     factorName: string,
     tradeDate: string,
     universe?: string,
@@ -702,6 +995,12 @@ export class FactorComputeService {
           AND (sb.list_date IS NULL OR sb.list_date <= (${tradeDate}::date - INTERVAL '60 days'))
       `)
       return rows.map((r) => ({ tsCode: r.ts_code, factorValue: r.factor_value != null ? Number(r.factor_value) : null }))
+    }
+
+    // CUSTOM_SQL: expression-based compute (universe join from Prisma.sql not available here, use string)
+    const factorDef = await this.prisma.factorDefinition.findUnique({ where: { name: factorName } })
+    if (factorDef?.sourceType === FactorSourceType.CUSTOM_SQL && factorDef.expression) {
+      return this.computeCustomSqlForDate(factorDef.expression, tradeDate, universe)
     }
 
     return []

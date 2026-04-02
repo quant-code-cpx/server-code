@@ -6,6 +6,8 @@ export const CACHE_NAMESPACE = {
   MARKET: 'market',
   FACTOR_ANALYSIS: 'factor-analysis',
   TRADE_CALENDAR: 'trade-calendar',
+  WATCHLIST: 'watchlist',
+  WATCHLIST_STOCKS: 'watchlist-stocks',
 } as const
 
 export type CacheNamespace = (typeof CACHE_NAMESPACE)[keyof typeof CACHE_NAMESPACE]

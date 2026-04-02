@@ -1,0 +1,38 @@
+/// 自选股组
+model Watchlist {
+  id          Int              @id @default(autoincrement())
+  userId      Int              @map("user_id")
+  name        String           @db.VarChar(50)
+  description String?          @db.VarChar(200)
+  isDefault   Boolean          @default(false) @map("is_default")
+  sortOrder   Int              @default(0) @map("sort_order")
+  createdAt   DateTime         @default(now()) @map("created_at")
+  updatedAt   DateTime         @updatedAt @map("updated_at")
+
+  user   User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  stocks WatchlistStock[]
+
+  @@map("watchlists")
+  @@index([userId])
+  @@unique([userId, name])
+}
+
+/// 自选股成员
+model WatchlistStock {
+  id          Int       @id @default(autoincrement())
+  watchlistId Int       @map("watchlist_id")
+  tsCode      String    @map("ts_code") @db.VarChar(16)
+  notes       String?   @db.VarChar(500)
+  tags        String[]  @default([])
+  targetPrice Decimal?  @map("target_price") @db.Decimal(10, 2)
+  sortOrder   Int       @default(0) @map("sort_order")
+  addedAt     DateTime  @default(now()) @map("added_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  watchlist Watchlist @relation(fields: [watchlistId], references: [id], onDelete: Cascade)
+
+  @@map("watchlist_stocks")
+  @@unique([watchlistId, tsCode])
+  @@index([watchlistId, sortOrder])
+  @@index([tsCode])
+}

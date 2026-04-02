@@ -34,8 +34,8 @@ docs/
 | [STOCK_MODULE_REQUIREMENTS.md](design/STOCK_MODULE_REQUIREMENTS.md) | 股票信息模块需求细化（讨论稿） | 📋 需求稿 |
 | [STOCK_SCREENER_BACKEND.md](design/STOCK_SCREENER_BACKEND.md) | 选股器后端实现规划 | ✅ 已实现 |
 | [DATA_LAYER_GAP_DESIGN.md](design/DATA_LAYER_GAP_DESIGN.md) | 数据层缺口开发方案设计（对应痛点一） | ✅ 已实现 |
-| [FACTOR_RESEARCH_LOOP_DESIGN.md](design/FACTOR_RESEARCH_LOOP_DESIGN.md) | 因子研究闭环补全开发方案设计（对应痛点三） | 🔧 待实现 |
-| [WATCHLIST_RESEARCH_WORKBENCH_DESIGN.md](design/WATCHLIST_RESEARCH_WORKBENCH_DESIGN.md) | 自选股与研究工作台开发方案设计（对应痛点四） | 🔧 待实现 |
+| [FACTOR_RESEARCH_LOOP_DESIGN.md](design/FACTOR_RESEARCH_LOOP_DESIGN.md) | 因子研究闭环补全开发方案设计（对应痛点三） | ✅ Phase 1-4 已实现 |
+| [WATCHLIST_RESEARCH_WORKBENCH_DESIGN.md](design/WATCHLIST_RESEARCH_WORKBENCH_DESIGN.md) | 自选股与研究工作台开发方案设计（对应痛点四） | ✅ Phase 1-4 已实现 |
 
 ---
 

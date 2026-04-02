@@ -88,7 +88,7 @@ export class FactorComputeService {
     }
 
     // 2. Fallback to realtime computation
-    this.logger.warn(`[${factorName}] ${dto.tradeDate} 无预计算快照，降级实时计算`)
+    this.logger.debug(`[${factorName}] ${dto.tradeDate} 无预计算快照，降级实时计算`)
 
     // Determine which query strategy to use
     if (FIELD_REF_MAP[factorName]) {
@@ -702,7 +702,7 @@ export class FactorComputeService {
     }
 
     // 2. Fallback to realtime computation
-    this.logger.warn(`[${factorName}] ${tradeDate} 无预计算快照，降级实时计算`)
+    this.logger.debug(`[${factorName}] ${tradeDate} 无预计算快照，降级实时计算`)
     return this.computeRealtimeRaw(factorName, tradeDate, universe)
   }
 
@@ -743,6 +743,17 @@ export class FactorComputeService {
       tsCode: r.ts_code,
       factorValue: r.factor_value != null ? Number(r.factor_value) : null,
     }))
+  }
+
+  /**
+   * Compute realtime raw factor values without snapshot lookup.
+   * Used by FactorPrecomputeService to generate new snapshots.
+   */
+  async computeRealtimeForDate(
+    factorName: string,
+    tradeDate: string,
+  ): Promise<Array<{ tsCode: string; factorValue: number | null }>> {
+    return this.computeRealtimeRaw(factorName, tradeDate)
   }
 
   private async computeRealtimeRaw(

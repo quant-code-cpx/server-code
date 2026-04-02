@@ -178,7 +178,7 @@ export class FactorPrecomputeService implements OnApplicationBootstrap {
    * Returns the number of rows stored (valid values only).
    */
   async computeAndStore(factorName: string, tradeDate: string): Promise<number> {
-    const rawValues = await this.compute.getRawFactorValuesForDate(factorName, tradeDate)
+    const rawValues = await this.compute.computeRealtimeForDate(factorName, tradeDate)
 
     const valid = rawValues.filter((v) => v.factorValue != null) as Array<{
       tsCode: string
@@ -314,14 +314,13 @@ export class FactorPrecomputeService implements OnApplicationBootstrap {
     options?: {
       factorNames?: string[]
       skipExisting?: boolean
-      batchSize?: number
     },
   ): Promise<BackfillResult> {
     const skip = options?.skipExisting !== false
-    const batchSize = options?.batchSize ?? 5
     const startMs = Date.now()
 
-    let tradeDates = await this.getTradeDates(startDate, endDate)
+    const allDates = await this.getTradeDates(startDate, endDate)
+    let tradeDates = allDates
 
     if (skip && tradeDates.length > 0) {
       // Find dates that already have a complete snapshot (at least one factor present)
@@ -337,17 +336,14 @@ export class FactorPrecomputeService implements OnApplicationBootstrap {
       tradeDates = tradeDates.filter((d) => !existingSet.has(d))
     }
 
-    const datesSkipped = (await this.getTradeDates(startDate, endDate)).length - tradeDates.length
+    const datesSkipped = allDates.length - tradeDates.length
     let datesProcessed = 0
     let totalRows = 0
 
-    for (let i = 0; i < tradeDates.length; i += batchSize) {
-      const batch = tradeDates.slice(i, i + batchSize)
-      for (const tradeDate of batch) {
-        const result = await this.precomputeAllFactors(tradeDate, options?.factorNames)
-        totalRows += result.totalRows
-        datesProcessed++
-      }
+    for (const tradeDate of tradeDates) {
+      const result = await this.precomputeAllFactors(tradeDate, options?.factorNames)
+      totalRows += result.totalRows
+      datesProcessed++
     }
 
     return {

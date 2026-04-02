@@ -90,7 +90,6 @@ export class FactorService {
     return this.precompute.backfill(dto.startDate, dto.endDate, {
       factorNames: dto.factorNames,
       skipExisting: dto.skipExisting,
-      batchSize: dto.batchSize,
     })
   }
 

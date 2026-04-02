@@ -3,12 +3,9 @@ import {
   ArrayMaxSize,
   IsArray,
   IsBoolean,
-  IsInt,
   IsOptional,
   IsString,
   Matches,
-  Max,
-  Min,
 } from 'class-validator'
 
 export class FactorPrecomputeTriggerDto {
@@ -55,17 +52,5 @@ export class FactorBackfillDto {
   })
   @IsOptional()
   @IsBoolean()
-  skipExisting?: boolean = true
-
-  @ApiPropertyOptional({
-    description: '每批处理的交易日数量（默认 5，最大 20）',
-    default: 5,
-    minimum: 1,
-    maximum: 20,
-  })
-  @IsOptional()
-  @IsInt()
-  @Min(1)
-  @Max(20)
-  batchSize?: number = 5
+  skipExisting?: boolean
 }

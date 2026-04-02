@@ -66,6 +66,7 @@ export class FactorCustomService {
         isBuiltin: false,
         isEnabled: true,
         sortOrder: 9999,
+        params: dto.autoPrecompute ? { autoPrecompute: true } : undefined,
       },
     })
 
@@ -142,6 +143,9 @@ export class FactorCustomService {
         ...(dto.category !== undefined && { category: dto.category }),
         ...(dto.expression !== undefined && { expression: dto.expression }),
         ...(dto.isEnabled !== undefined && { isEnabled: dto.isEnabled }),
+        ...(dto.autoPrecompute !== undefined && {
+          params: { autoPrecompute: dto.autoPrecompute },
+        }),
       },
     })
   }

@@ -311,7 +311,6 @@ export class FactorComputeService {
       pageSize,
       items,
       summary,
-      fromSnapshot: true,
     }
   }
 

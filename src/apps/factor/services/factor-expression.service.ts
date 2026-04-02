@@ -285,7 +285,7 @@ class Parser {
     const t = this.peek()
     if (t.type === 'GT' || t.type === 'LT' || t.type === 'GTE' || t.type === 'LTE' || t.type === 'EQ' || t.type === 'NEQ') {
       this.consume()
-      const op = t.value as '+' | '-' | '*' | '/'
+      const op = t.value as '>' | '<' | '>=' | '<=' | '=' | '!='
       const right = this.parseAdditive()
       left = { type: 'binary', op, left, right }
     }
@@ -606,9 +606,12 @@ function compileTsSingleField(
       return `(SELECT MAX(${valSql}) FROM ${fromSql} WHERE ${where} ORDER BY d2.${cat === 'fina_pit' ? 'ann_date' : 'trade_date'} DESC LIMIT ${n})`
     }
     case 'ts_rank': {
-      // Percentile rank of current value within past n days
+      // Fraction of past n values that are LESS than the current value (rank in [0,1])
+      // current value comes from the outer query's field alias
+      const curSql = FIELD_SQL[fieldName].sql
+      for (const t of FIELD_SQL[fieldName].table) requiredTables.add(t)
       const where = buildTsWhere(cat, tradeDate, '<=')
-      return `(SELECT PERCENT_RANK() OVER (ORDER BY ${valSql}) FROM ${fromSql} WHERE ${where} ORDER BY d2.${cat === 'fina_pit' ? 'ann_date' : 'trade_date'} DESC LIMIT ${n})`
+      return `(SELECT (COUNT(*) FILTER (WHERE ${valSql} < ${curSql}))::float / NULLIF(COUNT(*), 0) FROM ${fromSql} WHERE ${where} ORDER BY d2.${cat === 'fina_pit' ? 'ann_date' : 'trade_date'} DESC LIMIT ${n})`
     }
     case 'delay': {
       // n days ago (offset n-1)

@@ -1,14 +1,17 @@
 import { Body, Controller, HttpCode, HttpStatus, Post, UseGuards } from '@nestjs/common'
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger'
-import { UserRole } from '@prisma/client'
+import { TushareSyncRetryStatus, UserRole } from '@prisma/client'
 import { ApiSuccessRawResponse, ApiSuccessResponse } from 'src/common/decorators/api-success-response.decorator'
 import { ResponseModel } from 'src/common/models/response.model'
 import { Roles } from 'src/common/decorators/roles.decorator'
 import { RolesGuard } from 'src/lifecycle/guard/roles.guard'
 import { TushareSyncService } from 'src/tushare/sync/sync.service'
 import { DataQualityService } from 'src/tushare/sync/quality/data-quality.service'
+import { SyncLogService } from 'src/tushare/sync/sync-log.service'
+import { PrismaService } from 'src/shared/prisma.service'
 import { ManualSyncDto } from './dto/manual-sync.dto'
 import { CacheMetricsDataDto, TushareSyncPlanDto } from './dto/tushare-sync-response.dto'
+import { SyncLogQueryDto } from './dto/sync-log-query.dto'
 
 @ApiBearerAuth()
 @ApiTags('Tushare - 同步管理')
@@ -19,6 +22,8 @@ export class TushareAdminController {
   constructor(
     private readonly tushareSyncService: TushareSyncService,
     private readonly dataQualityService: DataQualityService,
+    private readonly syncLogService: SyncLogService,
+    private readonly prisma: PrismaService,
   ) {}
 
   @Post('plans')
@@ -76,5 +81,79 @@ export class TushareAdminController {
   @ApiSuccessRawResponse({ type: 'array', items: { type: 'object' } })
   async getValidationLogs(@Body() dto: { task?: string; limit?: number }) {
     return this.dataQualityService.getValidationLogs({ task: dto.task, limit: dto.limit })
+  }
+
+  @Post('sync-logs')
+  @ApiOperation({
+    summary: '查询同步日志（仅超级管理员）',
+    description: '支持按任务类型、状态、时间范围过滤，按 startedAt 倒序返回。',
+  })
+  @ApiSuccessRawResponse({ type: 'object' })
+  async getSyncLogs(@Body() dto: SyncLogQueryDto) {
+    return this.syncLogService.queryLogs(dto)
+  }
+
+  @Post('sync-logs/summary')
+  @ApiOperation({
+    summary: '各任务最后同步状态汇总（仅超级管理员）',
+    description: '返回所有同步任务的最后同步时间、状态、行数和连续失败次数，用于总览面板。',
+  })
+  @ApiSuccessRawResponse({ type: 'array', items: { type: 'object' } })
+  async getSyncLogsSummary() {
+    return this.syncLogService.summarizeLogs()
+  }
+
+  @Post('retry-queue')
+  @ApiOperation({
+    summary: '查询失败重试队列（仅超级管理员）',
+    description: '分页查询同步失败后自动入队的重试记录，支持按状态过滤。',
+  })
+  @ApiSuccessRawResponse({ type: 'object' })
+  async getRetryQueue(
+    @Body()
+    dto: {
+      status?: TushareSyncRetryStatus
+      page?: number
+      pageSize?: number
+    },
+  ) {
+    const page = dto.page ?? 1
+    const pageSize = Math.min(dto.pageSize ?? 20, 100)
+    const skip = (page - 1) * pageSize
+
+    const where = dto.status ? { status: dto.status } : {}
+    const [total, items] = await Promise.all([
+      this.prisma.tushareSyncRetryQueue.count({ where }),
+      this.prisma.tushareSyncRetryQueue.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: pageSize,
+      }),
+    ])
+
+    return { total, page, pageSize, items }
+  }
+
+  @Post('retry-queue/reset')
+  @ApiOperation({
+    summary: '重置耗尽重试记录为 PENDING（仅超级管理员）',
+    description: '将 EXHAUSTED 状态的记录重置为 PENDING 并更新下次重试时间，可选按任务过滤。',
+  })
+  @ApiSuccessRawResponse({ type: 'object' })
+  async resetRetryQueue(@Body() dto: { task?: string }) {
+    const where: Record<string, unknown> = { status: TushareSyncRetryStatus.EXHAUSTED }
+    if (dto.task) where['task'] = dto.task
+
+    const result = await this.prisma.tushareSyncRetryQueue.updateMany({
+      where,
+      data: {
+        status: TushareSyncRetryStatus.PENDING,
+        nextRetryAt: new Date(Date.now() + 60 * 1000), // 1 分钟后立即重试
+        retryCount: 0,
+      },
+    })
+
+    return { message: `已重置 ${result.count} 条记录为 PENDING` }
   }
 }

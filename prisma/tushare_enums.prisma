@@ -62,3 +62,18 @@ enum TushareSyncStatus {
   FAILED  // 失败
   SKIPPED // 跳过（如当日非交易日）
 }
+
+// 断点续传进度状态
+enum TushareSyncProgressStatus {
+  IDLE      // 初始/已完成
+  RUNNING   // 进行中
+  COMPLETED // 已完成
+}
+
+// 失败重试队列状态
+enum TushareSyncRetryStatus {
+  PENDING   // 待重试
+  RETRYING  // 重试中
+  SUCCEEDED // 重试成功
+  EXHAUSTED // 已耗尽重试次数
+}

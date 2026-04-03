@@ -17,6 +17,14 @@ export interface TushareSyncPlanContext {
   trigger: TushareSyncTrigger
   mode: TushareSyncMode
   targetTradeDate?: string
+  /**
+   * 进度回调（可选），sync service 在调用 execute 前注入。
+   * 各分类同步服务在循环体中每完成一个分片（日期/季度/页）时调用。
+   * @param completed 已完成分片数（从 1 开始）
+   * @param total 总分片数
+   * @param currentKey 当前分片键（如 "20260401"）
+   */
+  onProgress?: (completed: number, total: number, currentKey?: string) => void
 }
 
 export interface TushareSyncPlan {
@@ -28,6 +36,8 @@ export interface TushareSyncPlan {
   supportsManual: boolean
   supportsFullSync: boolean
   requiresTradeDate: boolean
+  /** 并发分组标识（默认同 category），同组内串行，不同组可并行 */
+  concurrencyGroup?: string
   schedule?: TushareSyncSchedule
   execute: (context: TushareSyncPlanContext) => Promise<void>
 }

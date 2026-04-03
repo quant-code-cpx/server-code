@@ -8,6 +8,8 @@ import {
   MoneyflowContentType as PrismaMoneyflowContentType,
   Prisma,
   StockExchange as PrismaStockExchange,
+  TushareSyncProgressStatus,
+  TushareSyncRetryStatus,
   TushareSyncStatus,
   TushareSyncTask,
 } from '@prisma/client'
@@ -490,5 +492,124 @@ export class SyncHelperService {
       case MoneyflowContentType.REGION:
         return PrismaMoneyflowContentType.REGION
     }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 断点续传进度管理
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /** 获取任务断点键（上次成功完成的分片键），不存在则返回 null */
+  async getResumeKey(task: TushareSyncTaskName): Promise<string | null> {
+    const record = await this.prisma.tushareSyncProgress.findUnique({
+      where: { task: TushareSyncTask[task] },
+      select: { lastSuccessKey: true, status: true },
+    })
+    // 仅当状态为 RUNNING（上次未完成）时才返回断点键，否则视为全新
+    if (record?.status === TushareSyncProgressStatus.RUNNING && record.lastSuccessKey) {
+      return record.lastSuccessKey
+    }
+    return null
+  }
+
+  /** 更新同步进度：记录最后成功分片键和已完成分片数 */
+  async updateProgress(task: TushareSyncTaskName, lastSuccessKey: string, completedKeys: number, totalKeys?: number) {
+    await this.prisma.tushareSyncProgress.upsert({
+      where: { task: TushareSyncTask[task] },
+      create: {
+        task: TushareSyncTask[task],
+        lastSuccessKey,
+        completedKeys,
+        totalKeys: totalKeys ?? null,
+        status: TushareSyncProgressStatus.RUNNING,
+      },
+      update: {
+        lastSuccessKey,
+        completedKeys,
+        ...(totalKeys !== undefined ? { totalKeys } : {}),
+        status: TushareSyncProgressStatus.RUNNING,
+      },
+    })
+  }
+
+  /** 标记任务为已完成，清除断点 */
+  async markCompleted(task: TushareSyncTaskName) {
+    await this.prisma.tushareSyncProgress.upsert({
+      where: { task: TushareSyncTask[task] },
+      create: {
+        task: TushareSyncTask[task],
+        lastSuccessKey: null,
+        completedKeys: 0,
+        status: TushareSyncProgressStatus.COMPLETED,
+      },
+      update: {
+        lastSuccessKey: null,
+        status: TushareSyncProgressStatus.COMPLETED,
+      },
+    })
+  }
+
+  /** 重置断点（供全量同步时使用，清除历史进度） */
+  async resetProgress(task: TushareSyncTaskName) {
+    await this.prisma.tushareSyncProgress.upsert({
+      where: { task: TushareSyncTask[task] },
+      create: {
+        task: TushareSyncTask[task],
+        lastSuccessKey: null,
+        completedKeys: 0,
+        status: TushareSyncProgressStatus.IDLE,
+      },
+      update: {
+        lastSuccessKey: null,
+        completedKeys: 0,
+        totalKeys: null,
+        status: TushareSyncProgressStatus.IDLE,
+      },
+    })
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 失败重试队列
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /** 将失败分片入队重试（指数退避：5min / 30min / 2h） */
+  async enqueueRetry(task: TushareSyncTaskName, failedKey: string | null, errorMessage: string) {
+    const RETRY_DELAYS_MS = [5 * 60 * 1000, 30 * 60 * 1000, 2 * 60 * 60 * 1000]
+    // 查询该任务+分片当前的重试记录
+    const existing = await this.prisma.tushareSyncRetryQueue.findFirst({
+      where: {
+        task: TushareSyncTask[task],
+        failedKey: failedKey ?? null,
+        status: { in: [TushareSyncRetryStatus.PENDING, TushareSyncRetryStatus.RETRYING] },
+      },
+      orderBy: { createdAt: 'desc' },
+    })
+
+    if (existing) {
+      // 已有待重试记录，更新错误信息和下次重试时间
+      const delayMs = RETRY_DELAYS_MS[Math.min(existing.retryCount, RETRY_DELAYS_MS.length - 1)]
+      await this.prisma.tushareSyncRetryQueue.update({
+        where: { id: existing.id },
+        data: {
+          errorMessage,
+          status: TushareSyncRetryStatus.PENDING,
+          nextRetryAt: new Date(Date.now() + delayMs),
+        },
+      })
+      return
+    }
+
+    // 新建重试记录
+    const delayMs = RETRY_DELAYS_MS[0]
+    await this.prisma.tushareSyncRetryQueue.create({
+      data: {
+        task: TushareSyncTask[task],
+        failedKey: failedKey ?? null,
+        errorMessage,
+        retryCount: 0,
+        maxRetries: 3,
+        nextRetryAt: new Date(Date.now() + delayMs),
+        status: TushareSyncRetryStatus.PENDING,
+      },
+    })
   }
 }

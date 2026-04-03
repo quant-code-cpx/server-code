@@ -140,6 +140,38 @@ export class EventsGateway implements OnGatewayInit, OnGatewayConnection, OnGate
   }
 
   /**
+   * 广播单个任务的同步进度（节流由调用方控制）。
+   * 前端事件名: tushare_sync_progress
+   */
+  broadcastSyncProgress(payload: {
+    task: string
+    label: string
+    category: string
+    completedItems: number
+    totalItems: number
+    percentage: number
+    currentKey?: string
+    elapsedMs: number
+    estimatedRemainingMs?: number
+  }) {
+    this.server.emit('tushare_sync_progress', payload)
+  }
+
+  /**
+   * 广播全局同步总体进度（各任务等权聚合）。
+   * 前端事件名: tushare_sync_overall_progress
+   */
+  broadcastSyncOverallProgress(payload: {
+    completedTasks: number
+    totalTasks: number
+    percentage: number
+    elapsedMs: number
+    estimatedRemainingMs?: number
+  }) {
+    this.server.emit('tushare_sync_overall_progress', payload)
+  }
+
+  /**
    * 向指定用户推送消息（通过 user:${userId} 房间）。
    * 客户端连接时自动加入该房间（若携带有效 JWT token）。
    */

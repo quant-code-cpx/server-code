@@ -16,12 +16,19 @@ export class TushareApiError extends Error {
   }
 }
 
+interface ApiChannel {
+  queue: Promise<void>
+  lastRequestAt: number
+}
+
 /**
  * TushareClient — Tushare Pro HTTP 接口底层封装
  *
  * 职责：
  * - 统一发起 HTTP 请求，附带 token
- * - 请求节流（避免触发频控）
+ * - 请求节流（避免触发频控）：每个 API 名称使用独立通道，
+ *   同一 API 串行（350ms 间隔），不同 API 可并行
+ * - 全局最大并发数限制，防止瞬间打满带宽
  * - 频控 40203 自动重试
  * - 将 { fields, items } 格式解析为对象数组
  */
@@ -34,8 +41,11 @@ export class TushareClient {
   private readonly requestIntervalMs: number
   private readonly rateLimitRetryDelayMs: number
   private readonly maxRetries: number
-  private requestQueue: Promise<void> = Promise.resolve()
-  private lastRequestAt = 0
+  /** 全局最大并发请求数（跨所有 API） */
+  private readonly globalMaxConcurrency = 5
+  private globalConcurrentCount = 0
+  /** 每个 API 名称的独立节流通道 */
+  private readonly apiChannels = new Map<string, ApiChannel>()
 
   constructor(private readonly configService: ConfigService) {
     const cfg = this.configService.get<ITushareConfig>(TUSHARE_CONFIG_TOKEN, { infer: true })
@@ -52,7 +62,7 @@ export class TushareClient {
 
   /** 向 Tushare Pro 发起请求并返回解析后的记录数组 */
   async call<T = Record<string, unknown>>(req: TushareRequestParams): Promise<T[]> {
-    return this.enqueueRequest(() => this.callWithRetry<T>(req))
+    return this.enqueueRequest(req.api_name, () => this.callWithRetry<T>(req))
   }
 
   private async callWithRetry<T>(req: TushareRequestParams, attempt = 1): Promise<T[]> {
@@ -97,24 +107,53 @@ export class TushareClient {
     return this.parseRecords<T>(json)
   }
 
-  private enqueueRequest<T>(task: () => Promise<T>): Promise<T> {
-    const queuedTask = async () => {
-      await this.waitForRequestSlot()
-      return task()
+  /**
+   * 将请求入队到对应 API 通道：
+   * - 同一 API 串行排队，保证 350ms 节流间隔
+   * - 不同 API 可同时进行，但受全局并发数上限限制
+   */
+  private enqueueRequest<T>(apiName: string, task: () => Promise<T>): Promise<T> {
+    if (!this.apiChannels.has(apiName)) {
+      this.apiChannels.set(apiName, { queue: Promise.resolve(), lastRequestAt: 0 })
     }
-    const result = this.requestQueue.then(queuedTask, queuedTask)
-    this.requestQueue = result.then(
+    const channel = this.apiChannels.get(apiName)!
+
+    const queuedTask = async (): Promise<T> => {
+      // 在本 API 通道内等待节流间隔
+      await this.waitForRequestSlot(channel)
+      // 等待全局并发槽位
+      await this.acquireGlobalSlot()
+      try {
+        return await task()
+      } finally {
+        this.releaseGlobalSlot()
+      }
+    }
+
+    const result = channel.queue.then(queuedTask, queuedTask)
+    channel.queue = result.then(
       () => undefined,
       () => undefined,
     )
     return result
   }
 
-  private async waitForRequestSlot() {
+  private async waitForRequestSlot(channel: ApiChannel) {
     const now = Date.now()
-    const waitMs = Math.max(0, this.requestIntervalMs - (now - this.lastRequestAt))
+    const waitMs = Math.max(0, this.requestIntervalMs - (now - channel.lastRequestAt))
     if (waitMs > 0) await this.sleep(waitMs)
-    this.lastRequestAt = Date.now()
+    channel.lastRequestAt = Date.now()
+  }
+
+  private async acquireGlobalSlot() {
+    while (this.globalConcurrentCount >= this.globalMaxConcurrency) {
+      await this.sleep(50)
+    }
+    this.globalConcurrentCount++
+  }
+
+  private releaseGlobalSlot() {
+    this.globalConcurrentCount = Math.max(0, this.globalConcurrentCount - 1)
   }
 
   private isRetryableRateLimitError(json: TushareResponse) {

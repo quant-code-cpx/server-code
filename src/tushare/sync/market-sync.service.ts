@@ -13,7 +13,7 @@ import {
   mapWeeklyRecord,
 } from '../tushare-sync.mapper'
 import { SyncHelperService } from './sync-helper.service'
-import { TushareSyncMode, TushareSyncPlan } from './sync-plan.types'
+import { TushareSyncMode, TushareSyncPlan, TushareSyncPlanContext } from './sync-plan.types'
 
 /**
  * MarketSyncService — 行情数据同步
@@ -49,7 +49,7 @@ export class MarketSyncService {
           description: '交易日盘后同步日线行情',
           tradingDayOnly: true,
         },
-        execute: ({ mode, targetTradeDate }) => this.syncDaily(this.requireTradeDate(targetTradeDate), mode),
+        execute: (ctx) => this.syncDaily(this.requireTradeDate(ctx.targetTradeDate), ctx.mode, ctx),
       },
       {
         task: TushareSyncTaskName.WEEKLY,
@@ -66,7 +66,7 @@ export class MarketSyncService {
           description: '每周五盘后同步周线行情',
           tradingDayOnly: true,
         },
-        execute: ({ mode, targetTradeDate }) => this.syncWeekly(this.requireTradeDate(targetTradeDate), mode),
+        execute: (ctx) => this.syncWeekly(this.requireTradeDate(ctx.targetTradeDate), ctx.mode, ctx),
       },
       {
         task: TushareSyncTaskName.MONTHLY,
@@ -82,7 +82,7 @@ export class MarketSyncService {
           timeZone: this.helper.syncTimeZone,
           description: '每月1日盘后补齐月线行情',
         },
-        execute: ({ mode, targetTradeDate }) => this.syncMonthly(this.requireTradeDate(targetTradeDate), mode),
+        execute: (ctx) => this.syncMonthly(this.requireTradeDate(ctx.targetTradeDate), ctx.mode, ctx),
       },
       {
         task: TushareSyncTaskName.DAILY_BASIC,
@@ -99,7 +99,7 @@ export class MarketSyncService {
           description: '交易日盘后同步每日指标',
           tradingDayOnly: true,
         },
-        execute: ({ mode, targetTradeDate }) => this.syncDailyBasic(this.requireTradeDate(targetTradeDate), mode),
+        execute: (ctx) => this.syncDailyBasic(this.requireTradeDate(ctx.targetTradeDate), ctx.mode, ctx),
       },
       {
         task: TushareSyncTaskName.ADJ_FACTOR,
@@ -116,7 +116,7 @@ export class MarketSyncService {
           description: '交易日盘后同步复权因子',
           tradingDayOnly: true,
         },
-        execute: ({ mode, targetTradeDate }) => this.syncAdjFactor(this.requireTradeDate(targetTradeDate), mode),
+        execute: (ctx) => this.syncAdjFactor(this.requireTradeDate(ctx.targetTradeDate), ctx.mode, ctx),
       },
       {
         task: TushareSyncTaskName.INDEX_DAILY,
@@ -133,7 +133,7 @@ export class MarketSyncService {
           description: '交易日盘后同步核心指数日线',
           tradingDayOnly: true,
         },
-        execute: ({ mode, targetTradeDate }) => this.syncIndexDaily(this.requireTradeDate(targetTradeDate), mode),
+        execute: (ctx) => this.syncIndexDaily(this.requireTradeDate(ctx.targetTradeDate), ctx.mode, ctx),
       },
       {
         task: TushareSyncTaskName.MARGIN_DETAIL,
@@ -150,14 +150,18 @@ export class MarketSyncService {
           description: '交易日盘后同步融资融券明细（需 Tushare 2000 积分）',
           tradingDayOnly: true,
         },
-        execute: ({ mode, targetTradeDate }) => this.syncMarginDetail(this.requireTradeDate(targetTradeDate), mode),
+        execute: (ctx) => this.syncMarginDetail(this.requireTradeDate(ctx.targetTradeDate), ctx.mode, ctx),
       },
     ]
   }
 
   // ─── 日线 ──────────────────────────────────────────────────────────────────
 
-  async syncDaily(targetTradeDate: string, mode: TushareSyncMode = 'incremental'): Promise<void> {
+  async syncDaily(
+    targetTradeDate: string,
+    mode: TushareSyncMode = 'incremental',
+    context?: TushareSyncPlanContext,
+  ): Promise<void> {
     await this.syncByTradeDate({
       task: TushareSyncTaskName.DAILY,
       label: '日线',
@@ -169,12 +173,17 @@ export class MarketSyncService {
         return rows.map(mapDailyRecord).filter((r): r is NonNullable<typeof r> => Boolean(r))
       },
       resolveDates: (start) => this.helper.getOpenTradeDatesBetween(start, targetTradeDate),
+      onProgress: context?.onProgress,
     })
   }
 
   // ─── 周线 ──────────────────────────────────────────────────────────────────
 
-  async syncWeekly(targetTradeDate: string, mode: TushareSyncMode = 'incremental'): Promise<void> {
+  async syncWeekly(
+    targetTradeDate: string,
+    mode: TushareSyncMode = 'incremental',
+    context?: TushareSyncPlanContext,
+  ): Promise<void> {
     await this.syncByTradeDate({
       task: TushareSyncTaskName.WEEKLY,
       label: '周线',
@@ -186,12 +195,17 @@ export class MarketSyncService {
         return rows.map(mapWeeklyRecord).filter((r): r is NonNullable<typeof r> => Boolean(r))
       },
       resolveDates: (start) => this.helper.getPeriodEndTradeDates(start, targetTradeDate, 'week'),
+      onProgress: context?.onProgress,
     })
   }
 
   // ─── 月线 ──────────────────────────────────────────────────────────────────
 
-  async syncMonthly(targetTradeDate: string, mode: TushareSyncMode = 'incremental'): Promise<void> {
+  async syncMonthly(
+    targetTradeDate: string,
+    mode: TushareSyncMode = 'incremental',
+    context?: TushareSyncPlanContext,
+  ): Promise<void> {
     await this.syncByTradeDate({
       task: TushareSyncTaskName.MONTHLY,
       label: '月线',
@@ -203,12 +217,17 @@ export class MarketSyncService {
         return rows.map(mapMonthlyRecord).filter((r): r is NonNullable<typeof r> => Boolean(r))
       },
       resolveDates: (start) => this.helper.getPeriodEndTradeDates(start, targetTradeDate, 'month'),
+      onProgress: context?.onProgress,
     })
   }
 
   // ─── 每日指标 ──────────────────────────────────────────────────────────────
 
-  async syncDailyBasic(targetTradeDate: string, mode: TushareSyncMode = 'incremental'): Promise<void> {
+  async syncDailyBasic(
+    targetTradeDate: string,
+    mode: TushareSyncMode = 'incremental',
+    context?: TushareSyncPlanContext,
+  ): Promise<void> {
     await this.syncByTradeDate({
       task: TushareSyncTaskName.DAILY_BASIC,
       label: '每日指标',
@@ -220,12 +239,17 @@ export class MarketSyncService {
         return rows.map(mapDailyBasicRecord).filter((r): r is NonNullable<typeof r> => Boolean(r))
       },
       resolveDates: (start) => this.helper.getOpenTradeDatesBetween(start, targetTradeDate),
+      onProgress: context?.onProgress,
     })
   }
 
   // ─── 复权因子 ──────────────────────────────────────────────────────────────
 
-  async syncAdjFactor(targetTradeDate: string, mode: TushareSyncMode = 'incremental'): Promise<void> {
+  async syncAdjFactor(
+    targetTradeDate: string,
+    mode: TushareSyncMode = 'incremental',
+    context?: TushareSyncPlanContext,
+  ): Promise<void> {
     await this.syncByTradeDate({
       task: TushareSyncTaskName.ADJ_FACTOR,
       label: '复权因子',
@@ -237,13 +261,18 @@ export class MarketSyncService {
         return rows.map(mapAdjFactorRecord).filter((r): r is NonNullable<typeof r> => Boolean(r))
       },
       resolveDates: (start) => this.helper.getOpenTradeDatesBetween(start, targetTradeDate),
+      onProgress: context?.onProgress,
     })
   }
 
   // ─── 核心指数日线 ──────────────────────────────────────────────────────────
   // 只保留最近 2 年数据，不做历史全量同步
 
-  async syncIndexDaily(targetTradeDate: string, mode: TushareSyncMode = 'incremental'): Promise<void> {
+  async syncIndexDaily(
+    targetTradeDate: string,
+    mode: TushareSyncMode = 'incremental',
+    context?: TushareSyncPlanContext,
+  ): Promise<void> {
     if (
       mode !== 'full' &&
       (await this.helper.isTaskSyncedForTradeDate(TushareSyncTaskName.INDEX_DAILY, targetTradeDate))
@@ -290,6 +319,7 @@ export class MarketSyncService {
         if (i === 0 || (i + 1) % 100 === 0 || i === tradeDates.length - 1) {
           this.logger.log(`[核心指数日线] 进度 ${i + 1}/${tradeDates.length}，当前 ${td}，累计 ${totalRows} 条`)
         }
+        context?.onProgress?.(i + 1, tradeDates.length, td)
       } catch (error) {
         const msg = (error as Error).message
         this.logger.error(`[核心指数日线] ${td} 同步失败: ${msg}`)
@@ -314,10 +344,6 @@ export class MarketSyncService {
     )
   }
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // 通用按交易日同步模板
-  // ═══════════════════════════════════════════════════════════════════════════
-
   private async syncByTradeDate(opts: {
     task: TushareSyncTaskName
     label: string
@@ -326,10 +352,11 @@ export class MarketSyncService {
     fullSync?: boolean
     fetchAndMap: (tradeDate: string) => Promise<unknown[]>
     resolveDates: (startDate: string) => Promise<string[]>
+    onProgress?: (completed: number, total: number, currentKey?: string) => void
   }): Promise<void> {
-    const { task, label, modelName, targetTradeDate, fullSync = false, fetchAndMap, resolveDates } = opts
+    const { task, label, modelName, targetTradeDate, fullSync = false, fetchAndMap, resolveDates, onProgress } = opts
 
-    // 1. 目标交易日已同步则跳过（避免“今天已经跑过一次 25 号数据”导致 26 号盘后被误跳过）
+    // 1. 目标交易日已同步则跳过（避免"今天已经跑过一次 25 号数据"导致 26 号盘后被误跳过）
     if (!fullSync && (await this.helper.isTaskSyncedForTradeDate(task, targetTradeDate))) {
       this.logger.log(`[${label}] 目标交易日 ${targetTradeDate} 已同步，跳过`)
       return
@@ -337,12 +364,26 @@ export class MarketSyncService {
 
     const startedAt = new Date()
 
-    // 2. 计算起始日期
-    const latestDate = fullSync ? null : await this.helper.getLatestDateString(modelName)
-    const startDate = latestDate ? this.helper.addDays(latestDate, 1) : this.helper.syncStartDate
+    // 2. 计算起始日期（全量同步时先重置断点）
+    let startDate: string
+    if (fullSync) {
+      await this.helper.resetProgress(task)
+      startDate = this.helper.syncStartDate
+    } else {
+      // 优先使用断点续传键，回退到 DB 最新日期
+      const resumeKey = await this.helper.getResumeKey(task)
+      if (resumeKey) {
+        startDate = this.helper.addDays(resumeKey, 1)
+        this.logger.log(`[${label}] 从断点 ${resumeKey} 恢复，起始 ${startDate}`)
+      } else {
+        const latestDate = await this.helper.getLatestDateString(modelName)
+        startDate = latestDate ? this.helper.addDays(latestDate, 1) : this.helper.syncStartDate
+      }
+    }
 
     if (this.helper.compareDateString(startDate, targetTradeDate) > 0) {
-      this.logger.log(`[${label}] 已是最新（本地最新: ${latestDate}），无需同步`)
+      this.logger.log(`[${label}] 已是最新（起始 ${startDate} > 目标 ${targetTradeDate}），无需同步`)
+      await this.helper.markCompleted(task)
       return
     }
 
@@ -350,6 +391,7 @@ export class MarketSyncService {
     const tradeDates = await resolveDates(startDate)
     if (!tradeDates.length) {
       this.logger.log(`[${label}] ${startDate} ~ ${targetTradeDate} 间无交易日，跳过`)
+      await this.helper.markCompleted(task)
       return
     }
 
@@ -360,6 +402,8 @@ export class MarketSyncService {
     // 4. 逐日拉取，容错处理
     let totalRows = 0
     const failed: Array<{ date: string; error: string }> = []
+    /** 断点更新间隔（每 N 个成功日期写一次，减少 DB 压力） */
+    const CHECKPOINT_INTERVAL = 50
 
     for (const [i, td] of tradeDates.entries()) {
       try {
@@ -370,6 +414,14 @@ export class MarketSyncService {
         if (i === 0 || (i + 1) % 200 === 0 || i === tradeDates.length - 1) {
           this.logger.log(`[${label}] 进度 ${i + 1}/${tradeDates.length}，当前 ${td}，累计 ${totalRows} 条`)
         }
+
+        // 断点续传：每 CHECKPOINT_INTERVAL 个成功日期写一次（最后一个也写）
+        if ((i + 1) % CHECKPOINT_INTERVAL === 0 || i === tradeDates.length - 1) {
+          await this.helper.updateProgress(task, td, i + 1, tradeDates.length)
+        }
+
+        // 进度回调（节流由上层 runPlans 控制）
+        onProgress?.(i + 1, tradeDates.length, td)
       } catch (error) {
         const msg = (error as Error).message
         this.logger.error(`[${label}] ${td} 同步失败: ${msg}`)
@@ -378,9 +430,9 @@ export class MarketSyncService {
     }
 
     // 5. 兜底重试失败日期
+    const stillFailed: Array<{ date: string; error: string }> = []
     if (failed.length > 0) {
       this.logger.warn(`[${label}] ${failed.length} 个日期失败，开始兜底重试...`)
-      const stillFailed: Array<{ date: string; error: string }> = []
       for (const item of failed) {
         try {
           const mapped = await fetchAndMap(item.date)
@@ -393,19 +445,26 @@ export class MarketSyncService {
         }
       }
 
+      // 持久化失败入队重试
       if (stillFailed.length > 0) {
         this.logger.error(
           `[${label}] 仍有 ${stillFailed.length} 个日期失败: ${stillFailed.map((f) => f.date).join(', ')}`,
         )
+        for (const item of stillFailed) {
+          await this.helper.enqueueRetry(task, item.date, item.error).catch((err) =>
+            this.logger.warn(`[${label}] 入队重试失败: ${(err as Error).message}`),
+          )
+        }
       }
     }
 
-    // 6. 写入同步日志
-    const status = failed.length === 0 ? TushareSyncExecutionStatus.SUCCESS : TushareSyncExecutionStatus.SUCCESS
+    // 6. 标记完成 + 写入同步日志
+    await this.helper.markCompleted(task)
+    const finalStatus = stillFailed.length > 0 ? TushareSyncExecutionStatus.FAILED : TushareSyncExecutionStatus.SUCCESS
     await this.helper.writeSyncLog(
       task,
       {
-        status,
+        status: finalStatus,
         message: `${label}同步完成，${totalRows} 条，${failed.length} 个日期曾失败`,
         tradeDate: this.helper.toDate(tradeDates[tradeDates.length - 1]),
         payload: {
@@ -423,7 +482,11 @@ export class MarketSyncService {
   // ─── 融资融券明细 ──────────────────────────────────────────────────────────
   // 只保留近 120 个交易日数据，需 Tushare 2000 积分
 
-  async syncMarginDetail(targetTradeDate: string, mode: TushareSyncMode = 'incremental'): Promise<void> {
+  async syncMarginDetail(
+    targetTradeDate: string,
+    mode: TushareSyncMode = 'incremental',
+    context?: TushareSyncPlanContext,
+  ): Promise<void> {
     await this.syncByTradeDate({
       task: TushareSyncTaskName.MARGIN_DETAIL,
       label: '融资融券明细',
@@ -439,6 +502,7 @@ export class MarketSyncService {
         // 只保留近 120 个交易日
         return allDates.slice(-120)
       },
+      onProgress: context?.onProgress,
     })
   }
 
@@ -449,3 +513,4 @@ export class MarketSyncService {
     return targetTradeDate
   }
 }
+

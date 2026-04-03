@@ -334,8 +334,8 @@ export class TushareSyncService implements OnApplicationBootstrap {
               const onProgress = (completed: number, total: number, currentKey?: string) => {
                 const now = Date.now()
                 const percentage = total > 0 ? Math.round((completed / total) * 100) : 0
-                // 节流：至少间隔 PROGRESS_THROTTLE_MS 毫秒，或百分比变化 >= 5%
-                if (now - lastProgressAt < PROGRESS_THROTTLE_MS && Math.abs(percentage - lastPercentage) < 5) {
+                // 节流：至少间隔 PROGRESS_THROTTLE_MS 毫秒，或百分比变化 > 5%
+                if (now - lastProgressAt < PROGRESS_THROTTLE_MS && Math.abs(percentage - lastPercentage) <= 5) {
                   return
                 }
                 lastProgressAt = now

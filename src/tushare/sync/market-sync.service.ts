@@ -430,9 +430,9 @@ export class MarketSyncService {
     }
 
     // 5. 兜底重试失败日期
+    const stillFailed: Array<{ date: string; error: string }> = []
     if (failed.length > 0) {
       this.logger.warn(`[${label}] ${failed.length} 个日期失败，开始兜底重试...`)
-      const stillFailed: Array<{ date: string; error: string }> = []
       for (const item of failed) {
         try {
           const mapped = await fetchAndMap(item.date)
@@ -460,10 +460,11 @@ export class MarketSyncService {
 
     // 6. 标记完成 + 写入同步日志
     await this.helper.markCompleted(task)
+    const finalStatus = stillFailed.length > 0 ? TushareSyncExecutionStatus.FAILED : TushareSyncExecutionStatus.SUCCESS
     await this.helper.writeSyncLog(
       task,
       {
-        status: TushareSyncExecutionStatus.SUCCESS,
+        status: finalStatus,
         message: `${label}同步完成，${totalRows} 条，${failed.length} 个日期曾失败`,
         tradeDate: this.helper.toDate(tradeDates[tradeDates.length - 1]),
         payload: {

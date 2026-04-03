@@ -1,5 +1,5 @@
 import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common'
-import { UserRole, UserStatus } from '@prisma/client'
+import { AuditAction, UserRole, UserStatus } from '@prisma/client'
 import * as bcrypt from 'bcrypt'
 import { PrismaService } from 'src/shared/prisma.service'
 import { TokenPayload } from 'src/shared/token.interface'
@@ -13,6 +13,8 @@ import { UpdateUserStatusDto } from './dto/update-user-status.dto'
 import { UserListQueryDto } from './dto/user-list-query.dto'
 import { AdminUpdateUserDto } from './dto/admin-update-user.dto'
 import { ResetPasswordDto } from './dto/reset-password.dto'
+import { AuditLogService } from './audit-log.service'
+import { AuditLogQueryDto } from './dto/audit-log-query.dto'
 
 /** 用户基础信息（不含密码）— 用于列表和详情响应 */
 const USER_SAFE_SELECT = {
@@ -34,7 +36,10 @@ const USER_SAFE_SELECT = {
 export class UserService implements OnApplicationBootstrap {
   private readonly logger = new Logger(UserService.name)
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly auditLogService: AuditLogService,
+  ) {}
 
   // ── 应用启动：初始化超级管理员 ───────────────────────────────────────────
 
@@ -111,6 +116,19 @@ export class UserService implements OnApplicationBootstrap {
         ...(dto.watchlistLimit !== undefined ? { watchlistLimit: dto.watchlistLimit } : {}),
       },
       select: USER_SAFE_SELECT,
+    })
+
+    this.auditLogService.record({
+      operatorId: operator.id,
+      operatorAccount: operator.account,
+      action: AuditAction.USER_CREATE,
+      targetId: user.id,
+      targetAccount: user.account,
+      details: {
+        role: targetRole,
+        backtestQuota: dto.backtestQuota,
+        watchlistLimit: dto.watchlistLimit,
+      },
     })
 
     // 将初始密码一次性返回给操作者（后续不可再获取）
@@ -195,6 +213,15 @@ export class UserService implements OnApplicationBootstrap {
     if (id === operator.id) throw new BusinessException(ErrorEnum.CANNOT_DISABLE_SELF)
 
     await this.prisma.user.update({ where: { id }, data: { status: dto.status } })
+
+    this.auditLogService.record({
+      operatorId: operator.id,
+      operatorAccount: operator.account,
+      action: AuditAction.USER_UPDATE_STATUS,
+      targetId: id,
+      targetAccount: target.account,
+      details: { from: target.status, to: dto.status },
+    })
   }
 
   // ── 管理员更新用户信息（配额等）──────────────────────────────────────────
@@ -204,7 +231,18 @@ export class UserService implements OnApplicationBootstrap {
     this.assertNotSuperAdmin(target.role)
     this.assertHigherRole(operator, target.role, id)
 
-    return this.prisma.user.update({ where: { id }, data: dto, select: USER_SAFE_SELECT })
+    const updated = await this.prisma.user.update({ where: { id }, data: dto, select: USER_SAFE_SELECT })
+
+    this.auditLogService.record({
+      operatorId: operator.id,
+      operatorAccount: operator.account,
+      action: AuditAction.USER_UPDATE_INFO,
+      targetId: id,
+      targetAccount: target.account,
+      details: { changes: dto as Record<string, unknown> },
+    })
+
+    return updated
   }
 
   // ── 重置用户密码（管理员以上）────────────────────────────────────────────
@@ -218,6 +256,15 @@ export class UserService implements OnApplicationBootstrap {
     const hashedPassword = await bcrypt.hash(rawPassword, 10)
     await this.prisma.user.update({ where: { id: dto.id }, data: { password: hashedPassword } })
 
+    this.auditLogService.record({
+      operatorId: operator.id,
+      operatorAccount: operator.account,
+      action: AuditAction.USER_RESET_PASSWORD,
+      targetId: dto.id,
+      targetAccount: target.account,
+      details: {},
+    })
+
     return { newPassword: rawPassword }
   }
 
@@ -230,12 +277,27 @@ export class UserService implements OnApplicationBootstrap {
     if (id === operator.id) throw new BusinessException(ErrorEnum.CANNOT_DELETE_SELF)
 
     await this.prisma.user.update({ where: { id }, data: { status: UserStatus.DELETED } })
+
+    this.auditLogService.record({
+      operatorId: operator.id,
+      operatorAccount: operator.account,
+      action: AuditAction.USER_DELETE,
+      targetId: id,
+      targetAccount: target.account,
+      details: { previousStatus: target.status },
+    })
   }
 
   // ── 更新最后登录时间（由 AuthService 调用）────────────────────────────────
 
   async updateLastLoginAt(id: number): Promise<void> {
     await this.prisma.user.update({ where: { id }, data: { lastLoginAt: new Date() } })
+  }
+
+  // ── 审计日志查询 ──────────────────────────────────────────────────────────
+
+  async listAuditLog(query: AuditLogQueryDto) {
+    return this.auditLogService.findAll(query)
   }
 
   // ── 工具方法 ─────────────────────────────────────────────────────────────

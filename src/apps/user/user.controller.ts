@@ -1,6 +1,7 @@
 import { Body, Controller, Post, UseGuards } from '@nestjs/common'
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger'
 import { UserRole } from '@prisma/client'
+import { Throttle } from '@nestjs/throttler'
 import { UserService } from './user.service'
 import { CreateUserDto } from './dto/create-user.dto'
 import { UpdateProfileDto } from './dto/update-profile.dto'
@@ -16,6 +17,8 @@ import { RolesGuard } from 'src/lifecycle/guard/roles.guard'
 import { TokenPayload } from 'src/shared/token.interface'
 import { ApiSuccessRawResponse, ApiSuccessResponse } from 'src/common/decorators/api-success-response.decorator'
 import { CreatedUserDto, ResetPasswordDataDto, UserListDataDto, UserSafeDto } from './dto/user-response.dto'
+import { AuditLogListDataDto } from './dto/audit-log-response.dto'
+import { AuditLogQueryDto } from './dto/audit-log-query.dto'
 
 @ApiBearerAuth()
 @ApiTags('User - 用户')
@@ -31,6 +34,7 @@ export class UserController {
    */
   @Post('create')
   @Roles(UserRole.ADMIN)
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   @ApiOperation({ summary: '创建用户（管理员以上）' })
   @ApiSuccessResponse(CreatedUserDto)
   async create(@Body() dto: CreateUserDto, @CurrentUser() currentUser: TokenPayload) {
@@ -118,6 +122,7 @@ export class UserController {
    */
   @Post('reset-password')
   @Roles(UserRole.ADMIN)
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   @ApiOperation({ summary: '重置用户密码（管理员以上，需高于目标用户角色）' })
   @ApiSuccessResponse(ResetPasswordDataDto)
   async resetPassword(@Body() dto: ResetPasswordDto, @CurrentUser() currentUser: TokenPayload) {
@@ -133,5 +138,16 @@ export class UserController {
   @ApiSuccessRawResponse({ type: 'null', nullable: true })
   async remove(@Body() { id }: UserIdDto, @CurrentUser() currentUser: TokenPayload) {
     return this.userService.remove(id, currentUser)
+  }
+
+  /**
+   * 审计日志查询（管理员以上）
+   */
+  @Post('audit-log/list')
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: '查询管理员操作审计日志（管理员以上）' })
+  @ApiSuccessResponse(AuditLogListDataDto)
+  async listAuditLog(@Body() query: AuditLogQueryDto) {
+    return this.userService.listAuditLog(query)
   }
 }

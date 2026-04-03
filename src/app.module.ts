@@ -36,7 +36,7 @@ import { IndexModule } from './apps/index/index.module'
     ThrottlerModule.forRootAsync({
       useFactory: () => ({
         errorMessage: '操作过于频繁，请稍后再试！',
-        throttlers: [{ ttl: seconds(10), limit: 20 }],
+        throttlers: [{ name: 'default', ttl: seconds(10), limit: 20 }],
       }),
     }),
 

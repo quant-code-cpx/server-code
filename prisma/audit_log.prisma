@@ -1,0 +1,36 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// 审计日志 Schema
+//
+// 记录所有管理员对用户的敏感操作（创建/删除/状态变更/密码重置/信息更新）。
+// 设计原则：
+//   - 只追加，不修改/删除（append-only）
+//   - 冗余存储 operatorAccount / targetAccount，避免联表查询
+//   - 操作详情以 Json 格式存储变更前后信息（不记录密码明文）
+// ─────────────────────────────────────────────────────────────────────────────
+
+// 审计操作类型
+enum AuditAction {
+  USER_CREATE         // 创建用户
+  USER_DELETE         // 删除用户（软删除）
+  USER_UPDATE_STATUS  // 修改用户状态（启用/禁用）
+  USER_UPDATE_INFO    // 管理员更新用户信息（配额、昵称等）
+  USER_RESET_PASSWORD // 重置用户密码
+}
+
+model AuditLog {
+  id              Int          @id @default(autoincrement())
+  operatorId      Int                                        // 执行操作的管理员 ID（冗余，不设 FK 以避免级联删除影响审计完整性）
+  operatorAccount String       @db.VarChar(64)              // 执行操作的管理员账号（冗余快查）
+  action          AuditAction                               // 操作类型
+  targetId        Int?                                       // 被操作的目标用户 ID（nullable：部分操作可能无目标）
+  targetAccount   String?      @db.VarChar(64)              // 被操作的目标用户账号（冗余存储，保证审计完整性，避免用户注销后丢失记录）
+  details         Json?                                      // 操作详情（变更前后值等，不含密码）
+  ipAddress       String?      @db.VarChar(64)              // 操作者 IP 地址（可选）
+  createdAt       DateTime     @default(now())              // 操作时间
+
+  @@index([operatorId])
+  @@index([targetId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("audit_logs")
+}

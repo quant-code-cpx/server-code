@@ -7,8 +7,10 @@ import { Roles } from 'src/common/decorators/roles.decorator'
 import { RolesGuard } from 'src/lifecycle/guard/roles.guard'
 import { TushareSyncService } from 'src/tushare/sync/sync.service'
 import { DataQualityService } from 'src/tushare/sync/quality/data-quality.service'
+import { SyncLogService } from 'src/tushare/sync/sync-log.service'
 import { ManualSyncDto } from './dto/manual-sync.dto'
 import { CacheMetricsDataDto, TushareSyncPlanDto } from './dto/tushare-sync-response.dto'
+import { SyncLogQueryDto } from './dto/sync-log-query.dto'
 
 @ApiBearerAuth()
 @ApiTags('Tushare - 同步管理')
@@ -19,6 +21,7 @@ export class TushareAdminController {
   constructor(
     private readonly tushareSyncService: TushareSyncService,
     private readonly dataQualityService: DataQualityService,
+    private readonly syncLogService: SyncLogService,
   ) {}
 
   @Post('plans')
@@ -76,5 +79,25 @@ export class TushareAdminController {
   @ApiSuccessRawResponse({ type: 'array', items: { type: 'object' } })
   async getValidationLogs(@Body() dto: { task?: string; limit?: number }) {
     return this.dataQualityService.getValidationLogs({ task: dto.task, limit: dto.limit })
+  }
+
+  @Post('sync-logs')
+  @ApiOperation({
+    summary: '查询同步日志（仅超级管理员）',
+    description: '支持按任务类型、状态、时间范围过滤，按 startedAt 倒序返回。',
+  })
+  @ApiSuccessRawResponse({ type: 'object' })
+  async getSyncLogs(@Body() dto: SyncLogQueryDto) {
+    return this.syncLogService.queryLogs(dto)
+  }
+
+  @Post('sync-logs/summary')
+  @ApiOperation({
+    summary: '各任务最后同步状态汇总（仅超级管理员）',
+    description: '返回所有同步任务的最后同步时间、状态、行数和连续失败次数，用于总览面板。',
+  })
+  @ApiSuccessRawResponse({ type: 'array', items: { type: 'object' } })
+  async getSyncLogsSummary() {
+    return this.syncLogService.summarizeLogs()
   }
 }

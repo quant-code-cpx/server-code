@@ -1,6 +1,7 @@
 import { Body, Controller, Headers, Post, Req, Res } from '@nestjs/common'
 import { ApiCookieAuth, ApiOperation, ApiTags } from '@nestjs/swagger'
 import { Request, Response } from 'express'
+import { Throttle } from '@nestjs/throttler'
 import { AuthService } from './auth.service'
 import { LoginDto } from './dto/login.dto'
 import { Public } from 'src/common/decorators/public.decorator'
@@ -23,6 +24,7 @@ export class AuthController {
    */
   @Public()
   @Post('captcha')
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
   @ApiOperation({ summary: '获取图片验证码' })
   @ApiSuccessResponse(CaptchaResponseDto)
   async captcha() {
@@ -39,6 +41,7 @@ export class AuthController {
    */
   @Public()
   @Post('login')
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   @ApiOperation({ summary: '登录（验证码 + 账号密码）' })
   @ApiSuccessResponse(AccessTokenResponseDto)
   async login(@Body() dto: LoginDto, @Res({ passthrough: true }) res: Response) {
@@ -56,6 +59,7 @@ export class AuthController {
    */
   @Public()
   @Post('refresh')
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
   @ApiOperation({ summary: '刷新 AccessToken' })
   @ApiSuccessResponse(AccessTokenResponseDto)
   async refresh(

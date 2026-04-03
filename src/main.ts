@@ -3,6 +3,7 @@ import { AppModule } from './app.module'
 import { ConfigService } from '@nestjs/config'
 import { ValidationPipe } from '@nestjs/common'
 import helmet from 'helmet'
+import { json, urlencoded } from 'express'
 const cookieParser = require('cookie-parser')
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger'
 import { IAppConfig, APP_CONFIG_TOKEN } from './config/app.config'
@@ -19,14 +20,33 @@ async function bootstrap() {
   const loggerService = app.get(LoggerService)
   const { port, isDev, globalPrefix } = configService.get<IAppConfig>(APP_CONFIG_TOKEN, { infer: true })
 
-  // ── 安全 ──
+  // ── 请求体大小限制（防止超大 JSON 攻击，最大 1 MB） ──
+  app.use(json({ limit: '1mb' }))
+  app.use(urlencoded({ limit: '1mb', extended: true }))
+
+  // ── 安全头 ──
   app.use(helmet())
+
+  // ── CORS ──
   // credentials:true 不能与 origin:'*' 同时使用（浏览器会拦截）
-  // 生产环境应将 origin 替换为具体域名白名单
-  app.enableCors({
-    origin: isDev ? true : process.env.CORS_ORIGIN || false,
-    credentials: true,
-  })
+  // 生产环境通过 CORS_ORIGIN 环境变量配置域名白名单（多个域名用逗号分隔）
+  if (isDev) {
+    app.enableCors({ origin: true, credentials: true })
+  } else {
+    const corsOriginEnv = process.env.CORS_ORIGIN
+    if (!corsOriginEnv) {
+      loggerService.warn('CORS_ORIGIN 未配置，生产环境 CORS 已禁用（所有跨域请求将被浏览器拦截）', 'Bootstrap')
+      app.enableCors({ origin: false, credentials: true })
+    } else {
+      const origins = corsOriginEnv
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean)
+      const origin = origins.length === 1 ? origins[0] : origins
+      app.enableCors({ origin, credentials: true })
+      loggerService.log(`CORS 白名单：${origins.join(', ')}`, 'Bootstrap')
+    }
+  }
 
   // ── Cookie 解析（用于读取 HttpOnly Refresh Token Cookie） ──
   app.use(cookieParser())

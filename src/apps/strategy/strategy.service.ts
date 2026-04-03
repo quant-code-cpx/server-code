@@ -168,7 +168,7 @@ export class StrategyService {
         data: {
           userId,
           name,
-          description: source.description ?? null,
+          description: source.description,
           strategyType: source.strategyType,
           strategyConfig: source.strategyConfig as Prisma.InputJsonValue,
           backtestDefaults: source.backtestDefaults ? (source.backtestDefaults as Prisma.InputJsonValue) : undefined,
@@ -189,27 +189,26 @@ export class StrategyService {
     if (!strategy) throw new BusinessException(ErrorEnum.STRATEGY_NOT_FOUND)
 
     const defaults = (strategy.backtestDefaults ?? {}) as Record<string, unknown>
+    type RunParams = Parameters<typeof this.backtestRunService.createRun>[0]
 
     // 参数合并：RunStrategyDto 覆盖 backtestDefaults
     return this.backtestRunService.createRun(
       {
         name: dto.name ?? `${strategy.name} 回测`,
-        strategyType: strategy.strategyType as Parameters<typeof this.backtestRunService.createRun>[0]['strategyType'],
+        strategyType: strategy.strategyType as RunParams['strategyType'],
         strategyConfig: strategy.strategyConfig as Record<string, unknown>,
         startDate: dto.startDate,
         endDate: dto.endDate,
         initialCapital: dto.initialCapital,
         benchmarkTsCode: dto.benchmarkTsCode ?? (defaults.benchmarkTsCode as string | undefined) ?? '000300.SH',
-        universe: (dto.universe ?? (defaults.universe as string | undefined) ?? 'ALL_A') as Parameters<
-          typeof this.backtestRunService.createRun
-        >[0]['universe'],
+        universe: (dto.universe ?? (defaults.universe as string | undefined) ?? 'ALL_A') as RunParams['universe'],
         customUniverseTsCodes: defaults.customUniverse as string[] | undefined,
         rebalanceFrequency: (dto.rebalanceFrequency ??
           (defaults.rebalanceFrequency as string | undefined) ??
-          'MONTHLY') as Parameters<typeof this.backtestRunService.createRun>[0]['rebalanceFrequency'],
-        priceMode: (dto.priceMode ?? (defaults.priceMode as string | undefined) ?? 'NEXT_OPEN') as Parameters<
-          typeof this.backtestRunService.createRun
-        >[0]['priceMode'],
+          'MONTHLY') as RunParams['rebalanceFrequency'],
+        priceMode: (dto.priceMode ??
+          (defaults.priceMode as string | undefined) ??
+          'NEXT_OPEN') as RunParams['priceMode'],
         commissionRate: dto.commissionRate ?? (defaults.commissionRate as number | undefined) ?? 0.0003,
         stampDutyRate: dto.stampDutyRate ?? (defaults.stampDutyRate as number | undefined) ?? 0.0005,
         minCommission: dto.minCommission ?? 5,

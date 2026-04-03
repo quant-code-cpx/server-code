@@ -30,6 +30,7 @@ const SCREENING_ROTATION_SCHEMA: StrategyJsonSchema = {
   properties: {
     rankBy: {
       type: 'string',
+      // camelCase 命名与 ScreeningRotationRankField 类型保持一致（来自 daily_basic 表字段映射）
       enum: ['totalMv', 'peTtm', 'pb', 'dvTtm', 'turnoverRate', 'turnoverRateF'],
       default: 'totalMv',
       description: '排名依据字段',
@@ -47,6 +48,7 @@ const FACTOR_RANKING_SCHEMA: StrategyJsonSchema = {
   properties: {
     factorName: {
       type: 'string',
+      // snake_case 命名与 FactorRankingFactorName 类型保持一致（来自财务/因子数据库字段名）
       enum: [
         'pe_ttm',
         'pb',

@@ -22,6 +22,7 @@ import { ResearchNoteModule } from './apps/research-note/research-note.module'
 import { ScreenerSubscriptionModule } from './apps/screener-subscription/screener-subscription.module'
 import { StrategyDraftModule } from './apps/strategy-draft/strategy-draft.module'
 import { IndexModule } from './apps/index/index.module'
+import { StrategyModule } from './apps/strategy/strategy.module'
 
 @Module({
   imports: [
@@ -63,6 +64,7 @@ import { IndexModule } from './apps/index/index.module'
     ResearchNoteModule,
     ScreenerSubscriptionModule,
     StrategyDraftModule,
+    StrategyModule,
 
     // ── 队列模块（BullMQ 回测任务） ──
     QueueModule,

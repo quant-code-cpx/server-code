@@ -34,6 +34,10 @@ export enum ErrorEnum {
   BACKTEST_NO_TRADING_DAYS = '4002:指定区间内无可用交易日',
   BACKTEST_UNKNOWN_STRATEGY = '4003:未知的回测策略类型',
   BACKTEST_UNKNOWN_JOB = '4004:未知的回测任务类型',
+
+  STRATEGY_NOT_FOUND = '5001:策略不存在',
+  STRATEGY_NAME_EXISTS = '5002:同名策略已存在',
+  STRATEGY_LIMIT_EXCEEDED = '5003:策略数量已达上限',
 }
 
 export const SUCCESS_CODE = 0

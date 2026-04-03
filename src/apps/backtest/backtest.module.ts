@@ -40,6 +40,7 @@ import { BacktestMonteCarloService } from './services/backtest-monte-carlo.servi
     BacktestReportService,
     BacktestWalkForwardService,
     BacktestComparisonService,
+    BacktestStrategyRegistryService,
   ],
 })
 export class BacktestModule {}

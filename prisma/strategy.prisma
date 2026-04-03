@@ -1,0 +1,23 @@
+/// 策略模板（用户保存的可复用回测策略配置）
+model Strategy {
+  id               String   @id @default(cuid())
+  userId           Int      @map("user_id")
+  name             String   @db.VarChar(100)
+  description      String?  @db.VarChar(500)
+  strategyType     String   @map("strategy_type") @db.VarChar(50)
+  strategyConfig   Json     @map("strategy_config") @db.JsonB
+  backtestDefaults Json?    @map("backtest_defaults") @db.JsonB
+  tags             String[] @default([])
+  version          Int      @default(1)
+  isPublic         Boolean  @default(false) @map("is_public")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("strategies")
+  @@unique([userId, name])
+  @@index([userId, updatedAt(sort: Desc)])
+  @@index([strategyType])
+  @@index([isPublic])
+}

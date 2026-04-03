@@ -1,4 +1,11 @@
 export type BacktestStrategyType = 'MA_CROSS_SINGLE' | 'SCREENING_ROTATION' | 'FACTOR_RANKING' | 'CUSTOM_POOL_REBALANCE' | 'FACTOR_SCREENING_ROTATION'
+export const BACKTEST_STRATEGY_TYPES = [
+  'MA_CROSS_SINGLE',
+  'SCREENING_ROTATION',
+  'FACTOR_RANKING',
+  'CUSTOM_POOL_REBALANCE',
+  'FACTOR_SCREENING_ROTATION',
+] as const
 export type BacktestStatus = 'QUEUED' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'CANCELLED'
 export type PriceMode = 'NEXT_OPEN' | 'NEXT_CLOSE'
 export type RebalanceFrequency = 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'QUARTERLY'

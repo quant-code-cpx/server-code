@@ -2,9 +2,10 @@ import { Module } from '@nestjs/common'
 import { StrategyDraftController } from './strategy-draft.controller'
 import { StrategyDraftService } from './strategy-draft.service'
 import { BacktestModule } from 'src/apps/backtest/backtest.module'
+import { StrategyModule } from 'src/apps/strategy/strategy.module'
 
 @Module({
-  imports: [BacktestModule],
+  imports: [BacktestModule, StrategyModule],
   controllers: [StrategyDraftController],
   providers: [StrategyDraftService],
 })

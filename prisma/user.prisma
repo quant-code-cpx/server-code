@@ -38,6 +38,7 @@ model User {
   researchNotes      ResearchNote[]                    // 研究笔记
   screenerSubscriptions ScreenerSubscription[]         // 条件订阅
   strategyDrafts     StrategyDraft[]                   // 策略草稿
+  strategies         Strategy[]                        // 策略模板
   createdAt      DateTime   @default(now())
   updatedAt      DateTime   @updatedAt
 

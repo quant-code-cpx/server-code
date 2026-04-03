@@ -21,6 +21,7 @@ import { TushareSyncRegistryService } from './sync/sync-registry.service'
 import { TushareSyncService } from './sync/sync.service'
 import { DataQualityService } from './sync/quality/data-quality.service'
 import { SyncLogService } from './sync/sync-log.service'
+import { SyncRetryService } from './sync/sync-retry.service'
 import { WebsocketModule } from 'src/websocket/websocket.module'
 
 /**
@@ -52,6 +53,7 @@ import { WebsocketModule } from 'src/websocket/websocket.module'
     TushareSyncService,
     DataQualityService,
     SyncLogService,
+    SyncRetryService,
   ],
   exports: [TushareClient, FinancialSyncService, TushareSyncRegistryService, TushareSyncService, DataQualityService, SyncLogService],
 })

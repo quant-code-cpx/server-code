@@ -28,6 +28,10 @@ export const TushareConfig = registerAs(TUSHARE_CONFIG_TOKEN, () => ({
   syncCron: process.env.TUSHARE_SYNC_CRON || TUSHARE_SYNC_CRON,
   /** 定时任务时区 */
   syncTimeZone: process.env.TUSHARE_SYNC_TIME_ZONE || TUSHARE_SYNC_TIME_ZONE,
+  /** 同步分类间最大并发数（1 = 串行，默认 3；同分类内始终串行以遵守频控） */
+  syncConcurrency: parseInt(process.env.TUSHARE_SYNC_CONCURRENCY ?? '', 10) || 3,
+  /** 按日期并发同步时每批日期数（1 = 串行，默认 1，推荐 3-5） */
+  dateBatchConcurrency: parseInt(process.env.TUSHARE_DATE_BATCH_CONCURRENCY ?? '', 10) || 1,
 }))
 
 export type ITushareConfig = ConfigType<typeof TushareConfig>

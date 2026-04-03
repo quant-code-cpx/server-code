@@ -1,0 +1,30 @@
+// Tushare 同步断点续传进度（每个任务一行，记录最后成功分片键）
+model TushareSyncProgress {
+  id              Int                       @id @default(autoincrement())
+  task            TushareSyncTask           @unique
+  lastSuccessKey  String?                   @map("last_success_key") // 最后成功处理的分片键（YYYYMMDD / 季度期末日期等）
+  totalKeys       Int?                      @map("total_keys")       // 预估总分片数
+  completedKeys   Int                       @default(0) @map("completed_keys")
+  status          TushareSyncProgressStatus @default(IDLE)
+  updatedAt       DateTime                  @updatedAt @map("updated_at")
+
+  @@map("tushare_sync_progress")
+}
+
+// Tushare 同步失败任务自动重试队列
+model TushareSyncRetryQueue {
+  id           Int                    @id @default(autoincrement())
+  task         TushareSyncTask
+  failedKey    String?                @map("failed_key")    // 失败的分片键（如日期 "20260401"）
+  errorMessage String                 @map("error_message")
+  retryCount   Int                    @default(0) @map("retry_count")
+  maxRetries   Int                    @default(3) @map("max_retries")
+  nextRetryAt  DateTime               @map("next_retry_at")
+  status       TushareSyncRetryStatus @default(PENDING)
+  createdAt    DateTime               @default(now()) @map("created_at")
+  updatedAt    DateTime               @updatedAt @map("updated_at")
+
+  @@index([status, nextRetryAt])
+  @@index([task, status])
+  @@map("tushare_sync_retry_queue")
+}

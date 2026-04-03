@@ -36,11 +36,15 @@ export interface RunPlansResult {
   elapsedSeconds: number
 }
 
+/** 进度节流：最少间隔毫秒数，防止 WebSocket 洪泛 */
+const PROGRESS_THROTTLE_MS = 2000
+
 @Injectable()
 export class TushareSyncService implements OnApplicationBootstrap {
   private readonly logger = new Logger(TushareSyncService.name)
   private readonly syncEnabled: boolean
   private readonly syncTimeZone: string
+  private readonly syncConcurrency: number
   private running = false
 
   constructor(
@@ -57,6 +61,7 @@ export class TushareSyncService implements OnApplicationBootstrap {
     }
     this.syncEnabled = cfg.syncEnabled
     this.syncTimeZone = cfg.syncTimeZone
+    this.syncConcurrency = cfg.syncConcurrency ?? 3
   }
 
   async onApplicationBootstrap() {
@@ -129,9 +134,6 @@ export class TushareSyncService implements OnApplicationBootstrap {
       mode: input.mode,
       plans: requestedPlans,
     }).catch((error) => {
-      // runPlans emits broadcastSyncFailed in its own catch before re-throwing.
-      // This catch handles any edge case where runPlans throws before its try block
-      // (e.g. an unexpected error after the running flag is set).
       this.logger.error(`手动同步后台执行异常: ${(error as Error).message}`, (error as Error).stack)
       this.eventsGateway.broadcastSyncFailed('manual', input.mode, (error as Error).message)
     })
@@ -251,54 +253,129 @@ export class TushareSyncService implements OnApplicationBootstrap {
 
     this.eventsGateway.broadcastSyncStarted(trigger, mode)
 
+    // 总体进度追踪
+    let completedTaskCount = 0
+    const totalTaskCount = sortedPlans.length
+    const overallStartedAt = startedAt
+
+    const updateOverallProgress = () => {
+      const elapsedMs = Date.now() - overallStartedAt
+      const percentage = totalTaskCount > 0 ? Math.round((completedTaskCount / totalTaskCount) * 100) : 0
+      const estimatedRemainingMs =
+        completedTaskCount > 0 ? Math.round((elapsedMs / completedTaskCount) * (totalTaskCount - completedTaskCount)) : undefined
+      this.eventsGateway.broadcastSyncOverallProgress({
+        completedTasks: completedTaskCount,
+        totalTasks: totalTaskCount,
+        percentage,
+        elapsedMs,
+        estimatedRemainingMs,
+      })
+    }
+
     try {
-      for (const category of ['basic', 'market', 'financial', 'moneyflow', 'factor', 'alternative'] as TushareSyncCategory[]) {
-        const categoryPlans = sortedPlans.filter((plan) => plan.category === category)
-        if (!categoryPlans.length) continue
+      // 按 concurrencyGroup（默认 category）分组，组间并行执行
+      const CATEGORY_ORDER: TushareSyncCategory[] = ['basic', 'market', 'financial', 'moneyflow', 'factor', 'alternative']
 
-        this.logger.log(`─── ${this.getCategoryLabel(category)} ───`)
+      // 将 sortedPlans 按 concurrencyGroup（默认 category）分组，各组内串行
+      const groups = new Map<string, TushareSyncPlan[]>()
+      for (const category of CATEGORY_ORDER) {
+        const categoryPlans = sortedPlans.filter((plan) => (plan.concurrencyGroup ?? plan.category) === category)
+        if (categoryPlans.length) groups.set(category, categoryPlans)
+      }
 
-        for (const plan of categoryPlans) {
-          if (trigger === 'schedule' && plan.schedule?.tradingDayOnly) {
-            if (isTradingDay === null) {
-              isTradingDay = await this.helper.isTodayTradingDay()
+      // 将 group 列表切分为多批次，每批最多 syncConcurrency 个组并行
+      const groupEntries = Array.from(groups.entries())
+      const batchSize = Math.max(1, this.syncConcurrency)
+
+      for (let batchStart = 0; batchStart < groupEntries.length; batchStart += batchSize) {
+        const batch = groupEntries.slice(batchStart, batchStart + batchSize)
+
+        await Promise.all(
+          batch.map(async ([groupKey, groupPlans]) => {
+            this.logger.log(`─── ${this.getCategoryLabel(groupKey as TushareSyncCategory)} ───`)
+
+            for (const plan of groupPlans) {
+              if (trigger === 'schedule' && plan.schedule?.tradingDayOnly) {
+                if (isTradingDay === null) {
+                  isTradingDay = await this.helper.isTodayTradingDay()
+                }
+
+                if (!isTradingDay) {
+                  this.logger.log(`[${plan.label}] 今天不是交易日，跳过`)
+                  skippedTasks.push(plan.task)
+                  completedTaskCount++
+                  updateOverallProgress()
+                  continue
+                }
+              }
+
+              let planTargetTradeDate: string | undefined
+              if (plan.requiresTradeDate) {
+                if (!targetTradeDateResolved) {
+                  targetTradeDateResolved = true
+                  targetTradeDate = await this.helper.resolveLatestCompletedTradeDate()
+                }
+
+                if (!targetTradeDate) {
+                  this.logger.warn(`[${plan.label}] 未能解析最近已完成的交易日，跳过`)
+                  skippedTasks.push(plan.task)
+                  completedTaskCount++
+                  updateOverallProgress()
+                  continue
+                }
+
+                planTargetTradeDate = targetTradeDate
+              }
+
+              // 构建节流的 onProgress 回调
+              const planStartedAt = Date.now()
+              let lastProgressAt = 0
+              let lastPercentage = 0
+              const onProgress = (completed: number, total: number, currentKey?: string) => {
+                const now = Date.now()
+                const percentage = total > 0 ? Math.round((completed / total) * 100) : 0
+                // 节流：至少间隔 PROGRESS_THROTTLE_MS 毫秒，或百分比变化 >= 5%
+                if (now - lastProgressAt < PROGRESS_THROTTLE_MS && Math.abs(percentage - lastPercentage) < 5) {
+                  return
+                }
+                lastProgressAt = now
+                lastPercentage = percentage
+                const elapsedMs = now - planStartedAt
+                const estimatedRemainingMs =
+                  completed > 0 && total > completed
+                    ? Math.round((elapsedMs / completed) * (total - completed))
+                    : undefined
+                this.eventsGateway.broadcastSyncProgress({
+                  task: plan.task,
+                  label: plan.label,
+                  category: plan.category,
+                  completedItems: completed,
+                  totalItems: total,
+                  percentage,
+                  currentKey,
+                  elapsedMs,
+                  estimatedRemainingMs,
+                })
+              }
+
+              await this.safeRun(
+                plan,
+                () =>
+                  plan.execute({
+                    trigger,
+                    mode,
+                    targetTradeDate: planTargetTradeDate,
+                    onProgress,
+                  }),
+                failedTasks,
+                executedTasks,
+              )
+
+              completedTaskCount++
+              updateOverallProgress()
             }
-
-            if (!isTradingDay) {
-              this.logger.log(`[${plan.label}] 今天不是交易日，跳过`)
-              skippedTasks.push(plan.task)
-              continue
-            }
-          }
-
-          let planTargetTradeDate: string | undefined
-          if (plan.requiresTradeDate) {
-            if (!targetTradeDateResolved) {
-              targetTradeDateResolved = true
-              targetTradeDate = await this.helper.resolveLatestCompletedTradeDate()
-            }
-
-            if (!targetTradeDate) {
-              this.logger.warn(`[${plan.label}] 未能解析最近已完成的交易日，跳过`)
-              skippedTasks.push(plan.task)
-              continue
-            }
-
-            planTargetTradeDate = targetTradeDate
-          }
-
-          await this.safeRun(
-            plan,
-            () =>
-              plan.execute({
-                trigger,
-                mode,
-                targetTradeDate: planTargetTradeDate,
-              }),
-            failedTasks,
-            executedTasks,
-          )
-        }
+          }),
+        )
       }
 
       if (failedTasks.length > 0) {

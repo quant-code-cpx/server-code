@@ -1,5 +1,6 @@
 import { Body, Controller, Post, UseGuards } from '@nestjs/common'
 import { ApiOperation, ApiTags } from '@nestjs/swagger'
+import { ApiSuccessRawResponse } from 'src/common/decorators/api-success-response.decorator'
 import { JwtAuthGuard } from 'src/lifecycle/guard/jwt-auth.guard'
 import { CurrentUser } from 'src/common/decorators/current-user.decorator'
 import { TokenPayload } from 'src/shared/token.interface'
@@ -29,18 +30,21 @@ export class FactorController {
 
   @Post('library')
   @ApiOperation({ summary: '因子库列表（按分类分组）' })
+  @ApiSuccessRawResponse({ type: 'array', items: { type: 'object' } })
   getLibrary(@Body() dto: FactorLibraryQueryDto) {
     return this.factorService.getLibrary(dto)
   }
 
   @Post('detail')
   @ApiOperation({ summary: '因子详情' })
+  @ApiSuccessRawResponse({ type: 'object' })
   getDetail(@Body() dto: FactorDetailQueryDto) {
     return this.factorService.getDetail(dto)
   }
 
   @Post('values')
   @ApiOperation({ summary: '因子截面值查询（指定因子在指定交易日的全市场值）' })
+  @ApiSuccessRawResponse({ type: 'object' })
   getFactorValues(@Body() dto: FactorValuesQueryDto) {
     return this.factorService.getFactorValues(dto)
   }
@@ -49,30 +53,35 @@ export class FactorController {
 
   @Post('analysis/ic')
   @ApiOperation({ summary: 'IC 时间序列分析（Spearman/Pearson 相关系数）' })
+  @ApiSuccessRawResponse({ type: 'object' })
   getIcAnalysis(@Body() dto: FactorIcAnalysisDto) {
     return this.factorService.getIcAnalysis(dto)
   }
 
   @Post('analysis/quantile')
   @ApiOperation({ summary: '因子分层回测（各分位组累计收益）' })
+  @ApiSuccessRawResponse({ type: 'object' })
   getQuantileAnalysis(@Body() dto: FactorQuantileAnalysisDto) {
     return this.factorService.getQuantileAnalysis(dto)
   }
 
   @Post('analysis/decay')
   @ApiOperation({ summary: '因子衰减分析（不同持有期 IC 对比）' })
+  @ApiSuccessRawResponse({ type: 'object' })
   getDecayAnalysis(@Body() dto: FactorDecayAnalysisDto) {
     return this.factorService.getDecayAnalysis(dto)
   }
 
   @Post('analysis/distribution')
   @ApiOperation({ summary: '因子截面分布统计与直方图' })
+  @ApiSuccessRawResponse({ type: 'object' })
   getDistribution(@Body() dto: FactorDistributionDto) {
     return this.factorService.getDistribution(dto)
   }
 
   @Post('analysis/correlation')
   @ApiOperation({ summary: '多因子相关性矩阵' })
+  @ApiSuccessRawResponse({ type: 'object' })
   getCorrelation(@Body() dto: FactorCorrelationDto) {
     return this.factorService.getCorrelation(dto)
   }
@@ -81,6 +90,7 @@ export class FactorController {
 
   @Post('screening')
   @ApiOperation({ summary: '多因子选股（条件组合筛选）' })
+  @ApiSuccessRawResponse({ type: 'object' })
   screening(@Body() dto: FactorScreeningDto) {
     return this.factorService.screening(dto)
   }
@@ -89,30 +99,35 @@ export class FactorController {
 
   @Post('custom/create')
   @ApiOperation({ summary: '创建自定义因子（表达式引擎）' })
+  @ApiSuccessRawResponse({ type: 'object' })
   createCustomFactor(@Body() dto: CreateCustomFactorDto) {
     return this.factorService.createCustomFactor(dto)
   }
 
   @Post('custom/test')
   @ApiOperation({ summary: '试算自定义因子表达式（不落库）' })
+  @ApiSuccessRawResponse({ type: 'object' })
   testCustomFactor(@Body() dto: TestCustomFactorDto) {
     return this.factorService.testCustomFactor(dto)
   }
 
   @Post('custom/update')
   @ApiOperation({ summary: '更新自定义因子' })
+  @ApiSuccessRawResponse({ type: 'object' })
   updateCustomFactor(@Body() dto: UpdateCustomFactorDto & { name: string }) {
     return this.factorService.updateCustomFactor(dto.name, dto)
   }
 
   @Post('custom/delete')
   @ApiOperation({ summary: '删除自定义因子（同时清除预计算快照）' })
+  @ApiSuccessRawResponse({ type: 'null', nullable: true })
   deleteCustomFactor(@Body() { name }: { name: string }) {
     return this.factorService.deleteCustomFactor(name)
   }
 
   @Post('custom/precompute')
   @ApiOperation({ summary: '触发单因子预计算' })
+  @ApiSuccessRawResponse({ type: 'object' })
   triggerSinglePrecompute(@Body() dto: FactorPrecomputeTriggerDto & { name: string }) {
     return this.factorService.triggerSinglePrecompute(dto.name, dto.tradeDate)
   }
@@ -121,18 +136,21 @@ export class FactorController {
 
   @Post('admin/precompute')
   @ApiOperation({ summary: '[管理] 手动触发指定日期的因子预计算' })
+  @ApiSuccessRawResponse({ type: 'null', nullable: true })
   triggerPrecompute(@Body() dto: FactorPrecomputeTriggerDto) {
     return this.factorService.triggerPrecompute(dto)
   }
 
   @Post('admin/backfill')
   @ApiOperation({ summary: '[管理] 触发历史因子值回补（指定日期范围）' })
+  @ApiSuccessRawResponse({ type: 'null', nullable: true })
   triggerBackfill(@Body() dto: FactorBackfillDto) {
     return this.factorService.triggerBackfill(dto)
   }
 
   @Post('admin/precompute/status')
   @ApiOperation({ summary: '[管理] 查询预计算状态（最新日期、各因子覆盖情况）' })
+  @ApiSuccessRawResponse({ type: 'object' })
   getPrecomputeStatus() {
     return this.factorService.getPrecomputeStatus()
   }
@@ -141,12 +159,14 @@ export class FactorController {
 
   @Post('backtest/submit')
   @ApiOperation({ summary: '因子策略一键回测（因子选股条件→回测任务）' })
+  @ApiSuccessRawResponse({ type: 'object' })
   submitBacktest(@Body() dto: FactorBacktestSubmitDto, @CurrentUser() user: TokenPayload) {
     return this.factorService.submitBacktest(dto, user.id)
   }
 
   @Post('backtest/attribution')
   @ApiOperation({ summary: '因子归因分析（分析回测收益中各因子的贡献）' })
+  @ApiSuccessRawResponse({ type: 'object' })
   attribution(@Body() dto: FactorAttributionDto & { id: string }) {
     dto.backtestId = dto.id
     return this.factorService.attribution(dto)
@@ -156,12 +176,14 @@ export class FactorController {
 
   @Post('analysis/orthogonalize')
   @ApiOperation({ summary: '因子正交化（截面回归 / 对称正交化）' })
+  @ApiSuccessRawResponse({ type: 'object' })
   orthogonalize(@Body() dto: FactorOrthogonalizeDto) {
     return this.factorService.orthogonalize(dto)
   }
 
   @Post('analysis/fama-macbeth')
   @ApiOperation({ summary: 'Fama-MacBeth 截面回归检验（多因子有效性检验）' })
+  @ApiSuccessRawResponse({ type: 'object' })
   famaMacBeth(@Body() dto: FamaMacBethDto) {
     return this.factorService.famaMacBeth(dto)
   }

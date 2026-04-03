@@ -17,7 +17,7 @@ import { StrategyListResponseDto, StrategyResponseDto } from './dto/strategy-res
 export class StrategyController {
   constructor(private readonly strategyService: StrategyService) {}
 
-  @Post()
+  @Post('create')
   @ApiOperation({ summary: '创建策略模板' })
   @ApiSuccessResponse(StrategyResponseDto)
   create(@CurrentUser() user: TokenPayload, @Body() dto: CreateStrategyDto) {

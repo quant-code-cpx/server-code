@@ -96,6 +96,21 @@ argument-hint: '可选关注点，例如：tushare sync、docker 启动、prisma
   - 删除端点（原 DELETE `/:id`）改为 `POST /:id/delete`
   - 原 GET `/:id`（详情）改为 `POST /:id`，此时 PUT → `POST /:id/update`
 
+### 11. 所有 @Post 端点必须携带非空路径字符串
+
+- `@Post()` 无参数形式**禁止使用**；每个端点必须明确传入路径，如 `@Post('create')`、`@Post('list')` 等。
+- 路径应反映操作语义，遵守上方规则 #10 中列出的命名约定（`list`、`create`、`update`、`delete` 等）。
+
+### 12. 每个端点必须声明 Swagger 响应类型
+
+- 每个 Controller 方法必须使用以下之一标注返回类型：
+  - `@ApiSuccessResponse(DtoClass)` — 有明确 DTO 类型的响应
+  - `@ApiSuccessResponse(DtoClass, { isArray: true })` — 数组响应
+  - `@ApiSuccessRawResponse({ type: 'object' })` — 动态 / 复杂计算结果（无法预先定义 DTO）
+  - `@ApiSuccessRawResponse({ type: 'null', nullable: true })` — 无返回值 / 仅触发操作
+- 对于有固定结构的 CRUD 接口，应创建对应的 `*-response.dto.ts` 文件并使用 `@ApiSuccessResponse`。
+- Import 路径：`import { ApiSuccessResponse, ApiSuccessRawResponse } from 'src/common/decorators/api-success-response.decorator'`
+
 ## 推荐工作流程
 
 1. 编辑前先读取相关代码和当前项目结构。

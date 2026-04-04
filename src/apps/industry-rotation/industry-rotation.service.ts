@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common'
 import { Prisma } from '@prisma/client'
 import * as dayjs from 'dayjs'
+// use require for plugins to ensure compatibility with commonjs output
 const timezone = require('dayjs/plugin/timezone')
 const utc = require('dayjs/plugin/utc')
 import { CACHE_NAMESPACE } from 'src/constant/cache.constant'
@@ -703,17 +704,21 @@ export class IndustryRotationService {
 
   private async fetchReturnComparisonRows(tradeDate: Date, periods: number[]) {
     // Coerce all period values to safe positive integers (1-60) before embedding in SQL.
-    // DTO validation already enforces this; the explicit coercion here is a defense-in-depth measure
-    // ensuring only integer literals ever appear in the dynamically constructed SQL.
+    // DTO validation already enforces this; the explicit coercion here is a defense-in-depth measure.
+    // Only integer literals appear in dynamically constructed SQL fragments; actual parameters
+    // (dates) are passed via Prisma's tagged template parameterization.
     const safePeriods = periods.map((p) => Math.max(1, Math.min(60, Math.trunc(p))))
 
-    const joinClauses = safePeriods
-      .map((p) => `LEFT JOIN ranked r${p} ON r${p}.ts_code = r0.ts_code AND r${p}.rn = ${p + 1}`)
-      .join('\n    ')
+    // Build dynamic SQL fragments using Prisma.raw() — safe because values are integer literals only
+    const joinClauses = Prisma.raw(
+      safePeriods
+        .map((p) => `LEFT JOIN ranked r${p} ON r${p}.ts_code = r0.ts_code AND r${p}.rn = ${p + 1}`)
+        .join('\n    '),
+    )
 
-    const selectClauses = safePeriods
-      .map((p) => `r0.close / NULLIF(r${p}.close, 0) - 1 AS return_${p}`)
-      .join(',\n    ')
+    const selectClauses = Prisma.raw(
+      safePeriods.map((p) => `r0.close / NULLIF(r${p}.close, 0) - 1 AS return_${p}`).join(',\n    '),
+    )
 
     type ReturnRow = {
       ts_code: string
@@ -723,7 +728,7 @@ export class IndustryRotationService {
       [key: string]: unknown
     }
 
-    const sql = `
+    const rows = await this.prisma.$queryRaw<ReturnRow[]>`
       WITH ranked AS (
         SELECT
           ts_code,
@@ -734,7 +739,7 @@ export class IndustryRotationService {
           ROW_NUMBER() OVER (PARTITION BY ts_code ORDER BY trade_date DESC) AS rn
         FROM sector_capital_flows
         WHERE content_type = '行业'
-          AND trade_date <= $1
+          AND trade_date <= ${tradeDate}
       )
       SELECT
         r0.ts_code,
@@ -746,8 +751,6 @@ export class IndustryRotationService {
       ${joinClauses}
       WHERE r0.rn = 1
     `
-
-    const rows = await this.prisma.$queryRawUnsafe<ReturnRow[]>(sql, tradeDate)
     return rows
   }
 

@@ -42,6 +42,10 @@ const PERIOD_TABLE_MAP: Record<string, string> = {
   M: 'stock_monthly_prices',
 }
 
+// 布林带位置判断阈值（距离上/下轨的比例）
+const BOLL_NEAR_UPPER_THRESHOLD = 0.98
+const BOLL_NEAR_LOWER_THRESHOLD = 1.02
+
 interface OhlcvRow {
   tradeDate: Date
   open: number | null
@@ -1077,9 +1081,9 @@ export class StockAnalysisService {
     if (latest.close == null || latest.bollUpper == null || latest.bollMid == null || latest.bollLower == null)
       return null
     if (latest.close > latest.bollUpper) return 'above_upper'
-    if (latest.close > latest.bollUpper * 0.98) return 'near_upper'
+    if (latest.close > latest.bollUpper * BOLL_NEAR_UPPER_THRESHOLD) return 'near_upper'
     if (latest.close < latest.bollLower) return 'below_lower'
-    if (latest.close < latest.bollLower * 1.02) return 'near_lower'
+    if (latest.close < latest.bollLower * BOLL_NEAR_LOWER_THRESHOLD) return 'near_lower'
     return 'middle'
   }
 }

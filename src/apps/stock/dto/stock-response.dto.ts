@@ -714,3 +714,88 @@ export class StockRelativeStrengthDataDto {
   @ApiProperty({ type: RelativeStrengthSummaryDto }) summary: RelativeStrengthSummaryDto
   @ApiProperty({ type: [RelativeStrengthPointDto] }) history: RelativeStrengthPointDto[]
 }
+
+// ─── 预计算技术因子 DTO ───────────────────────────────────────────────────────
+
+export class StkFactorDataPointDto {
+  @ApiProperty() tradeDate: string
+  @ApiProperty({ required: false, nullable: true }) close: number | null
+
+  // ── MACD ──
+  @ApiProperty({ required: false, nullable: true }) macdDif: number | null
+  @ApiProperty({ required: false, nullable: true }) macdDea: number | null
+  @ApiProperty({ required: false, nullable: true }) macd: number | null
+
+  // ── KDJ ──
+  @ApiProperty({ required: false, nullable: true }) kdjK: number | null
+  @ApiProperty({ required: false, nullable: true }) kdjD: number | null
+  @ApiProperty({ required: false, nullable: true }) kdjJ: number | null
+
+  // ── RSI ──
+  @ApiProperty({ required: false, nullable: true }) rsi6: number | null
+  @ApiProperty({ required: false, nullable: true }) rsi12: number | null
+  @ApiProperty({ required: false, nullable: true }) rsi24: number | null
+
+  // ── 布林带 ──
+  @ApiProperty({ required: false, nullable: true }) bollUpper: number | null
+  @ApiProperty({ required: false, nullable: true }) bollMid: number | null
+  @ApiProperty({ required: false, nullable: true }) bollLower: number | null
+
+  // ── CCI ──
+  @ApiProperty({ required: false, nullable: true }) cci14: number | null
+  @ApiProperty({ required: false, nullable: true }) cci20: number | null
+
+  // ── ATR / 波动率 ──
+  @ApiProperty({ required: false, nullable: true }) atr14: number | null
+  @ApiProperty({ required: false, nullable: true }) atr20: number | null
+
+  // ── VR ──
+  @ApiProperty({ required: false, nullable: true }) vr26: number | null
+}
+
+export class StockTechnicalFactorsDataDto {
+  @ApiProperty() tsCode: string
+  @ApiProperty() count: number
+  @ApiProperty({ type: [StkFactorDataPointDto] }) items: StkFactorDataPointDto[]
+}
+
+export class StockLatestFactorsDataDto {
+  @ApiProperty() tsCode: string
+  @ApiProperty({ required: false, nullable: true }) tradeDate: string | null
+  @ApiProperty({ required: false, nullable: true }) close: number | null
+
+  @ApiProperty({
+    required: false,
+    nullable: true,
+    enum: ['golden_cross', 'death_cross', 'above_zero', 'below_zero'],
+    description: 'MACD 信号摘要',
+  })
+  macdSignal: 'golden_cross' | 'death_cross' | 'above_zero' | 'below_zero' | null
+
+  @ApiProperty({
+    required: false,
+    nullable: true,
+    enum: ['golden_cross', 'death_cross', 'overbought', 'oversold'],
+    description: 'KDJ 信号摘要',
+  })
+  kdjSignal: 'golden_cross' | 'death_cross' | 'overbought' | 'oversold' | null
+
+  @ApiProperty({
+    required: false,
+    nullable: true,
+    enum: ['overbought', 'oversold', 'neutral'],
+    description: 'RSI 信号摘要',
+  })
+  rsiSignal: 'overbought' | 'oversold' | 'neutral' | null
+
+  @ApiProperty({
+    required: false,
+    nullable: true,
+    enum: ['above_upper', 'near_upper', 'middle', 'near_lower', 'below_lower'],
+    description: '布林带位置',
+  })
+  bollPosition: 'above_upper' | 'near_upper' | 'middle' | 'near_lower' | 'below_lower' | null
+
+  @ApiProperty({ type: StkFactorDataPointDto, required: false, nullable: true })
+  raw: StkFactorDataPointDto | null
+}

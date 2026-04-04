@@ -203,8 +203,74 @@ export class StockScreenerService {
       moneyflowConditions.push(Prisma.sql`mf_agg.main_net_20d >= ${query.minMainNetInflow20d}`)
     }
 
+    // 技术指标（基于 stk_factor 表最新记录）
+    const technicalConditions: Prisma.Sql[] = []
+    if (query.minRsi6 !== undefined) technicalConditions.push(Prisma.sql`stf.rsi_6 >= ${query.minRsi6}`)
+    if (query.maxRsi6 !== undefined) technicalConditions.push(Prisma.sql`stf.rsi_6 <= ${query.maxRsi6}`)
+    if (query.rsiSignal === 'overbought') technicalConditions.push(Prisma.sql`stf.rsi_6 > 80`)
+    if (query.rsiSignal === 'oversold') technicalConditions.push(Prisma.sql`stf.rsi_6 < 20`)
+    // MACD 信号
+    if (query.macdSignal === 'above_zero') {
+      technicalConditions.push(Prisma.sql`stf.macd_dif > 0`)
+    } else if (query.macdSignal === 'below_zero') {
+      technicalConditions.push(Prisma.sql`stf.macd_dif < 0`)
+    } else if (query.macdSignal === 'golden_cross') {
+      technicalConditions.push(Prisma.sql`
+        stf.macd_dif > stf.macd_dea
+        AND (
+          SELECT sf2.macd_dif - sf2.macd_dea
+          FROM stock_technical_factors sf2
+          WHERE sf2.ts_code = sb.ts_code AND sf2.trade_date < stf.trade_date
+          ORDER BY sf2.trade_date DESC LIMIT 1
+        ) <= 0
+      `)
+    } else if (query.macdSignal === 'death_cross') {
+      technicalConditions.push(Prisma.sql`
+        stf.macd_dif < stf.macd_dea
+        AND (
+          SELECT sf2.macd_dif - sf2.macd_dea
+          FROM stock_technical_factors sf2
+          WHERE sf2.ts_code = sb.ts_code AND sf2.trade_date < stf.trade_date
+          ORDER BY sf2.trade_date DESC LIMIT 1
+        ) >= 0
+      `)
+    }
+    // KDJ 信号
+    if (query.kdjSignal === 'overbought') {
+      technicalConditions.push(Prisma.sql`stf.kdj_j > 100`)
+    } else if (query.kdjSignal === 'oversold') {
+      technicalConditions.push(Prisma.sql`stf.kdj_j < 0`)
+    } else if (query.kdjSignal === 'golden_cross') {
+      technicalConditions.push(Prisma.sql`
+        stf.kdj_k > stf.kdj_d
+        AND (
+          SELECT sf2.kdj_k - sf2.kdj_d
+          FROM stock_technical_factors sf2
+          WHERE sf2.ts_code = sb.ts_code AND sf2.trade_date < stf.trade_date
+          ORDER BY sf2.trade_date DESC LIMIT 1
+        ) <= 0
+      `)
+    } else if (query.kdjSignal === 'death_cross') {
+      technicalConditions.push(Prisma.sql`
+        stf.kdj_k < stf.kdj_d
+        AND (
+          SELECT sf2.kdj_k - sf2.kdj_d
+          FROM stock_technical_factors sf2
+          WHERE sf2.ts_code = sb.ts_code AND sf2.trade_date < stf.trade_date
+          ORDER BY sf2.trade_date DESC LIMIT 1
+        ) >= 0
+      `)
+    }
+
     const whereClause = Prisma.sql`WHERE ${Prisma.join(
-      [...stockConditions, ...valuationConditions, ...marketConditions, ...financialConditions, ...moneyflowConditions],
+      [
+        ...stockConditions,
+        ...valuationConditions,
+        ...marketConditions,
+        ...financialConditions,
+        ...moneyflowConditions,
+        ...technicalConditions,
+      ],
       ' AND ',
     )}`
     const sortCol = Prisma.raw(SCREENER_SORT_MAP[sortBy])
@@ -261,10 +327,23 @@ export class StockScreenerService {
         ? moneyflowAggregateJoin
         : Prisma.sql`LEFT JOIN LATERAL (SELECT NULL::numeric AS main_net_5d, NULL::numeric AS main_net_20d) mf_agg ON true`
 
+    // 技术因子 JOIN（按需拼接，只有存在技术筛选条件时才 JOIN）
+    const technicalFactorJoin = Prisma.sql`
+      LEFT JOIN LATERAL (
+        SELECT rsi_6, macd_dif, macd_dea, kdj_k, kdj_d, kdj_j, trade_date
+        FROM stock_technical_factors stf
+        WHERE stf.ts_code = sb.ts_code
+        ORDER BY stf.trade_date DESC LIMIT 1
+      ) stf ON true`
+
+    const needsTechnicalJoin = technicalConditions.length > 0
+    const technicalJoin = needsTechnicalJoin ? technicalFactorJoin : Prisma.empty
+
     const countValuationJoin = valuationConditions.length > 0 ? valuationJoin : Prisma.empty
     const countMarketJoin = marketConditions.length > 0 ? marketJoin : Prisma.empty
     const countFinancialJoin = financialConditions.length > 0 ? financialJoin : Prisma.empty
     const countMoneyflowJoin = moneyflowConditions.length > 0 ? moneyflowAggregateJoin : Prisma.empty
+    const countTechnicalJoin = needsTechnicalJoin ? technicalFactorJoin : Prisma.empty
 
     interface ScreenerRow {
       tsCode: string
@@ -303,6 +382,7 @@ export class StockScreenerService {
         ${countMarketJoin}
         ${countFinancialJoin}
         ${countMoneyflowJoin}
+        ${countTechnicalJoin}
         ${whereClause}
       `,
       this.prisma.$queryRaw<ScreenerRow[]>`
@@ -338,6 +418,7 @@ export class StockScreenerService {
         ${marketJoin}
         ${financialJoin}
         ${moneyflowJoin}
+        ${technicalJoin}
         ${whereClause}
         ORDER BY ${sortCol} ${sortDir}
         LIMIT ${pageSize} OFFSET ${offset}

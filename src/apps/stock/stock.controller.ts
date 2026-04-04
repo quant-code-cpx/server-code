@@ -20,6 +20,8 @@ import {
   StockChipDistributionDto,
   StockMarginQueryDto,
   StockRelativeStrengthDto,
+  StockTechnicalFactorsQueryDto,
+  StockLatestFactorsQueryDto,
 } from './dto/stock-analysis-request.dto'
 import { ApiSuccessResponse } from 'src/common/decorators/api-success-response.decorator'
 import {
@@ -48,6 +50,8 @@ import {
   ChipDistributionDataDto,
   StockMarginDataResponseDto,
   StockRelativeStrengthDataDto,
+  StockTechnicalFactorsDataDto,
+  StockLatestFactorsDataDto,
 } from './dto/stock-response.dto'
 import { CurrentUser } from 'src/common/decorators/current-user.decorator'
 import { TokenPayload } from 'src/shared/token.interface'
@@ -188,6 +192,20 @@ export class StockController {
   @ApiSuccessResponse(StockRelativeStrengthDataDto)
   getRelativeStrength(@Body() dto: StockRelativeStrengthDto) {
     return this.stockAnalysisService.getRelativeStrength(dto)
+  }
+
+  @Post('detail/analysis/factors')
+  @ApiOperation({ summary: '股票详情 - 分析 Tab：预计算技术因子序列（MACD/KDJ/RSI/BOLL 等，直接从数据库读取）' })
+  @ApiSuccessResponse(StockTechnicalFactorsDataDto)
+  getTechnicalFactors(@Body() dto: StockTechnicalFactorsQueryDto) {
+    return this.stockAnalysisService.getTechnicalFactors(dto)
+  }
+
+  @Post('detail/analysis/factors/latest')
+  @ApiOperation({ summary: '股票详情 - 分析 Tab：最新技术因子快照（含信号摘要：金叉/死叉/超买/超卖）' })
+  @ApiSuccessResponse(StockLatestFactorsDataDto)
+  getLatestFactors(@Body() dto: StockLatestFactorsQueryDto) {
+    return this.stockAnalysisService.getLatestFactors(dto)
   }
 
   // ─── 选股器 ─────────────────────────────────────────────────────────────────

@@ -25,6 +25,7 @@ import { ScreenerSubscriptionModule } from './apps/screener-subscription/screene
 import { StrategyDraftModule } from './apps/strategy-draft/strategy-draft.module'
 import { IndexModule } from './apps/index/index.module'
 import { StrategyModule } from './apps/strategy/strategy.module'
+import { IndustryRotationModule } from './apps/industry-rotation/industry-rotation.module'
 
 @Module({
   imports: [
@@ -73,6 +74,7 @@ import { StrategyModule } from './apps/strategy/strategy.module'
     ScreenerSubscriptionModule,
     StrategyDraftModule,
     StrategyModule,
+    IndustryRotationModule,
 
     // ── 队列模块（BullMQ 回测任务） ──
     QueueModule,

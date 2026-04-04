@@ -8,6 +8,7 @@ export const CACHE_NAMESPACE = {
   TRADE_CALENDAR: 'trade-calendar',
   WATCHLIST: 'watchlist',
   WATCHLIST_STOCKS: 'watchlist-stocks',
+  INDUSTRY_ROTATION: 'industry-rotation',
 } as const
 
 export type CacheNamespace = (typeof CACHE_NAMESPACE)[keyof typeof CACHE_NAMESPACE]
@@ -34,4 +35,4 @@ export const CACHE_KEY_PREFIX = {
 
 export const MONITORED_CACHE_NAMESPACES = Object.values(CACHE_NAMESPACE)
 
-export const SYNC_INVALIDATION_PREFIXES = ['market:', 'factor:'] as const
+export const SYNC_INVALIDATION_PREFIXES = ['market:', 'factor:', 'ind-rotation:'] as const

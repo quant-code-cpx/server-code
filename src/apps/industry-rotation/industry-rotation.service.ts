@@ -702,11 +702,16 @@ export class IndustryRotationService {
   // ═══════════════════════════════════════════════════════════════════════════
 
   private async fetchReturnComparisonRows(tradeDate: Date, periods: number[]) {
-    const joinClauses = periods
+    // Coerce all period values to safe positive integers (1-60) before embedding in SQL.
+    // DTO validation already enforces this; the explicit coercion here is a defense-in-depth measure
+    // ensuring only integer literals ever appear in the dynamically constructed SQL.
+    const safePeriods = periods.map((p) => Math.max(1, Math.min(60, Math.trunc(p))))
+
+    const joinClauses = safePeriods
       .map((p) => `LEFT JOIN ranked r${p} ON r${p}.ts_code = r0.ts_code AND r${p}.rn = ${p + 1}`)
       .join('\n    ')
 
-    const selectClauses = periods
+    const selectClauses = safePeriods
       .map((p) => `r0.close / NULLIF(r${p}.close, 0) - 1 AS return_${p}`)
       .join(',\n    ')
 

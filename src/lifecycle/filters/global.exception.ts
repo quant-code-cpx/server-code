@@ -2,6 +2,7 @@ import { ArgumentsHost, BadRequestException, Catch, ExceptionFilter, HttpExcepti
 import { BusinessException } from 'src/common/exceptions/business.exception'
 import { ResponseModel } from 'src/common/models/response.model'
 import { ErrorEnum } from 'src/constant/response-code.constant'
+import { RequestContextService } from 'src/shared/context/request-context.service'
 import { LoggerService } from 'src/shared/logger/logger.service'
 import { TushareApiError } from 'src/tushare/api/tushare-client.service'
 
@@ -37,7 +38,12 @@ export class GlobalExceptionsFilter implements ExceptionFilter {
     let message = this.resolveMessage(exception, responseBody)
 
     if (status === HttpStatus.INTERNAL_SERVER_ERROR && !(exception instanceof BusinessException)) {
-      this.loggerService.error(exception, (exception as Error).stack, 'GlobalExceptionsFilter')
+      const traceId = RequestContextService.getTraceId()
+      this.loggerService.error(
+        { message: (exception as Error).message, traceId },
+        (exception as Error).stack,
+        'GlobalExceptionsFilter',
+      )
       if (!this.isDev) {
         message = ErrorEnum.SERVER_ERROR.split(':')[1]
       }

@@ -18,7 +18,7 @@ async function bootstrap() {
 
   const configService = app.get(ConfigService)
   const loggerService = app.get(LoggerService)
-  const { port, isDev, globalPrefix } = configService.get<IAppConfig>(APP_CONFIG_TOKEN, { infer: true })
+  const { port, isDev, globalPrefix, logHttpRequests, logHttpBody } = configService.get<IAppConfig>(APP_CONFIG_TOKEN, { infer: true })
 
   // ── 请求体大小限制（防止超大 JSON 攻击，最大 1 MB） ──
   app.use(json({ limit: '1mb' }))
@@ -59,8 +59,8 @@ async function bootstrap() {
 
   // ── 拦截器 ──
   app.useGlobalInterceptors(new TransformInterceptor())
-  if (isDev) {
-    app.useGlobalInterceptors(new LoggingInterceptor(loggerService))
+  if (logHttpRequests) {
+    app.useGlobalInterceptors(new LoggingInterceptor(loggerService, logHttpBody))
   }
 
   // ── 异常过滤器 ──

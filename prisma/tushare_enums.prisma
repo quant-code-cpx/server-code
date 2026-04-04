@@ -54,6 +54,7 @@ enum TushareSyncTask {
   BLOCK_TRADE
   SHARE_FLOAT
   DATA_QUALITY_CHECK
+  STK_FACTOR
 }
 
 // 同步任务执行结果

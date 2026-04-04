@@ -28,6 +28,7 @@ export enum TushareApiName {
   TOP_INST = 'top_inst',
   BLOCK_TRADE = 'block_trade',
   SHARE_FLOAT = 'share_float',
+  STK_FACTOR = 'stk_factor',
 }
 
 /** A 股常用交易所代码 */
@@ -90,6 +91,7 @@ export enum TushareSyncTaskName {
   BLOCK_TRADE = 'BLOCK_TRADE',
   SHARE_FLOAT = 'SHARE_FLOAT',
   DATA_QUALITY_CHECK = 'DATA_QUALITY_CHECK',
+  STK_FACTOR = 'STK_FACTOR',
 }
 
 /** 同步执行状态 */
@@ -842,5 +844,37 @@ export const TUSHARE_SHARE_FLOAT_FIELDS = [
   'float_ratio',
   'holder_name',
   'share_type',
+] as const
+
+export const TUSHARE_STK_FACTOR_FIELDS = [
+  'ts_code',
+  'trade_date',
+  'close',
+  'open',
+  'high',
+  'low',
+  'pre_close',
+  'change',
+  'pct_chg',
+  'vol',
+  'amount',
+  'macd_dif',
+  'macd_dea',
+  'macd',
+  'kdj_k',
+  'kdj_d',
+  'kdj_j',
+  'rsi_6',
+  'rsi_12',
+  'rsi_24',
+  'boll_upper',
+  'boll_mid',
+  'boll_lower',
+  'cci_14',
+  'cci_20',
+  'tr',
+  'atr14',
+  'atr20',
+  'vr_26',
 ] as const
 

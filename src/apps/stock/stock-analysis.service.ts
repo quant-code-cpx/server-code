@@ -10,6 +10,8 @@ import {
   StockChipDistributionDto,
   StockMarginQueryDto,
   StockRelativeStrengthDto,
+  StockTechnicalFactorsQueryDto,
+  StockLatestFactorsQueryDto,
 } from './dto/stock-analysis-request.dto'
 import {
   StockTechnicalDataDto,
@@ -17,6 +19,9 @@ import {
   ChipDistributionDataDto,
   StockMarginDataResponseDto,
   StockRelativeStrengthDataDto,
+  StkFactorDataPointDto,
+  StockTechnicalFactorsDataDto,
+  StockLatestFactorsDataDto,
 } from './dto/stock-response.dto'
 
 // 指数代码到名称的映射
@@ -930,5 +935,151 @@ export class StockAnalysisService {
     }
 
     return bins
+  }
+
+  // ─── 预计算技术因子（stk_factor）───────────────────────────────────────────
+
+  /** 查询单股预计算技术因子序列（直接从 stock_technical_factors 表读取） */
+  async getTechnicalFactors(dto: StockTechnicalFactorsQueryDto): Promise<StockTechnicalFactorsDataDto> {
+    const { tsCode, days = 120 } = dto
+
+    const rows = await this.prisma.stkFactor.findMany({
+      where: { tsCode },
+      orderBy: { tradeDate: 'desc' },
+      take: days,
+    })
+
+    const items: StkFactorDataPointDto[] = rows
+      .reverse()
+      .map((row) => ({
+        tradeDate: dayjs(row.tradeDate).format('YYYYMMDD'),
+        close: row.close,
+        macdDif: row.macdDif,
+        macdDea: row.macdDea,
+        macd: row.macd,
+        kdjK: row.kdjK,
+        kdjD: row.kdjD,
+        kdjJ: row.kdjJ,
+        rsi6: row.rsi6,
+        rsi12: row.rsi12,
+        rsi24: row.rsi24,
+        bollUpper: row.bollUpper,
+        bollMid: row.bollMid,
+        bollLower: row.bollLower,
+        cci14: row.cci14,
+        cci20: row.cci20,
+        atr14: row.atr14,
+        atr20: row.atr20,
+        vr26: row.vr26,
+      }))
+
+    return { tsCode, count: items.length, items }
+  }
+
+  /** 查询单股最新一日技术因子快照，并给出信号摘要 */
+  async getLatestFactors(dto: StockLatestFactorsQueryDto): Promise<StockLatestFactorsDataDto> {
+    const rows = await this.prisma.stkFactor.findMany({
+      where: { tsCode: dto.tsCode },
+      orderBy: { tradeDate: 'desc' },
+      take: 2,
+    })
+
+    const empty: StockLatestFactorsDataDto = {
+      tsCode: dto.tsCode,
+      tradeDate: null,
+      close: null,
+      macdSignal: null,
+      kdjSignal: null,
+      rsiSignal: null,
+      bollPosition: null,
+      raw: null,
+    }
+
+    if (rows.length === 0) return empty
+
+    const latest = rows[0]
+    const prev = rows[1] ?? null
+
+    return {
+      tsCode: dto.tsCode,
+      tradeDate: dayjs(latest.tradeDate).format('YYYYMMDD'),
+      close: latest.close,
+      macdSignal: this.detectMacdSignal(latest, prev),
+      kdjSignal: this.detectKdjSignal(latest, prev),
+      rsiSignal: this.detectRsiSignal(latest),
+      bollPosition: this.detectBollPosition(latest),
+      raw: {
+        tradeDate: dayjs(latest.tradeDate).format('YYYYMMDD'),
+        close: latest.close,
+        macdDif: latest.macdDif,
+        macdDea: latest.macdDea,
+        macd: latest.macd,
+        kdjK: latest.kdjK,
+        kdjD: latest.kdjD,
+        kdjJ: latest.kdjJ,
+        rsi6: latest.rsi6,
+        rsi12: latest.rsi12,
+        rsi24: latest.rsi24,
+        bollUpper: latest.bollUpper,
+        bollMid: latest.bollMid,
+        bollLower: latest.bollLower,
+        cci14: latest.cci14,
+        cci20: latest.cci20,
+        atr14: latest.atr14,
+        atr20: latest.atr20,
+        vr26: latest.vr26,
+      },
+    }
+  }
+
+  private detectMacdSignal(
+    latest: { macdDif: number | null; macdDea: number | null },
+    prev: { macdDif: number | null; macdDea: number | null } | null,
+  ): 'golden_cross' | 'death_cross' | 'above_zero' | 'below_zero' | null {
+    if (latest.macdDif == null || latest.macdDea == null) return null
+    if (prev?.macdDif != null && prev?.macdDea != null) {
+      const prevDiff = prev.macdDif - prev.macdDea
+      const currDiff = latest.macdDif - latest.macdDea
+      if (prevDiff <= 0 && currDiff > 0) return 'golden_cross'
+      if (prevDiff >= 0 && currDiff < 0) return 'death_cross'
+    }
+    return latest.macdDif > 0 ? 'above_zero' : 'below_zero'
+  }
+
+  private detectKdjSignal(
+    latest: { kdjK: number | null; kdjD: number | null; kdjJ: number | null },
+    prev: { kdjK: number | null; kdjD: number | null } | null,
+  ): 'golden_cross' | 'death_cross' | 'overbought' | 'oversold' | null {
+    if (latest.kdjK == null || latest.kdjD == null) return null
+    if (latest.kdjJ != null && latest.kdjJ > 100) return 'overbought'
+    if (latest.kdjJ != null && latest.kdjJ < 0) return 'oversold'
+    if (prev?.kdjK != null && prev?.kdjD != null) {
+      if (prev.kdjK <= prev.kdjD && latest.kdjK > latest.kdjD) return 'golden_cross'
+      if (prev.kdjK >= prev.kdjD && latest.kdjK < latest.kdjD) return 'death_cross'
+    }
+    return null
+  }
+
+  private detectRsiSignal(latest: { rsi6: number | null; rsi12: number | null }): 'overbought' | 'oversold' | 'neutral' | null {
+    const rsi = latest.rsi6 ?? latest.rsi12
+    if (rsi == null) return null
+    if (rsi > 80) return 'overbought'
+    if (rsi < 20) return 'oversold'
+    return 'neutral'
+  }
+
+  private detectBollPosition(latest: {
+    close: number | null
+    bollUpper: number | null
+    bollMid: number | null
+    bollLower: number | null
+  }): 'above_upper' | 'near_upper' | 'middle' | 'near_lower' | 'below_lower' | null {
+    if (latest.close == null || latest.bollUpper == null || latest.bollMid == null || latest.bollLower == null)
+      return null
+    if (latest.close > latest.bollUpper) return 'above_upper'
+    if (latest.close > latest.bollUpper * 0.98) return 'near_upper'
+    if (latest.close < latest.bollLower) return 'below_lower'
+    if (latest.close < latest.bollLower * 1.02) return 'near_lower'
+    return 'middle'
   }
 }

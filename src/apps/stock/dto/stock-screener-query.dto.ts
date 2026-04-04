@@ -256,6 +256,44 @@ export class ScreenerFiltersDto {
   @Type(() => Number)
   @IsNumber()
   minMainNetInflow20d?: number
+
+  // ─── 技术指标筛选 ───
+  @ApiPropertyOptional({
+    description: 'MACD 信号筛选',
+    enum: ['golden_cross', 'death_cross', 'above_zero', 'below_zero'],
+  })
+  @IsOptional()
+  @IsIn(['golden_cross', 'death_cross', 'above_zero', 'below_zero'])
+  macdSignal?: string
+
+  @ApiPropertyOptional({
+    description: 'KDJ 信号筛选',
+    enum: ['golden_cross', 'death_cross', 'overbought', 'oversold'],
+  })
+  @IsOptional()
+  @IsIn(['golden_cross', 'death_cross', 'overbought', 'oversold'])
+  kdjSignal?: string
+
+  @ApiPropertyOptional({ description: 'RSI 超买超卖', enum: ['overbought', 'oversold'] })
+  @IsOptional()
+  @IsIn(['overbought', 'oversold'])
+  rsiSignal?: string
+
+  @ApiPropertyOptional({ description: 'RSI6 最小值' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  minRsi6?: number
+
+  @ApiPropertyOptional({ description: 'RSI6 最大值' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  maxRsi6?: number
 }
 
 export class StockScreenerQueryDto extends ScreenerFiltersDto {

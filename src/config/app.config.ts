@@ -6,6 +6,8 @@ export const AppConfig = registerAs(APP_CONFIG_TOKEN, () => ({
   port: parseInt(process.env.PORT, 10) || 3000,
   isDev: process.env.NODE_ENV === 'development',
   globalPrefix: process.env.GLOBAL_PREFIX || 'api',
+  logHttpRequests: process.env.LOG_HTTP_REQUESTS !== 'false',
+  logHttpBody: process.env.LOG_HTTP_BODY === 'true',
 }))
 
 export type IAppConfig = ConfigType<typeof AppConfig>

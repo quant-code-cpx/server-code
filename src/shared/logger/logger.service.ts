@@ -2,6 +2,7 @@ import { ConsoleLogger, ConsoleLoggerOptions, Injectable } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { APP_CONFIG_TOKEN } from 'src/config/app.config'
 import { LogLevel } from 'src/constant/logger.constant'
+import { RequestContextService } from 'src/shared/context/request-context.service'
 import type { Logger as WinstonLogger } from 'winston'
 import { config, createLogger, format, transports } from 'winston'
 import 'winston-daily-rotate-file'
@@ -59,7 +60,22 @@ export class LoggerService extends ConsoleLogger {
 
     this.winstonLogger = createLogger({
       levels: config.npm.levels,
-      format: format.combine(format.errors({ stack: true }), format.timestamp(), format.json()),
+      format: format.combine(
+        format.errors({ stack: true }),
+        format.timestamp(),
+        // 注入请求上下文字段（traceId / userId / method / url）
+        format((info) => {
+          const ctx = RequestContextService.getCurrentContext()
+          if (ctx) {
+            info.traceId = ctx.traceId
+            info.userId = ctx.userId ?? null
+            info.method = ctx.method ?? null
+            info.url = ctx.url ?? null
+          }
+          return info
+        })(),
+        format.json(),
+      ),
       transports: [
         new transports.DailyRotateFile({
           ...baseConfig,
@@ -85,20 +101,29 @@ export class LoggerService extends ConsoleLogger {
 
   /** 输出 INFO 级别日志；生产环境同时写入 Winston。 */
   log(message: unknown, context?: string) {
-    super.log(message, context)
-    this.winstonLogger?.info(this.formatUnknownMessage(message), { context })
+    const displayMessage = this.formatUnknownMessage(message)
+    super.log(displayMessage, context)
+    this.winstonLogger?.info(this.toWinstonPayload(message, context))
   }
 
   /** 输出 WARN 级别日志；生产环境同时写入 Winston。 */
   warn(message: unknown, context?: string) {
-    super.warn(message, context)
-    this.winstonLogger?.warn(this.formatUnknownMessage(message), { context })
+    const displayMessage = this.formatUnknownMessage(message)
+    super.warn(displayMessage, context)
+    this.winstonLogger?.warn(this.toWinstonPayload(message, context))
   }
 
   /** 输出 ERROR 级别日志；生产环境同时写入 Winston。 */
   error(message: unknown, stack?: string, context?: string) {
-    super.error(message, stack, context)
-    this.winstonLogger?.error(this.formatUnknownMessage(message), { stack, context })
+    const displayMessage = this.formatUnknownMessage(message)
+    super.error(displayMessage, stack, context)
+    if (this.winstonLogger) {
+      if (typeof message === 'object' && message !== null && !(message instanceof Error)) {
+        this.winstonLogger.error({ ...(message as object), stack, context })
+      } else {
+        this.winstonLogger.error(displayMessage, { stack, context })
+      }
+    }
   }
 
   /** 仅开发环境打印日志，生产环境自动跳过，适用于调试信息。 */
@@ -122,5 +147,17 @@ export class LoggerService extends ConsoleLogger {
     } catch {
       return String(message)
     }
+  }
+
+  /**
+   * 将 message 转换为 Winston 日志 payload。
+   * 对象类型 message 直接展开，确保字段平铺在 JSON 中；
+   * 其他类型转为 string 后作为 message 字段写入。
+   */
+  private toWinstonPayload(message: unknown, context?: string): Record<string, unknown> {
+    if (typeof message === 'object' && message !== null && !(message instanceof Error)) {
+      return { ...(message as object), context }
+    }
+    return { message: this.formatUnknownMessage(message), context }
   }
 }

@@ -5,6 +5,8 @@ import { ScheduleModule } from '@nestjs/schedule'
 import { seconds, ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler'
 import configs from './config'
 import { SharedModule } from './shared/shared.module'
+import { RequestContextModule } from './shared/context/request-context.module'
+import { HealthModule } from './shared/health/health.module'
 import { AuthModule } from './apps/auth/auth.module'
 import { UserModule } from './apps/user/user.module'
 import { StockModule } from './apps/stock/stock.module'
@@ -43,6 +45,12 @@ import { StrategyModule } from './apps/strategy/strategy.module'
 
     // ── 核心共享模块（Prisma、Redis、Logger、Token） ──
     SharedModule,
+
+    // ── 请求上下文（traceId 传播，必须在功能模块之前） ──
+    RequestContextModule,
+
+    // ── 健康检查（Liveness / Readiness 探针） ──
+    HealthModule,
 
     // ── 定时任务（Tushare 盘后同步等） ──
     ScheduleModule.forRoot(),

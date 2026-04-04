@@ -2,6 +2,8 @@ import { ExecutionContext, Injectable, UnauthorizedException } from '@nestjs/com
 import { Reflector } from '@nestjs/core'
 import { AuthGuard } from '@nestjs/passport'
 import { PUBLIC_KEY } from 'src/constant/auth.constant'
+import { RequestContextService } from 'src/shared/context/request-context.service'
+import { TokenPayload } from 'src/shared/token.interface'
 
 @Injectable()
 export class JwtAuthGuard extends AuthGuard('jwt') {
@@ -15,7 +17,14 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     if (isPublic) return true
 
     try {
-      return (await super.canActivate(context)) as boolean
+      const result = (await super.canActivate(context)) as boolean
+      if (result) {
+        const { user } = context.switchToHttp().getRequest<{ user: TokenPayload }>()
+        if (user?.id) {
+          RequestContextService.setUserId(user.id)
+        }
+      }
+      return result
     } catch {
       throw new UnauthorizedException('用户未登录或 Token 已失效')
     }

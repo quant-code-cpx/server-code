@@ -274,13 +274,11 @@ export class IndustryRotationService {
         return order === 'desc' ? bv - av : av - bv
       })
 
-      if (query.limit) {
-        industries.splice(query.limit)
-      }
+      const limitedIndustries = query.limit ? industries.slice(0, query.limit) : industries
 
       const inflowIndustries = rows.filter((r) => (r.cumulative_net !== null ? Number(r.cumulative_net) : 0) > 0)
       const outflowIndustries = rows.filter((r) => (r.cumulative_net !== null ? Number(r.cumulative_net) : 0) <= 0)
-      const sortedByNet = [...industries].sort((a, b) => b.cumulativeNetAmount - a.cumulativeNetAmount)
+      const sortedByNet = [...limitedIndustries].sort((a, b) => b.cumulativeNetAmount - a.cumulativeNetAmount)
 
       const summary = {
         inflowCount: inflowIndustries.length,
@@ -292,7 +290,7 @@ export class IndustryRotationService {
           .map((i) => i.name),
       }
 
-      return { tradeDate: tradeDateStr, days, industries, summary }
+      return { tradeDate: tradeDateStr, days, industries: limitedIndustries, summary }
     })
   }
 

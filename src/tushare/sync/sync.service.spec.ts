@@ -51,6 +51,15 @@ describe('TushareSyncService', () => {
     broadcastSyncFailed: jest.fn(),
   }
 
+  const cacheService = {
+    invalidateNamespaces: jest.fn(async () => 0),
+    invalidateByPrefixes: jest.fn(async () => 0),
+  }
+
+  const heatmapSnapshotService = {
+    aggregateSnapshot: jest.fn(async () => ({ tradeDate: '20260327', totalRecords: 0 })),
+  }
+
   beforeEach(() => {
     jest.clearAllMocks()
     jest.spyOn(CronJob, 'from').mockReturnValue({
@@ -76,7 +85,9 @@ describe('TushareSyncService', () => {
       schedulerRegistry as SchedulerRegistry,
       helper as never,
       registry as TushareSyncRegistryService,
+      cacheService as never,
       eventsGateway as EventsGateway,
+      heatmapSnapshotService as never,
     )
 
     await service.onApplicationBootstrap()
@@ -98,7 +109,9 @@ describe('TushareSyncService', () => {
       schedulerRegistry as SchedulerRegistry,
       helper as never,
       registry as TushareSyncRegistryService,
+      cacheService as never,
       eventsGateway as EventsGateway,
+      heatmapSnapshotService as never,
     )
 
     const result = await service.runManualSync({

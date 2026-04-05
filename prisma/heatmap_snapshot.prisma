@@ -1,0 +1,36 @@
+/// 热力图每日快照（预聚合，避免实时全市场 JOIN）
+model HeatmapSnapshot {
+  tradeDate String   @map("trade_date") @db.VarChar(8)
+  /// 分组维度：'industry' | 指数代码（如 '000300.SH'）| 'concept'
+  groupBy   String   @map("group_by")   @db.VarChar(16)
+  /// 分组名称：行业名、指数代码或概念板块名
+  groupName String   @map("group_name") @db.VarChar(128)
+  tsCode    String   @map("ts_code")    @db.VarChar(16)
+  name      String?  @map("name")       @db.VarChar(64)
+  /// 当日涨跌幅（%）
+  pctChg    Decimal? @map("pct_chg")    @db.Decimal(10, 4)
+  /// 总市值（万元）
+  totalMv   Decimal? @map("total_mv")   @db.Decimal(20, 4)
+  /// 当日成交额（千元）
+  amount    Decimal? @map("amount")     @db.Decimal(20, 4)
+  createdAt DateTime @default(now())    @map("created_at")
+
+  @@id([tradeDate, groupBy, tsCode])
+  @@index([tradeDate, groupBy])
+  @@index([tsCode, tradeDate])
+  @@map("heatmap_snapshots")
+}
+
+/// 热力图每日聚合状态（每日每维度一条，记录聚合结果）
+model HeatmapSnapshotStatus {
+  tradeDate    String   @map("trade_date")   @db.VarChar(8)
+  groupBy      String   @map("group_by")     @db.VarChar(16)
+  stockCount   Int      @map("stock_count")
+  /// 聚合是否成功完成
+  isComplete   Boolean  @map("is_complete")  @default(false)
+  aggregatedAt DateTime @map("aggregated_at")
+
+  @@id([tradeDate, groupBy])
+  @@index([tradeDate])
+  @@map("heatmap_snapshot_statuses")
+}

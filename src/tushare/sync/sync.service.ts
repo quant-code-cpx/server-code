@@ -9,6 +9,7 @@ import { ErrorEnum } from 'src/constant/response-code.constant'
 import { TushareSyncTaskName } from 'src/constant/tushare.constant'
 import { CacheService } from 'src/shared/cache.service'
 import { EventsGateway } from 'src/websocket/events.gateway'
+import { HeatmapSnapshotService } from 'src/apps/heatmap/heatmap-snapshot.service'
 import { SyncHelperService } from './sync-helper.service'
 import { TushareSyncRegistryService } from './sync-registry.service'
 import { TushareSyncCategory, TushareSyncMode, TushareSyncPlan, TushareSyncTrigger } from './sync-plan.types'
@@ -54,6 +55,7 @@ export class TushareSyncService implements OnApplicationBootstrap {
     private readonly registry: TushareSyncRegistryService,
     private readonly cacheService: CacheService,
     private readonly eventsGateway: EventsGateway,
+    private readonly heatmapSnapshotService: HeatmapSnapshotService,
   ) {
     const cfg = this.configService.get<ITushareConfig>(TUSHARE_CONFIG_TOKEN, { infer: true })
     if (!cfg) {
@@ -414,6 +416,7 @@ export class TushareSyncService implements OnApplicationBootstrap {
           elapsedSeconds,
         }
         await this.invalidateCachesAfterSync(result1)
+        this.triggerHeatmapSnapshotAsync(result1)
         this.eventsGateway.broadcastSyncCompleted(result1)
         return result1
       }
@@ -433,6 +436,7 @@ export class TushareSyncService implements OnApplicationBootstrap {
         elapsedSeconds,
       }
       await this.invalidateCachesAfterSync(result2)
+      this.triggerHeatmapSnapshotAsync(result2)
       this.eventsGateway.broadcastSyncCompleted(result2)
       return result2
     } catch (error) {
@@ -495,5 +499,18 @@ export class TushareSyncService implements OnApplicationBootstrap {
     } catch (error) {
       this.logger.warn(`同步后缓存清理失败: ${(error as Error).message}`)
     }
+  }
+
+  /**
+   * 异步触发热力图快照聚合（不阻塞同步完成流程）。
+   * 仅在有行情类任务执行成功后触发。
+   */
+  private triggerHeatmapSnapshotAsync(result: RunPlansResult): void {
+    if (result.executedTasks.length === 0) {
+      return
+    }
+    void this.heatmapSnapshotService.aggregateSnapshot(result.targetTradeDate ?? undefined).catch((err) => {
+      this.logger.warn(`热力图快照聚合失败（不影响主同步流程）：${(err as Error).message}`)
+    })
   }
 }

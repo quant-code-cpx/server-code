@@ -23,6 +23,7 @@ import { DataQualityService } from './sync/quality/data-quality.service'
 import { SyncLogService } from './sync/sync-log.service'
 import { SyncRetryService } from './sync/sync-retry.service'
 import { WebsocketModule } from 'src/websocket/websocket.module'
+import { HeatmapModule } from 'src/apps/heatmap/heatmap.module'
 
 /**
  * TushareModule
@@ -31,7 +32,7 @@ import { WebsocketModule } from 'src/websocket/websocket.module'
  * 同步层按分类独立维护，由 TushareSyncService 统一编排
  */
 @Module({
-  imports: [WebsocketModule],
+  imports: [WebsocketModule, HeatmapModule],
   providers: [
     // API
     TushareClient,

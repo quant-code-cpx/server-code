@@ -10,6 +10,7 @@ import { FactorDataApiService } from '../api/factor-data-api.service'
 import { mapIndexWeightRecord, mapStkLimitRecord, mapSuspendDRecord } from '../tushare-sync.mapper'
 import { SyncHelperService } from './sync-helper.service'
 import { TushareSyncMode, TushareSyncPlan } from './sync-plan.types'
+import { ValidationCollector } from './quality/validation-collector'
 
 /**
  * FactorDataSyncService — 因子数据同步
@@ -84,6 +85,7 @@ export class FactorDataSyncService {
   }
 
   async syncStkLimit(targetTradeDate: string, mode: TushareSyncMode = 'incremental'): Promise<void> {
+    const collector = new ValidationCollector(TushareSyncTaskName.STK_LIMIT)
     await this.syncByTradeDateString({
       task: TushareSyncTaskName.STK_LIMIT,
       label: '涨跌停价格',
@@ -92,13 +94,15 @@ export class FactorDataSyncService {
       fullSync: mode === 'full',
       fetchAndMap: async (td) => {
         const rows = await this.api.getStkLimitByTradeDate(td)
-        return rows.map(mapStkLimitRecord).filter((r): r is NonNullable<typeof r> => Boolean(r))
+        return rows.map((r) => mapStkLimitRecord(r, collector)).filter((r): r is NonNullable<typeof r> => Boolean(r))
       },
       resolveDates: (start) => this.helper.getOpenTradeDatesBetween(start, targetTradeDate),
     })
+    await this.helper.flushValidationLogs(collector)
   }
 
   async syncSuspendD(targetTradeDate: string, mode: TushareSyncMode = 'incremental'): Promise<void> {
+    const collector = new ValidationCollector(TushareSyncTaskName.SUSPEND_D)
     await this.syncByTradeDateString({
       task: TushareSyncTaskName.SUSPEND_D,
       label: '停牌信息',
@@ -107,10 +111,11 @@ export class FactorDataSyncService {
       fullSync: mode === 'full',
       fetchAndMap: async (td) => {
         const rows = await this.api.getSuspendDByTradeDate(td)
-        return rows.map(mapSuspendDRecord).filter((r): r is NonNullable<typeof r> => Boolean(r))
+        return rows.map((r) => mapSuspendDRecord(r, collector)).filter((r): r is NonNullable<typeof r> => Boolean(r))
       },
       resolveDates: (start) => this.helper.getOpenTradeDatesBetween(start, targetTradeDate),
     })
+    await this.helper.flushValidationLogs(collector)
   }
 
   async syncIndexWeight(mode: TushareSyncMode = 'incremental'): Promise<void> {
@@ -134,11 +139,12 @@ export class FactorDataSyncService {
 
     let totalRows = 0
     const failed: string[] = []
+    const collector = new ValidationCollector(TushareSyncTaskName.INDEX_WEIGHT)
 
     for (const indexCode of FACTOR_UNIVERSE_INDEX_CODES) {
       try {
         const rows = await this.api.getIndexWeightByMonth(indexCode, startDate, today)
-        const mapped = rows.map(mapIndexWeightRecord).filter((r): r is NonNullable<typeof r> => Boolean(r))
+        const mapped = rows.map((r) => mapIndexWeightRecord(r, collector)).filter((r): r is NonNullable<typeof r> => Boolean(r))
         if (mapped.length > 0) {
           await this.helper.prisma.indexWeight.createMany({
             data: mapped,
@@ -154,6 +160,7 @@ export class FactorDataSyncService {
       }
     }
 
+    await this.helper.flushValidationLogs(collector)
     await this.helper.writeSyncLog(
       TushareSyncTaskName.INDEX_WEIGHT,
       {

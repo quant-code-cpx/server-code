@@ -96,7 +96,7 @@ export class BasicSyncService {
     const deduped = new Map<string, ReturnType<typeof mapStockBasicRecord>>()
     results
       .flat()
-      .map(mapStockBasicRecord)
+      .map((r) => mapStockBasicRecord(r))
       .filter((item): item is NonNullable<typeof item> => Boolean(item))
       .forEach((item) => deduped.set(item.tsCode, item))
 
@@ -135,7 +135,7 @@ export class BasicSyncService {
       for (const window of windows) {
         const rows = await this.api.getTradeCalendar(exchange, window.startDate, window.endDate)
         const mapped = rows
-          .map(mapTradeCalRecord)
+          .map((r) => mapTradeCalRecord(r))
           .filter((item): item is NonNullable<typeof item> => Boolean(item))
           .filter((item) => item.exchange === prismaExchange)
 
@@ -179,7 +179,7 @@ export class BasicSyncService {
     const deduped = new Map<string, ReturnType<typeof mapStockCompanyRecord>>()
     results
       .flat()
-      .map(mapStockCompanyRecord)
+      .map((r) => mapStockCompanyRecord(r))
       .filter((item): item is NonNullable<typeof item> => Boolean(item))
       .forEach((item) => deduped.set(item.tsCode, item))
 

@@ -7,6 +7,8 @@ import { Roles } from 'src/common/decorators/roles.decorator'
 import { RolesGuard } from 'src/lifecycle/guard/roles.guard'
 import { TushareSyncService } from 'src/tushare/sync/sync.service'
 import { DataQualityService } from 'src/tushare/sync/quality/data-quality.service'
+import { CrossTableCheckService } from 'src/tushare/sync/quality/cross-table-check.service'
+import { AutoRepairService } from 'src/tushare/sync/quality/auto-repair.service'
 import { SyncLogService } from 'src/tushare/sync/sync-log.service'
 import { PrismaService } from 'src/shared/prisma.service'
 import { ManualSyncDto } from './dto/manual-sync.dto'
@@ -22,6 +24,8 @@ export class TushareAdminController {
   constructor(
     private readonly tushareSyncService: TushareSyncService,
     private readonly dataQualityService: DataQualityService,
+    private readonly crossTableCheckService: CrossTableCheckService,
+    private readonly autoRepairService: AutoRepairService,
     private readonly syncLogService: SyncLogService,
     private readonly prisma: PrismaService,
   ) {}
@@ -74,6 +78,106 @@ export class TushareAdminController {
   @ApiSuccessRawResponse({ type: 'object' })
   async getDataGaps(@Body() dto: { dataSet: string }) {
     return this.dataQualityService.getDataGaps(dto.dataSet)
+  }
+
+  @Post('quality/cross-check')
+  @ApiOperation({ summary: '手动触发跨表一致性对账（仅超级管理员）' })
+  @ApiSuccessRawResponse({ type: 'array', items: { type: 'object' } })
+  async runCrossTableCheck(@Body() dto: { mode?: 'recent' | 'full' }) {
+    const mode = dto.mode ?? 'recent'
+    return this.crossTableCheckService.runAllCrossChecks(mode)
+  }
+
+  @Post('quality/repair')
+  @ApiOperation({ summary: '手动触发自动补数（基于最近一轮检查结果，仅超级管理员）' })
+  @ApiSuccessRawResponse({ type: 'object' })
+  async triggerAutoRepair() {
+    const reports = await this.dataQualityService.getRecentReportsAsQualityReports(1)
+    return this.autoRepairService.analyzeAndRepair(reports)
+  }
+
+  @Post('quality/repair-status')
+  @ApiOperation({ summary: '查看补数任务队列状态（仅超级管理员）' })
+  @ApiSuccessRawResponse({ type: 'object' })
+  async getRepairStatus() {
+    const AUTO_REPAIR_PREFIX = '[auto-repair]'
+    const [pending, retrying, succeeded, exhausted] = await Promise.all([
+      this.prisma.tushareSyncRetryQueue.count({
+        where: { errorMessage: { startsWith: AUTO_REPAIR_PREFIX }, status: 'PENDING' },
+      }),
+      this.prisma.tushareSyncRetryQueue.count({
+        where: { errorMessage: { startsWith: AUTO_REPAIR_PREFIX }, status: 'RETRYING' },
+      }),
+      this.prisma.tushareSyncRetryQueue.count({
+        where: { errorMessage: { startsWith: AUTO_REPAIR_PREFIX }, status: 'SUCCEEDED' },
+      }),
+      this.prisma.tushareSyncRetryQueue.count({
+        where: { errorMessage: { startsWith: AUTO_REPAIR_PREFIX }, status: 'EXHAUSTED' },
+      }),
+    ])
+    return { pending, retrying, succeeded, exhausted }
+  }
+
+  @Post('quality/summary')
+  @ApiOperation({ summary: '查询最近一轮质量检查聚合统计（仅超级管理员）' })
+  @ApiSuccessRawResponse({ type: 'object' })
+  async getQualitySummary() {
+    const since = new Date()
+    since.setDate(since.getDate() - 1)
+    const checks = await this.prisma.dataQualityCheck.findMany({
+      where: { createdAt: { gte: since } },
+      orderBy: { createdAt: 'desc' },
+    })
+    const nonCross = checks.filter((c) => c.checkType !== 'cross-table')
+    const cross = checks.filter((c) => c.checkType === 'cross-table')
+    const countStatus = (arr: typeof checks) => ({
+      pass: arr.filter((c) => c.status === 'pass').length,
+      warn: arr.filter((c) => c.status === 'warn').length,
+      fail: arr.filter((c) => c.status === 'fail').length,
+    })
+    return {
+      lastCheckAt: checks[0]?.createdAt?.toISOString() ?? null,
+      totalChecks: checks.length,
+      totalDataSets: new Set(nonCross.map((c) => c.dataSet)).size,
+      counts: countStatus(nonCross),
+      failures: checks
+        .filter((c) => c.status === 'fail')
+        .slice(0, 10)
+        .map((c) => ({ dataSet: c.dataSet, checkType: c.checkType, message: c.message })),
+      crossTableCounts: countStatus(cross),
+    }
+  }
+
+  @Post('quality/health')
+  @ApiOperation({ summary: '数据质量健康状态（供运维监控，仅超级管理员）' })
+  @ApiSuccessRawResponse({ type: 'object' })
+  async getQualityHealth() {
+    const since = new Date(Date.now() - 24 * 3600 * 1000)
+    const recentChecks = await this.prisma.dataQualityCheck.findMany({
+      where: { createdAt: { gte: since } },
+      orderBy: { createdAt: 'desc' },
+    })
+    const failCount = recentChecks.filter((c) => c.status === 'fail').length
+    const lastCheck = recentChecks[0]
+
+    const exhaustedRepairs = await this.prisma.tushareSyncRetryQueue.count({
+      where: {
+        errorMessage: { startsWith: '[auto-repair]' },
+        status: 'EXHAUSTED',
+        updatedAt: { gte: since },
+      },
+    })
+
+    let status: 'healthy' | 'degraded' | 'unhealthy' = 'healthy'
+    if (failCount > 5 || exhaustedRepairs > 3) status = 'unhealthy'
+    else if (failCount > 0 || exhaustedRepairs > 0) status = 'degraded'
+
+    return {
+      status,
+      lastCheckAt: lastCheck?.createdAt?.toISOString() ?? null,
+      failCount,
+      exhaustedRepairs,
+    }
   }
 
   @Post('validation-logs')

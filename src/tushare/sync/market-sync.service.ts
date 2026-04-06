@@ -14,6 +14,7 @@ import {
 } from '../tushare-sync.mapper'
 import { SyncHelperService } from './sync-helper.service'
 import { TushareSyncMode, TushareSyncPlan, TushareSyncPlanContext } from './sync-plan.types'
+import { ValidationCollector } from './quality/validation-collector'
 
 /**
  * MarketSyncService — 行情数据同步
@@ -162,6 +163,7 @@ export class MarketSyncService {
     mode: TushareSyncMode = 'incremental',
     context?: TushareSyncPlanContext,
   ): Promise<void> {
+    const collector = new ValidationCollector(TushareSyncTaskName.DAILY)
     await this.syncByTradeDate({
       task: TushareSyncTaskName.DAILY,
       label: '日线',
@@ -170,11 +172,12 @@ export class MarketSyncService {
       fullSync: mode === 'full',
       fetchAndMap: async (td) => {
         const rows = await this.api.getDailyByTradeDate(td)
-        return rows.map(mapDailyRecord).filter((r): r is NonNullable<typeof r> => Boolean(r))
+        return rows.map((r) => mapDailyRecord(r, collector)).filter((r): r is NonNullable<typeof r> => Boolean(r))
       },
       resolveDates: (start) => this.helper.getOpenTradeDatesBetween(start, targetTradeDate),
       onProgress: context?.onProgress,
     })
+    await this.helper.flushValidationLogs(collector)
   }
 
   // ─── 周线 ──────────────────────────────────────────────────────────────────
@@ -184,6 +187,7 @@ export class MarketSyncService {
     mode: TushareSyncMode = 'incremental',
     context?: TushareSyncPlanContext,
   ): Promise<void> {
+    const collector = new ValidationCollector(TushareSyncTaskName.WEEKLY)
     await this.syncByTradeDate({
       task: TushareSyncTaskName.WEEKLY,
       label: '周线',
@@ -192,11 +196,12 @@ export class MarketSyncService {
       fullSync: mode === 'full',
       fetchAndMap: async (td) => {
         const rows = await this.api.getWeeklyByTradeDate(td)
-        return rows.map(mapWeeklyRecord).filter((r): r is NonNullable<typeof r> => Boolean(r))
+        return rows.map((r) => mapWeeklyRecord(r, collector)).filter((r): r is NonNullable<typeof r> => Boolean(r))
       },
       resolveDates: (start) => this.helper.getPeriodEndTradeDates(start, targetTradeDate, 'week'),
       onProgress: context?.onProgress,
     })
+    await this.helper.flushValidationLogs(collector)
   }
 
   // ─── 月线 ──────────────────────────────────────────────────────────────────
@@ -206,6 +211,7 @@ export class MarketSyncService {
     mode: TushareSyncMode = 'incremental',
     context?: TushareSyncPlanContext,
   ): Promise<void> {
+    const collector = new ValidationCollector(TushareSyncTaskName.MONTHLY)
     await this.syncByTradeDate({
       task: TushareSyncTaskName.MONTHLY,
       label: '月线',
@@ -214,11 +220,12 @@ export class MarketSyncService {
       fullSync: mode === 'full',
       fetchAndMap: async (td) => {
         const rows = await this.api.getMonthlyByTradeDate(td)
-        return rows.map(mapMonthlyRecord).filter((r): r is NonNullable<typeof r> => Boolean(r))
+        return rows.map((r) => mapMonthlyRecord(r, collector)).filter((r): r is NonNullable<typeof r> => Boolean(r))
       },
       resolveDates: (start) => this.helper.getPeriodEndTradeDates(start, targetTradeDate, 'month'),
       onProgress: context?.onProgress,
     })
+    await this.helper.flushValidationLogs(collector)
   }
 
   // ─── 每日指标 ──────────────────────────────────────────────────────────────
@@ -228,6 +235,7 @@ export class MarketSyncService {
     mode: TushareSyncMode = 'incremental',
     context?: TushareSyncPlanContext,
   ): Promise<void> {
+    const collector = new ValidationCollector(TushareSyncTaskName.DAILY_BASIC)
     await this.syncByTradeDate({
       task: TushareSyncTaskName.DAILY_BASIC,
       label: '每日指标',
@@ -236,11 +244,12 @@ export class MarketSyncService {
       fullSync: mode === 'full',
       fetchAndMap: async (td) => {
         const rows = await this.api.getDailyBasicByTradeDate(td)
-        return rows.map(mapDailyBasicRecord).filter((r): r is NonNullable<typeof r> => Boolean(r))
+        return rows.map((r) => mapDailyBasicRecord(r, collector)).filter((r): r is NonNullable<typeof r> => Boolean(r))
       },
       resolveDates: (start) => this.helper.getOpenTradeDatesBetween(start, targetTradeDate),
       onProgress: context?.onProgress,
     })
+    await this.helper.flushValidationLogs(collector)
   }
 
   // ─── 复权因子 ──────────────────────────────────────────────────────────────
@@ -250,6 +259,7 @@ export class MarketSyncService {
     mode: TushareSyncMode = 'incremental',
     context?: TushareSyncPlanContext,
   ): Promise<void> {
+    const collector = new ValidationCollector(TushareSyncTaskName.ADJ_FACTOR)
     await this.syncByTradeDate({
       task: TushareSyncTaskName.ADJ_FACTOR,
       label: '复权因子',
@@ -258,11 +268,12 @@ export class MarketSyncService {
       fullSync: mode === 'full',
       fetchAndMap: async (td) => {
         const rows = await this.api.getAdjFactorByTradeDate(td)
-        return rows.map(mapAdjFactorRecord).filter((r): r is NonNullable<typeof r> => Boolean(r))
+        return rows.map((r) => mapAdjFactorRecord(r, collector)).filter((r): r is NonNullable<typeof r> => Boolean(r))
       },
       resolveDates: (start) => this.helper.getOpenTradeDatesBetween(start, targetTradeDate),
       onProgress: context?.onProgress,
     })
+    await this.helper.flushValidationLogs(collector)
   }
 
   // ─── 核心指数日线 ──────────────────────────────────────────────────────────
@@ -310,11 +321,14 @@ export class MarketSyncService {
 
     let totalRows = 0
     const failed: Array<{ date: string; error: string }> = []
+    const collector = new ValidationCollector(TushareSyncTaskName.INDEX_DAILY)
 
     for (const [i, td] of tradeDates.entries()) {
       try {
         const rows = await this.api.getCoreIndexDailyByTradeDate(td)
-        const mapped = rows.map(mapIndexDailyRecord).filter((r): r is NonNullable<typeof r> => Boolean(r))
+        const mapped = rows
+          .map((r) => mapIndexDailyRecord(r, collector))
+          .filter((r): r is NonNullable<typeof r> => Boolean(r))
         totalRows += await this.helper.replaceTradeDateRows('indexDaily', this.helper.toDate(td), mapped)
         if (i === 0 || (i + 1) % 100 === 0 || i === tradeDates.length - 1) {
           this.logger.log(`[核心指数日线] 进度 ${i + 1}/${tradeDates.length}，当前 ${td}，累计 ${totalRows} 条`)
@@ -328,6 +342,7 @@ export class MarketSyncService {
     }
 
     this.logger.log(`[核心指数日线] 同步完成，${totalRows} 条${failed.length ? `，${failed.length} 个日期失败` : ''}`)
+    await this.helper.flushValidationLogs(collector)
     await this.helper.writeSyncLog(
       TushareSyncTaskName.INDEX_DAILY,
       {
@@ -451,9 +466,9 @@ export class MarketSyncService {
           `[${label}] 仍有 ${stillFailed.length} 个日期失败: ${stillFailed.map((f) => f.date).join(', ')}`,
         )
         for (const item of stillFailed) {
-          await this.helper.enqueueRetry(task, item.date, item.error).catch((err) =>
-            this.logger.warn(`[${label}] 入队重试失败: ${(err as Error).message}`),
-          )
+          await this.helper
+            .enqueueRetry(task, item.date, item.error)
+            .catch((err) => this.logger.warn(`[${label}] 入队重试失败: ${(err as Error).message}`))
         }
       }
     }
@@ -487,6 +502,7 @@ export class MarketSyncService {
     mode: TushareSyncMode = 'incremental',
     context?: TushareSyncPlanContext,
   ): Promise<void> {
+    const collector = new ValidationCollector(TushareSyncTaskName.MARGIN_DETAIL)
     await this.syncByTradeDate({
       task: TushareSyncTaskName.MARGIN_DETAIL,
       label: '融资融券明细',
@@ -495,7 +511,9 @@ export class MarketSyncService {
       fullSync: mode === 'full',
       fetchAndMap: async (td) => {
         const rows = await this.api.getMarginDetailByTradeDate(td)
-        return rows.map(mapMarginDetailRecord).filter((r): r is NonNullable<typeof r> => Boolean(r))
+        return rows
+          .map((r) => mapMarginDetailRecord(r, collector))
+          .filter((r): r is NonNullable<typeof r> => Boolean(r))
       },
       resolveDates: async (start) => {
         const allDates = await this.helper.getOpenTradeDatesBetween(start, targetTradeDate)
@@ -504,6 +522,7 @@ export class MarketSyncService {
       },
       onProgress: context?.onProgress,
     })
+    await this.helper.flushValidationLogs(collector)
   }
 
   private requireTradeDate(targetTradeDate?: string): string {
@@ -513,4 +532,3 @@ export class MarketSyncService {
     return targetTradeDate
   }
 }
-

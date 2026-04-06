@@ -13,6 +13,7 @@ import {
 } from '../tushare-sync.mapper'
 import { SyncHelperService } from './sync-helper.service'
 import { TushareSyncMode, TushareSyncPlan } from './sync-plan.types'
+import { ValidationCollector } from './quality/validation-collector'
 
 /**
  * FinancialSyncService — 财务数据同步
@@ -207,12 +208,13 @@ export class FinancialSyncService {
 
     let totalRows = 0
     const failedStocks: string[] = []
+    const collector = new ValidationCollector(TushareSyncTaskName.INCOME)
 
     for (const [i, tsCode] of stocks.entries()) {
       try {
         const rows = await this.api.getIncomeByTsCode(tsCode)
         const mapped = rows
-          .map(mapIncomeRecord)
+          .map((r) => mapIncomeRecord(r, collector))
           .filter((row): row is NonNullable<typeof row> => Boolean(row))
           .filter((row) => {
             const endDateKey = this.normalizeDateKey(row.endDate)
@@ -239,7 +241,7 @@ export class FinancialSyncService {
         try {
           const rows = await this.api.getIncomeByTsCode(tsCode)
           const mapped = rows
-            .map(mapIncomeRecord)
+            .map((r) => mapIncomeRecord(r, collector))
             .filter((row): row is NonNullable<typeof row> => Boolean(row))
             .filter((row) => {
               const endDateKey = this.normalizeDateKey(row.endDate)
@@ -256,6 +258,7 @@ export class FinancialSyncService {
       }
     }
 
+    await this.helper.flushValidationLogs(collector)
     await this.helper.writeSyncLog(
       TushareSyncTaskName.INCOME,
       {
@@ -304,12 +307,13 @@ export class FinancialSyncService {
 
     let totalRows = 0
     const failedStocks: string[] = []
+    const collector = new ValidationCollector(TushareSyncTaskName.BALANCE_SHEET)
 
     for (const [i, tsCode] of stocks.entries()) {
       try {
         const rows = await this.api.getBalanceSheetByTsCode(tsCode)
         const mapped = rows
-          .map(mapBalanceSheetRecord)
+          .map((r) => mapBalanceSheetRecord(r, collector))
           .filter((row): row is NonNullable<typeof row> => Boolean(row))
           .filter((row) => {
             const endDateKey = this.normalizeDateKey(row.endDate)
@@ -339,7 +343,7 @@ export class FinancialSyncService {
         try {
           const rows = await this.api.getBalanceSheetByTsCode(tsCode)
           const mapped = rows
-            .map(mapBalanceSheetRecord)
+            .map((r) => mapBalanceSheetRecord(r, collector))
             .filter((row): row is NonNullable<typeof row> => Boolean(row))
             .filter((row) => {
               const endDateKey = this.normalizeDateKey(row.endDate)
@@ -357,6 +361,7 @@ export class FinancialSyncService {
       }
     }
 
+    await this.helper.flushValidationLogs(collector)
     await this.helper.writeSyncLog(
       TushareSyncTaskName.BALANCE_SHEET,
       {
@@ -405,12 +410,13 @@ export class FinancialSyncService {
 
     let totalRows = 0
     const failedStocks: string[] = []
+    const collector = new ValidationCollector(TushareSyncTaskName.CASHFLOW)
 
     for (const [i, tsCode] of stocks.entries()) {
       try {
         const rows = await this.api.getCashflowByTsCode(tsCode)
         const mapped = rows
-          .map(mapCashflowRecord)
+          .map((r) => mapCashflowRecord(r, collector))
           .filter((row): row is NonNullable<typeof row> => Boolean(row))
           .filter((row) => {
             const endDateKey = this.normalizeDateKey(row.endDate)
@@ -437,7 +443,7 @@ export class FinancialSyncService {
         try {
           const rows = await this.api.getCashflowByTsCode(tsCode)
           const mapped = rows
-            .map(mapCashflowRecord)
+            .map((r) => mapCashflowRecord(r, collector))
             .filter((row): row is NonNullable<typeof row> => Boolean(row))
             .filter((row) => {
               const endDateKey = this.normalizeDateKey(row.endDate)
@@ -454,6 +460,7 @@ export class FinancialSyncService {
       }
     }
 
+    await this.helper.flushValidationLogs(collector)
     await this.helper.writeSyncLog(
       TushareSyncTaskName.CASHFLOW,
       {
@@ -480,6 +487,7 @@ export class FinancialSyncService {
 
     await this.helper.prisma.express.deleteMany({})
     this.logger.log(`[业绩快报] 已清空旧数据，开始按股票重建最近 ${years} 年`)
+    const collector = new ValidationCollector(TushareSyncTaskName.EXPRESS)
 
     let totalRows = 0
     const failedStocks: string[] = []
@@ -488,7 +496,7 @@ export class FinancialSyncService {
       try {
         const rows = await this.api.getExpressByTsCode(tsCode)
         const mapped = rows
-          .map(mapExpressRecord)
+          .map((r) => mapExpressRecord(r, collector))
           .filter((row): row is NonNullable<typeof row> => Boolean(row))
           .filter((row) => {
             const endDateKey = this.normalizeDateKey(row.endDate)
@@ -514,7 +522,7 @@ export class FinancialSyncService {
         try {
           const rows = await this.api.getExpressByTsCode(tsCode)
           const mapped = rows
-            .map(mapExpressRecord)
+            .map((r) => mapExpressRecord(r, collector))
             .filter((row): row is NonNullable<typeof row> => Boolean(row))
             .filter((row) => {
               const endDateKey = this.normalizeDateKey(row.endDate)
@@ -530,6 +538,7 @@ export class FinancialSyncService {
       }
     }
 
+    await this.helper.flushValidationLogs(collector)
     await this.helper.writeSyncLog(
       TushareSyncTaskName.EXPRESS,
       {
@@ -554,6 +563,7 @@ export class FinancialSyncService {
 
     await this.helper.prisma.finaIndicator.deleteMany({})
     this.logger.log(`[财务指标] 已清空旧数据，开始按股票重建最近 ${years} 年（${stocks.length} 只股票）`)
+    const collector = new ValidationCollector(TushareSyncTaskName.FINA_INDICATOR)
 
     let totalRows = 0
     const failedStocks: string[] = []
@@ -564,7 +574,7 @@ export class FinancialSyncService {
       try {
         const rows = await this.api.getFinaIndicatorByTsCodeAndDateRange(tsCode, startDate, endDate)
         const mapped = rows
-          .map(mapFinaIndicatorRecord)
+          .map((r) => mapFinaIndicatorRecord(r, collector))
           .filter((row): row is NonNullable<typeof row> => Boolean(row))
           .filter((row) => {
             const endDateKey = this.normalizeDateKey(row.endDate)
@@ -590,7 +600,7 @@ export class FinancialSyncService {
         try {
           const rows = await this.api.getFinaIndicatorByTsCodeAndDateRange(tsCode, startDate, endDate)
           const mapped = rows
-            .map(mapFinaIndicatorRecord)
+            .map((r) => mapFinaIndicatorRecord(r, collector))
             .filter((row): row is NonNullable<typeof row> => Boolean(row))
             .filter((row) => {
               const endDateKey = this.normalizeDateKey(row.endDate)
@@ -609,6 +619,7 @@ export class FinancialSyncService {
       }
     }
 
+    await this.helper.flushValidationLogs(collector)
     await this.helper.writeSyncLog(
       TushareSyncTaskName.FINA_INDICATOR,
       {
@@ -676,11 +687,12 @@ export class FinancialSyncService {
     const windows = this.helper.buildMonthlyWindows(rangeStart, rangeEnd)
     let totalRows = 0
     const failed: Array<{ window: string; error: string }> = []
+    const collector = new ValidationCollector(TushareSyncTaskName.EXPRESS)
 
     for (const [i, w] of windows.entries()) {
       try {
         const rows = await this.api.getExpress(w.startDate, w.endDate)
-        const mapped = rows.map(mapExpressRecord).filter((r): r is NonNullable<typeof r> => Boolean(r))
+        const mapped = rows.map((r) => mapExpressRecord(r, collector)).filter((r): r is NonNullable<typeof r> => Boolean(r))
         totalRows += await this.helper.replaceDateRangeRows(
           'express',
           'annDate',
@@ -699,6 +711,7 @@ export class FinancialSyncService {
     }
 
     this.logger.log(`[业绩快报] 同步完成，${totalRows} 条${failed.length ? `，${failed.length} 个窗口失败` : ''}`)
+    await this.helper.flushValidationLogs(collector)
     await this.helper.writeSyncLog(
       TushareSyncTaskName.EXPRESS,
       {
@@ -738,7 +751,7 @@ export class FinancialSyncService {
   /** 供 stock.service.ts 按需拉取指定股票的全部分红记录 */
   async syncDividendsForStock(tsCode: string): Promise<number> {
     const rows = await this.api.getDividendByTsCode(tsCode)
-    const mapped = rows.map(mapDividendRecord).filter((r): r is NonNullable<typeof r> => Boolean(r))
+    const mapped = rows.map((r) => mapDividendRecord(r)).filter((r): r is NonNullable<typeof r> => Boolean(r))
     if (!mapped.length) return 0
 
     await this.helper.prisma.dividend.deleteMany({ where: { tsCode } })
@@ -756,11 +769,12 @@ export class FinancialSyncService {
     this.logger.log(`[分红数据] 表为空，开始按股票全量构建（${stockCodes.length} 只）...`)
     let totalRows = 0
     const failed: Array<{ tsCode: string; error: string }> = []
+    const collector = new ValidationCollector(TushareSyncTaskName.DIVIDEND)
 
     for (const [i, tsCode] of stockCodes.entries()) {
       try {
         const rows = await this.api.getDividendByTsCode(tsCode)
-        const mapped = rows.map(mapDividendRecord).filter((r): r is NonNullable<typeof r> => Boolean(r))
+        const mapped = rows.map((r) => mapDividendRecord(r, collector)).filter((r): r is NonNullable<typeof r> => Boolean(r))
         if (mapped.length > 0) {
           const result = await this.helper.prisma.dividend.createMany({ data: mapped, skipDuplicates: true })
           totalRows += result.count
@@ -790,6 +804,7 @@ export class FinancialSyncService {
     }
 
     this.logger.log(`[分红数据] 全量构建完成，${totalRows} 条`)
+    await this.helper.flushValidationLogs(collector)
     await this.helper.writeSyncLog(
       TushareSyncTaskName.DIVIDEND,
       {
@@ -814,11 +829,12 @@ export class FinancialSyncService {
     this.logger.log(`[分红数据] 增量同步 ${rangeStart} → ${rangeEnd}`)
     const windows = this.helper.buildMonthlyWindows(rangeStart, rangeEnd)
     let totalRows = 0
+    const collector = new ValidationCollector(TushareSyncTaskName.DIVIDEND)
 
     for (const [i, w] of windows.entries()) {
       try {
         const rows = await this.api.getDividendByDateRange(w.startDate, w.endDate)
-        const mapped = rows.map(mapDividendRecord).filter((r): r is NonNullable<typeof r> => Boolean(r))
+        const mapped = rows.map((r) => mapDividendRecord(r, collector)).filter((r): r is NonNullable<typeof r> => Boolean(r))
         totalRows += await this.helper.replaceDateRangeRows(
           'dividend',
           'annDate',
@@ -837,6 +853,7 @@ export class FinancialSyncService {
     }
 
     this.logger.log(`[分红数据] 增量同步完成，${totalRows} 条`)
+    await this.helper.flushValidationLogs(collector)
     await this.helper.writeSyncLog(
       TushareSyncTaskName.DIVIDEND,
       {
@@ -891,6 +908,7 @@ export class FinancialSyncService {
     let totalRows = 0
     let totalSuccess = 0
     let totalFailed = 0
+    const collector = new ValidationCollector(TushareSyncTaskName.FINA_INDICATOR)
 
     for (const [si, stock] of stocks.entries()) {
       const failedPeriods: string[] = []
@@ -898,7 +916,7 @@ export class FinancialSyncService {
       for (const [pi, period] of periods.entries()) {
         try {
           const rows = await this.api.getFinaIndicatorByTsCodeAndPeriod(stock.tsCode, period)
-          const mapped = rows.map(mapFinaIndicatorRecord).filter((r): r is NonNullable<typeof r> => Boolean(r))
+          const mapped = rows.map((r) => mapFinaIndicatorRecord(r, collector)).filter((r): r is NonNullable<typeof r> => Boolean(r))
 
           if (mapped.length > 0) {
             // 幂等：先删除该股票该报告期旧数据，再插入
@@ -924,7 +942,7 @@ export class FinancialSyncService {
         for (const period of failedPeriods) {
           try {
             const rows = await this.api.getFinaIndicatorByTsCodeAndPeriod(stock.tsCode, period)
-            const mapped = rows.map(mapFinaIndicatorRecord).filter((r): r is NonNullable<typeof r> => Boolean(r))
+            const mapped = rows.map((r) => mapFinaIndicatorRecord(r, collector)).filter((r): r is NonNullable<typeof r> => Boolean(r))
             if (mapped.length > 0) {
               await this.helper.prisma.finaIndicator.deleteMany({
                 where: {
@@ -953,6 +971,7 @@ export class FinancialSyncService {
     this.logger.log(
       `[财务指标] 同步完成，${stocks.length} × ${periods.length} = ${totalSuccess + totalFailed} 个查询，${totalRows} 条数据`,
     )
+    await this.helper.flushValidationLogs(collector)
     await this.helper.writeSyncLog(
       TushareSyncTaskName.FINA_INDICATOR,
       {
@@ -1017,7 +1036,7 @@ export class FinancialSyncService {
     label: string
     modelName: string
     fetchByPeriod: (period: string) => Promise<Record<string, unknown>[]>
-    mapRecord: (r: Record<string, unknown>) => unknown | null
+    mapRecord: (r: Record<string, unknown>, collector?: ValidationCollector) => unknown | null
   }): Promise<void> {
     const { task, label, modelName, fetchByPeriod, mapRecord } = opts
 
@@ -1038,11 +1057,12 @@ export class FinancialSyncService {
     this.logger.log(`[${label}] 开始同步 ${periods.length} 个报告期: ${periods[0]} → ${periods[periods.length - 1]}`)
     let totalRows = 0
     const failed: Array<{ period: string; error: string }> = []
+    const collector = new ValidationCollector(task)
 
     for (const [i, period] of periods.entries()) {
       try {
         const rows = await fetchByPeriod(period)
-        const mapped = rows.map(mapRecord).filter((r): r is NonNullable<typeof r> => Boolean(r))
+        const mapped = rows.map((r) => mapRecord(r, collector)).filter((r): r is NonNullable<typeof r> => Boolean(r))
 
         const model = (this.helper.prisma as any)[modelName]
         await model.deleteMany({ where: { endDate: this.helper.toDate(period) } })
@@ -1065,7 +1085,7 @@ export class FinancialSyncService {
       for (const item of failed) {
         try {
           const rows = await fetchByPeriod(item.period)
-          const mapped = rows.map(mapRecord).filter((r): r is NonNullable<typeof r> => Boolean(r))
+          const mapped = rows.map((r) => mapRecord(r, collector)).filter((r): r is NonNullable<typeof r> => Boolean(r))
           const model = (this.helper.prisma as any)[modelName]
           await model.deleteMany({ where: { endDate: this.helper.toDate(item.period) } })
           if (mapped.length > 0) {
@@ -1079,6 +1099,7 @@ export class FinancialSyncService {
     }
 
     this.logger.log(`[${label}] 同步完成，${periods.length} 个报告期，${totalRows} 条`)
+    await this.helper.flushValidationLogs(collector)
     await this.helper.writeSyncLog(
       task,
       {
@@ -1119,7 +1140,7 @@ export class FinancialSyncService {
     years: number
     modelName: 'top10Holders' | 'top10FloatHolders'
     fetchRows: (tsCode: string, startDate: string, endDate: string) => Promise<Record<string, unknown>[]>
-    mapRecord: (record: Record<string, unknown>) => unknown | null
+    mapRecord: (record: Record<string, unknown>, collector?: ValidationCollector) => unknown | null
   }): Promise<void> {
     const { task, label, years, modelName, fetchRows, mapRecord } = opts
     const startedAt = new Date()
@@ -1140,12 +1161,13 @@ export class FinancialSyncService {
     const failedStocks: string[] = []
     const startDate = periods[0]
     const endDate = periods[periods.length - 1]
+    const collector = new ValidationCollector(task)
 
     for (const [i, tsCode] of stocks.entries()) {
       try {
         const rows = await fetchRows(tsCode, startDate, endDate)
         const mapped = rows
-          .map(mapRecord)
+          .map((r) => mapRecord(r, collector))
           .filter((row): row is NonNullable<typeof row> => Boolean(row))
           .filter((row: any) => {
             const endDateKey = this.normalizeDateKey(row.endDate)
@@ -1171,7 +1193,7 @@ export class FinancialSyncService {
         try {
           const rows = await fetchRows(tsCode, startDate, endDate)
           const mapped = rows
-            .map(mapRecord)
+            .map((r) => mapRecord(r, collector))
             .filter((row): row is NonNullable<typeof row> => Boolean(row))
             .filter((row: any) => {
               const endDateKey = this.normalizeDateKey(row.endDate)
@@ -1187,6 +1209,7 @@ export class FinancialSyncService {
       }
     }
 
+    await this.helper.flushValidationLogs(collector)
     await this.helper.writeSyncLog(
       task,
       {

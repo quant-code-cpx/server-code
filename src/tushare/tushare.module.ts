@@ -20,6 +20,8 @@ import { AlternativeDataSyncService } from './sync/alternative-data-sync.service
 import { TushareSyncRegistryService } from './sync/sync-registry.service'
 import { TushareSyncService } from './sync/sync.service'
 import { DataQualityService } from './sync/quality/data-quality.service'
+import { CrossTableCheckService } from './sync/quality/cross-table-check.service'
+import { AutoRepairService } from './sync/quality/auto-repair.service'
 import { SyncLogService } from './sync/sync-log.service'
 import { SyncRetryService } from './sync/sync-retry.service'
 import { WebsocketModule } from 'src/websocket/websocket.module'
@@ -53,9 +55,11 @@ import { HeatmapModule } from 'src/apps/heatmap/heatmap.module'
     TushareSyncRegistryService,
     TushareSyncService,
     DataQualityService,
+    CrossTableCheckService,
+    AutoRepairService,
     SyncLogService,
     SyncRetryService,
   ],
-  exports: [TushareClient, FinancialSyncService, TushareSyncRegistryService, TushareSyncService, DataQualityService, SyncLogService],
+  exports: [TushareClient, FinancialSyncService, TushareSyncRegistryService, TushareSyncService, DataQualityService, CrossTableCheckService, AutoRepairService, SyncLogService],
 })
 export class TushareModule {}

@@ -20,6 +20,7 @@ import {
 import { TushareApiError } from '../api/tushare-client.service'
 import { SyncHelperService } from './sync-helper.service'
 import { TushareSyncMode, TushareSyncPlan } from './sync-plan.types'
+import { ValidationCollector } from './quality/validation-collector'
 
 /**
  * MoneyflowSyncService — 资金流向同步
@@ -126,6 +127,7 @@ export class MoneyflowSyncService {
   // ─── 个股资金流 ────────────────────────────────────────────────────────────
 
   async syncMoneyflow(targetTradeDate: string, mode: TushareSyncMode = 'incremental'): Promise<void> {
+    const collector = new ValidationCollector(TushareSyncTaskName.MONEYFLOW_DC)
     await this.runSyncTemplate({
       task: TushareSyncTaskName.MONEYFLOW_DC,
       label: '个股资金流',
@@ -134,14 +136,16 @@ export class MoneyflowSyncService {
       fullHistoryOverride: mode === 'full' ? true : undefined,
       fetchAndMap: async (td) => {
         const rows = await this.api.getMoneyflowByTradeDate(td)
-        return rows.map(mapMoneyflowRecord).filter((r): r is NonNullable<typeof r> => Boolean(r))
+        return rows.map((r) => mapMoneyflowRecord(r, collector)).filter((r): r is NonNullable<typeof r> => Boolean(r))
       },
     })
+    await this.helper.flushValidationLogs(collector)
   }
 
   // ─── 行业/概念/地域资金流 ──────────────────────────────────────────────────
 
   async syncMoneyflowIndDc(targetTradeDate: string, mode: TushareSyncMode = 'incremental'): Promise<void> {
+    const collector = new ValidationCollector(TushareSyncTaskName.MONEYFLOW_IND_DC)
     await this.runSyncTemplate({
       task: TushareSyncTaskName.MONEYFLOW_IND_DC,
       label: '行业资金流',
@@ -152,17 +156,19 @@ export class MoneyflowSyncService {
         let all: unknown[] = []
         for (const ct of TUSHARE_MONEYFLOW_CONTENT_TYPES) {
           const rows = await this.api.getMoneyflowIndDcByTradeDate(td, ct)
-          const mapped = rows.map(mapMoneyflowIndDcRecord).filter((r): r is NonNullable<typeof r> => Boolean(r))
+          const mapped = rows.map((r) => mapMoneyflowIndDcRecord(r, collector)).filter((r): r is NonNullable<typeof r> => Boolean(r))
           all = all.concat(mapped)
         }
         return all
       },
     })
+    await this.helper.flushValidationLogs(collector)
   }
 
   // ─── 大盘资金流 ────────────────────────────────────────────────────────────
 
   async syncMoneyflowMktDc(targetTradeDate: string, mode: TushareSyncMode = 'incremental'): Promise<void> {
+    const collector = new ValidationCollector(TushareSyncTaskName.MONEYFLOW_MKT_DC)
     await this.runSyncTemplate({
       task: TushareSyncTaskName.MONEYFLOW_MKT_DC,
       label: '大盘资金流',
@@ -171,9 +177,10 @@ export class MoneyflowSyncService {
       fullHistoryOverride: mode === 'full' ? true : undefined,
       fetchAndMap: async (td) => {
         const rows = await this.api.getMoneyflowMktDcByTradeDate(td)
-        return rows.map(mapMoneyflowMktDcRecord).filter((r): r is NonNullable<typeof r> => Boolean(r))
+        return rows.map((r) => mapMoneyflowMktDcRecord(r, collector)).filter((r): r is NonNullable<typeof r> => Boolean(r))
       },
     })
+    await this.helper.flushValidationLogs(collector)
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -315,13 +322,15 @@ export class MoneyflowSyncService {
 
     try {
       const rows = await this.api.getMoneyflowHsgtByDateRange(startDate, targetTradeDate)
-      const mapped = rows.map(mapMoneyflowHsgtRecord).filter((r): r is NonNullable<typeof r> => Boolean(r))
+      const collector = new ValidationCollector(TushareSyncTaskName.MONEYFLOW_HSGT)
+      const mapped = rows.map((r) => mapMoneyflowHsgtRecord(r, collector)).filter((r): r is NonNullable<typeof r> => Boolean(r))
 
       // 按日期幂等写入
       const tradeDate = this.helper.toDate(targetTradeDate)
       const startDateObj = this.helper.toDate(startDate)
       totalRows = await this.helper.replaceDateRangeRows('moneyflowHsgt', 'tradeDate', startDateObj, tradeDate, mapped)
       this.logger.log(`[沪深港通资金流] 同步完成，${totalRows} 条`)
+      await this.helper.flushValidationLogs(collector)
     } catch (error) {
       if (this.isDailyQuotaExceeded(error)) {
         this.logger.warn('[沪深港通资金流] 触发每日配额限制，跳过')

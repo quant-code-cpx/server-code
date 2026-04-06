@@ -88,6 +88,8 @@ describe('TushareSyncService', () => {
       cacheService as never,
       eventsGateway as EventsGateway,
       heatmapSnapshotService as never,
+      { runAllChecks: jest.fn(async () => undefined) } as never,
+      { analyzeAndRepair: jest.fn(async () => ({ totalChecked: 0, repairTasks: 0, executed: 0, tasks: [] })) } as never,
     )
 
     await service.onApplicationBootstrap()
@@ -112,6 +114,8 @@ describe('TushareSyncService', () => {
       cacheService as never,
       eventsGateway as EventsGateway,
       heatmapSnapshotService as never,
+      { runAllChecks: jest.fn(async () => undefined) } as never,
+      { analyzeAndRepair: jest.fn(async () => ({ totalChecked: 0, repairTasks: 0, executed: 0, tasks: [] })) } as never,
     )
 
     const result = await service.runManualSync({

@@ -10,6 +10,8 @@ import { TushareSyncTaskName } from 'src/constant/tushare.constant'
 import { CacheService } from 'src/shared/cache.service'
 import { EventsGateway } from 'src/websocket/events.gateway'
 import { HeatmapSnapshotService } from 'src/apps/heatmap/heatmap-snapshot.service'
+import { DataQualityService, DataQualityReport, QualityCheckSummary } from './quality/data-quality.service'
+import { AutoRepairService } from './quality/auto-repair.service'
 import { SyncHelperService } from './sync-helper.service'
 import { TushareSyncRegistryService } from './sync-registry.service'
 import { TushareSyncCategory, TushareSyncMode, TushareSyncPlan, TushareSyncTrigger } from './sync-plan.types'
@@ -56,6 +58,8 @@ export class TushareSyncService implements OnApplicationBootstrap {
     private readonly cacheService: CacheService,
     private readonly eventsGateway: EventsGateway,
     private readonly heatmapSnapshotService: HeatmapSnapshotService,
+    private readonly dataQualityService: DataQualityService,
+    private readonly autoRepair: AutoRepairService,
   ) {
     const cfg = this.configService.get<ITushareConfig>(TUSHARE_CONFIG_TOKEN, { infer: true })
     if (!cfg) {
@@ -417,6 +421,7 @@ export class TushareSyncService implements OnApplicationBootstrap {
         }
         await this.invalidateCachesAfterSync(result1)
         this.triggerHeatmapSnapshotAsync(result1)
+        this.triggerDataQualityCheckAsync(result1)
         this.eventsGateway.broadcastSyncCompleted(result1)
         return result1
       }
@@ -437,6 +442,7 @@ export class TushareSyncService implements OnApplicationBootstrap {
       }
       await this.invalidateCachesAfterSync(result2)
       this.triggerHeatmapSnapshotAsync(result2)
+      this.triggerDataQualityCheckAsync(result2)
       this.eventsGateway.broadcastSyncCompleted(result2)
       return result2
     } catch (error) {
@@ -512,5 +518,61 @@ export class TushareSyncService implements OnApplicationBootstrap {
     void this.heatmapSnapshotService.aggregateSnapshot(result.targetTradeDate ?? undefined).catch((err) => {
       this.logger.warn(`热力图快照聚合失败（不影响主同步流程）：${(err as Error).message}`)
     })
+  }
+
+  private triggerDataQualityCheckAsync(result: RunPlansResult): void {
+    if (result.executedTasks.length === 0) return
+
+    void (async () => {
+      try {
+        // 1. 运行全量质量检查（含跨表对账）
+        const reports = await this.dataQualityService.runAllChecksAndCollect()
+        if (reports.length === 0) return // 被锁跳过时 reports 为空
+
+        // 2. 构建摘要
+        const summary = this.buildQualityCheckSummary(reports)
+
+        // 3. 广播质量检查结果
+        this.eventsGateway.broadcastDataQualityCompleted(summary)
+
+        // 4. 自动补数（仅有 fail 项时触发）
+        if (summary.counts.fail > 0) {
+          const repairSummary = await this.autoRepair.analyzeAndRepair(reports)
+          summary.autoRepairTriggered = true
+          summary.repairTaskCount = repairSummary.executed
+
+          this.eventsGateway.broadcastAutoRepairQueued(repairSummary)
+          this.logger.log(
+            `[自动补数] 生成 ${repairSummary.repairTasks} 个补数任务，${repairSummary.executed} 个已入队`,
+          )
+        }
+      } catch (error) {
+        this.logger.error(`盘后数据质量检查失败: ${(error as Error).message}`)
+      }
+    })()
+  }
+
+  private buildQualityCheckSummary(reports: DataQualityReport[], repairInfo?: { executed: number }): QualityCheckSummary {
+    const nonCross = reports.filter((r) => r.checkType !== 'cross-table')
+    const cross = reports.filter((r) => r.checkType === 'cross-table')
+
+    const countByStatus = (arr: typeof reports) => ({
+      pass: arr.filter((r) => r.status === 'pass').length,
+      warn: arr.filter((r) => r.status === 'warn').length,
+      fail: arr.filter((r) => r.status === 'fail').length,
+    })
+
+    return {
+      checkedAt: new Date().toISOString(),
+      totalDataSets: new Set(nonCross.map((r) => r.dataSet)).size,
+      counts: countByStatus(nonCross),
+      failures: reports
+        .filter((r) => r.status === 'fail')
+        .slice(0, 10)
+        .map((r) => ({ dataSet: r.dataSet, checkType: r.checkType, message: r.message })),
+      crossTableCounts: countByStatus(cross),
+      autoRepairTriggered: !!repairInfo,
+      repairTaskCount: repairInfo?.executed ?? 0,
+    }
   }
 }

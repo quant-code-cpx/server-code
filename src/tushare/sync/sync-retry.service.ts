@@ -4,6 +4,8 @@ import { TushareSyncRetryStatus, TushareSyncTask } from '@prisma/client'
 import { TushareSyncTaskName } from 'src/constant/tushare.constant'
 import { PrismaService } from 'src/shared/prisma.service'
 import { TushareSyncRegistryService } from './sync-registry.service'
+import { DataQualityService } from './quality/data-quality.service'
+import { AutoRepairService } from './quality/auto-repair.service'
 
 /** 最大同时处理的重试任务数（防止一次扫描大量重试任务造成 DB 和 Tushare 压力） */
 const MAX_RETRY_BATCH = 10
@@ -21,6 +23,8 @@ export class SyncRetryService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly registry: TushareSyncRegistryService,
+    private readonly dataQualityService: DataQualityService,
+    private readonly autoRepairService: AutoRepairService,
   ) {}
 
   @Cron(CronExpression.EVERY_5_MINUTES)
@@ -105,6 +109,32 @@ export class SyncRetryService {
         if (isExhausted) {
           this.logger.error(`[重试队列] ${taskName} / key=${item.failedKey ?? 'n/a'} 已耗尽重试次数，标记为 EXHAUSTED`)
         }
+      }
+    }
+
+    // ─── post-repair hook：对成功的 auto-repair 任务触发单项复查 ─────────────
+    const repairedDataSets = new Set<string>()
+    const processedIds = pendingItems.map((i) => i.id)
+    const succeededAutoRepair = await this.prisma.tushareSyncRetryQueue.findMany({
+      where: {
+        id: { in: processedIds },
+        status: TushareSyncRetryStatus.SUCCEEDED,
+        errorMessage: { startsWith: '[auto-repair]' },
+      },
+      select: { task: true },
+    })
+    for (const item of succeededAutoRepair) {
+      const dataSet = this.autoRepairService.taskToDataSet(item.task)
+      if (dataSet) repairedDataSets.add(dataSet)
+    }
+
+    if (repairedDataSets.size > 0) {
+      this.logger.log(`[补数复查] 触发 ${repairedDataSets.size} 个数据集的质量复查`)
+      for (const dataSet of repairedDataSets) {
+        void this.dataQualityService
+          .checkTimeliness(dataSet)
+          .then((report) => this.dataQualityService.writeCheckResult(report))
+          .catch((e) => this.logger.error(`[补数复查] ${dataSet} timeliness 检查失败: ${(e as Error).message}`))
       }
     }
   }

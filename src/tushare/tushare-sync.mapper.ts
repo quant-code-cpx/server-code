@@ -8,6 +8,7 @@ import {
   StockListStatus as PrismaStockListStatus,
 } from '@prisma/client'
 import { MoneyflowContentType, StockExchange, StockListStatus } from 'src/constant/tushare.constant'
+import { ValidationCollector } from './sync/quality/validation-collector'
 
 dayjs.extend(utc)
 dayjs.extend(timezone)
@@ -100,9 +101,13 @@ function mapMoneyflowContentType(value: string | null): PrismaMoneyflowContentTy
  * 以下映射方法负责将 Tushare 原始返回值转为 Prisma createMany 所需结构；
  * 一方面统一日期 / 数值转换，另一方面将非法枚举值拦截在入库前。
  */
-export function mapStockBasicRecord(record: TushareRecord): Prisma.StockBasicCreateManyInput | null {
+export function mapStockBasicRecord(
+  record: TushareRecord,
+  collector?: ValidationCollector,
+): Prisma.StockBasicCreateManyInput | null {
   const tsCode = readString(record, 'ts_code')
   if (!tsCode) {
+    collector?.add({ tsCode, ruleName: 'missing_pk', severity: 'error', message: 'ts_code 缺失', rawData: record })
     return null
   }
 
@@ -127,9 +132,13 @@ export function mapStockBasicRecord(record: TushareRecord): Prisma.StockBasicCre
   }
 }
 
-export function mapStockCompanyRecord(record: TushareRecord): Prisma.StockCompanyCreateManyInput | null {
+export function mapStockCompanyRecord(
+  record: TushareRecord,
+  collector?: ValidationCollector,
+): Prisma.StockCompanyCreateManyInput | null {
   const tsCode = readString(record, 'ts_code')
   if (!tsCode) {
+    collector?.add({ tsCode, ruleName: 'missing_pk', severity: 'error', message: 'ts_code 缺失', rawData: record })
     return null
   }
 
@@ -156,10 +165,14 @@ export function mapStockCompanyRecord(record: TushareRecord): Prisma.StockCompan
   }
 }
 
-export function mapTradeCalRecord(record: TushareRecord): Prisma.TradeCalCreateManyInput | null {
+export function mapTradeCalRecord(
+  record: TushareRecord,
+  collector?: ValidationCollector,
+): Prisma.TradeCalCreateManyInput | null {
   const exchange = mapExchange(readString(record, 'exchange'))
   const calDate = readDate(record, 'cal_date')
   if (!exchange || !calDate) {
+    collector?.add({ ruleName: 'missing_pk', severity: 'error', message: `exchange 或 cal_date 缺失`, rawData: record })
     return null
   }
 
@@ -171,16 +184,78 @@ export function mapTradeCalRecord(record: TushareRecord): Prisma.TradeCalCreateM
   }
 }
 
+function validateOhlcv(
+  mapped: {
+    open: number | null
+    high: number | null
+    low: number | null
+    close: number | null
+    vol: number | null
+    amount: number | null
+    pctChg: number | null
+    preClose: number | null
+  },
+  raw: TushareRecord,
+  collector: ValidationCollector,
+): void {
+  const { open, high, low, close, vol, amount, pctChg, preClose } = mapped
+  const tsCode = readString(raw, 'ts_code')
+  const tradeDate = readString(raw, 'trade_date')
+
+  if (high != null && low != null && open != null && close != null) {
+    if (high < Math.max(open, close) || low > Math.min(open, close)) {
+      collector.add({
+        tsCode,
+        tradeDate,
+        ruleName: 'ohlc_range_violation',
+        severity: 'warn',
+        message: `OHLC 不满足 high≥max(O,C) 且 low≤min(O,C): O=${open} H=${high} L=${low} C=${close}`,
+      })
+    }
+  }
+
+  if ((vol != null && vol < 0) || (amount != null && amount < 0)) {
+    collector.add({
+      tsCode,
+      tradeDate,
+      ruleName: 'negative_volume',
+      severity: 'warn',
+      message: `成交量/成交额为负: vol=${vol}, amount=${amount}`,
+    })
+  }
+
+  if (pctChg != null && close != null && preClose != null && preClose > 0) {
+    const computed = ((close - preClose) / preClose) * 100
+    if (Math.abs(pctChg - computed) > 1) {
+      collector.add({
+        tsCode,
+        tradeDate,
+        ruleName: 'pct_chg_mismatch',
+        severity: 'info',
+        message: `pctChg 偏差: API=${pctChg.toFixed(2)}, 计算=${computed.toFixed(2)}`,
+      })
+    }
+  }
+}
+
 function mapOhlcvRecord<
   T extends Prisma.DailyCreateManyInput | Prisma.WeeklyCreateManyInput | Prisma.MonthlyCreateManyInput,
->(record: TushareRecord): Omit<T, 'syncedAt'> | null {
+>(record: TushareRecord, collector?: ValidationCollector): Omit<T, 'syncedAt'> | null {
   const tsCode = readString(record, 'ts_code')
   const tradeDate = readDate(record, 'trade_date')
   if (!tsCode || !tradeDate) {
+    collector?.add({
+      tsCode,
+      tradeDate: readString(record, 'trade_date'),
+      ruleName: 'missing_pk',
+      severity: 'error',
+      message: `关键字段缺失: ts_code=${tsCode}, trade_date=${readString(record, 'trade_date')}`,
+      rawData: record,
+    })
     return null
   }
 
-  return {
+  const result = {
     tsCode,
     tradeDate,
     open: readNumber(record, 'open'),
@@ -192,25 +267,51 @@ function mapOhlcvRecord<
     pctChg: readNumber(record, 'pct_chg'),
     vol: readNumber(record, 'vol'),
     amount: readNumber(record, 'amount'),
-  } as Omit<T, 'syncedAt'>
+  }
+
+  if (collector) {
+    validateOhlcv(result, record, collector)
+  }
+
+  return result as Omit<T, 'syncedAt'>
 }
 
-export function mapDailyRecord(record: TushareRecord): Prisma.DailyCreateManyInput | null {
-  return mapOhlcvRecord<Prisma.DailyCreateManyInput>(record)
+export function mapDailyRecord(
+  record: TushareRecord,
+  collector?: ValidationCollector,
+): Prisma.DailyCreateManyInput | null {
+  return mapOhlcvRecord<Prisma.DailyCreateManyInput>(record, collector)
 }
 
-export function mapWeeklyRecord(record: TushareRecord): Prisma.WeeklyCreateManyInput | null {
-  return mapOhlcvRecord<Prisma.WeeklyCreateManyInput>(record)
+export function mapWeeklyRecord(
+  record: TushareRecord,
+  collector?: ValidationCollector,
+): Prisma.WeeklyCreateManyInput | null {
+  return mapOhlcvRecord<Prisma.WeeklyCreateManyInput>(record, collector)
 }
 
-export function mapMonthlyRecord(record: TushareRecord): Prisma.MonthlyCreateManyInput | null {
-  return mapOhlcvRecord<Prisma.MonthlyCreateManyInput>(record)
+export function mapMonthlyRecord(
+  record: TushareRecord,
+  collector?: ValidationCollector,
+): Prisma.MonthlyCreateManyInput | null {
+  return mapOhlcvRecord<Prisma.MonthlyCreateManyInput>(record, collector)
 }
 
-export function mapAdjFactorRecord(record: TushareRecord): Prisma.AdjFactorCreateManyInput | null {
+export function mapAdjFactorRecord(
+  record: TushareRecord,
+  collector?: ValidationCollector,
+): Prisma.AdjFactorCreateManyInput | null {
   const tsCode = readString(record, 'ts_code')
   const tradeDate = readDate(record, 'trade_date')
   if (!tsCode || !tradeDate) {
+    collector?.add({
+      tsCode,
+      tradeDate: readString(record, 'trade_date'),
+      ruleName: 'missing_pk',
+      severity: 'error',
+      message: `ts_code 或 trade_date 缺失`,
+      rawData: record,
+    })
     return null
   }
 
@@ -221,10 +322,21 @@ export function mapAdjFactorRecord(record: TushareRecord): Prisma.AdjFactorCreat
   }
 }
 
-export function mapDailyBasicRecord(record: TushareRecord): Prisma.DailyBasicCreateManyInput | null {
+export function mapDailyBasicRecord(
+  record: TushareRecord,
+  collector?: ValidationCollector,
+): Prisma.DailyBasicCreateManyInput | null {
   const tsCode = readString(record, 'ts_code')
   const tradeDate = readDate(record, 'trade_date')
   if (!tsCode || !tradeDate) {
+    collector?.add({
+      tsCode,
+      tradeDate: readString(record, 'trade_date'),
+      ruleName: 'missing_pk',
+      severity: 'error',
+      message: `ts_code 或 trade_date 缺失`,
+      rawData: record,
+    })
     return null
   }
 
@@ -251,10 +363,21 @@ export function mapDailyBasicRecord(record: TushareRecord): Prisma.DailyBasicCre
   }
 }
 
-export function mapMoneyflowRecord(record: TushareRecord): Prisma.MoneyflowCreateManyInput | null {
+export function mapMoneyflowRecord(
+  record: TushareRecord,
+  collector?: ValidationCollector,
+): Prisma.MoneyflowCreateManyInput | null {
   const tsCode = readString(record, 'ts_code')
   const tradeDate = readDate(record, 'trade_date')
   if (!tsCode || !tradeDate) {
+    collector?.add({
+      tsCode,
+      tradeDate: readString(record, 'trade_date'),
+      ruleName: 'missing_pk',
+      severity: 'error',
+      message: `ts_code 或 trade_date 缺失`,
+      rawData: record,
+    })
     return null
   }
 
@@ -282,11 +405,22 @@ export function mapMoneyflowRecord(record: TushareRecord): Prisma.MoneyflowCreat
   }
 }
 
-export function mapMoneyflowIndDcRecord(record: TushareRecord): Prisma.MoneyflowIndDcCreateManyInput | null {
+export function mapMoneyflowIndDcRecord(
+  record: TushareRecord,
+  collector?: ValidationCollector,
+): Prisma.MoneyflowIndDcCreateManyInput | null {
   const tsCode = readString(record, 'ts_code')
   const tradeDate = readDate(record, 'trade_date')
   const contentType = mapMoneyflowContentType(readString(record, 'content_type'))
   if (!tsCode || !tradeDate || !contentType) {
+    collector?.add({
+      tsCode,
+      tradeDate: readString(record, 'trade_date'),
+      ruleName: 'missing_pk',
+      severity: 'error',
+      message: `ts_code、trade_date 或 content_type 缺失`,
+      rawData: record,
+    })
     return null
   }
 
@@ -312,9 +446,19 @@ export function mapMoneyflowIndDcRecord(record: TushareRecord): Prisma.Moneyflow
   }
 }
 
-export function mapMoneyflowMktDcRecord(record: TushareRecord): Prisma.MoneyflowMktDcCreateManyInput | null {
+export function mapMoneyflowMktDcRecord(
+  record: TushareRecord,
+  collector?: ValidationCollector,
+): Prisma.MoneyflowMktDcCreateManyInput | null {
   const tradeDate = readDate(record, 'trade_date')
   if (!tradeDate) {
+    collector?.add({
+      tradeDate: readString(record, 'trade_date'),
+      ruleName: 'missing_pk',
+      severity: 'error',
+      message: 'trade_date 缺失',
+      rawData: record,
+    })
     return null
   }
 
@@ -337,10 +481,20 @@ export function mapMoneyflowMktDcRecord(record: TushareRecord): Prisma.Moneyflow
   }
 }
 
-export function mapIncomeRecord(record: TushareRecord): Prisma.IncomeCreateManyInput | null {
+export function mapIncomeRecord(
+  record: TushareRecord,
+  collector?: ValidationCollector,
+): Prisma.IncomeCreateManyInput | null {
   const tsCode = readString(record, 'ts_code')
   const endDate = readDate(record, 'end_date')
   if (!tsCode || !endDate) {
+    collector?.add({
+      tsCode,
+      ruleName: 'missing_pk',
+      severity: 'error',
+      message: `ts_code 或 end_date 缺失`,
+      rawData: record,
+    })
     return null
   }
 
@@ -442,11 +596,21 @@ export function mapIncomeRecord(record: TushareRecord): Prisma.IncomeCreateManyI
   }
 }
 
-export function mapExpressRecord(record: TushareRecord): Prisma.ExpressCreateManyInput | null {
+export function mapExpressRecord(
+  record: TushareRecord,
+  collector?: ValidationCollector,
+): Prisma.ExpressCreateManyInput | null {
   const tsCode = readString(record, 'ts_code')
   const annDate = readDate(record, 'ann_date')
   const endDate = readDate(record, 'end_date')
   if (!tsCode || !annDate || !endDate) {
+    collector?.add({
+      tsCode,
+      ruleName: 'missing_pk',
+      severity: 'error',
+      message: `ts_code、ann_date 或 end_date 缺失`,
+      rawData: record,
+    })
     return null
   }
 
@@ -487,10 +651,20 @@ export function mapExpressRecord(record: TushareRecord): Prisma.ExpressCreateMan
   }
 }
 
-export function mapFinaIndicatorRecord(record: TushareRecord): Prisma.FinaIndicatorCreateManyInput | null {
+export function mapFinaIndicatorRecord(
+  record: TushareRecord,
+  collector?: ValidationCollector,
+): Prisma.FinaIndicatorCreateManyInput | null {
   const tsCode = readString(record, 'ts_code')
   const endDate = readDate(record, 'end_date')
   if (!tsCode || !endDate) {
+    collector?.add({
+      tsCode,
+      ruleName: 'missing_pk',
+      severity: 'error',
+      message: `ts_code 或 end_date 缺失`,
+      rawData: record,
+    })
     return null
   }
 
@@ -531,9 +705,13 @@ export function mapFinaIndicatorRecord(record: TushareRecord): Prisma.FinaIndica
   }
 }
 
-export function mapDividendRecord(record: TushareRecord): Prisma.DividendCreateManyInput | null {
+export function mapDividendRecord(
+  record: TushareRecord,
+  collector?: ValidationCollector,
+): Prisma.DividendCreateManyInput | null {
   const tsCode = readString(record, 'ts_code')
   if (!tsCode) {
+    collector?.add({ tsCode, ruleName: 'missing_pk', severity: 'error', message: 'ts_code 缺失', rawData: record })
     return null
   }
 
@@ -557,11 +735,21 @@ export function mapDividendRecord(record: TushareRecord): Prisma.DividendCreateM
   }
 }
 
-export function mapTop10HoldersRecord(record: TushareRecord): Prisma.Top10HoldersCreateManyInput | null {
+export function mapTop10HoldersRecord(
+  record: TushareRecord,
+  collector?: ValidationCollector,
+): Prisma.Top10HoldersCreateManyInput | null {
   const tsCode = readString(record, 'ts_code')
   const endDate = readDate(record, 'end_date')
   const holderName = readString(record, 'holder_name')
   if (!tsCode || !endDate || !holderName) {
+    collector?.add({
+      tsCode,
+      ruleName: 'missing_pk',
+      severity: 'error',
+      message: `ts_code、end_date 或 holder_name 缺失`,
+      rawData: record,
+    })
     return null
   }
 
@@ -578,11 +766,21 @@ export function mapTop10HoldersRecord(record: TushareRecord): Prisma.Top10Holder
   }
 }
 
-export function mapTop10FloatHoldersRecord(record: TushareRecord): Prisma.Top10FloatHoldersCreateManyInput | null {
+export function mapTop10FloatHoldersRecord(
+  record: TushareRecord,
+  collector?: ValidationCollector,
+): Prisma.Top10FloatHoldersCreateManyInput | null {
   const tsCode = readString(record, 'ts_code')
   const endDate = readDate(record, 'end_date')
   const holderName = readString(record, 'holder_name')
   if (!tsCode || !endDate || !holderName) {
+    collector?.add({
+      tsCode,
+      ruleName: 'missing_pk',
+      severity: 'error',
+      message: `ts_code、end_date 或 holder_name 缺失`,
+      rawData: record,
+    })
     return null
   }
 
@@ -599,10 +797,21 @@ export function mapTop10FloatHoldersRecord(record: TushareRecord): Prisma.Top10F
   }
 }
 
-export function mapIndexDailyRecord(record: TushareRecord): Prisma.IndexDailyCreateManyInput | null {
+export function mapIndexDailyRecord(
+  record: TushareRecord,
+  collector?: ValidationCollector,
+): Prisma.IndexDailyCreateManyInput | null {
   const tsCode = readString(record, 'ts_code')
   const tradeDate = readDate(record, 'trade_date')
   if (!tsCode || !tradeDate) {
+    collector?.add({
+      tsCode,
+      tradeDate: readString(record, 'trade_date'),
+      ruleName: 'missing_pk',
+      severity: 'error',
+      message: `ts_code 或 trade_date 缺失`,
+      rawData: record,
+    })
     return null
   }
 
@@ -621,9 +830,19 @@ export function mapIndexDailyRecord(record: TushareRecord): Prisma.IndexDailyCre
   }
 }
 
-export function mapMoneyflowHsgtRecord(record: TushareRecord): Prisma.MoneyflowHsgtCreateManyInput | null {
+export function mapMoneyflowHsgtRecord(
+  record: TushareRecord,
+  collector?: ValidationCollector,
+): Prisma.MoneyflowHsgtCreateManyInput | null {
   const tradeDate = readDate(record, 'trade_date')
   if (!tradeDate) {
+    collector?.add({
+      tradeDate: readString(record, 'trade_date'),
+      ruleName: 'missing_pk',
+      severity: 'error',
+      message: 'trade_date 缺失',
+      rawData: record,
+    })
     return null
   }
 
@@ -638,10 +857,20 @@ export function mapMoneyflowHsgtRecord(record: TushareRecord): Prisma.MoneyflowH
   }
 }
 
-export function mapBalanceSheetRecord(record: TushareRecord): Prisma.BalanceSheetCreateManyInput | null {
+export function mapBalanceSheetRecord(
+  record: TushareRecord,
+  collector?: ValidationCollector,
+): Prisma.BalanceSheetCreateManyInput | null {
   const tsCode = readString(record, 'ts_code')
   const endDate = readDate(record, 'end_date')
   if (!tsCode || !endDate) {
+    collector?.add({
+      tsCode,
+      ruleName: 'missing_pk',
+      severity: 'error',
+      message: `ts_code 或 end_date 缺失`,
+      rawData: record,
+    })
     return null
   }
 
@@ -807,10 +1036,20 @@ export function mapBalanceSheetRecord(record: TushareRecord): Prisma.BalanceShee
   }
 }
 
-export function mapCashflowRecord(record: TushareRecord): Prisma.CashflowCreateManyInput | null {
+export function mapCashflowRecord(
+  record: TushareRecord,
+  collector?: ValidationCollector,
+): Prisma.CashflowCreateManyInput | null {
   const tsCode = readString(record, 'ts_code')
   const endDate = readDate(record, 'end_date')
   if (!tsCode || !endDate) {
+    collector?.add({
+      tsCode,
+      ruleName: 'missing_pk',
+      severity: 'error',
+      message: `ts_code 或 end_date 缺失`,
+      rawData: record,
+    })
     return null
   }
 
@@ -915,10 +1154,23 @@ export function mapCashflowRecord(record: TushareRecord): Prisma.CashflowCreateM
   }
 }
 
-export function mapStkLimitRecord(record: TushareRecord): Prisma.StkLimitCreateManyInput | null {
+export function mapStkLimitRecord(
+  record: TushareRecord,
+  collector?: ValidationCollector,
+): Prisma.StkLimitCreateManyInput | null {
   const tsCode = readString(record, 'ts_code')
   const tradeDate = readString(record, 'trade_date')
-  if (!tsCode || !tradeDate) return null
+  if (!tsCode || !tradeDate) {
+    collector?.add({
+      tsCode,
+      tradeDate,
+      ruleName: 'missing_pk',
+      severity: 'error',
+      message: `ts_code 或 trade_date 缺失`,
+      rawData: record,
+    })
+    return null
+  }
   return {
     tsCode,
     tradeDate,
@@ -927,10 +1179,23 @@ export function mapStkLimitRecord(record: TushareRecord): Prisma.StkLimitCreateM
   }
 }
 
-export function mapSuspendDRecord(record: TushareRecord): Prisma.SuspendDCreateManyInput | null {
+export function mapSuspendDRecord(
+  record: TushareRecord,
+  collector?: ValidationCollector,
+): Prisma.SuspendDCreateManyInput | null {
   const tsCode = readString(record, 'ts_code')
   const tradeDate = readString(record, 'trade_date')
-  if (!tsCode || !tradeDate) return null
+  if (!tsCode || !tradeDate) {
+    collector?.add({
+      tsCode,
+      tradeDate,
+      ruleName: 'missing_pk',
+      severity: 'error',
+      message: `ts_code 或 trade_date 缺失`,
+      rawData: record,
+    })
+    return null
+  }
   return {
     tsCode,
     tradeDate,
@@ -939,11 +1204,23 @@ export function mapSuspendDRecord(record: TushareRecord): Prisma.SuspendDCreateM
   }
 }
 
-export function mapIndexWeightRecord(record: TushareRecord): Prisma.IndexWeightCreateManyInput | null {
+export function mapIndexWeightRecord(
+  record: TushareRecord,
+  collector?: ValidationCollector,
+): Prisma.IndexWeightCreateManyInput | null {
   const indexCode = readString(record, 'index_code')
   const conCode = readString(record, 'con_code')
   const tradeDate = readString(record, 'trade_date')
-  if (!indexCode || !conCode || !tradeDate) return null
+  if (!indexCode || !conCode || !tradeDate) {
+    collector?.add({
+      tradeDate,
+      ruleName: 'missing_pk',
+      severity: 'error',
+      message: `index_code、con_code 或 trade_date 缺失`,
+      rawData: record,
+    })
+    return null
+  }
   return {
     indexCode,
     conCode,
@@ -952,10 +1229,23 @@ export function mapIndexWeightRecord(record: TushareRecord): Prisma.IndexWeightC
   }
 }
 
-export function mapMarginDetailRecord(record: TushareRecord): Prisma.MarginDetailCreateManyInput | null {
+export function mapMarginDetailRecord(
+  record: TushareRecord,
+  collector?: ValidationCollector,
+): Prisma.MarginDetailCreateManyInput | null {
   const tsCode = readString(record, 'ts_code')
   const tradeDate = readDate(record, 'trade_date')
-  if (!tsCode || !tradeDate) return null
+  if (!tsCode || !tradeDate) {
+    collector?.add({
+      tsCode,
+      tradeDate: readString(record, 'trade_date'),
+      ruleName: 'missing_pk',
+      severity: 'error',
+      message: `ts_code 或 trade_date 缺失`,
+      rawData: record,
+    })
+    return null
+  }
   return {
     tsCode,
     tradeDate,
@@ -972,10 +1262,23 @@ export function mapMarginDetailRecord(record: TushareRecord): Prisma.MarginDetai
   }
 }
 
-export function mapTopListRecord(record: TushareRecord): Prisma.TopListCreateManyInput | null {
+export function mapTopListRecord(
+  record: TushareRecord,
+  collector?: ValidationCollector,
+): Prisma.TopListCreateManyInput | null {
   const tradeDate = readString(record, 'trade_date')
   const tsCode = readString(record, 'ts_code')
-  if (!tradeDate || !tsCode) return null
+  if (!tradeDate || !tsCode) {
+    collector?.add({
+      tsCode,
+      tradeDate,
+      ruleName: 'missing_pk',
+      severity: 'error',
+      message: `trade_date 或 ts_code 缺失`,
+      rawData: record,
+    })
+    return null
+  }
   return {
     tradeDate,
     tsCode,
@@ -995,11 +1298,24 @@ export function mapTopListRecord(record: TushareRecord): Prisma.TopListCreateMan
   }
 }
 
-export function mapTopInstRecord(record: TushareRecord): Prisma.TopInstCreateManyInput | null {
+export function mapTopInstRecord(
+  record: TushareRecord,
+  collector?: ValidationCollector,
+): Prisma.TopInstCreateManyInput | null {
   const tradeDate = readString(record, 'trade_date')
   const tsCode = readString(record, 'ts_code')
   const exalter = readString(record, 'exalter')
-  if (!tradeDate || !tsCode || !exalter) return null
+  if (!tradeDate || !tsCode || !exalter) {
+    collector?.add({
+      tsCode,
+      tradeDate,
+      ruleName: 'missing_pk',
+      severity: 'error',
+      message: `trade_date、ts_code 或 exalter 缺失`,
+      rawData: record,
+    })
+    return null
+  }
   return {
     tradeDate,
     tsCode,
@@ -1014,10 +1330,23 @@ export function mapTopInstRecord(record: TushareRecord): Prisma.TopInstCreateMan
   }
 }
 
-export function mapBlockTradeRecord(record: TushareRecord): Prisma.BlockTradeCreateManyInput | null {
+export function mapBlockTradeRecord(
+  record: TushareRecord,
+  collector?: ValidationCollector,
+): Prisma.BlockTradeCreateManyInput | null {
   const tradeDate = readString(record, 'trade_date')
   const tsCode = readString(record, 'ts_code')
-  if (!tradeDate || !tsCode) return null
+  if (!tradeDate || !tsCode) {
+    collector?.add({
+      tsCode,
+      tradeDate,
+      ruleName: 'missing_pk',
+      severity: 'error',
+      message: `trade_date 或 ts_code 缺失`,
+      rawData: record,
+    })
+    return null
+  }
   return {
     tradeDate,
     tsCode,
@@ -1029,10 +1358,22 @@ export function mapBlockTradeRecord(record: TushareRecord): Prisma.BlockTradeCre
   }
 }
 
-export function mapShareFloatRecord(record: TushareRecord): Prisma.ShareFloatCreateManyInput | null {
+export function mapShareFloatRecord(
+  record: TushareRecord,
+  collector?: ValidationCollector,
+): Prisma.ShareFloatCreateManyInput | null {
   const tsCode = readString(record, 'ts_code')
   const floatDate = readString(record, 'float_date')
-  if (!tsCode || !floatDate) return null
+  if (!tsCode || !floatDate) {
+    collector?.add({
+      tsCode,
+      ruleName: 'missing_pk',
+      severity: 'error',
+      message: `ts_code 或 float_date 缺失`,
+      rawData: record,
+    })
+    return null
+  }
   return {
     tsCode,
     annDate: readString(record, 'ann_date'),

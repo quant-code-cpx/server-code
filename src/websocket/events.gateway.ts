@@ -11,6 +11,8 @@ import {
 import { Logger } from '@nestjs/common'
 import { JwtService } from '@nestjs/jwt'
 import { Server, Socket } from 'socket.io'
+import type { QualityCheckSummary } from 'src/tushare/sync/quality/data-quality.service'
+import type { RepairSummary } from 'src/tushare/sync/quality/auto-repair.service'
 
 /**
  * WebSocket 网关
@@ -177,5 +179,15 @@ export class EventsGateway implements OnGatewayInit, OnGatewayConnection, OnGate
    */
   emitToUser(userId: number, event: string, data: unknown) {
     this.server.to(`user:${userId}`).emit(event, data)
+  }
+
+  /** 广播数据质量检查完成 */
+  broadcastDataQualityCompleted(summary: QualityCheckSummary): void {
+    this.server.emit('data_quality_completed', summary)
+  }
+
+  /** 广播自动补数任务入队 */
+  broadcastAutoRepairQueued(summary: RepairSummary): void {
+    this.server.emit('auto_repair_queued', summary)
   }
 }

@@ -27,6 +27,7 @@ import { ErrorEnum } from 'src/constant/response-code.constant'
 import { CacheService } from 'src/shared/cache.service'
 import { ITushareConfig, TUSHARE_CONFIG_TOKEN } from 'src/config/tushare.config'
 import { PrismaService } from 'src/shared/prisma.service'
+import { ValidationCollector } from './quality/validation-collector'
 
 dayjs.extend(utc)
 dayjs.extend(timezone)
@@ -114,17 +115,41 @@ export class SyncHelperService {
     })
   }
 
+  /** 将 ValidationCollector 收集的异常批量写入 DataValidationLog 表 */
+  async flushValidationLogs(collector: ValidationCollector): Promise<number> {
+    const entries = collector.drain()
+    if (entries.length === 0) return 0
+
+    await this.prisma.dataValidationLog.createMany({
+      data: entries.map((e) => ({
+        task: collector.task,
+        tradeDate: e.tradeDate ?? '',
+        tsCode: e.tsCode ?? null,
+        ruleName: e.ruleName,
+        severity: e.severity,
+        message: e.message,
+        rawData: (e.rawData ?? null) as Prisma.InputJsonValue | null,
+      })),
+    })
+
+    this.logger.log(`[校验日志] ${collector.task}: 写入 ${entries.length} 条异常记录`)
+    return entries.length
+  }
+
   // ═══════════════════════════════════════════════════════════════════════════
   // 数据库通用操作
   // ═══════════════════════════════════════════════════════════════════════════
 
-  /** 获取某个模型的某个日期字段的最大值（返回 YYYYMMDD 字符串） */
+  /** 获取某个模型的某个日期字段的最大值（返回 YYYYMMDD 字符串；兼容 DateTime 和 String 两种类型） */
   async getLatestDateString(modelName: string, fieldName = 'tradeDate'): Promise<string | null> {
     const result = await (this.prisma as any)[modelName].aggregate({
       _max: { [fieldName]: true },
     })
-    const maxDate = result?._max?.[fieldName] as Date | null | undefined
-    return maxDate ? this.formatDate(maxDate) : null
+    const maxValue = result?._max?.[fieldName]
+    if (!maxValue) return null
+    if (maxValue instanceof Date) return this.formatDate(maxValue)
+    if (typeof maxValue === 'string') return maxValue
+    return null
   }
 
   /** 全量替换：先删后插 */

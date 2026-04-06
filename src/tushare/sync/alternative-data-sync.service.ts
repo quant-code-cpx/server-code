@@ -12,6 +12,7 @@ import {
 } from '../tushare-sync.mapper'
 import { SyncHelperService } from './sync-helper.service'
 import { TushareSyncMode, TushareSyncPlan } from './sync-plan.types'
+import { ValidationCollector } from './quality/validation-collector'
 
 /**
  * AlternativeDataSyncService — 另类数据同步
@@ -107,6 +108,7 @@ export class AlternativeDataSyncService {
   }
 
   async syncTopList(targetTradeDate: string, mode: TushareSyncMode = 'incremental'): Promise<void> {
+    const collector = new ValidationCollector(TushareSyncTaskName.TOP_LIST)
     await this.syncByTradeDateString({
       task: TushareSyncTaskName.TOP_LIST,
       label: '龙虎榜明细',
@@ -115,13 +117,15 @@ export class AlternativeDataSyncService {
       fullSync: mode === 'full',
       fetchAndMap: async (td) => {
         const rows = await this.api.getTopListByTradeDate(td)
-        return rows.map(mapTopListRecord).filter((r): r is NonNullable<typeof r> => Boolean(r))
+        return rows.map((r) => mapTopListRecord(r, collector)).filter((r): r is NonNullable<typeof r> => Boolean(r))
       },
       resolveDates: (start) => this.helper.getOpenTradeDatesBetween(start, targetTradeDate),
     })
+    await this.helper.flushValidationLogs(collector)
   }
 
   async syncTopInst(targetTradeDate: string, mode: TushareSyncMode = 'incremental'): Promise<void> {
+    const collector = new ValidationCollector(TushareSyncTaskName.TOP_INST)
     await this.syncByTradeDateString({
       task: TushareSyncTaskName.TOP_INST,
       label: '龙虎榜机构明细',
@@ -130,13 +134,15 @@ export class AlternativeDataSyncService {
       fullSync: mode === 'full',
       fetchAndMap: async (td) => {
         const rows = await this.api.getTopInstByTradeDate(td)
-        return rows.map(mapTopInstRecord).filter((r): r is NonNullable<typeof r> => Boolean(r))
+        return rows.map((r) => mapTopInstRecord(r, collector)).filter((r): r is NonNullable<typeof r> => Boolean(r))
       },
       resolveDates: (start) => this.helper.getOpenTradeDatesBetween(start, targetTradeDate),
     })
+    await this.helper.flushValidationLogs(collector)
   }
 
   async syncBlockTrade(targetTradeDate: string, mode: TushareSyncMode = 'incremental'): Promise<void> {
+    const collector = new ValidationCollector(TushareSyncTaskName.BLOCK_TRADE)
     await this.syncByTradeDateString({
       task: TushareSyncTaskName.BLOCK_TRADE,
       label: '大宗交易',
@@ -145,10 +151,11 @@ export class AlternativeDataSyncService {
       fullSync: mode === 'full',
       fetchAndMap: async (td) => {
         const rows = await this.api.getBlockTradeByTradeDate(td)
-        return rows.map(mapBlockTradeRecord).filter((r): r is NonNullable<typeof r> => Boolean(r))
+        return rows.map((r) => mapBlockTradeRecord(r, collector)).filter((r): r is NonNullable<typeof r> => Boolean(r))
       },
       resolveDates: (start) => this.helper.getOpenTradeDatesBetween(start, targetTradeDate),
     })
+    await this.helper.flushValidationLogs(collector)
   }
 
   async syncShareFloat(mode: TushareSyncMode = 'incremental'): Promise<void> {
@@ -164,11 +171,12 @@ export class AlternativeDataSyncService {
 
     let totalRows = 0
     const failed: Array<{ tsCode: string; error: string }> = []
+    const collector = new ValidationCollector(TushareSyncTaskName.SHARE_FLOAT)
 
     for (const [i, stock] of stocks.entries()) {
       try {
         const rows = await this.api.getShareFloat(stock.tsCode)
-        const mapped = rows.map(mapShareFloatRecord).filter((r): r is NonNullable<typeof r> => Boolean(r))
+        const mapped = rows.map((r) => mapShareFloatRecord(r, collector)).filter((r): r is NonNullable<typeof r> => Boolean(r))
         if (mapped.length > 0) {
           await this.helper.prisma.$transaction([
             this.helper.prisma.shareFloat.deleteMany({ where: { tsCode: stock.tsCode } }),
@@ -186,6 +194,7 @@ export class AlternativeDataSyncService {
       }
     }
 
+    await this.helper.flushValidationLogs(collector)
     await this.helper.writeSyncLog(
       TushareSyncTaskName.SHARE_FLOAT,
       {

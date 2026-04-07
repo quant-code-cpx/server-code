@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common'
 import {
+  TUSHARE_HK_HOLD_FIELDS,
   TUSHARE_INDEX_WEIGHT_FIELDS,
   TUSHARE_STK_LIMIT_FIELDS,
   TUSHARE_SUSPEND_D_FIELDS,
@@ -32,6 +33,15 @@ export class FactorDataApiService {
       api_name: TushareApiName.INDEX_WEIGHT,
       params: { index_code: indexCode, start_date: startDate, end_date: endDate },
       fields: [...TUSHARE_INDEX_WEIGHT_FIELDS],
+    })
+  }
+
+  /** 按交易日获取沪深股通持股明细 */
+  getHkHoldByTradeDate(tradeDate: string) {
+    return this.client.call({
+      api_name: TushareApiName.HK_HOLD,
+      params: { trade_date: tradeDate },
+      fields: [...TUSHARE_HK_HOLD_FIELDS],
     })
   }
 }

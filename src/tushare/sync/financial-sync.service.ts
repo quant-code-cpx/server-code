@@ -4,10 +4,18 @@ import { FinancialApiService } from '../api/financial-api.service'
 import {
   mapBalanceSheetRecord,
   mapCashflowRecord,
+  mapDisclosureDateRecord,
   mapDividendRecord,
   mapExpressRecord,
+  mapFinaAuditRecord,
   mapFinaIndicatorRecord,
+  mapFinaMainbzRecord,
+  mapForecastRecord,
   mapIncomeRecord,
+  mapPledgeStatRecord,
+  mapRepurchaseRecord,
+  mapStkHolderNumberRecord,
+  mapStkHolderTradeRecord,
   mapTop10FloatHoldersRecord,
   mapTop10HoldersRecord,
 } from '../tushare-sync.mapper'
@@ -165,6 +173,134 @@ export class FinancialSyncService {
           description: '每日晚间同步十大流通股东',
         },
         execute: ({ mode }) => this.syncTop10FloatHolders(mode),
+      },
+      {
+        task: TushareSyncTaskName.FORECAST,
+        label: '业绩预告',
+        category: 'financial',
+        order: 370,
+        bootstrapEnabled: true,
+        supportsManual: true,
+        supportsFullSync: true,
+        requiresTradeDate: false,
+        schedule: {
+          cron: '0 0 20 * * *',
+          timeZone: this.helper.syncTimeZone,
+          description: '每日晚间同步业绩预告',
+        },
+        execute: ({ mode }) => this.syncForecast(mode),
+      },
+      {
+        task: TushareSyncTaskName.STK_HOLDER_NUMBER,
+        label: '股东人数',
+        category: 'financial',
+        order: 380,
+        bootstrapEnabled: true,
+        supportsManual: true,
+        supportsFullSync: true,
+        requiresTradeDate: false,
+        schedule: {
+          cron: '0 30 20 * * *',
+          timeZone: this.helper.syncTimeZone,
+          description: '每日晚间同步股东人数',
+        },
+        execute: ({ mode }) => this.syncStkHolderNumber(mode),
+      },
+      {
+        task: TushareSyncTaskName.STK_HOLDER_TRADE,
+        label: '股东增减持',
+        category: 'financial',
+        order: 390,
+        bootstrapEnabled: false,
+        supportsManual: true,
+        supportsFullSync: true,
+        requiresTradeDate: false,
+        schedule: {
+          cron: '0 0 21 * * *',
+          timeZone: this.helper.syncTimeZone,
+          description: '每日晚间同步股东增减持公告',
+        },
+        execute: ({ mode }) => this.syncStkHolderTrade(mode),
+      },
+      {
+        task: TushareSyncTaskName.PLEDGE_STAT,
+        label: '股权质押统计',
+        category: 'financial',
+        order: 400,
+        bootstrapEnabled: false,
+        supportsManual: true,
+        supportsFullSync: true,
+        requiresTradeDate: false,
+        schedule: {
+          cron: '0 30 21 * * 6',
+          timeZone: this.helper.syncTimeZone,
+          description: '每周六夜间同步股权质押统计',
+        },
+        execute: ({ mode }) => this.syncPledgeStat(mode),
+      },
+      {
+        task: TushareSyncTaskName.FINA_AUDIT,
+        label: '财务审计意见',
+        category: 'financial',
+        order: 410,
+        bootstrapEnabled: false,
+        supportsManual: true,
+        supportsFullSync: true,
+        requiresTradeDate: false,
+        schedule: {
+          cron: '0 0 22 * * *',
+          timeZone: this.helper.syncTimeZone,
+          description: '每日晚间同步财务审计意见',
+        },
+        execute: ({ mode }) => this.syncFinaAudit(mode),
+      },
+      {
+        task: TushareSyncTaskName.DISCLOSURE_DATE,
+        label: '财报披露计划',
+        category: 'financial',
+        order: 420,
+        bootstrapEnabled: true,
+        supportsManual: true,
+        supportsFullSync: true,
+        requiresTradeDate: false,
+        schedule: {
+          cron: '0 30 8 * * 1',
+          timeZone: this.helper.syncTimeZone,
+          description: '每周一早间同步财报披露计划',
+        },
+        execute: ({ mode }) => this.syncDisclosureDate(mode),
+      },
+      {
+        task: TushareSyncTaskName.FINA_MAINBZ,
+        label: '主营业务构成',
+        category: 'financial',
+        order: 430,
+        bootstrapEnabled: false,
+        supportsManual: true,
+        supportsFullSync: true,
+        requiresTradeDate: false,
+        schedule: {
+          cron: '0 0 23 * * *',
+          timeZone: this.helper.syncTimeZone,
+          description: '每日深夜同步主营业务构成',
+        },
+        execute: ({ mode }) => this.syncFinaMainbz(mode),
+      },
+      {
+        task: TushareSyncTaskName.REPURCHASE,
+        label: '股票回购',
+        category: 'financial',
+        order: 440,
+        bootstrapEnabled: false,
+        supportsManual: true,
+        supportsFullSync: true,
+        requiresTradeDate: false,
+        schedule: {
+          cron: '0 30 21 * * *',
+          timeZone: this.helper.syncTimeZone,
+          description: '每日差收盘同步回购公告',
+        },
+        execute: ({ mode }) => this.syncRepurchase(mode),
       },
     ]
   }
@@ -692,7 +828,9 @@ export class FinancialSyncService {
     for (const [i, w] of windows.entries()) {
       try {
         const rows = await this.api.getExpress(w.startDate, w.endDate)
-        const mapped = rows.map((r) => mapExpressRecord(r, collector)).filter((r): r is NonNullable<typeof r> => Boolean(r))
+        const mapped = rows
+          .map((r) => mapExpressRecord(r, collector))
+          .filter((r): r is NonNullable<typeof r> => Boolean(r))
         totalRows += await this.helper.replaceDateRangeRows(
           'express',
           'annDate',
@@ -774,7 +912,9 @@ export class FinancialSyncService {
     for (const [i, tsCode] of stockCodes.entries()) {
       try {
         const rows = await this.api.getDividendByTsCode(tsCode)
-        const mapped = rows.map((r) => mapDividendRecord(r, collector)).filter((r): r is NonNullable<typeof r> => Boolean(r))
+        const mapped = rows
+          .map((r) => mapDividendRecord(r, collector))
+          .filter((r): r is NonNullable<typeof r> => Boolean(r))
         if (mapped.length > 0) {
           const result = await this.helper.prisma.dividend.createMany({ data: mapped, skipDuplicates: true })
           totalRows += result.count
@@ -834,7 +974,9 @@ export class FinancialSyncService {
     for (const [i, w] of windows.entries()) {
       try {
         const rows = await this.api.getDividendByDateRange(w.startDate, w.endDate)
-        const mapped = rows.map((r) => mapDividendRecord(r, collector)).filter((r): r is NonNullable<typeof r> => Boolean(r))
+        const mapped = rows
+          .map((r) => mapDividendRecord(r, collector))
+          .filter((r): r is NonNullable<typeof r> => Boolean(r))
         totalRows += await this.helper.replaceDateRangeRows(
           'dividend',
           'annDate',
@@ -916,7 +1058,9 @@ export class FinancialSyncService {
       for (const [pi, period] of periods.entries()) {
         try {
           const rows = await this.api.getFinaIndicatorByTsCodeAndPeriod(stock.tsCode, period)
-          const mapped = rows.map((r) => mapFinaIndicatorRecord(r, collector)).filter((r): r is NonNullable<typeof r> => Boolean(r))
+          const mapped = rows
+            .map((r) => mapFinaIndicatorRecord(r, collector))
+            .filter((r): r is NonNullable<typeof r> => Boolean(r))
 
           if (mapped.length > 0) {
             // 幂等：先删除该股票该报告期旧数据，再插入
@@ -942,7 +1086,9 @@ export class FinancialSyncService {
         for (const period of failedPeriods) {
           try {
             const rows = await this.api.getFinaIndicatorByTsCodeAndPeriod(stock.tsCode, period)
-            const mapped = rows.map((r) => mapFinaIndicatorRecord(r, collector)).filter((r): r is NonNullable<typeof r> => Boolean(r))
+            const mapped = rows
+              .map((r) => mapFinaIndicatorRecord(r, collector))
+              .filter((r): r is NonNullable<typeof r> => Boolean(r))
             if (mapped.length > 0) {
               await this.helper.prisma.finaIndicator.deleteMany({
                 where: {
@@ -1224,5 +1370,503 @@ export class FinancialSyncService {
   private normalizeDateKey(value: string | Date | null | undefined): string | null {
     if (!value) return null
     return value instanceof Date ? this.helper.formatDate(value) : value
+  }
+
+  // ─── 业绩预告 ──────────────────────────────────────────────────────────────
+
+  async syncForecast(mode: TushareSyncMode = 'incremental'): Promise<void> {
+    const startedAt = new Date()
+    const today = this.helper.getCurrentShanghaiDateString()
+
+    // 确定需要拉取的报告期列表
+    let periods: string[]
+    if (mode === 'full') {
+      // 全量：从 2010 年 Q1 开始至今所有季度
+      periods = this.helper.buildRecentQuarterPeriods(new Date().getFullYear() - 2010 + 1)
+    } else {
+      // 增量：最近 4 个季度（覆盖预告更新）
+      periods = this.helper.buildRecentQuarterPeriods(2)
+    }
+
+    this.logger.log(`[业绩预告] 同步 ${periods.length} 个报告期，模式: ${mode}`)
+
+    let totalRows = 0
+    const collector = new ValidationCollector(TushareSyncTaskName.FORECAST)
+
+    for (const [i, period] of periods.entries()) {
+      try {
+        const rows = await this.api.getForecastByPeriod(period)
+        const mapped = rows
+          .map((r) => mapForecastRecord(r, collector))
+          .filter((r): r is NonNullable<typeof r> => Boolean(r))
+
+        const periodDate = this.helper.toDate(period)
+        const count = await this.helper.replaceDateRangeRows(
+          'forecast',
+          'endDate',
+          periodDate,
+          periodDate,
+          mapped,
+          {},
+          { skipDuplicates: false },
+        )
+        totalRows += count
+
+        if (i === 0 || (i + 1) % 10 === 0 || i === periods.length - 1) {
+          this.logger.log(`[业绩预告] 进度 ${i + 1}/${periods.length}，报告期 ${period}，累计 ${totalRows} 条`)
+        }
+      } catch (error) {
+        this.logger.error(`[业绩预告] 报告期 ${period} 同步失败: ${(error as Error).message}`)
+      }
+    }
+
+    await this.helper.flushValidationLogs(collector)
+    await this.helper.writeSyncLog(
+      TushareSyncTaskName.FORECAST,
+      {
+        status: TushareSyncExecutionStatus.SUCCESS,
+        message: `业绩预告同步完成，${periods.length} 个报告期，共 ${totalRows} 条`,
+        payload: { mode, periodCount: periods.length, rowCount: totalRows, syncDate: today },
+      },
+      startedAt,
+    )
+  }
+
+  // ─── 股东人数 ──────────────────────────────────────────────────────────────
+
+  async syncStkHolderNumber(mode: TushareSyncMode = 'incremental'): Promise<void> {
+    const startedAt = new Date()
+    const today = this.helper.getCurrentShanghaiDateString()
+
+    let windows: Array<{ startDate: string; endDate: string }>
+    if (mode === 'full') {
+      // 全量：从 2015 年起按月遍历
+      windows = this.helper.buildMonthlyWindows('20150101', today)
+    } else {
+      // 增量：最近 30 天按月划分（通常只有 1 个月）
+      const start30 = this.helper.addDays(today, -30)
+      windows = this.helper.buildMonthlyWindows(start30, today)
+    }
+
+    this.logger.log(`[股东人数] 同步 ${windows.length} 个月度窗口，模式: ${mode}`)
+
+    let totalRows = 0
+    const collector = new ValidationCollector(TushareSyncTaskName.STK_HOLDER_NUMBER)
+
+    for (const [i, { startDate, endDate }] of windows.entries()) {
+      try {
+        const rows = await this.api.getStkHolderNumberByDateRange(startDate, endDate)
+        const mapped = rows
+          .map((r) => mapStkHolderNumberRecord(r, collector))
+          .filter((r): r is NonNullable<typeof r> => Boolean(r))
+
+        if (mapped.length > 0) {
+          const count = await (this.helper.prisma as any).stkHolderNumber.createMany({
+            data: mapped,
+            skipDuplicates: true,
+          })
+          totalRows += count.count
+        }
+
+        if (i === 0 || (i + 1) % 20 === 0 || i === windows.length - 1) {
+          this.logger.log(
+            `[股东人数] 进度 ${i + 1}/${windows.length}，窗口 ${startDate}~${endDate}，累计 ${totalRows} 条`,
+          )
+        }
+      } catch (error) {
+        this.logger.error(`[股东人数] 窗口 ${startDate}~${endDate} 失败: ${(error as Error).message}`)
+      }
+    }
+
+    await this.helper.flushValidationLogs(collector)
+    await this.helper.writeSyncLog(
+      TushareSyncTaskName.STK_HOLDER_NUMBER,
+      {
+        status: TushareSyncExecutionStatus.SUCCESS,
+        message: `股东人数同步完成，${windows.length} 个月度窗口，共 ${totalRows} 条`,
+        payload: { mode, windowCount: windows.length, rowCount: totalRows, syncDate: today },
+      },
+      startedAt,
+    )
+  }
+
+  // ─── 股东增减持 ────────────────────────────────────────────────────────────
+
+  async syncStkHolderTrade(mode: TushareSyncMode = 'incremental'): Promise<void> {
+    const startedAt = new Date()
+    const today = this.helper.getCurrentShanghaiDateString()
+
+    let windows: Array<{ startDate: string; endDate: string }>
+    if (mode === 'full') {
+      // 全量：从 2010 年起按月遍历（~192 个月 × 300ms ≈ ~60 分钟）
+      windows = this.helper.buildMonthlyWindows('20100101', today)
+    } else {
+      // 增量：拉最近 30 天
+      const start30 = this.helper.addDays(today, -30)
+      windows = this.helper.buildMonthlyWindows(start30, today)
+    }
+
+    this.logger.log(`[股东增减持] 同步 ${windows.length} 个月度窗口，模式: ${mode}`)
+
+    let totalRows = 0
+    const collector = new ValidationCollector(TushareSyncTaskName.STK_HOLDER_TRADE)
+
+    for (const [i, { startDate, endDate }] of windows.entries()) {
+      try {
+        const rows = await this.api.getStkHolderTradeByDateRange(startDate, endDate)
+        const mapped = rows
+          .map((r) => mapStkHolderTradeRecord(r, collector))
+          .filter((r): r is NonNullable<typeof r> => Boolean(r))
+
+        if (mapped.length > 0) {
+          const count = await (this.helper.prisma as any).stkHolderTrade.createMany({
+            data: mapped,
+            skipDuplicates: true,
+          })
+          totalRows += count.count
+        }
+
+        if (i === 0 || (i + 1) % 20 === 0 || i === windows.length - 1) {
+          this.logger.log(
+            `[股东增减持] 进度 ${i + 1}/${windows.length}，窗口 ${startDate}~${endDate}，累计 ${totalRows} 条`,
+          )
+        }
+      } catch (error) {
+        this.logger.error(`[股东增减持] 窗口 ${startDate}~${endDate} 失败: ${(error as Error).message}`)
+      }
+    }
+
+    await this.helper.flushValidationLogs(collector)
+    await this.helper.writeSyncLog(
+      TushareSyncTaskName.STK_HOLDER_TRADE,
+      {
+        status: TushareSyncExecutionStatus.SUCCESS,
+        message: `股东增减持同步完成，${windows.length} 个月度窗口，共 ${totalRows} 条`,
+        payload: { mode, windowCount: windows.length, rowCount: totalRows, syncDate: today },
+      },
+      startedAt,
+    )
+  }
+
+  // ─── 股权质押统计 ──────────────────────────────────────────────────────────
+
+  async syncPledgeStat(mode: TushareSyncMode = 'incremental'): Promise<void> {
+    const startedAt = new Date()
+    const stocks = await this.getAllStockCodes()
+
+    if (!stocks.length) {
+      this.logger.warn('[股权质押统计] 股票列表为空，跳过')
+      return
+    }
+
+    if (mode !== 'full') {
+      if (await this.helper.isTaskSyncedToday(TushareSyncTaskName.PLEDGE_STAT)) {
+        this.logger.log('[股权质押统计] 今日已同步，跳过')
+        return
+      }
+    }
+
+    this.logger.log(`[股权质押统计] 开始遍历 ${stocks.length} 只股票`)
+
+    let totalRows = 0
+    const failed: string[] = []
+    const collector = new ValidationCollector(TushareSyncTaskName.PLEDGE_STAT)
+
+    for (const [i, tsCode] of stocks.entries()) {
+      try {
+        const rows = await this.api.getPledgeStatByTsCode(tsCode)
+        const mapped = rows
+          .map((r) => mapPledgeStatRecord(r, collector))
+          .filter((r): r is NonNullable<typeof r> => Boolean(r))
+
+        if (mapped.length > 0) {
+          const count = await (this.helper.prisma as any).pledgeStat.createMany({
+            data: mapped,
+            skipDuplicates: true,
+          })
+          totalRows += count.count
+        }
+
+        if (i === 0 || (i + 1) % 500 === 0 || i === stocks.length - 1) {
+          this.logger.log(`[股权质押统计] 进度 ${i + 1}/${stocks.length}，当前 ${tsCode}，累计 ${totalRows} 条`)
+        }
+      } catch (error) {
+        failed.push(tsCode)
+        this.logger.error(`[股权质押统计] ${tsCode} 失败: ${(error as Error).message}`)
+      }
+    }
+
+    await this.helper.flushValidationLogs(collector)
+    await this.helper.writeSyncLog(
+      TushareSyncTaskName.PLEDGE_STAT,
+      {
+        status: TushareSyncExecutionStatus.SUCCESS,
+        message: `股权质押统计同步完成，${stocks.length} 只股票，共 ${totalRows} 条`,
+        payload: {
+          mode,
+          stockCount: stocks.length,
+          rowCount: totalRows,
+          ...(failed.length > 0 && { failedStocks: failed }),
+        },
+      },
+      startedAt,
+    )
+  }
+
+  // ─── 财务审计意见 ──────────────────────────────────────────────────────────
+
+  async syncFinaAudit(mode: TushareSyncMode = 'incremental'): Promise<void> {
+    const startedAt = new Date()
+
+    if (mode !== 'full') {
+      if (await this.shouldRebuildRecentYears('finaAudit', '财务审计意见')) {
+        return this.syncFinaAudit('full')
+      }
+      if (await this.helper.isTaskSyncedToday(TushareSyncTaskName.FINA_AUDIT)) {
+        this.logger.log('[财务审计意见] 今日已同步，跳过')
+        return
+      }
+      this.logger.log('[财务审计意见] 当前仅在空表时触发全量重建；现有数据非空，跳过本轮')
+      return
+    }
+
+    const stocks = await this.getAllStockCodes()
+    if (!stocks.length) {
+      this.logger.warn('[财务审计意见] 股票列表为空，跳过')
+      return
+    }
+
+    await (this.helper.prisma as any).finaAudit.deleteMany({})
+    this.logger.log(`[财务审计意见] 已清空旧数据，开始按股票全量重建（${stocks.length} 只股票）`)
+
+    let totalRows = 0
+    const failed: string[] = []
+    const collector = new ValidationCollector(TushareSyncTaskName.FINA_AUDIT)
+
+    for (const [i, tsCode] of stocks.entries()) {
+      try {
+        const rows = await this.api.getFinaAuditByTsCode(tsCode)
+        const mapped = rows
+          .map((r) => mapFinaAuditRecord(r, collector))
+          .filter((r): r is NonNullable<typeof r> => Boolean(r))
+
+        if (mapped.length > 0) {
+          const count = await (this.helper.prisma as any).finaAudit.createMany({
+            data: mapped,
+            skipDuplicates: true,
+          })
+          totalRows += count.count
+        }
+
+        if (i === 0 || (i + 1) % 200 === 0 || i === stocks.length - 1) {
+          this.logger.log(`[财务审计意见] 进度 ${i + 1}/${stocks.length}，当前 ${tsCode}，累计 ${totalRows} 条`)
+        }
+      } catch (error) {
+        failed.push(tsCode)
+        this.logger.error(`[财务审计意见] ${tsCode} 失败: ${(error as Error).message}`)
+      }
+    }
+
+    await this.helper.flushValidationLogs(collector)
+    await this.helper.writeSyncLog(
+      TushareSyncTaskName.FINA_AUDIT,
+      {
+        status: TushareSyncExecutionStatus.SUCCESS,
+        message: `财务审计意见同步完成，${stocks.length} 只股票，共 ${totalRows} 条`,
+        payload: {
+          mode,
+          stockCount: stocks.length,
+          rowCount: totalRows,
+          ...(failed.length > 0 && { failedStocks: failed }),
+        },
+      },
+      startedAt,
+    )
+  }
+
+  // ─── 财报披露计划 ──────────────────────────────────────────────────────────
+
+  async syncDisclosureDate(mode: TushareSyncMode = 'incremental'): Promise<void> {
+    const startedAt = new Date()
+    const today = this.helper.getCurrentShanghaiDateString()
+
+    let periods: string[]
+    if (mode === 'full') {
+      // 全量：从 2010Q1 至今所有季度
+      periods = this.helper.buildRecentQuarterPeriods(new Date().getFullYear() - 2010 + 1)
+    } else {
+      // 增量：最近 2 个季度（覆盖即将披露的计划更新）
+      periods = this.helper.buildRecentQuarterPeriods(2)
+    }
+
+    this.logger.log(`[财报披露计划] 同步 ${periods.length} 个报告期，模式: ${mode}`)
+
+    let totalRows = 0
+    const collector = new ValidationCollector(TushareSyncTaskName.DISCLOSURE_DATE)
+
+    for (const [i, period] of periods.entries()) {
+      try {
+        const rows = await this.api.getDisclosureDateByPeriod(period)
+        const mapped = rows
+          .map((r) => mapDisclosureDateRecord(r, collector))
+          .filter((r): r is NonNullable<typeof r> => Boolean(r))
+
+        const periodDate = this.helper.toDate(period)
+        const count = await this.helper.replaceDateRangeRows(
+          'disclosureDate',
+          'endDate',
+          periodDate,
+          periodDate,
+          mapped,
+          {},
+          { skipDuplicates: false },
+        )
+        totalRows += count
+
+        if (i === 0 || (i + 1) % 10 === 0 || i === periods.length - 1) {
+          this.logger.log(`[财报披露计划] 进度 ${i + 1}/${periods.length}，报告期 ${period}，累计 ${totalRows} 条`)
+        }
+      } catch (error) {
+        this.logger.error(`[财报披露计划] 报告期 ${period} 失败: ${(error as Error).message}`)
+      }
+    }
+
+    await this.helper.flushValidationLogs(collector)
+    await this.helper.writeSyncLog(
+      TushareSyncTaskName.DISCLOSURE_DATE,
+      {
+        status: TushareSyncExecutionStatus.SUCCESS,
+        message: `财报披露计划同步完成，${periods.length} 个报告期，共 ${totalRows} 条`,
+        payload: { mode, periodCount: periods.length, rowCount: totalRows, syncDate: today },
+      },
+      startedAt,
+    )
+  }
+
+  // ─── 主营业务构成 ──────────────────────────────────────────────────────────
+
+  async syncFinaMainbz(mode: TushareSyncMode = 'incremental'): Promise<void> {
+    const startedAt = new Date()
+    const stocks = await this.getAllStockCodes()
+
+    if (!stocks.length) {
+      this.logger.warn('[主营业务构成] 股票列表为空，跳过')
+      return
+    }
+
+    if (mode !== 'full') {
+      if (await this.shouldRebuildRecentYears('finaMainbz', '主营业务构成')) {
+        return this.syncFinaMainbz('full')
+      }
+      if (await this.helper.isTaskSyncedToday(TushareSyncTaskName.FINA_MAINBZ)) {
+        this.logger.log('[主营业务构成] 今日已同步，跳过')
+        return
+      }
+      this.logger.log('[主营业务构成] 当前仅在空表时触发全量重建；现有数据非空，跳过本轮')
+      return
+    }
+
+    await (this.helper.prisma as any).finaMainbz.deleteMany({})
+    this.logger.log(`[主营业务构成] 已清空旧数据，开始按股票全量重建（${stocks.length} 只股票）`)
+
+    let totalRows = 0
+    const failed: string[] = []
+    const collector = new ValidationCollector(TushareSyncTaskName.FINA_MAINBZ)
+
+    for (const [i, tsCode] of stocks.entries()) {
+      try {
+        const rows = await this.api.getFinaMainbzByTsCode(tsCode)
+        const mapped = rows
+          .map((r) => mapFinaMainbzRecord(r, collector))
+          .filter((r): r is NonNullable<typeof r> => Boolean(r))
+
+        if (mapped.length > 0) {
+          const count = await (this.helper.prisma as any).finaMainbz.createMany({
+            data: mapped,
+            skipDuplicates: true,
+          })
+          totalRows += count.count
+        }
+
+        if (i === 0 || (i + 1) % 200 === 0 || i === stocks.length - 1) {
+          this.logger.log(`[主营业务构成] 进度 ${i + 1}/${stocks.length}，当前 ${tsCode}，累计 ${totalRows} 条`)
+        }
+      } catch (error) {
+        failed.push(tsCode)
+        this.logger.error(`[主营业务构成] ${tsCode} 失败: ${(error as Error).message}`)
+      }
+    }
+
+    await this.helper.flushValidationLogs(collector)
+    await this.helper.writeSyncLog(
+      TushareSyncTaskName.FINA_MAINBZ,
+      {
+        status: TushareSyncExecutionStatus.SUCCESS,
+        message: `主营业务构成同步完成，${stocks.length} 只股票，共 ${totalRows} 条`,
+        payload: {
+          mode,
+          stockCount: stocks.length,
+          rowCount: totalRows,
+          ...(failed.length > 0 && { failedStocks: failed }),
+        },
+      },
+      startedAt,
+    )
+  }
+
+  // ─── 股票回购 ──────────────────────────────────────────────────────────────
+
+  async syncRepurchase(mode: TushareSyncMode = 'incremental'): Promise<void> {
+    const startedAt = new Date()
+    const today = this.helper.getCurrentShanghaiDateString()
+
+    let windows: Array<{ startDate: string; endDate: string }>
+    if (mode === 'full') {
+      windows = this.helper.buildMonthlyWindows('20100101', today)
+    } else {
+      const start30 = this.helper.addDays(today, -30)
+      windows = this.helper.buildMonthlyWindows(start30, today)
+    }
+
+    this.logger.log(`[股票回购] 同步 ${windows.length} 个月度窗口，模式: ${mode}`)
+
+    let totalRows = 0
+    const collector = new ValidationCollector(TushareSyncTaskName.REPURCHASE)
+
+    for (const [i, { startDate, endDate }] of windows.entries()) {
+      try {
+        const rows = await this.api.getRepurchaseByDateRange(startDate, endDate)
+        const mapped = rows
+          .map((r) => mapRepurchaseRecord(r, collector))
+          .filter((r): r is NonNullable<typeof r> => Boolean(r))
+
+        if (mapped.length > 0) {
+          const count = await (this.helper.prisma as any).repurchase.createMany({
+            data: mapped,
+            skipDuplicates: true,
+          })
+          totalRows += count.count
+        }
+
+        if (i === 0 || (i + 1) % 20 === 0 || i === windows.length - 1) {
+          this.logger.log(
+            `[股票回购] 进度 ${i + 1}/${windows.length}，窗口 ${startDate}~${endDate}，累计 ${totalRows} 条`,
+          )
+        }
+      } catch (error) {
+        this.logger.error(`[股票回购] 窗口 ${startDate}~${endDate} 失败: ${(error as Error).message}`)
+      }
+    }
+
+    await this.helper.flushValidationLogs(collector)
+    await this.helper.writeSyncLog(
+      TushareSyncTaskName.REPURCHASE,
+      {
+        status: TushareSyncExecutionStatus.SUCCESS,
+        message: `股票回购同步完成，${windows.length} 个月度窗口，共 ${totalRows} 条`,
+        payload: { mode, windowCount: windows.length, rowCount: totalRows, syncDate: today },
+      },
+      startedAt,
+    )
   }
 }

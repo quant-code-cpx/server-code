@@ -2,8 +2,10 @@ import { Injectable } from '@nestjs/common'
 import {
   CORE_INDEX_CODES,
   TUSHARE_ADJ_FACTOR_FIELDS,
+  TUSHARE_CB_DAILY_FIELDS,
   TUSHARE_DAILY_BASIC_FIELDS,
   TUSHARE_INDEX_DAILY_FIELDS,
+  TUSHARE_INDEX_DAILYBASIC_FIELDS,
   TUSHARE_OHLCV_FIELDS,
   TushareApiName,
 } from 'src/constant/tushare.constant'
@@ -83,7 +85,38 @@ export class MarketApiService {
     return this.client.call({
       api_name: 'margin_detail',
       params: { trade_date: tradeDate },
-      fields: ['ts_code', 'trade_date', 'rzye', 'rzmre', 'rzche', 'rzjmre', 'rqye', 'rqmcl', 'rqchl', 'rqyl', 'rzrqye', 'rzrqyl'],
+      fields: [
+        'ts_code',
+        'trade_date',
+        'rzye',
+        'rzmre',
+        'rzche',
+        'rzjmre',
+        'rqye',
+        'rqmcl',
+        'rqchl',
+        'rqyl',
+        'rzrqye',
+        'rzrqyl',
+      ],
+    })
+  }
+
+  /** 按交易日获取大盘指数每日指标（估值、换手率等） */
+  getIndexDailyBasicByTradeDate(tradeDate: string) {
+    return this.client.call({
+      api_name: TushareApiName.INDEX_DAILY_BASIC,
+      params: { trade_date: tradeDate },
+      fields: [...TUSHARE_INDEX_DAILYBASIC_FIELDS],
+    })
+  }
+
+  /** 按交易日获取全市场可转债日行情 */
+  getCbDailyByTradeDate(tradeDate: string) {
+    return this.client.call({
+      api_name: TushareApiName.CB_DAILY,
+      params: { trade_date: tradeDate },
+      fields: [...TUSHARE_CB_DAILY_FIELDS],
     })
   }
 }

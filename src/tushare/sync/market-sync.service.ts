@@ -5,8 +5,10 @@ import { TushareSyncExecutionStatus, TushareSyncTaskName } from 'src/constant/tu
 import { MarketApiService } from '../api/market-api.service'
 import {
   mapAdjFactorRecord,
+  mapCbDailyRecord,
   mapDailyBasicRecord,
   mapDailyRecord,
+  mapIndexDailyBasicRecord,
   mapIndexDailyRecord,
   mapMarginDetailRecord,
   mapMonthlyRecord,
@@ -152,6 +154,40 @@ export class MarketSyncService {
           tradingDayOnly: true,
         },
         execute: (ctx) => this.syncMarginDetail(this.requireTradeDate(ctx.targetTradeDate), ctx.mode, ctx),
+      },
+      {
+        task: TushareSyncTaskName.INDEX_DAILY_BASIC,
+        label: '指数每日指标',
+        category: 'market',
+        order: 175,
+        bootstrapEnabled: true,
+        supportsManual: true,
+        supportsFullSync: true,
+        requiresTradeDate: true,
+        schedule: {
+          cron: '0 30 17 * * 1-5',
+          timeZone: this.helper.syncTimeZone,
+          description: '交易日盘后同步大盘指数估值指标',
+          tradingDayOnly: true,
+        },
+        execute: (ctx) => this.syncIndexDailyBasic(this.requireTradeDate(ctx.targetTradeDate), ctx.mode),
+      },
+      {
+        task: TushareSyncTaskName.CB_DAILY,
+        label: '可转债日行情',
+        category: 'market',
+        order: 180,
+        bootstrapEnabled: false,
+        supportsManual: true,
+        supportsFullSync: true,
+        requiresTradeDate: true,
+        schedule: {
+          cron: '0 45 17 * * 1-5',
+          timeZone: this.helper.syncTimeZone,
+          description: '交易日盘同步可转债日行情',
+          tradingDayOnly: true,
+        },
+        execute: (ctx) => this.syncCbDaily(this.requireTradeDate(ctx.targetTradeDate), ctx.mode),
       },
     ]
   }
@@ -530,5 +566,135 @@ export class MarketSyncService {
       throw new BusinessException(ErrorEnum.TUSHARE_TARGET_TRADE_DATE_REQUIRED)
     }
     return targetTradeDate
+  }
+
+  // ─── 大盘指数每日指标 ────────────────────────────────────────────────────────────
+
+  async syncIndexDailyBasic(targetTradeDate: string, mode: TushareSyncMode = 'incremental'): Promise<void> {
+    const startedAt = new Date()
+
+    const latestDate = mode === 'full' ? null : await this.helper.getLatestDateString('indexDailyBasic', 'tradeDate')
+    // index_dailybasic 数据从 2004 年开始提供
+    const syncStart = latestDate ? this.helper.addDays(latestDate, 1) : '20040102'
+
+    if (this.helper.compareDateString(syncStart, targetTradeDate) > 0) {
+      this.logger.log(`[指数每日指标] 已是最新（本地最新: ${latestDate}），无需同步`)
+      return
+    }
+
+    const tradeDates = await this.helper.getOpenTradeDatesBetween(syncStart, targetTradeDate)
+    if (!tradeDates.length) {
+      this.logger.log(`[指数每日指标] ${syncStart} ~ ${targetTradeDate} 间无交易日，跳过`)
+      return
+    }
+
+    this.logger.log(
+      `[指数每日指标] 开始同步 ${tradeDates.length} 个交易日: ${tradeDates[0]} → ${tradeDates[tradeDates.length - 1]}`,
+    )
+
+    let totalRows = 0
+    const failed: Array<{ date: string; error: string }> = []
+    const collector = new ValidationCollector(TushareSyncTaskName.INDEX_DAILY_BASIC)
+
+    for (const [i, td] of tradeDates.entries()) {
+      try {
+        const rows = await this.api.getIndexDailyBasicByTradeDate(td)
+        const mapped = rows
+          .map((r) => mapIndexDailyBasicRecord(r, collector))
+          .filter((r): r is NonNullable<typeof r> => Boolean(r))
+
+        const tradeDateTime = this.helper.toDate(td)
+        const count = await this.helper.replaceTradeDateRows('indexDailyBasic', tradeDateTime, mapped)
+        totalRows += count
+
+        if (i === 0 || (i + 1) % 200 === 0 || i === tradeDates.length - 1) {
+          this.logger.log(`[指数每日指标] 进度 ${i + 1}/${tradeDates.length}，交易日 ${td}，累计 ${totalRows} 条`)
+        }
+      } catch (error) {
+        const msg = (error as Error).message
+        this.logger.error(`[指数每日指标] ${td} 同步失败: ${msg}`)
+        failed.push({ date: td, error: msg })
+      }
+    }
+
+    await this.helper.flushValidationLogs(collector)
+    await this.helper.writeSyncLog(
+      TushareSyncTaskName.INDEX_DAILY_BASIC,
+      {
+        status: TushareSyncExecutionStatus.SUCCESS,
+        message: `指数每日指标同步完成，${tradeDates.length} 个交易日，共 ${totalRows} 条`,
+        tradeDate: this.helper.toDate(tradeDates[tradeDates.length - 1]),
+        payload: {
+          rowCount: totalRows,
+          dateCount: tradeDates.length,
+          ...(failed.length > 0 && { failedDates: failed }),
+        },
+      },
+      startedAt,
+    )
+  }
+
+  // ─── 可转债日行情 ──────────────────────────────────────────────
+
+  async syncCbDaily(targetTradeDate: string, mode: TushareSyncMode = 'incremental'): Promise<void> {
+    const startedAt = new Date()
+    const today = this.helper.getCurrentShanghaiDateString()
+
+    let tradeDates: string[]
+    if (mode === 'full') {
+      // 全量：从 2018-01-01 起（可转债市场扩容起点）
+      tradeDates = await this.helper.getOpenTradeDatesBetween('20180101', today)
+    } else {
+      // 增量：最近 5 个交易日
+      tradeDates = await this.helper.getOpenTradeDatesBetween(this.helper.addDays(targetTradeDate, -4), targetTradeDate)
+    }
+
+    if (!tradeDates.length) {
+      this.logger.log('[可转债日行情] 无交易日数据，跳过')
+      return
+    }
+
+    this.logger.log(`[可转债日行情] 同步 ${tradeDates.length} 个交易日，模式: ${mode}`)
+
+    let totalRows = 0
+    const failed: Array<{ date: string; error: string }> = []
+    const collector = new ValidationCollector(TushareSyncTaskName.CB_DAILY)
+
+    for (const [i, td] of tradeDates.entries()) {
+      try {
+        const rows = await this.api.getCbDailyByTradeDate(td)
+        const mapped = rows
+          .map((r) => mapCbDailyRecord(r, collector))
+          .filter((r): r is NonNullable<typeof r> => Boolean(r))
+
+        const tradeDateTime = this.helper.toDate(td)
+        const count = await this.helper.replaceTradeDateRows('cbDaily', tradeDateTime, mapped)
+        totalRows += count
+
+        if (i === 0 || (i + 1) % 200 === 0 || i === tradeDates.length - 1) {
+          this.logger.log(`[可转债日行情] 进度 ${i + 1}/${tradeDates.length}，交易日 ${td}，累计 ${totalRows} 条`)
+        }
+      } catch (error) {
+        const msg = (error as Error).message
+        this.logger.error(`[可转债日行情] ${td} 同步失败: ${msg}`)
+        failed.push({ date: td, error: msg })
+      }
+    }
+
+    await this.helper.flushValidationLogs(collector)
+    await this.helper.writeSyncLog(
+      TushareSyncTaskName.CB_DAILY,
+      {
+        status: TushareSyncExecutionStatus.SUCCESS,
+        message: `可转债日行情同步完成，${tradeDates.length} 个交易日，共 ${totalRows} 条`,
+        tradeDate: this.helper.toDate(tradeDates[tradeDates.length - 1]),
+        payload: {
+          rowCount: totalRows,
+          dateCount: tradeDates.length,
+          ...(failed.length > 0 && { failedDates: failed }),
+        },
+      },
+      startedAt,
+    )
   }
 }

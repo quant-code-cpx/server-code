@@ -1,0 +1,16 @@
+// 财报披露计划（来自 Tushare disclosure_date 接口，doc_id=162）
+model DisclosureDate {
+  tsCode      String    @map("ts_code") @db.VarChar(16)
+  endDate     DateTime  @map("end_date") @db.Date
+
+  annDate     DateTime? @map("ann_date") @db.Date
+  preDate     DateTime? @map("pre_date") @db.Date
+  actualDate  DateTime? @map("actual_date") @db.Date
+  modifyDate  String?   @map("modify_date") @db.Text
+
+  syncedAt    DateTime  @default(now()) @map("synced_at")
+
+  @@id([tsCode, endDate])
+  @@index([endDate])
+  @@map("financial_disclosure_schedules")
+}

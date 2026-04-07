@@ -1,0 +1,22 @@
+// 主营业务构成（来自 Tushare fina_mainbz 接口，doc_id=81）
+// 同一 ts_code + end_date 下可能有多条记录（按产品/地区/行业拆分）
+model FinaMainbz {
+  id         Int      @id @default(autoincrement())
+
+  tsCode     String   @map("ts_code") @db.VarChar(16)
+  endDate    DateTime @map("end_date") @db.Date
+  bzItem     String   @map("bz_item") @db.VarChar(128)
+
+  bzSales    Float?   @map("bz_sales")
+  bzProfit   Float?   @map("bz_profit")
+  bzCost     Float?   @map("bz_cost")
+  currType   String?  @map("curr_type") @db.VarChar(8)
+  updateFlag String?  @map("update_flag") @db.VarChar(4)
+
+  syncedAt   DateTime @default(now()) @map("synced_at")
+
+  @@unique([tsCode, endDate, bzItem])
+  @@index([tsCode])
+  @@index([endDate])
+  @@map("financial_main_business")
+}

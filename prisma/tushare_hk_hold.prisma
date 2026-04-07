@@ -1,0 +1,18 @@
+// 沪深股通持股明细（来自 Tushare hk_hold 接口，doc_id=188）
+// 注意：交易所从 2024-08-20 起停止日度北向资金数据发布，改为季度披露
+model HkHold {
+  tsCode    String   @map("ts_code") @db.VarChar(16)
+  tradeDate DateTime @map("trade_date") @db.Date
+  exchange  String   @map("exchange") @db.VarChar(4)
+
+  code      String?  @map("code") @db.VarChar(16)
+  name      String?  @map("name") @db.VarChar(32)
+  vol       BigInt?  @map("vol")
+  ratio     Float?   @map("ratio")
+
+  syncedAt  DateTime @default(now()) @map("synced_at")
+
+  @@id([tsCode, tradeDate, exchange])
+  @@index([tradeDate])
+  @@map("hk_hold_detail")
+}

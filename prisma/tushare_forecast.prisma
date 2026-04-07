@@ -1,0 +1,23 @@
+// 业绩预告（来自 Tushare forecast_vip 接口，doc_id=45）
+model Forecast {
+  tsCode        String    @map("ts_code") @db.VarChar(16)
+  annDate       DateTime  @map("ann_date") @db.Date
+  endDate       DateTime  @map("end_date") @db.Date
+
+  type          String?   @map("type") @db.VarChar(10)
+  pChangeMin    Float?    @map("p_change_min")
+  pChangeMax    Float?    @map("p_change_max")
+  netProfitMin  Float?    @map("net_profit_min")
+  netProfitMax  Float?    @map("net_profit_max")
+  lastParentNet Float?    @map("last_parent_net")
+  firstAnnDate  DateTime? @map("first_ann_date") @db.Date
+  summary       String?   @map("summary") @db.Text
+  changeReason  String?   @map("change_reason") @db.Text
+
+  syncedAt      DateTime  @default(now()) @map("synced_at")
+
+  @@id([tsCode, annDate, endDate])
+  @@index([endDate])
+  @@index([annDate])
+  @@map("earnings_forecast_reports")
+}

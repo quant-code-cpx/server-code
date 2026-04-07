@@ -1,0 +1,24 @@
+// 申万行业成分-分级（来自 Tushare index_member_all 接口，doc_id=335）
+model IndexMemberAll {
+  id         Int      @id @default(autoincrement())
+
+  l1Code     String   @map("l1_code") @db.VarChar(16)
+  l1Name     String   @map("l1_name") @db.VarChar(32)
+  l2Code     String   @map("l2_code") @db.VarChar(16)
+  l2Name     String   @map("l2_name") @db.VarChar(32)
+  l3Code     String   @map("l3_code") @db.VarChar(16)
+  l3Name     String   @map("l3_name") @db.VarChar(32)
+  tsCode     String   @map("ts_code") @db.VarChar(16)
+  name       String   @map("name") @db.VarChar(32)
+  inDate     DateTime? @map("in_date") @db.Date
+  outDate    DateTime? @map("out_date") @db.Date
+  isNew      String   @map("is_new") @db.VarChar(4)       // Y / N
+
+  syncedAt   DateTime @default(now()) @map("synced_at")
+
+  @@unique([l3Code, tsCode, inDate])
+  @@index([tsCode])
+  @@index([l1Code])
+  @@index([isNew])
+  @@map("sw_industry_members")
+}

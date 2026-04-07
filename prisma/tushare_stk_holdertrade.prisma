@@ -1,0 +1,26 @@
+// 股东增减持（来自 Tushare stk_holdertrade 接口，doc_id=175）
+model StkHolderTrade {
+  // 同一公告日同一股东可能有多笔交易，使用自增 id 作为主键
+  id           Int       @id @default(autoincrement())
+
+  tsCode       String    @map("ts_code") @db.VarChar(16)
+  annDate      DateTime  @map("ann_date") @db.Date
+  holderName   String    @map("holder_name") @db.VarChar(128)
+  holderType   String    @map("holder_type") @db.VarChar(4)   // G / P / C
+  inDe         String    @map("in_de") @db.VarChar(4)         // IN / DE
+  changeVol    Float?    @map("change_vol")
+  changeRatio  Float?    @map("change_ratio")
+  afterShare   Float?    @map("after_share")
+  afterRatio   Float?    @map("after_ratio")
+  avgPrice     Float?    @map("avg_price")
+  totalShare   Float?    @map("total_share")
+  beginDate    DateTime? @map("begin_date") @db.Date
+  closeDate    DateTime? @map("close_date") @db.Date
+
+  syncedAt     DateTime  @default(now()) @map("synced_at")
+
+  @@unique([tsCode, annDate, holderName, inDe])
+  @@index([tsCode])
+  @@index([annDate])
+  @@map("stock_holder_trades")
+}

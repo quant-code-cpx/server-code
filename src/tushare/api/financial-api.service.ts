@@ -2,10 +2,18 @@ import { Injectable } from '@nestjs/common'
 import {
   TUSHARE_BALANCE_SHEET_FIELDS,
   TUSHARE_CASHFLOW_FIELDS,
+  TUSHARE_DISCLOSURE_DATE_FIELDS,
   TUSHARE_DIVIDEND_FIELDS,
   TUSHARE_EXPRESS_FIELDS,
+  TUSHARE_FINA_AUDIT_FIELDS,
   TUSHARE_FINA_INDICATOR_FIELDS,
+  TUSHARE_FINA_MAINBZ_FIELDS,
+  TUSHARE_FORECAST_FIELDS,
   TUSHARE_INCOME_FIELDS,
+  TUSHARE_PLEDGE_STAT_FIELDS,
+  TUSHARE_REPURCHASE_FIELDS,
+  TUSHARE_STK_HOLDERNUMBER_FIELDS,
+  TUSHARE_STK_HOLDERTRADE_FIELDS,
   TUSHARE_TOP10_FLOAT_HOLDERS_FIELDS,
   TUSHARE_TOP10_HOLDERS_FIELDS,
   TushareApiName,
@@ -131,6 +139,105 @@ export class FinancialApiService {
       api_name: TushareApiName.CASHFLOW,
       params: { ts_code: tsCode },
       fields: [...TUSHARE_CASHFLOW_FIELDS],
+    })
+  }
+
+  /** 按报告期获取全市场业绩预告（forecast_vip，需 5000+ 积分） */
+  getForecastByPeriod(period: string) {
+    return this.client.call({
+      api_name: TushareApiName.FORECAST,
+      params: { period },
+      fields: [...TUSHARE_FORECAST_FIELDS],
+    })
+  }
+
+  /** 按公告日期获取全市场股东人数 */
+  getStkHolderNumberByAnnDate(annDate: string) {
+    return this.client.call({
+      api_name: TushareApiName.STK_HOLDER_NUMBER,
+      params: { ann_date: annDate },
+      fields: [...TUSHARE_STK_HOLDERNUMBER_FIELDS],
+    })
+  }
+
+  /** 按公告日期范围获取股东人数（用于回补） */
+  getStkHolderNumberByDateRange(startDate: string, endDate: string) {
+    return this.client.call({
+      api_name: TushareApiName.STK_HOLDER_NUMBER,
+      params: { start_date: startDate, end_date: endDate },
+      fields: [...TUSHARE_STK_HOLDERNUMBER_FIELDS],
+    })
+  }
+
+  /** 按公告日获取当日全市场股东增减持公告 */
+  getStkHolderTradeByAnnDate(annDate: string) {
+    return this.client.call({
+      api_name: TushareApiName.STK_HOLDER_TRADE,
+      params: { ann_date: annDate },
+      fields: [...TUSHARE_STK_HOLDERTRADE_FIELDS],
+    })
+  }
+
+  /** 按日期范围获取股东增减持（用于回补） */
+  getStkHolderTradeByDateRange(startDate: string, endDate: string) {
+    return this.client.call({
+      api_name: TushareApiName.STK_HOLDER_TRADE,
+      params: { start_date: startDate, end_date: endDate },
+      fields: [...TUSHARE_STK_HOLDERTRADE_FIELDS],
+    })
+  }
+
+  /** 获取指定股票的全部股权质押统计 */
+  getPledgeStatByTsCode(tsCode: string) {
+    return this.client.call({
+      api_name: TushareApiName.PLEDGE_STAT,
+      params: { ts_code: tsCode },
+      fields: [...TUSHARE_PLEDGE_STAT_FIELDS],
+    })
+  }
+
+  /** 获取指定股票的全部财务审计意见历史 */
+  getFinaAuditByTsCode(tsCode: string) {
+    return this.client.call({
+      api_name: TushareApiName.FINA_AUDIT,
+      params: { ts_code: tsCode },
+      fields: [...TUSHARE_FINA_AUDIT_FIELDS],
+    })
+  }
+
+  /** 按报告期获取全市场财报披露计划 */
+  getDisclosureDateByPeriod(period: string) {
+    return this.client.call({
+      api_name: TushareApiName.DISCLOSURE_DATE,
+      params: { end_date: period },
+      fields: [...TUSHARE_DISCLOSURE_DATE_FIELDS],
+    })
+  }
+
+  /** 按股票代码获取主营业务构成 */
+  getFinaMainbzByTsCode(tsCode: string) {
+    return this.client.call({
+      api_name: TushareApiName.FINA_MAINBZ,
+      params: { ts_code: tsCode, type: 'P' },
+      fields: [...TUSHARE_FINA_MAINBZ_FIELDS],
+    })
+  }
+
+  /** 按公告日获取当日回购公告 */
+  getRepurchaseByAnnDate(annDate: string) {
+    return this.client.call({
+      api_name: TushareApiName.REPURCHASE,
+      params: { ann_date: annDate },
+      fields: [...TUSHARE_REPURCHASE_FIELDS],
+    })
+  }
+
+  /** 按日期范围获取回购公告（用于回补） */
+  getRepurchaseByDateRange(startDate: string, endDate: string) {
+    return this.client.call({
+      api_name: TushareApiName.REPURCHASE,
+      params: { start_date: startDate, end_date: endDate },
+      fields: [...TUSHARE_REPURCHASE_FIELDS],
     })
   }
 }

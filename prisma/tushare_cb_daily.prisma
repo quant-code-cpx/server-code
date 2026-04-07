@@ -1,0 +1,25 @@
+// 可转债日行情（来自 Tushare cb_daily 接口，doc_id=187）
+model CbDaily {
+  tsCode       String   @map("ts_code") @db.VarChar(16)
+  tradeDate    DateTime @map("trade_date") @db.Date
+
+  preClose     Float?   @map("pre_close")
+  open         Float?   @map("open")
+  high         Float?   @map("high")
+  low          Float?   @map("low")
+  close        Float?   @map("close")
+  change       Float?   @map("change")
+  pctChg       Float?   @map("pct_chg")
+  vol          Float?   @map("vol")
+  amount       Float?   @map("amount")
+  bondValue    Float?   @map("bond_value")
+  bondOverRate Float?   @map("bond_over_rate")
+  cbValue      Float?   @map("cb_value")
+  cbOverRate   Float?   @map("cb_over_rate")
+
+  syncedAt     DateTime @default(now()) @map("synced_at")
+
+  @@id([tsCode, tradeDate])
+  @@index([tradeDate])
+  @@map("convertible_bond_daily_prices")
+}

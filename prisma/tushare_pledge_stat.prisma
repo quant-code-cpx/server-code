@@ -1,0 +1,17 @@
+// 股权质押统计（来自 Tushare pledge_stat 接口，doc_id=110）
+model PledgeStat {
+  tsCode       String   @map("ts_code") @db.VarChar(16)
+  endDate      DateTime @map("end_date") @db.Date
+
+  pledgeCount  Int      @map("pledge_count")
+  unrestPledge Float?   @map("unrest_pledge")
+  restPledge   Float?   @map("rest_pledge")
+  totalShare   Float?   @map("total_share")
+  pledgeRatio  Float?   @map("pledge_ratio")
+
+  syncedAt     DateTime @default(now()) @map("synced_at")
+
+  @@id([tsCode, endDate])
+  @@index([endDate])
+  @@map("stock_pledge_statistics")
+}

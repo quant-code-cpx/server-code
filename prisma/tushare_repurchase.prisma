@@ -1,0 +1,21 @@
+// 股票回购（来自 Tushare repurchase 接口，doc_id=124）
+model Repurchase {
+  id         Int      @id @default(autoincrement())
+
+  tsCode     String   @map("ts_code") @db.VarChar(16)
+  annDate    DateTime @map("ann_date") @db.Date
+  endDate    DateTime? @map("end_date") @db.Date
+  proc       String?  @map("proc") @db.VarChar(16)
+  expDate    DateTime? @map("exp_date") @db.Date
+  vol        Float?   @map("vol")
+  amount     Float?   @map("amount")
+  highLimit  Float?   @map("high_limit")
+  lowLimit   Float?   @map("low_limit")
+
+  syncedAt   DateTime @default(now()) @map("synced_at")
+
+  @@unique([tsCode, annDate])
+  @@index([tsCode])
+  @@index([annDate])
+  @@map("stock_repurchase")
+}

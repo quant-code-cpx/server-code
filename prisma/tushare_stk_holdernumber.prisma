@@ -1,0 +1,15 @@
+// 股东人数（来自 Tushare stk_holdernumber 接口，doc_id=166）
+model StkHolderNumber {
+  tsCode    String   @map("ts_code") @db.VarChar(16)
+  annDate   DateTime @map("ann_date") @db.Date
+  endDate   DateTime @map("end_date") @db.Date
+
+  holderNum Int      @map("holder_num")
+
+  syncedAt  DateTime @default(now()) @map("synced_at")
+
+  @@id([tsCode, endDate])
+  @@index([endDate])
+  @@index([annDate])
+  @@map("stock_holder_number")
+}

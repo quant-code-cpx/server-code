@@ -1,0 +1,23 @@
+// 大盘指数每日指标（来自 Tushare index_dailybasic 接口，doc_id=128）
+// 目前仅覆盖 6 个核心指数：000001.SH / 399001.SZ / 000016.SH / 000905.SH / 399005.SZ / 399006.SZ
+model IndexDailyBasic {
+  tsCode        String   @map("ts_code") @db.VarChar(16)
+  tradeDate     DateTime @map("trade_date") @db.Date
+
+  totalMv       Float?   @map("total_mv")
+  floatMv       Float?   @map("float_mv")
+  totalShare    Float?   @map("total_share")
+  floatShare    Float?   @map("float_share")
+  freeShare     Float?   @map("free_share")
+  turnoverRate  Float?   @map("turnover_rate")
+  turnoverRateF Float?   @map("turnover_rate_f")
+  pe            Float?   @map("pe")
+  peTtm         Float?   @map("pe_ttm")
+  pb            Float?   @map("pb")
+
+  syncedAt      DateTime @default(now()) @map("synced_at")
+
+  @@id([tsCode, tradeDate])
+  @@index([tradeDate])
+  @@map("index_daily_valuation_metrics")
+}

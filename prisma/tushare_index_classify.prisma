@@ -1,0 +1,17 @@
+// 申万行业分类目录（来自 Tushare index_classify 接口，doc_id=181）
+model IndexClassify {
+  indexCode    String  @id @map("index_code") @db.VarChar(16)
+
+  industryName String  @map("industry_name") @db.VarChar(32)
+  parentCode   String  @map("parent_code") @db.VarChar(16)
+  level        String  @map("level") @db.VarChar(4)       // L1 / L2 / L3
+  industryCode String  @map("industry_code") @db.VarChar(16)
+  isPub        String? @map("is_pub") @db.VarChar(4)
+  src          String? @map("src") @db.VarChar(8)          // SW2014 / SW2021
+
+  syncedAt     DateTime @default(now()) @map("synced_at")
+
+  @@index([level])
+  @@index([parentCode])
+  @@map("sw_industry_classification")
+}

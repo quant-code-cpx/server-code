@@ -1,0 +1,46 @@
+// 可转债基础信息（来自 Tushare cb_basic 接口，doc_id=185）
+model CbBasic {
+  tsCode          String    @id @map("ts_code") @db.VarChar(16)
+
+  bondFullName    String?   @map("bond_full_name") @db.VarChar(64)
+  bondShortName   String?   @map("bond_short_name") @db.VarChar(32)
+  cbCode          String?   @map("cb_code") @db.VarChar(16)
+  stkCode         String?   @map("stk_code") @db.VarChar(16)
+  stkShortName    String?   @map("stk_short_name") @db.VarChar(32)
+  maturity        Float?    @map("maturity")
+  par             Float?    @map("par")
+  issuePrice      Float?    @map("issue_price")
+  issueSize       Float?    @map("issue_size")
+  remainSize      Float?    @map("remain_size")
+  valueDate       DateTime? @map("value_date") @db.Date
+  maturityDate    DateTime? @map("maturity_date") @db.Date
+  rateType        String?   @map("rate_type") @db.VarChar(16)
+  couponRate      Float?    @map("coupon_rate")
+  addRate         Float?    @map("add_rate")
+  payPerYear      Int?      @map("pay_per_year")
+  listDate        DateTime? @map("list_date") @db.Date
+  delistDate      DateTime? @map("delist_date") @db.Date
+  exchange        String?   @map("exchange") @db.VarChar(8)
+  convStartDate   DateTime? @map("conv_start_date") @db.Date
+  convEndDate     DateTime? @map("conv_end_date") @db.Date
+  convStopDate    DateTime? @map("conv_stop_date") @db.Date
+  firstConvPrice  Float?    @map("first_conv_price")
+  convPrice       Float?    @map("conv_price")
+  rateClause      String?   @map("rate_clause") @db.Text
+  putClause       String?   @map("put_clause") @db.Text
+  maturityPutPrice String?  @map("maturity_put_price") @db.VarChar(64)
+  callClause      String?   @map("call_clause") @db.Text
+  resetClause     String?   @map("reset_clause") @db.Text
+  convClause      String?   @map("conv_clause") @db.Text
+  guarantor       String?   @map("guarantor") @db.VarChar(128)
+  guaranteeType   String?   @map("guarantee_type") @db.VarChar(64)
+  issueRating     String?   @map("issue_rating") @db.VarChar(16)
+  newestRating    String?   @map("newest_rating") @db.VarChar(16)
+  ratingComp      String?   @map("rating_comp") @db.VarChar(64)
+
+  syncedAt        DateTime  @default(now()) @map("synced_at")
+
+  @@index([stkCode])
+  @@index([listDate])
+  @@map("convertible_bond_basic")
+}

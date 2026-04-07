@@ -7,7 +7,7 @@ import {
   TushareSyncTaskName,
 } from 'src/constant/tushare.constant'
 import { FactorDataApiService } from '../api/factor-data-api.service'
-import { mapIndexWeightRecord, mapStkLimitRecord, mapSuspendDRecord } from '../tushare-sync.mapper'
+import { mapHkHoldRecord, mapIndexWeightRecord, mapStkLimitRecord, mapSuspendDRecord } from '../tushare-sync.mapper'
 import { SyncHelperService } from './sync-helper.service'
 import { TushareSyncMode, TushareSyncPlan } from './sync-plan.types'
 import { ValidationCollector } from './quality/validation-collector'
@@ -81,6 +81,23 @@ export class FactorDataSyncService {
         },
         execute: ({ mode }) => this.syncIndexWeight(mode),
       },
+      {
+        task: TushareSyncTaskName.HK_HOLD,
+        label: '沪深股通持股明细',
+        category: 'factor',
+        order: 540,
+        bootstrapEnabled: false,
+        supportsManual: true,
+        supportsFullSync: true,
+        requiresTradeDate: true,
+        schedule: {
+          cron: '0 0 9 * * 1-5',
+          timeZone: this.helper.syncTimeZone,
+          description: '交易日盘前同步沪深股通持股',
+          tradingDayOnly: true,
+        },
+        execute: (ctx) => this.syncHkHold(this.requireTradeDate(ctx.targetTradeDate), ctx.mode),
+      },
     ]
   }
 
@@ -144,7 +161,9 @@ export class FactorDataSyncService {
     for (const indexCode of FACTOR_UNIVERSE_INDEX_CODES) {
       try {
         const rows = await this.api.getIndexWeightByMonth(indexCode, startDate, today)
-        const mapped = rows.map((r) => mapIndexWeightRecord(r, collector)).filter((r): r is NonNullable<typeof r> => Boolean(r))
+        const mapped = rows
+          .map((r) => mapIndexWeightRecord(r, collector))
+          .filter((r): r is NonNullable<typeof r> => Boolean(r))
         if (mapped.length > 0) {
           await this.helper.prisma.indexWeight.createMany({
             data: mapped,
@@ -255,5 +274,88 @@ export class FactorDataSyncService {
       throw new BusinessException(ErrorEnum.TUSHARE_TARGET_TRADE_DATE_REQUIRED)
     }
     return targetTradeDate
+  }
+
+  // ─── 沪深股通持股明细 ────────────────────────────────────────────────────────
+
+  /** 沪深股通持股明细同步（按交易日敹量） */
+  async syncHkHold(targetTradeDate: string, mode: TushareSyncMode = 'incremental'): Promise<void> {
+    const startedAt = new Date()
+
+    // 注意：2024-08-20 起交易所停止日度北向资金披露，改为季度
+    const HK_HOLD_STOP_DATE = '20240820'
+    if (this.helper.compareDateString(targetTradeDate, HK_HOLD_STOP_DATE) > 0) {
+      this.logger.log(`[沪深股通持股] ${targetTradeDate} 超过 ${HK_HOLD_STOP_DATE}，交易所已停止日度批露，跳过`)
+      return
+    }
+
+    if (!mode || mode === 'incremental') {
+      if (await this.helper.isTaskSyncedToday(TushareSyncTaskName.HK_HOLD)) {
+        this.logger.log('[沪深股通持股] 今日已同步，跳过')
+        return
+      }
+    }
+
+    // 确定开始日期
+    const latestDate = mode === 'full' ? null : await this.helper.getLatestDateString('hkHold', 'tradeDate')
+    const syncStart = latestDate ? this.helper.addDays(latestDate, 1) : '20170317' // 深港通开通日
+    const syncEnd =
+      this.helper.compareDateString(targetTradeDate, HK_HOLD_STOP_DATE) > 0 ? HK_HOLD_STOP_DATE : targetTradeDate
+
+    if (this.helper.compareDateString(syncStart, syncEnd) > 0) {
+      this.logger.log(`[沪深股通持股] 已是最新（本地最新: ${latestDate}），无需同步`)
+      return
+    }
+
+    const tradeDates = await this.helper.getOpenTradeDatesBetween(syncStart, syncEnd)
+    if (!tradeDates.length) {
+      this.logger.log(`[沪深股通持股] ${syncStart} ~ ${syncEnd} 间无交易日，跳过`)
+      return
+    }
+
+    this.logger.log(
+      `[沪深股通持股] 开始同步 ${tradeDates.length} 个交易日: ${tradeDates[0]} → ${tradeDates[tradeDates.length - 1]}`,
+    )
+
+    let totalRows = 0
+    const failed: Array<{ date: string; error: string }> = []
+    const collector = new ValidationCollector(TushareSyncTaskName.HK_HOLD)
+
+    for (const [i, td] of tradeDates.entries()) {
+      try {
+        const rows = await this.api.getHkHoldByTradeDate(td)
+        const mapped = rows
+          .map((r) => mapHkHoldRecord(r, collector))
+          .filter((r): r is NonNullable<typeof r> => Boolean(r))
+
+        const tradeDateTime = this.helper.toDate(td)
+        const count = await this.helper.replaceTradeDateRows('hkHold', tradeDateTime, mapped)
+        totalRows += count
+
+        if (i === 0 || (i + 1) % 100 === 0 || i === tradeDates.length - 1) {
+          this.logger.log(`[沪深股通持股] 进度 ${i + 1}/${tradeDates.length}，交易日 ${td}，累计 ${totalRows} 条`)
+        }
+      } catch (error) {
+        const msg = (error as Error).message
+        this.logger.error(`[沪深股通持股] ${td} 同步失败: ${msg}`)
+        failed.push({ date: td, error: msg })
+      }
+    }
+
+    await this.helper.flushValidationLogs(collector)
+    await this.helper.writeSyncLog(
+      TushareSyncTaskName.HK_HOLD,
+      {
+        status: TushareSyncExecutionStatus.SUCCESS,
+        message: `沪深股通持股同步完成，${tradeDates.length} 个交易日，共 ${totalRows} 条`,
+        tradeDate: this.helper.toDate(tradeDates[tradeDates.length - 1]),
+        payload: {
+          rowCount: totalRows,
+          dateCount: tradeDates.length,
+          ...(failed.length > 0 && { failedDates: failed }),
+        },
+      },
+      startedAt,
+    )
   }
 }

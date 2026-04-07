@@ -8,6 +8,7 @@ import { CACHE_NAMESPACE } from 'src/constant/cache.constant'
 import { CacheService } from 'src/shared/cache.service'
 import { PrismaService } from 'src/shared/prisma.service'
 import { MoneyFlowQueryDto } from './dto/money-flow-query.dto'
+import { IndexQuoteQueryDto } from './dto/index-quote-query.dto'
 import { SectorFlowQueryDto } from './dto/sector-flow-query.dto'
 import { HsgtFlowQueryDto } from './dto/hsgt-flow-query.dto'
 import { IndexTrendQueryDto, IndexTrendPeriod } from './dto/index-trend-query.dto'
@@ -133,13 +134,15 @@ export class MarketService {
       }
     }
 
+    const tradeDateStr = (dayjs(tradeDate) as any).tz('Asia/Shanghai').format('YYYYMMDD')
+
     // 当日 PE/PB 中位数（使用 PostgreSQL percentile_cont 函数）
     const currentMedian = await this.prisma.$queryRaw<{ pe_ttm_median: number; pb_median: number }[]>`
       SELECT
         PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY pe_ttm) AS pe_ttm_median,
         PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY pb)     AS pb_median
       FROM stock_daily_valuation_metrics
-      WHERE trade_date = ${tradeDate}
+      WHERE trade_date = ${tradeDateStr}::date
         AND pe_ttm > 0 AND pe_ttm < 1000
         AND pb > 0
     `
@@ -163,14 +166,16 @@ export class MarketService {
 
   // ─── 核心指数行情 ──────────────────────────────────────────────────────────
 
-  async getIndexQuote(query: MoneyFlowQueryDto) {
+  async getIndexQuote(query: IndexQuoteQueryDto) {
     const tradeDate = query.trade_date ? this.parseDate(query.trade_date) : await this.resolveLatestIndexTradeDate()
     if (!tradeDate) {
       return []
     }
 
+    const tsCodeFilter = query.ts_codes && query.ts_codes.length > 0 ? { in: query.ts_codes } : undefined
+
     return this.prisma.indexDaily.findMany({
-      where: { tradeDate },
+      where: { tradeDate, ...(tsCodeFilter ? { tsCode: tsCodeFilter } : {}) },
       orderBy: { tsCode: 'asc' },
     })
   }
@@ -248,7 +253,7 @@ export class MarketService {
     const tradeDate = query.trade_date ? this.parseDate(query.trade_date) : await this.resolveLatestDailyTradeDate()
     if (!tradeDate) return null
 
-    const tradeDateStr = dayjs(tradeDate).format('YYYY-MM-DD')
+    const tradeDateStr = (dayjs(tradeDate) as any).tz('Asia/Shanghai').format('YYYY-MM-DD')
     const cacheKey = `market:change-dist:${tradeDateStr}`
 
     return this.rememberMarketCache(cacheKey, MARKET_STANDARD_CACHE_TTL_SECONDS, async () => {
@@ -258,7 +263,7 @@ export class MarketService {
           width_bucket(pct_chg, -11, 11, 22) AS bucket,
           COUNT(*) AS cnt
         FROM stock_daily_prices
-        WHERE trade_date = ${tradeDate}
+        WHERE trade_date = ${tradeDateStr}::date
         GROUP BY bucket
         ORDER BY bucket
       `
@@ -651,7 +656,7 @@ export class MarketService {
     const order = query.order ?? 'desc'
     const limit = query.limit ?? 20
 
-    const tradeDateStr = dayjs(tradeDate).format('YYYYMMDD')
+    const tradeDateStr = (dayjs(tradeDate) as any).tz('Asia/Shanghai').format('YYYYMMDD')
     const cacheKey = `market:main-flow-rank:${tradeDateStr}:${order}:${limit}`
 
     return this.rememberMarketCache(cacheKey, MARKET_STANDARD_CACHE_TTL_SECONDS, async () => {
@@ -680,7 +685,7 @@ export class MarketService {
         FROM stock_capital_flows mf
         JOIN stock_basic_profiles sb ON sb.ts_code = mf.ts_code
         LEFT JOIN stock_daily_prices d ON d.ts_code = mf.ts_code AND d.trade_date = mf.trade_date
-        WHERE mf.trade_date = ${tradeDate}
+        WHERE mf.trade_date = ${tradeDateStr}::date
         ORDER BY main_net_inflow ${order === 'desc' ? Prisma.sql`DESC` : Prisma.sql`ASC`}
         LIMIT ${limit}
       `

@@ -15,6 +15,7 @@ import { SectorFlowTrendQueryDto } from './dto/sector-flow-trend-query.dto'
 import { HsgtTrendQueryDto } from './dto/hsgt-trend-query.dto'
 import { MainFlowRankingQueryDto } from './dto/main-flow-ranking-query.dto'
 import { StockFlowDetailQueryDto } from './dto/stock-flow-detail-query.dto'
+import { IndexQuoteQueryDto } from './dto/index-quote-query.dto'
 import { ApiSuccessResponse } from 'src/common/decorators/api-success-response.decorator'
 import {
   ChangeDistributionResponseDto,
@@ -71,9 +72,9 @@ export class MarketController {
   }
 
   @Post('index-quote')
-  @ApiOperation({ summary: '获取核心指数行情（上证指数、深证成指、创业板指、沪深300、中证500等）' })
+  @ApiOperation({ summary: '获取核心指数行情（支持自定义指数代码列表，不传则返回全部默认指数）' })
   @ApiSuccessResponse(IndexQuoteItemDto, { isArray: true })
-  getIndexQuote(@Body() query: MoneyFlowQueryDto) {
+  getIndexQuote(@Body() query: IndexQuoteQueryDto) {
     return this.marketService.getIndexQuote(query)
   }
 

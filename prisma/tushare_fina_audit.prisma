@@ -1,0 +1,18 @@
+// 财务审计意见（来自 Tushare fina_audit 接口，doc_id=80）
+model FinaAudit {
+  tsCode       String   @map("ts_code") @db.VarChar(16)
+  endDate      DateTime @map("end_date") @db.Date
+
+  annDate      DateTime @map("ann_date") @db.Date
+  auditResult  String?  @map("audit_result") @db.VarChar(32)
+  auditFees    Float?   @map("audit_fees")
+  auditAgency  String?  @map("audit_agency") @db.VarChar(128)
+  auditSign    String?  @map("audit_sign") @db.VarChar(128)
+
+  syncedAt     DateTime @default(now()) @map("synced_at")
+
+  @@id([tsCode, endDate])
+  @@index([endDate])
+  @@index([annDate])
+  @@map("financial_audit_opinions")
+}

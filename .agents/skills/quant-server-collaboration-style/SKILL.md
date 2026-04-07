@@ -151,6 +151,72 @@ argument-hint: '可选关注点，例如：tushare sync、docker 启动、prisma
 - NestJS 结构保持清晰、可扩展
 - 总结里清楚说明频控、迁移、启动行为等运行权衡
 
+## API 参数与响应约定
+
+### 日期参数格式
+
+- 所有 `trade_date` 参数统一使用 **YYYYMMDD** 格式（8 位纯数字字符串）。  
+- DTO 统一用 `@Matches(/^\d{8}$/)` 校验，示例：  
+  ```typescript
+  @Matches(/^\d{8}$/, { message: 'trade_date 格式应为 YYYYMMDD，例如 20240101' })
+  trade_date?: string
+  ```
+- 不传 `trade_date` 时，后端自动取对应数据表最新交易日（通过 `resolveLatestXxx()` 系列方法）。
+
+### 日期解析与时区（重要）
+
+`parseDate(yyyymmdd)` 与 `resolveLatestXxx()` 会返回不同的 JS `Date` 对象：
+
+| 来源 | Date 值（UTC）| 含义 |
+|---|---|---|
+| `parseDate("20260403")` — `dayjs.tz(..., 'Asia/Shanghai')` | `2026-04-02T16:00:00.000Z` | 上海凌晨 = UTC-8h |
+| `resolveLatestXxx()` — Prisma `@db.Date` | `2026-04-03T00:00:00.000Z` | UTC 午夜 |
+
+两者指向同一个日历日期 **4 月 3 日**，但 UTC 值不同。
+
+**在 $queryRaw 中计算 tradeDateStr 必须用 Shanghai 时区**，否则 `UTC midnight` 日期在 UTC 容器环境下会被 dayjs 格式化为前一天：
+
+```typescript
+// ✅ 正确：两条路径都能得到正确的日历日期字符串
+const tradeDateStr = (dayjs(tradeDate) as any).tz('Asia/Shanghai').format('YYYYMMDD')
+
+// ❌ 错误：parseDate 路径下会格式化为前一天（UTC 服务器环境）
+const tradeDateStr = dayjs(tradeDate).format('YYYYMMDD')
+```
+
+然后在 SQL 中配合 `::date` 强制类型转换：
+
+```sql
+WHERE trade_date = ${tradeDateStr}::date
+```
+
+### 原生 SQL 表名规则
+
+- `$queryRaw` 中引用的表名必须与 Prisma schema 里 `@@map("actual_table")` 的值完全一致。
+- **禁止**用 Prisma 模型名（camelCase，如 `MoneyflowMktDc`）直接当作原生 SQL 表名。
+- 常用映射速查：
+
+  | Prisma 模型 | 实际表名 |
+  |---|---|
+  | `Daily` | `stock_daily_prices` |
+  | `Moneyflow` | `stock_capital_flows` |
+  | `MoneyflowIndDc` | `stock_sector_flows` |
+  | `MoneyflowMktDc` | `market_daily_flows` |
+  | `MoneyflowHsgt` | `hsgt_north_flows` |
+  | `DailyBasic` | `stock_daily_valuation_metrics` |
+  | `StockBasic` | `stock_basic_profiles` |
+  | `IndexDaily` | `index_daily_prices` |
+
+### 枚举参数大小写
+
+- `content_type`: 大写 `'INDUSTRY' | 'CONCEPT' | 'REGION'`（同 Prisma enum `MoneyflowContentType`）
+- `sort_by` / `order` / `period`: 小写值（如 `'desc'`、`'1m'`）
+
+### API 响应空值
+
+- 数值字段如来源数据库为 `null`，直接返回 `null`（不转为 `0`）。
+- 前端已做 null 兼容处理，不需要后端填充默认值。
+
 ## 参考资料
 
 如需更精炼的偏好清单，请查看 [project-preferences](./references/project-preferences.md)。

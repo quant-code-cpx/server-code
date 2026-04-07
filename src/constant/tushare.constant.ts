@@ -28,6 +28,20 @@ export enum TushareApiName {
   TOP_INST = 'top_inst',
   BLOCK_TRADE = 'block_trade',
   SHARE_FLOAT = 'share_float',
+  FORECAST = 'forecast_vip',
+  STK_HOLDER_NUMBER = 'stk_holdernumber',
+  HK_HOLD = 'hk_hold',
+  INDEX_DAILY_BASIC = 'index_dailybasic',
+  STK_HOLDER_TRADE = 'stk_holdertrade',
+  PLEDGE_STAT = 'pledge_stat',
+  FINA_AUDIT = 'fina_audit',
+  DISCLOSURE_DATE = 'disclosure_date',
+  FINA_MAINBZ = 'fina_mainbz',
+  INDEX_CLASSIFY = 'index_classify',
+  INDEX_MEMBER_ALL = 'index_member_all',
+  REPURCHASE = 'repurchase',
+  CB_BASIC = 'cb_basic',
+  CB_DAILY = 'cb_daily',
 }
 
 /** A 股常用交易所代码 */
@@ -90,6 +104,20 @@ export enum TushareSyncTaskName {
   BLOCK_TRADE = 'BLOCK_TRADE',
   SHARE_FLOAT = 'SHARE_FLOAT',
   DATA_QUALITY_CHECK = 'DATA_QUALITY_CHECK',
+  FORECAST = 'FORECAST',
+  STK_HOLDER_NUMBER = 'STK_HOLDER_NUMBER',
+  HK_HOLD = 'HK_HOLD',
+  INDEX_DAILY_BASIC = 'INDEX_DAILY_BASIC',
+  STK_HOLDER_TRADE = 'STK_HOLDER_TRADE',
+  PLEDGE_STAT = 'PLEDGE_STAT',
+  FINA_AUDIT = 'FINA_AUDIT',
+  DISCLOSURE_DATE = 'DISCLOSURE_DATE',
+  FINA_MAINBZ = 'FINA_MAINBZ',
+  INDEX_CLASSIFY = 'INDEX_CLASSIFY',
+  INDEX_MEMBER_ALL = 'INDEX_MEMBER_ALL',
+  REPURCHASE = 'REPURCHASE',
+  CB_BASIC = 'CB_BASIC',
+  CB_DAILY = 'CB_DAILY',
 }
 
 /** 同步执行状态 */
@@ -769,14 +797,30 @@ export const TUSHARE_MONEYFLOW_HSGT_FIELDS = [
   'south_money',
 ] as const
 
-/** 需要同步的核心指数代码 */
+/** 需要同步的核心指数代码（共 19 个，涵盖沪深宽基、上交所、深交所、北交所主要指数） */
 export const CORE_INDEX_CODES = [
+  // 沪深宽基
+  '000300.SH', // 沪深300
+  '000016.SH', // 上证50
+  '000903.SH', // 中证100
+  '000905.SH', // 中证500
+  '000852.SH', // 中证1000
+  '932000.CSI', // 中证2000（CSI 后缀，需 Tushare 验证）
+  '000985.SH', // 中证全指
+  // 上交所
   '000001.SH', // 上证指数
+  '000010.SH', // 上证180
+  '000688.SH', // 科创50
+  '000698.SH', // 科创100（需 Tushare 验证）
+  // 深交所
   '399001.SZ', // 深证成指
+  '399107.SZ', // 深证综指
+  '399330.SZ', // 深证100
   '399006.SZ', // 创业板指
-  '000300.SH', // 沪深 300
-  '000905.SH', // 中证 500
-  '000852.SH', // 中证 1000
+  '399673.SZ', // 创业板50
+  '399005.SZ', // 中小100
+  // 北交所
+  '899050.BJ', // 北证50
 ] as const
 
 export const TUSHARE_STK_LIMIT_FIELDS = ['ts_code', 'trade_date', 'up_limit', 'down_limit'] as const
@@ -844,3 +888,195 @@ export const TUSHARE_SHARE_FLOAT_FIELDS = [
   'share_type',
 ] as const
 
+export const TUSHARE_FORECAST_FIELDS = [
+  'ts_code',
+  'ann_date',
+  'end_date',
+  'type',
+  'p_change_min',
+  'p_change_max',
+  'net_profit_min',
+  'net_profit_max',
+  'last_parent_net',
+  'first_ann_date',
+  'summary',
+  'change_reason',
+] as const
+
+export const TUSHARE_STK_HOLDERNUMBER_FIELDS = ['ts_code', 'ann_date', 'end_date', 'holder_num'] as const
+
+export const TUSHARE_HK_HOLD_FIELDS = ['code', 'trade_date', 'ts_code', 'name', 'vol', 'ratio', 'exchange'] as const
+
+export const TUSHARE_INDEX_DAILYBASIC_FIELDS = [
+  'ts_code',
+  'trade_date',
+  'total_mv',
+  'float_mv',
+  'total_share',
+  'float_share',
+  'free_share',
+  'turnover_rate',
+  'turnover_rate_f',
+  'pe',
+  'pe_ttm',
+  'pb',
+] as const
+
+/** index_dailybasic 覆盖的 6 个核心大盘指数 */
+export const INDEX_DAILY_BASIC_CODES = [
+  '000001.SH', // 上证指数
+  '399001.SZ', // 深证成指
+  '000016.SH', // 上证50
+  '000905.SH', // 中证500
+  '399005.SZ', // 中小100
+  '399006.SZ', // 创业板指
+] as const
+
+export const TUSHARE_STK_HOLDERTRADE_FIELDS = [
+  'ts_code',
+  'ann_date',
+  'holder_name',
+  'holder_type',
+  'in_de',
+  'change_vol',
+  'change_ratio',
+  'after_share',
+  'after_ratio',
+  'avg_price',
+  'total_share',
+  'begin_date',
+  'close_date',
+] as const
+
+export const TUSHARE_PLEDGE_STAT_FIELDS = [
+  'ts_code',
+  'end_date',
+  'pledge_count',
+  'unrest_pledge',
+  'rest_pledge',
+  'total_share',
+  'pledge_ratio',
+] as const
+
+export const TUSHARE_FINA_AUDIT_FIELDS = [
+  'ts_code',
+  'ann_date',
+  'end_date',
+  'audit_result',
+  'audit_fees',
+  'audit_agency',
+  'audit_sign',
+] as const
+
+export const TUSHARE_DISCLOSURE_DATE_FIELDS = [
+  'ts_code',
+  'ann_date',
+  'end_date',
+  'pre_date',
+  'actual_date',
+  'modify_date',
+] as const
+
+export const TUSHARE_FINA_MAINBZ_FIELDS = [
+  'ts_code',
+  'end_date',
+  'bz_item',
+  'bz_sales',
+  'bz_profit',
+  'bz_cost',
+  'curr_type',
+  'update_flag',
+] as const
+
+export const TUSHARE_INDEX_CLASSIFY_FIELDS = [
+  'index_code',
+  'industry_name',
+  'parent_code',
+  'level',
+  'industry_code',
+  'is_pub',
+  'src',
+] as const
+
+export const TUSHARE_INDEX_MEMBER_ALL_FIELDS = [
+  'l1_code',
+  'l1_name',
+  'l2_code',
+  'l2_name',
+  'l3_code',
+  'l3_name',
+  'ts_code',
+  'name',
+  'in_date',
+  'out_date',
+  'is_new',
+] as const
+
+export const TUSHARE_REPURCHASE_FIELDS = [
+  'ts_code',
+  'ann_date',
+  'end_date',
+  'proc',
+  'exp_date',
+  'vol',
+  'amount',
+  'high_limit',
+  'low_limit',
+] as const
+
+export const TUSHARE_CB_BASIC_FIELDS = [
+  'ts_code',
+  'bond_full_name',
+  'bond_short_name',
+  'cb_code',
+  'stk_code',
+  'stk_short_name',
+  'maturity',
+  'par',
+  'issue_price',
+  'issue_size',
+  'remain_size',
+  'value_date',
+  'maturity_date',
+  'rate_type',
+  'coupon_rate',
+  'add_rate',
+  'pay_per_year',
+  'list_date',
+  'delist_date',
+  'exchange',
+  'conv_start_date',
+  'conv_end_date',
+  'conv_stop_date',
+  'first_conv_price',
+  'conv_price',
+  'rate_clause',
+  'put_clause',
+  'maturity_put_price',
+  'call_clause',
+  'reset_clause',
+  'conv_clause',
+  'guarantor',
+  'guarantee_type',
+  'issue_rating',
+  'newest_rating',
+  'rating_comp',
+] as const
+
+export const TUSHARE_CB_DAILY_FIELDS = [
+  'ts_code',
+  'trade_date',
+  'pre_close',
+  'open',
+  'high',
+  'low',
+  'close',
+  'change',
+  'pct_chg',
+  'vol',
+  'amount',
+  'bond_value',
+  'bond_over_rate',
+  'cb_value',
+  'cb_over_rate',
+] as const

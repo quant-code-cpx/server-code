@@ -299,12 +299,20 @@ export class TushareSyncService implements OnApplicationBootstrap {
       }
 
       // 将 group 列表切分为多批次，每批最多 syncConcurrency 个组并行
+      // 注意：'basic' 组（含 trade_cal / stock_basic）必须先单独完成，
+      // 其他分类（market / financial 等）依赖交易日历，必须等 basic 完成后再并行启动。
       const groupEntries = Array.from(groups.entries())
       const batchSize = Math.max(1, this.syncConcurrency)
 
-      for (let batchStart = 0; batchStart < groupEntries.length; batchStart += batchSize) {
-        const batch = groupEntries.slice(batchStart, batchStart + batchSize)
+      const basicEntries = groupEntries.filter(([key]) => key === 'basic')
+      const nonBasicEntries = groupEntries.filter(([key]) => key !== 'basic')
+      const allBatches: Array<typeof groupEntries> = []
+      if (basicEntries.length > 0) allBatches.push(basicEntries)
+      for (let i = 0; i < nonBasicEntries.length; i += batchSize) {
+        allBatches.push(nonBasicEntries.slice(i, i + batchSize))
+      }
 
+      for (const batch of allBatches) {
         await Promise.all(
           batch.map(async ([groupKey, groupPlans]) => {
             this.logger.log(`─── ${this.getCategoryLabel(groupKey as TushareSyncCategory)} ───`)

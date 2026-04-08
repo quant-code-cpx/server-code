@@ -26,7 +26,7 @@ export class FactorOrthogonalizeDto {
 
   @ApiProperty({ description: '计算日期 YYYYMMDD', example: '20260327' })
   @IsString()
-  @Matches(/^\d{8}$/)
+  @Matches(/^\d{8}$/, { message: 'tradeDate 格式应为 YYYYMMDD，例如 20240101' })
   tradeDate: string
 
   @ApiPropertyOptional({ description: '股票池 indexCode' })
@@ -56,12 +56,12 @@ export class FamaMacBethDto {
 
   @ApiProperty({ description: '起始日期 YYYYMMDD' })
   @IsString()
-  @Matches(/^\d{8}$/)
+  @Matches(/^\d{8}$/, { message: 'startDate 格式应为 YYYYMMDD，例如 20240101' })
   startDate: string
 
   @ApiProperty({ description: '结束日期 YYYYMMDD' })
   @IsString()
-  @Matches(/^\d{8}$/)
+  @Matches(/^\d{8}$/, { message: 'endDate 格式应为 YYYYMMDD，例如 20240101' })
   endDate: string
 
   @ApiPropertyOptional({ description: '股票池 indexCode' })

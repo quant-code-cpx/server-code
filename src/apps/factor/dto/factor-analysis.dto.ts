@@ -20,12 +20,12 @@ export class FactorIcAnalysisDto {
 
   @ApiProperty({ description: '分析起始日期 YYYYMMDD' })
   @IsString()
-  @Matches(/^\d{8}$/, { message: 'startDate must be in YYYYMMDD format' })
+  @Matches(/^\d{8}$/, { message: 'startDate 格式应为 YYYYMMDD，例如 20240101' })
   startDate: string
 
   @ApiProperty({ description: '分析结束日期 YYYYMMDD' })
   @IsString()
-  @Matches(/^\d{8}$/, { message: 'endDate must be in YYYYMMDD format' })
+  @Matches(/^\d{8}$/, { message: 'endDate 格式应为 YYYYMMDD，例如 20240101' })
   endDate: string
 
   @ApiProperty({ required: false, description: '股票池，如 000300.SH（沪深300）' })
@@ -54,12 +54,12 @@ export class FactorQuantileAnalysisDto {
 
   @ApiProperty({ description: '分析起始日期 YYYYMMDD' })
   @IsString()
-  @Matches(/^\d{8}$/, { message: 'startDate must be in YYYYMMDD format' })
+  @Matches(/^\d{8}$/, { message: 'startDate 格式应为 YYYYMMDD，例如 20240101' })
   startDate: string
 
   @ApiProperty({ description: '分析结束日期 YYYYMMDD' })
   @IsString()
-  @Matches(/^\d{8}$/, { message: 'endDate must be in YYYYMMDD format' })
+  @Matches(/^\d{8}$/, { message: 'endDate 格式应为 YYYYMMDD，例如 20240101' })
   endDate: string
 
   @ApiProperty({ required: false, description: '股票池' })
@@ -91,12 +91,12 @@ export class FactorDecayAnalysisDto {
 
   @ApiProperty({ description: '分析起始日期 YYYYMMDD' })
   @IsString()
-  @Matches(/^\d{8}$/, { message: 'startDate must be in YYYYMMDD format' })
+  @Matches(/^\d{8}$/, { message: 'startDate 格式应为 YYYYMMDD，例如 20240101' })
   startDate: string
 
   @ApiProperty({ description: '分析结束日期 YYYYMMDD' })
   @IsString()
-  @Matches(/^\d{8}$/, { message: 'endDate must be in YYYYMMDD format' })
+  @Matches(/^\d{8}$/, { message: 'endDate 格式应为 YYYYMMDD，例如 20240101' })
   endDate: string
 
   @ApiProperty({ required: false, description: '股票池' })
@@ -119,7 +119,7 @@ export class FactorDistributionDto {
 
   @ApiProperty({ description: '交易日 YYYYMMDD' })
   @IsString()
-  @Matches(/^\d{8}$/, { message: 'tradeDate must be in YYYYMMDD format' })
+  @Matches(/^\d{8}$/, { message: 'tradeDate 格式应为 YYYYMMDD，例如 20240101' })
   tradeDate: string
 
   @ApiProperty({ required: false, description: '股票池' })
@@ -146,7 +146,7 @@ export class FactorCorrelationDto {
 
   @ApiProperty({ description: '计算日期 YYYYMMDD' })
   @IsString()
-  @Matches(/^\d{8}$/, { message: 'tradeDate must be in YYYYMMDD format' })
+  @Matches(/^\d{8}$/, { message: 'tradeDate 格式应为 YYYYMMDD，例如 20240101' })
   tradeDate: string
 
   @ApiProperty({ required: false, description: '股票池' })

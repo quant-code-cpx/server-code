@@ -9,12 +9,12 @@ export class RunStrategyDto {
 
   @ApiProperty({ description: '回测开始日期 YYYYMMDD' })
   @IsString()
-  @Matches(/^\d{8}$/, { message: 'startDate must be YYYYMMDD' })
+  @Matches(/^\d{8}$/, { message: 'startDate 格式应为 YYYYMMDD，例如 20240101' })
   startDate: string
 
   @ApiProperty({ description: '回测结束日期 YYYYMMDD' })
   @IsString()
-  @Matches(/^\d{8}$/, { message: 'endDate must be YYYYMMDD' })
+  @Matches(/^\d{8}$/, { message: 'endDate 格式应为 YYYYMMDD，例如 20240101' })
   endDate: string
 
   @ApiProperty({ description: '初始资金（元）', minimum: 1000 })

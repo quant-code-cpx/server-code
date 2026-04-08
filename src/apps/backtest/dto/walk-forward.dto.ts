@@ -63,12 +63,12 @@ export class CreateWalkForwardRunDto {
 
   @ApiProperty({ description: 'YYYYMMDD' })
   @IsString()
-  @Matches(/^\d{8}$/)
+  @Matches(/^\d{8}$/, { message: 'fullStartDate 格式应为 YYYYMMDD，例如 20240101' })
   fullStartDate: string
 
   @ApiProperty({ description: 'YYYYMMDD' })
   @IsString()
-  @Matches(/^\d{8}$/)
+  @Matches(/^\d{8}$/, { message: 'fullEndDate 格式应为 YYYYMMDD，例如 20240101' })
   fullEndDate: string
 
   @ApiProperty({ description: '样本内窗口天数（60~2520）' })

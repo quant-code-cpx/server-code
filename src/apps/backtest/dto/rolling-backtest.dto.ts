@@ -25,12 +25,12 @@ export class CreateRollingBacktestDto {
 
   @ApiProperty({ description: 'YYYYMMDD' })
   @IsString()
-  @Matches(/^\d{8}$/)
+  @Matches(/^\d{8}$/, { message: 'startDate 格式应为 YYYYMMDD，例如 20240101' })
   startDate: string
 
   @ApiProperty({ description: 'YYYYMMDD' })
   @IsString()
-  @Matches(/^\d{8}$/)
+  @Matches(/^\d{8}$/, { message: 'endDate 格式应为 YYYYMMDD，例如 20240101' })
   endDate: string
 
   @ApiProperty({ description: '回望窗口天数（最少 60 天）' })

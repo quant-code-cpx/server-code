@@ -31,12 +31,12 @@ export class CreateBacktestRunDto {
 
   @ApiProperty({ description: 'YYYYMMDD' })
   @IsString()
-  @Matches(/^\d{8}$/, { message: 'startDate must be YYYYMMDD' })
+  @Matches(/^\d{8}$/, { message: 'startDate 格式应为 YYYYMMDD，例如 20240101' })
   startDate: string
 
   @ApiProperty({ description: 'YYYYMMDD' })
   @IsString()
-  @Matches(/^\d{8}$/, { message: 'endDate must be YYYYMMDD' })
+  @Matches(/^\d{8}$/, { message: 'endDate 格式应为 YYYYMMDD，例如 20240101' })
   endDate: string
 
   @ApiPropertyOptional({ default: '000300.SH' })

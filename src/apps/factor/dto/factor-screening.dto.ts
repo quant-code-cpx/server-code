@@ -57,7 +57,7 @@ export class FactorScreeningDto {
 
   @ApiProperty({ description: '选股日期 YYYYMMDD' })
   @IsString()
-  @Matches(/^\d{8}$/, { message: 'tradeDate must be in YYYYMMDD format' })
+  @Matches(/^\d{8}$/, { message: 'tradeDate 格式应为 YYYYMMDD，例如 20240101' })
   tradeDate: string
 
   @ApiProperty({ required: false, description: '股票池，如 000300.SH' })

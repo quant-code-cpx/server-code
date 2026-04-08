@@ -23,6 +23,9 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 env:
   NODE_ENV: test
   DATABASE_URL: postgresql://postgres:ci_test_password@localhost:5432/quant_test?schema=public
@@ -98,8 +101,8 @@ jobs:
         run: pnpm exec prisma db push --accept-data-loss
 
       - name: Lint
-        # NOTE: 11 pre-existing ESLint errors (no-require-imports etc.) — 
-        # set continue-on-error until those are fixed in a follow-up task
+        # NOTE: 11 pre-existing ESLint errors (no-require-imports in tushare-sync.mapper.ts etc.)
+        # TODO: fix in a follow-up task, then remove continue-on-error
         continue-on-error: true
         run: pnpm lint
         env:

@@ -74,5 +74,5 @@ EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 --start-period=15s \
   CMD wget -qO- http://localhost:3000/api/health || exit 1
 
-# 启动：先运行 Prisma migrate deploy（仅应用已有迁移），再启动生产服务器
+# 启动生产服务器（数据库迁移由部署流程或 init container 在启动前单独执行）
 CMD ["sh", "-c", "node dist/main"]

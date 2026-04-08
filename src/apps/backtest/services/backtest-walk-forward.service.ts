@@ -396,13 +396,10 @@ export class BacktestWalkForwardService {
     // Compute IS/OOS return ratio
     const allWindows = await this.prisma.backtestWalkForwardWindow.findMany({ where: { wfRunId } })
     const validIsReturns = allWindows.map((w) => w.isReturn).filter((r): r is number => r !== null)
-    const avgIsReturn = validIsReturns.length > 0
-      ? validIsReturns.reduce((a, b) => a + b, 0) / validIsReturns.length
-      : null
+    const avgIsReturn =
+      validIsReturns.length > 0 ? validIsReturns.reduce((a, b) => a + b, 0) / validIsReturns.length : null
     const isOosReturnVsIs =
-      avgIsReturn !== null && avgIsReturn !== 0
-        ? (aggregatedMetrics.annualizedReturn ?? 0) / avgIsReturn
-        : null
+      avgIsReturn !== null && avgIsReturn !== 0 ? (aggregatedMetrics.annualizedReturn ?? 0) / avgIsReturn : null
 
     await this.prisma.backtestWalkForwardRun.update({
       where: { id: wfRunId },
@@ -484,10 +481,7 @@ export class BacktestWalkForwardService {
   }
 
   private cartesianProduct(arrays: unknown[][]): unknown[][] {
-    return arrays.reduce<unknown[][]>(
-      (acc, arr) => acc.flatMap((combo) => arr.map((val) => [...combo, val])),
-      [[]],
-    )
+    return arrays.reduce<unknown[][]>((acc, arr) => acc.flatMap((combo) => arr.map((val) => [...combo, val])), [[]])
   }
 
   private extractMetric(metrics: BacktestMetrics, metricName: string): number {
@@ -499,10 +493,21 @@ export class BacktestWalkForwardService {
   private computeAggregatedOosMetrics(navRecords: DailyNavRecord[], _trades: TradeRecord[]): BacktestMetrics {
     if (navRecords.length === 0) {
       return {
-        totalReturn: 0, annualizedReturn: 0, benchmarkReturn: 0, excessReturn: 0,
-        maxDrawdown: 0, sharpeRatio: 0, sortinoRatio: 0, calmarRatio: 0,
-        volatility: 0, alpha: 0, beta: 0, informationRatio: 0,
-        winRate: 0, turnoverRate: 0, tradeCount: 0,
+        totalReturn: 0,
+        annualizedReturn: 0,
+        benchmarkReturn: 0,
+        excessReturn: 0,
+        maxDrawdown: 0,
+        sharpeRatio: 0,
+        sortinoRatio: 0,
+        calmarRatio: 0,
+        volatility: 0,
+        alpha: 0,
+        beta: 0,
+        informationRatio: 0,
+        winRate: 0,
+        turnoverRate: 0,
+        tradeCount: 0,
       }
     }
 

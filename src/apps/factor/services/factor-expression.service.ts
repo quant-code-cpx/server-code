@@ -283,7 +283,14 @@ class Parser {
   private parseComparison(): ExpressionNode {
     let left = this.parseAdditive()
     const t = this.peek()
-    if (t.type === 'GT' || t.type === 'LT' || t.type === 'GTE' || t.type === 'LTE' || t.type === 'EQ' || t.type === 'NEQ') {
+    if (
+      t.type === 'GT' ||
+      t.type === 'LT' ||
+      t.type === 'GTE' ||
+      t.type === 'LTE' ||
+      t.type === 'EQ' ||
+      t.type === 'NEQ'
+    ) {
       this.consume()
       const op = t.value as '>' | '<' | '>=' | '<=' | '=' | '!='
       const right = this.parseAdditive()
@@ -422,11 +429,7 @@ class Parser {
 // ── SQL Compiler ──────────────────────────────────────────────────────────────
 
 /** Compile an AST node to a SQL expression fragment */
-function compileNode(
-  node: ExpressionNode,
-  tradeDate: string,
-  requiredTables: Set<TableCategory>,
-): string {
+function compileNode(node: ExpressionNode, tradeDate: string, requiredTables: Set<TableCategory>): string {
   switch (node.type) {
     case 'literal':
       return String(node.value)
@@ -772,11 +775,7 @@ export class FactorExpressionService {
    * Returns a SQL string safe to embed via Prisma.raw().
    * The outer query selects { ts_code, factor_value } pairs.
    */
-  buildRawQuery(
-    compiled: CompiledQuery,
-    tradeDate: string,
-    universeJoinSql: string,
-  ): string {
+  buildRawQuery(compiled: CompiledQuery, tradeDate: string, universeJoinSql: string): string {
     const { sql, needsFinapit } = compiled
 
     const pitCte = needsFinapit
@@ -793,9 +792,7 @@ export class FactorExpressionService {
   LEFT JOIN stock_adjustment_factors af ON af.ts_code = d.ts_code AND af.trade_date = d.trade_date`
       : ''
 
-    const finaJoin = needsFinapit
-      ? `LEFT JOIN pit_fina fi ON fi.ts_code = db.ts_code`
-      : ''
+    const finaJoin = needsFinapit ? `LEFT JOIN pit_fina fi ON fi.ts_code = db.ts_code` : ''
 
     const joins = [pricesJoin, finaJoin].filter(Boolean).join('\n  ')
 
@@ -872,11 +869,7 @@ LIMIT ${pageSize} OFFSET ${offset}`
   /**
    * Build the stats query for a CUSTOM_SQL factor.
    */
-  buildStatsQuery(
-    compiled: CompiledQuery,
-    tradeDate: string,
-    universeJoinSql: string,
-  ): string {
+  buildStatsQuery(compiled: CompiledQuery, tradeDate: string, universeJoinSql: string): string {
     const { sql, needsFinapit } = compiled
 
     const pitCte = needsFinapit

@@ -60,6 +60,15 @@ import { HeatmapModule } from 'src/apps/heatmap/heatmap.module'
     SyncLogService,
     SyncRetryService,
   ],
-  exports: [TushareClient, FinancialSyncService, TushareSyncRegistryService, TushareSyncService, DataQualityService, CrossTableCheckService, AutoRepairService, SyncLogService],
+  exports: [
+    TushareClient,
+    FinancialSyncService,
+    TushareSyncRegistryService,
+    TushareSyncService,
+    DataQualityService,
+    CrossTableCheckService,
+    AutoRepairService,
+    SyncLogService,
+  ],
 })
 export class TushareModule {}

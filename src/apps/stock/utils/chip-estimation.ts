@@ -44,7 +44,14 @@ const DECAY_FACTOR = 0.97 // 时间衰减因子
 /**
  * 按正态分布将成交量分配到价格区间各 bin
  */
-function distributeVolumeNormal(vol: number, centerPrice: number, std: number, bins: number[], priceLow: number, binWidth: number): void {
+function distributeVolumeNormal(
+  vol: number,
+  centerPrice: number,
+  std: number,
+  bins: number[],
+  priceLow: number,
+  binWidth: number,
+): void {
   if (std <= 0 || binWidth <= 0) {
     // 退化：全部放在最近的 bin
     const idx = Math.floor((centerPrice - priceLow) / binWidth)
@@ -139,10 +146,7 @@ export function estimateChipDistribution(bars: OhlcvBar[], currentPrice: number)
   }
 
   // 获利比例
-  const profitRatio =
-    totalBinSum > 0
-      ? distribution.filter((b) => b.isProfit).reduce((a, b) => a + b.percent, 0)
-      : null
+  const profitRatio = totalBinSum > 0 ? distribution.filter((b) => b.isProfit).reduce((a, b) => a + b.percent, 0) : null
 
   // 平均成本
   const avgCost = totalWeightedVol > 0 ? Math.round((weightedPriceSum / totalWeightedVol) * 100) / 100 : null

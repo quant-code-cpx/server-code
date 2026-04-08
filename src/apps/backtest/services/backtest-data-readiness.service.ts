@@ -80,10 +80,12 @@ export class BacktestDataReadinessService {
     // Estimate universe size
     let estimatedUniverseSize: number | null = null
     if (hasDaily) {
-      estimatedUniverseSize = await this.prisma.daily.groupBy({
-        by: ['tsCode'],
-        where: { tradeDate: { gte: startDate, lte: endDate } },
-      }).then((rows) => rows.length)
+      estimatedUniverseSize = await this.prisma.daily
+        .groupBy({
+          by: ['tsCode'],
+          where: { tradeDate: { gte: startDate, lte: endDate } },
+        })
+        .then((rows) => rows.length)
     }
 
     // Validation logic

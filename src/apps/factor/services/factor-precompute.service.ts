@@ -50,8 +50,7 @@ function computeStats(values: number[]): {
   const max = sorted[n - 1]
 
   // Median
-  const median =
-    n % 2 === 0 ? (sorted[n / 2 - 1] + sorted[n / 2]) / 2 : sorted[Math.floor(n / 2)]
+  const median = n % 2 === 0 ? (sorted[n / 2 - 1] + sorted[n / 2]) / 2 : sorted[Math.floor(n / 2)]
 
   // Std dev (sample)
   const variance = n > 1 ? values.reduce((s, v) => s + (v - mean) ** 2, 0) / (n - 1) : 0
@@ -197,9 +196,7 @@ export class FactorPrecomputeService implements OnApplicationBootstrap {
       tradeDate,
       tsCode: v.tsCode,
       value: new Prisma.Decimal(v.factorValue),
-      percentile: new Prisma.Decimal(
-        Math.round(computePercentileRank(sortedNums, v.factorValue) * 1e4) / 1e4,
-      ),
+      percentile: new Prisma.Decimal(Math.round(computePercentileRank(sortedNums, v.factorValue) * 1e4) / 1e4),
     }))
 
     const stats = computeStats(sortedNums)
@@ -258,10 +255,7 @@ export class FactorPrecomputeService implements OnApplicationBootstrap {
    * 批量预计算指定日期所有已启用因子的截面值。
    * factorNames 不传时计算所有已启用因子。
    */
-  async precomputeAllFactors(
-    tradeDate: string,
-    factorNames?: string[],
-  ): Promise<PrecomputeResult> {
+  async precomputeAllFactors(tradeDate: string, factorNames?: string[]): Promise<PrecomputeResult> {
     const startMs = Date.now()
 
     const factors = await this.prisma.factorDefinition.findMany({
@@ -281,9 +275,7 @@ export class FactorPrecomputeService implements OnApplicationBootstrap {
         this.logger.debug(`[${factor.name}] ${tradeDate} 预计算完成，${rows} 条`)
       } catch (error) {
         factorsFailed++
-        this.logger.error(
-          `[${factor.name}] ${tradeDate} 预计算失败: ${(error as Error).message}`,
-        )
+        this.logger.error(`[${factor.name}] ${tradeDate} 预计算失败: ${(error as Error).message}`)
       }
     }
 

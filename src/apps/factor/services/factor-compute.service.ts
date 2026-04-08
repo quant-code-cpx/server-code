@@ -40,8 +40,7 @@ const DERIVED_DAILY_BASIC_MAP: Record<string, string> = {
 
 /** Maps DERIVED factor name → value expression using moneyflow columns */
 const DERIVED_MONEYFLOW_MAP: Record<string, string> = {
-  main_net_inflow:
-    '(mf.buy_lg_amount + mf.buy_elg_amount) - (mf.sell_lg_amount + mf.sell_elg_amount)',
+  main_net_inflow: '(mf.buy_lg_amount + mf.buy_elg_amount) - (mf.sell_lg_amount + mf.sell_elg_amount)',
   main_net_inflow_pct:
     'CASE WHEN (mf.buy_sm_amount + mf.buy_md_amount + mf.buy_lg_amount + mf.buy_elg_amount) > 0 THEN ((mf.buy_lg_amount + mf.buy_elg_amount) - (mf.sell_lg_amount + mf.sell_elg_amount)) / (mf.buy_sm_amount + mf.buy_md_amount + mf.buy_lg_amount + mf.buy_elg_amount) ELSE NULL END',
 }
@@ -164,7 +163,14 @@ export class FactorComputeService {
       q75_val: number | null
     }
 
-    const pagedSql = this.expressionSvc.buildPagedQuery(compiled, tradeDate, universeJoinStr, pageSize, offset, sortDir as 'ASC' | 'DESC')
+    const pagedSql = this.expressionSvc.buildPagedQuery(
+      compiled,
+      tradeDate,
+      universeJoinStr,
+      pageSize,
+      offset,
+      sortDir as 'ASC' | 'DESC',
+    )
     const statsSql = this.expressionSvc.buildStatsQuery(compiled, tradeDate, universeJoinStr)
 
     const [rows, statsRows] = await Promise.all([
@@ -917,7 +923,10 @@ export class FactorComputeService {
           AND sp.ts_code IS NULL
           AND (sb.list_date IS NULL OR sb.list_date <= (${tradeDate}::date - INTERVAL '60 days'))
       `)
-      return rows.map((r) => ({ tsCode: r.ts_code, factorValue: r.factor_value != null ? Number(r.factor_value) : null }))
+      return rows.map((r) => ({
+        tsCode: r.ts_code,
+        factorValue: r.factor_value != null ? Number(r.factor_value) : null,
+      }))
     }
 
     // FIELD_REF: fina_indicator (PIT)
@@ -940,7 +949,10 @@ export class FactorComputeService {
           AND sp.ts_code IS NULL
           AND (sb.list_date IS NULL OR sb.list_date <= (${tradeDate}::date - INTERVAL '60 days'))
       `)
-      return rows.map((r) => ({ tsCode: r.ts_code, factorValue: r.factor_value != null ? Number(r.factor_value) : null }))
+      return rows.map((r) => ({
+        tsCode: r.ts_code,
+        factorValue: r.factor_value != null ? Number(r.factor_value) : null,
+      }))
     }
 
     // FIELD_REF: moneyflow
@@ -958,7 +970,10 @@ export class FactorComputeService {
           AND sp.ts_code IS NULL
           AND (sb.list_date IS NULL OR sb.list_date <= (${tradeDate}::date - INTERVAL '60 days'))
       `)
-      return rows.map((r) => ({ tsCode: r.ts_code, factorValue: r.factor_value != null ? Number(r.factor_value) : null }))
+      return rows.map((r) => ({
+        tsCode: r.ts_code,
+        factorValue: r.factor_value != null ? Number(r.factor_value) : null,
+      }))
     }
 
     // DERIVED: daily_basic
@@ -976,7 +991,10 @@ export class FactorComputeService {
           AND sp.ts_code IS NULL
           AND (sb.list_date IS NULL OR sb.list_date <= (${tradeDate}::date - INTERVAL '60 days'))
       `)
-      return rows.map((r) => ({ tsCode: r.ts_code, factorValue: r.factor_value != null ? Number(r.factor_value) : null }))
+      return rows.map((r) => ({
+        tsCode: r.ts_code,
+        factorValue: r.factor_value != null ? Number(r.factor_value) : null,
+      }))
     }
 
     // DERIVED: moneyflow
@@ -994,7 +1012,10 @@ export class FactorComputeService {
           AND sp.ts_code IS NULL
           AND (sb.list_date IS NULL OR sb.list_date <= (${tradeDate}::date - INTERVAL '60 days'))
       `)
-      return rows.map((r) => ({ tsCode: r.ts_code, factorValue: r.factor_value != null ? Number(r.factor_value) : null }))
+      return rows.map((r) => ({
+        tsCode: r.ts_code,
+        factorValue: r.factor_value != null ? Number(r.factor_value) : null,
+      }))
     }
 
     // CUSTOM_SQL: expression-based compute (universe join from Prisma.sql not available here, use string)

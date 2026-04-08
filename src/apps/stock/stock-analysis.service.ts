@@ -188,14 +188,22 @@ export class StockAnalysisService {
     }
 
     const currentPrice = usedBars[usedBars.length - 1]?.close ?? null
-    const usedTradeDate = usedBars[usedBars.length - 1]?.tradeDate ?? (tradeDate ?? dayjs().format('YYYYMMDD'))
+    const usedTradeDate = usedBars[usedBars.length - 1]?.tradeDate ?? tradeDate ?? dayjs().format('YYYYMMDD')
 
     if (!currentPrice) {
       return {
         tsCode,
         tradeDate: usedTradeDate,
         currentPrice: null,
-        concentration: { range90Low: null, range90High: null, range70Low: null, range70High: null, score: null, profitRatio: null, avgCost: null },
+        concentration: {
+          range90Low: null,
+          range90High: null,
+          range70Low: null,
+          range70High: null,
+          score: null,
+          profitRatio: null,
+          avgCost: null,
+        },
         distribution: [],
         keyLevels: { peakPrice: null, resistanceHigh: null, resistanceLow: null, supportHigh: null, supportLow: null },
         isEstimated: true,
@@ -326,7 +334,9 @@ export class StockAnalysisService {
 
   async getRelativeStrength(dto: StockRelativeStrengthDto): Promise<StockRelativeStrengthDataDto> {
     const { tsCode, benchmarkCode = '000300.SH', days = 120 } = dto
-    const cutoffDate = dayjs().subtract(days + 30, 'day').toDate() // 稍多取一些确保有足够数据
+    const cutoffDate = dayjs()
+      .subtract(days + 30, 'day')
+      .toDate() // 稍多取一些确保有足够数据
 
     interface PriceRow {
       tradeDate: Date
@@ -427,8 +437,15 @@ export class StockAnalysisService {
       const stockClose = stockRow.close ?? null
       const bmClose = bmRow.close ?? null
       let rsRatio = 1
-      if (firstStock && firstBenchmark && stockClose !== null && bmClose !== null && firstBenchmark > 0 && firstStock > 0) {
-        rsRatio = (stockClose / firstStock) / (bmClose / firstBenchmark)
+      if (
+        firstStock &&
+        firstBenchmark &&
+        stockClose !== null &&
+        bmClose !== null &&
+        firstBenchmark > 0 &&
+        firstStock > 0
+      ) {
+        rsRatio = stockClose / firstStock / (bmClose / firstBenchmark)
       }
 
       return {
@@ -454,9 +471,9 @@ export class StockAnalysisService {
   // ─── 辅助方法 ─────────────────────────────────────────────────────────────────
 
   private async fetchOhlcvRows(tsCode: string, tableName: string, limit: number): Promise<OhlcvRow[]> {
-    const safeTable = PERIOD_TABLE_MAP[
-      Object.entries(PERIOD_TABLE_MAP).find(([, v]) => v === tableName)?.[0] ?? 'D'
-    ] ?? 'stock_daily_prices'
+    const safeTable =
+      PERIOD_TABLE_MAP[Object.entries(PERIOD_TABLE_MAP).find(([, v]) => v === tableName)?.[0] ?? 'D'] ??
+      'stock_daily_prices'
 
     // 使用 Prisma 查询，通过字符串模板避免 SQL 注入
     // tableName 来自受控映射，安全
@@ -541,7 +558,14 @@ export class StockAnalysisService {
   private buildMaStatus(history: ReturnType<typeof computeAllIndicators>) {
     const latest = history[history.length - 1]
     if (!latest) {
-      return { bullishAlign: null, bearishAlign: null, aboveMa20: null, aboveMa60: null, aboveMa250: null, latestCross: null }
+      return {
+        bullishAlign: null,
+        bearishAlign: null,
+        aboveMa20: null,
+        aboveMa60: null,
+        aboveMa250: null,
+        latestCross: null,
+      }
     }
 
     const { ma5, ma10, ma20, ma60, ma250, close } = latest
@@ -563,7 +587,17 @@ export class StockAnalysisService {
     const prev = history[history.length - 2]
 
     if (!p) {
-      return { macd: null, kdj: null, rsi: null, boll: null, wr: null, cci: null, dmi: null, sar: null, volumePrice: null }
+      return {
+        macd: null,
+        kdj: null,
+        rsi: null,
+        boll: null,
+        wr: null,
+        cci: null,
+        dmi: null,
+        sar: null,
+        volumePrice: null,
+      }
     }
 
     // MACD
@@ -649,7 +683,15 @@ export class StockAnalysisService {
   }
 
   /** 融资融券摘要统计 */
-  private buildMarginSummary(history: Array<{ tradeDate: string; rzye: number | null; rzjmre: number | null; rqye: number | null; rzrqye: number | null }>) {
+  private buildMarginSummary(
+    history: Array<{
+      tradeDate: string
+      rzye: number | null
+      rzjmre: number | null
+      rqye: number | null
+      rzrqye: number | null
+    }>,
+  ) {
     if (history.length === 0) {
       return {
         latestRzye: null,
@@ -667,15 +709,11 @@ export class StockAnalysisService {
 
     // 5日融资净买入
     const last5 = history.slice(-5)
-    const rzNetBuy5d = last5.some((r) => r.rzjmre !== null)
-      ? last5.reduce((a, b) => a + (b.rzjmre ?? 0), 0)
-      : null
+    const rzNetBuy5d = last5.some((r) => r.rzjmre !== null) ? last5.reduce((a, b) => a + (b.rzjmre ?? 0), 0) : null
 
     // 20日融资净买入
     const last20 = history.slice(-20)
-    const rzNetBuy20d = last20.some((r) => r.rzjmre !== null)
-      ? last20.reduce((a, b) => a + (b.rzjmre ?? 0), 0)
-      : null
+    const rzNetBuy20d = last20.some((r) => r.rzjmre !== null) ? last20.reduce((a, b) => a + (b.rzjmre ?? 0), 0) : null
 
     // 5日融资余额变化率
     const rzye5dAgo = history.length >= 5 ? history[history.length - 5]?.rzye : null
@@ -717,7 +755,16 @@ export class StockAnalysisService {
     benchmarkRows: Array<{ pctChg: number | null; close: number | null }>,
   ) {
     if (history.length === 0) {
-      return { stockTotalReturn: null, benchmarkTotalReturn: null, excessReturn: null, excess20d: null, annualizedVol: null, maxDrawdown: null, beta: null, informationRatio: null }
+      return {
+        stockTotalReturn: null,
+        benchmarkTotalReturn: null,
+        excessReturn: null,
+        excess20d: null,
+        annualizedVol: null,
+        maxDrawdown: null,
+        beta: null,
+        informationRatio: null,
+      }
     }
 
     const last = history[history.length - 1]
@@ -727,9 +774,7 @@ export class StockAnalysisService {
 
     // 最近20日超额收益
     const prevExcess20d = history.length >= 21 ? history[history.length - 21].excessReturn : 0
-    const excess20d = history.length >= 20
-      ? history[history.length - 1].excessReturn - prevExcess20d
-      : excessReturn
+    const excess20d = history.length >= 20 ? history[history.length - 1].excessReturn - prevExcess20d : excessReturn
 
     // 年化波动率（个股）
     const stockReturns = stockRows
@@ -882,7 +927,15 @@ export class StockAnalysisService {
 
   /** 从 CYQ 成本分位数近似生成直方图 */
   private buildDistributionFromCyq(
-    cyq: { cost5Pct: number | null; cost15Pct: number | null; cost50Pct: number | null; cost85Pct: number | null; cost95Pct: number | null; hisLow: number | null; hisHigh: number | null },
+    cyq: {
+      cost5Pct: number | null
+      cost15Pct: number | null
+      cost50Pct: number | null
+      cost85Pct: number | null
+      cost95Pct: number | null
+      hisLow: number | null
+      hisHigh: number | null
+    },
     currentPrice: number | null,
   ) {
     const low = cyq.hisLow ?? cyq.cost5Pct ?? 0

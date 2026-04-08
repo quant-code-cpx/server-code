@@ -69,7 +69,12 @@ export function generateTimingSignals(points: TechnicalDataPoint[], lookbackDays
     const prev = points[i - 1]
 
     // ── MACD 金叉/死叉 ──
-    if (isValidNumber(p.macdDif) && isValidNumber(p.macdDea) && isValidNumber(prev.macdDif) && isValidNumber(prev.macdDea)) {
+    if (
+      isValidNumber(p.macdDif) &&
+      isValidNumber(p.macdDea) &&
+      isValidNumber(prev.macdDif) &&
+      isValidNumber(prev.macdDea)
+    ) {
       if (prev.macdDif <= prev.macdDea && p.macdDif > p.macdDea) {
         signals.push({
           tradeDate: p.tradeDate,
@@ -92,10 +97,7 @@ export function generateTimingSignals(points: TechnicalDataPoint[], lookbackDays
     }
 
     // ── KDJ 金叉/死叉 ──
-    if (
-      isValidNumber(p.kdjK) && isValidNumber(p.kdjD) &&
-      isValidNumber(prev.kdjK) && isValidNumber(prev.kdjD)
-    ) {
+    if (isValidNumber(p.kdjK) && isValidNumber(p.kdjD) && isValidNumber(prev.kdjK) && isValidNumber(prev.kdjD)) {
       if (prev.kdjK <= prev.kdjD && p.kdjK > p.kdjD) {
         const inLowZone = p.kdjK < 30
         signals.push({
@@ -168,10 +170,7 @@ export function generateTimingSignals(points: TechnicalDataPoint[], lookbackDays
     }
 
     // ── MA 金叉/死叉 ──
-    if (
-      isValidNumber(p.ma5) && isValidNumber(p.ma10) &&
-      isValidNumber(prev.ma5) && isValidNumber(prev.ma10)
-    ) {
+    if (isValidNumber(p.ma5) && isValidNumber(p.ma10) && isValidNumber(prev.ma5) && isValidNumber(prev.ma10)) {
       if (prev.ma5 <= prev.ma10 && p.ma5 > p.ma10) {
         signals.push({
           tradeDate: p.tradeDate,
@@ -217,10 +216,7 @@ export function generateTimingSignals(points: TechnicalDataPoint[], lookbackDays
     }
 
     // ── 量价背离 ──
-    if (
-      isValidNumber(p.close) && isValidNumber(prev.close) &&
-      isValidNumber(p.vol) && isValidNumber(p.volMa5)
-    ) {
+    if (isValidNumber(p.close) && isValidNumber(prev.close) && isValidNumber(p.vol) && isValidNumber(p.volMa5)) {
       const priceUp = p.close > prev.close
       const volUp = (p.vol as number) > (p.volMa5 as number) * 1.5
       const volShrink = (p.vol as number) < (p.volMa5 as number) * 0.5
@@ -307,7 +303,12 @@ export function calcTimingScore(points: TechnicalDataPoint[]): TimingScoreSummar
     if (p.kdjJ > 100) {
       details.push({ indicator: 'KDJ', signal: 'bearish', score: 25, reason: `KDJ J 值 ${p.kdjJ.toFixed(1)} 超买` })
     } else if (p.kdjJ < 0) {
-      details.push({ indicator: 'KDJ', signal: 'bullish', score: 75, reason: `KDJ J 值 ${p.kdjJ.toFixed(1)} 超卖，可能反弹` })
+      details.push({
+        indicator: 'KDJ',
+        signal: 'bullish',
+        score: 75,
+        reason: `KDJ J 值 ${p.kdjJ.toFixed(1)} 超卖，可能反弹`,
+      })
     } else if (p.kdjK > p.kdjD && p.kdjK > 50) {
       details.push({ indicator: 'KDJ', signal: 'bullish', score: 70, reason: 'KDJ K>D，偏强多头' })
     } else if (p.kdjK < p.kdjD && p.kdjK < 50) {
@@ -324,7 +325,12 @@ export function calcTimingScore(points: TechnicalDataPoint[]): TimingScoreSummar
     if (p.rsi6 > 80) {
       details.push({ indicator: 'RSI', signal: 'bearish', score: 20, reason: `RSI6 = ${p.rsi6.toFixed(1)}，超买` })
     } else if (p.rsi6 < 20) {
-      details.push({ indicator: 'RSI', signal: 'bullish', score: 80, reason: `RSI6 = ${p.rsi6.toFixed(1)}，超卖可能反弹` })
+      details.push({
+        indicator: 'RSI',
+        signal: 'bullish',
+        score: 80,
+        reason: `RSI6 = ${p.rsi6.toFixed(1)}，超卖可能反弹`,
+      })
     } else if (p.rsi6 > 50) {
       details.push({ indicator: 'RSI', signal: 'bullish', score: 60, reason: `RSI6 = ${p.rsi6.toFixed(1)}，偏强` })
     } else {
@@ -380,9 +386,19 @@ export function calcTimingScore(points: TechnicalDataPoint[]): TimingScoreSummar
     const bullishTrend = p.dmiPdi > p.dmiMdi && p.dmiAdx > 25
     const bearishTrend = p.dmiPdi < p.dmiMdi && p.dmiAdx > 25
     if (bullishTrend) {
-      details.push({ indicator: 'DMI', signal: 'bullish', score: 75, reason: `+DI=${p.dmiPdi.toFixed(1)} > -DI=${p.dmiMdi.toFixed(1)}，ADX=${p.dmiAdx.toFixed(1)}，多头趋势` })
+      details.push({
+        indicator: 'DMI',
+        signal: 'bullish',
+        score: 75,
+        reason: `+DI=${p.dmiPdi.toFixed(1)} > -DI=${p.dmiMdi.toFixed(1)}，ADX=${p.dmiAdx.toFixed(1)}，多头趋势`,
+      })
     } else if (bearishTrend) {
-      details.push({ indicator: 'DMI', signal: 'bearish', score: 25, reason: `+DI=${p.dmiPdi.toFixed(1)} < -DI=${p.dmiMdi.toFixed(1)}，ADX=${p.dmiAdx.toFixed(1)}，空头趋势` })
+      details.push({
+        indicator: 'DMI',
+        signal: 'bearish',
+        score: 25,
+        reason: `+DI=${p.dmiPdi.toFixed(1)} < -DI=${p.dmiMdi.toFixed(1)}，ADX=${p.dmiAdx.toFixed(1)}，空头趋势`,
+      })
     } else {
       details.push({ indicator: 'DMI', signal: 'neutral', score: 50, reason: `ADX=${p.dmiAdx.toFixed(1)}，无明确趋势` })
     }
@@ -405,9 +421,19 @@ export function calcTimingScore(points: TechnicalDataPoint[]): TimingScoreSummar
   if (isValidNumber(p.vol) && isValidNumber(p.volMa5) && isValidNumber(p.close)) {
     const volRatio = p.vol / (p.volMa5 as number)
     if (volRatio > 1.5 && isValidNumber(p.pctChg) && (p.pctChg as number) > 1) {
-      details.push({ indicator: 'VOL', signal: 'bullish', score: 70, reason: `量价齐升，成交量放大 ${volRatio.toFixed(1)} 倍` })
+      details.push({
+        indicator: 'VOL',
+        signal: 'bullish',
+        score: 70,
+        reason: `量价齐升，成交量放大 ${volRatio.toFixed(1)} 倍`,
+      })
     } else if (volRatio > 1.5 && isValidNumber(p.pctChg) && (p.pctChg as number) < -1) {
-      details.push({ indicator: 'VOL', signal: 'bearish', score: 30, reason: `量价配合下跌，成交量放大 ${volRatio.toFixed(1)} 倍` })
+      details.push({
+        indicator: 'VOL',
+        signal: 'bearish',
+        score: 30,
+        reason: `量价配合下跌，成交量放大 ${volRatio.toFixed(1)} 倍`,
+      })
     } else if (volRatio < 0.5) {
       details.push({ indicator: 'VOL', signal: 'neutral', score: 50, reason: '成交量萎缩，市场观望' })
     } else {

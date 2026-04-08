@@ -40,18 +40,18 @@ export class AutoRepairService {
 
   /** 质量检查 dataSet 名 → TushareSyncTask 枚举（仅支持按日期补数的数据集） */
   private readonly DATASET_TO_TASK: Record<string, TushareSyncTask> = {
-    daily:          TushareSyncTask.DAILY,
-    dailyBasic:     TushareSyncTask.DAILY_BASIC,
-    adjFactor:      TushareSyncTask.ADJ_FACTOR,
-    indexDaily:     TushareSyncTask.INDEX_DAILY,
-    marginDetail:   TushareSyncTask.MARGIN_DETAIL,
-    moneyflow:      TushareSyncTask.MONEYFLOW_DC,
+    daily: TushareSyncTask.DAILY,
+    dailyBasic: TushareSyncTask.DAILY_BASIC,
+    adjFactor: TushareSyncTask.ADJ_FACTOR,
+    indexDaily: TushareSyncTask.INDEX_DAILY,
+    marginDetail: TushareSyncTask.MARGIN_DETAIL,
+    moneyflow: TushareSyncTask.MONEYFLOW_DC,
     moneyflowIndDc: TushareSyncTask.MONEYFLOW_IND_DC,
     moneyflowMktDc: TushareSyncTask.MONEYFLOW_MKT_DC,
-    moneyflowHsgt:  TushareSyncTask.MONEYFLOW_HSGT,
-    weekly:         TushareSyncTask.WEEKLY,
-    monthly:        TushareSyncTask.MONTHLY,
-    stkLimit:       TushareSyncTask.STK_LIMIT,
+    moneyflowHsgt: TushareSyncTask.MONEYFLOW_HSGT,
+    weekly: TushareSyncTask.WEEKLY,
+    monthly: TushareSyncTask.MONTHLY,
+    stkLimit: TushareSyncTask.STK_LIMIT,
   }
 
   private readonly ALERT_THRESHOLDS = {
@@ -94,18 +94,14 @@ export class AutoRepairService {
 
       // 安全阈值：缺失超过 30 天不自动补数
       if (totalMissing && totalMissing > 30) {
-        this.logger.warn(
-          `[自动补数] ${report.dataSet} 缺失 ${totalMissing} 天，超出安全阈值（30天），跳过自动补数`,
-        )
+        this.logger.warn(`[自动补数] ${report.dataSet} 缺失 ${totalMissing} 天，超出安全阈值（30天），跳过自动补数`)
         tasks.push({ dataSet: report.dataSet, repairType: 'no-action', sourceReport: report })
         continue
       }
 
       // 检查该数据集是否有对应的同步任务
       if (!this.DATASET_TO_TASK[report.dataSet]) {
-        this.logger.warn(
-          `[自动补数] ${report.dataSet} 无对应同步任务（可能为财务类数据），跳过自动补数`,
-        )
+        this.logger.warn(`[自动补数] ${report.dataSet} 无对应同步任务（可能为财务类数据），跳过自动补数`)
         tasks.push({ dataSet: report.dataSet, repairType: 'no-action', sourceReport: report })
         continue
       }

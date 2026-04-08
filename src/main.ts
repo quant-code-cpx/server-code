@@ -18,7 +18,9 @@ async function bootstrap() {
 
   const configService = app.get(ConfigService)
   const loggerService = app.get(LoggerService)
-  const { port, isDev, globalPrefix, logHttpRequests, logHttpBody } = configService.get<IAppConfig>(APP_CONFIG_TOKEN, { infer: true })
+  const { port, isDev, globalPrefix, logHttpRequests, logHttpBody } = configService.get<IAppConfig>(APP_CONFIG_TOKEN, {
+    infer: true,
+  })
 
   // ── 请求体大小限制（防止超大 JSON 攻击，最大 1 MB） ──
   app.use(json({ limit: '1mb' }))
@@ -89,6 +91,11 @@ async function bootstrap() {
     SwaggerModule.setup('docs', app, document)
     loggerService.log(`Swagger docs: http://localhost:${port}/docs`, 'Bootstrap')
   }
+
+  // ── 优雅关闭 ──
+  // 启用 NestJS 内置 shutdown hooks，
+  // 收到 SIGTERM / SIGINT 时按顺序调用各模块的 onApplicationShutdown / onModuleDestroy
+  app.enableShutdownHooks()
 
   await app.listen(port, '0.0.0.0')
   loggerService.log(`Server running on http://localhost:${port}/${globalPrefix}`, 'Bootstrap')

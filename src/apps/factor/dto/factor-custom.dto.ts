@@ -1,14 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
 import { FactorCategory } from '@prisma/client'
-import {
-  IsBoolean,
-  IsEnum,
-  IsOptional,
-  IsString,
-  Length,
-  Matches,
-  MaxLength,
-} from 'class-validator'
+import { IsBoolean, IsEnum, IsOptional, IsString, Length, Matches, MaxLength } from 'class-validator'
 
 export class CreateCustomFactorDto {
   @ApiProperty({

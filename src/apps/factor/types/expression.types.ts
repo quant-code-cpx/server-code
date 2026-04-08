@@ -3,7 +3,12 @@
 export type ExpressionNode =
   | { type: 'literal'; value: number }
   | { type: 'field'; name: string }
-  | { type: 'binary'; op: '+' | '-' | '*' | '/' | '>' | '<' | '>=' | '<=' | '=' | '!='; left: ExpressionNode; right: ExpressionNode }
+  | {
+      type: 'binary'
+      op: '+' | '-' | '*' | '/' | '>' | '<' | '>=' | '<=' | '=' | '!='
+      left: ExpressionNode
+      right: ExpressionNode
+    }
   | { type: 'unary'; op: '-'; operand: ExpressionNode }
   | { type: 'call'; fn: string; args: ExpressionNode[] }
 

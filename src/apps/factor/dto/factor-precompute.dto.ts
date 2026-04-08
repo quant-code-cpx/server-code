@@ -1,12 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
-import {
-  ArrayMaxSize,
-  IsArray,
-  IsBoolean,
-  IsOptional,
-  IsString,
-  Matches,
-} from 'class-validator'
+import { ArrayMaxSize, IsArray, IsBoolean, IsOptional, IsString, Matches } from 'class-validator'
 
 export class FactorPrecomputeTriggerDto {
   @ApiProperty({ description: '目标交易日 YYYYMMDD', example: '20260327' })

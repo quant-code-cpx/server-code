@@ -1,14 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
-import {
-  IsBoolean,
-  IsEnum,
-  IsNumber,
-  IsObject,
-  IsOptional,
-  IsString,
-  Matches,
-  Min,
-} from 'class-validator'
+import { IsBoolean, IsEnum, IsNumber, IsObject, IsOptional, IsString, Matches, Min } from 'class-validator'
 import { Type } from 'class-transformer'
 import { BacktestStrategyType, PriceMode, RebalanceFrequency, Universe } from '../types/backtest-engine.types'
 

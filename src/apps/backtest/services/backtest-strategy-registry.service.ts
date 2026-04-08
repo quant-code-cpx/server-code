@@ -230,7 +230,8 @@ export class BacktestStrategyRegistryService {
         {
           id: 'FACTOR_SCREENING_ROTATION',
           name: '因子选股轮动（多条件）',
-          description: '基于多因子筛选条件组合选股，定期轮动持有 TopN 股票。由因子模块 /factor/backtest/submit 端点触发。',
+          description:
+            '基于多因子筛选条件组合选股，定期轮动持有 TopN 股票。由因子模块 /factor/backtest/submit 端点触发。',
           category: 'FACTOR',
           parameterSchema: [
             {
@@ -448,7 +449,8 @@ export class BacktestStrategyRegistryService {
       }
     })
 
-    const sortBy = config.sortBy !== undefined ? this.assertNonEmptyString(config.sortBy, 'strategyConfig.sortBy') : undefined
+    const sortBy =
+      config.sortBy !== undefined ? this.assertNonEmptyString(config.sortBy, 'strategyConfig.sortBy') : undefined
     const sortOrder =
       config.sortOrder === undefined
         ? 'desc'
@@ -457,7 +459,11 @@ export class BacktestStrategyRegistryService {
     const weightMethod =
       config.weightMethod === undefined
         ? 'equal_weight'
-        : this.assertStringLiteral(config.weightMethod, ['equal_weight', 'factor_weight'] as const, 'strategyConfig.weightMethod')
+        : this.assertStringLiteral(
+            config.weightMethod,
+            ['equal_weight', 'factor_weight'] as const,
+            'strategyConfig.weightMethod',
+          )
 
     return { conditions, sortBy, sortOrder, topN, weightMethod }
   }

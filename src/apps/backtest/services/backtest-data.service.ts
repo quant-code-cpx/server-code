@@ -21,18 +21,23 @@ export class BacktestDataService {
   }
 
   /** Load daily bars + adj factors + stk_limit + suspend for given tsCodes and date range */
-  async loadDailyBars(
-    tsCodes: string[],
-    startDate: Date,
-    endDate: Date,
-  ): Promise<Map<string, Map<string, DailyBar>>> {
+  async loadDailyBars(tsCodes: string[], startDate: Date, endDate: Date): Promise<Map<string, Map<string, DailyBar>>> {
     if (tsCodes.length === 0) return new Map()
 
     // Fetch all needed data in parallel
     const [dailyRows, adjRows, limitRows, suspendRows] = await Promise.all([
       this.prisma.daily.findMany({
         where: { tsCode: { in: tsCodes }, tradeDate: { gte: startDate, lte: endDate } },
-        select: { tsCode: true, tradeDate: true, open: true, high: true, low: true, close: true, preClose: true, vol: true },
+        select: {
+          tsCode: true,
+          tradeDate: true,
+          open: true,
+          high: true,
+          low: true,
+          close: true,
+          preClose: true,
+          vol: true,
+        },
       }),
       this.prisma.adjFactor.findMany({
         where: { tsCode: { in: tsCodes }, tradeDate: { gte: startDate, lte: endDate } },
@@ -108,9 +113,9 @@ export class BacktestDataService {
       if (adjFactor !== null && latestAdj !== null && latestAdj !== 0) {
         const ratio = adjFactor / latestAdj
         adjClose = r.close !== null ? Number(r.close) * ratio : null
-        adjOpen  = r.open  !== null ? Number(r.open)  * ratio : null
-        adjHigh  = r.high  !== null ? Number(r.high)  * ratio : null
-        adjLow   = r.low   !== null ? Number(r.low)   * ratio : null
+        adjOpen = r.open !== null ? Number(r.open) * ratio : null
+        adjHigh = r.high !== null ? Number(r.high) * ratio : null
+        adjLow = r.low !== null ? Number(r.low) * ratio : null
       }
 
       const bar: DailyBar = {

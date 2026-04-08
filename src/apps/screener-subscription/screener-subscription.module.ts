@@ -9,16 +9,8 @@ import { ScreenerSubscriptionProcessor } from './screener-subscription.processor
 import { ScreenerSubscriptionScheduler } from './screener-subscription.scheduler'
 
 @Module({
-  imports: [
-    BullModule.registerQueue({ name: SCREENER_SUBSCRIPTION_QUEUE }),
-    StockModule,
-    WebsocketModule,
-  ],
+  imports: [BullModule.registerQueue({ name: SCREENER_SUBSCRIPTION_QUEUE }), StockModule, WebsocketModule],
   controllers: [ScreenerSubscriptionController],
-  providers: [
-    ScreenerSubscriptionService,
-    ScreenerSubscriptionProcessor,
-    ScreenerSubscriptionScheduler,
-  ],
+  providers: [ScreenerSubscriptionService, ScreenerSubscriptionProcessor, ScreenerSubscriptionScheduler],
 })
 export class ScreenerSubscriptionModule {}

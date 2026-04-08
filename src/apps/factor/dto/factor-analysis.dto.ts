@@ -41,7 +41,12 @@ export class FactorIcAnalysisDto {
   @Type(() => Number)
   forwardDays?: number = 5
 
-  @ApiProperty({ required: false, enum: ['rank', 'normal'], default: 'rank', description: 'Rank IC (Spearman) 或 Normal IC (Pearson)' })
+  @ApiProperty({
+    required: false,
+    enum: ['rank', 'normal'],
+    default: 'rank',
+    description: 'Rank IC (Spearman) 或 Normal IC (Pearson)',
+  })
   @IsOptional()
   @IsEnum(['rank', 'normal'])
   icMethod?: 'rank' | 'normal' = 'rank'

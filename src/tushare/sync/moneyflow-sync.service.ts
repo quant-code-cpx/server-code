@@ -156,7 +156,9 @@ export class MoneyflowSyncService {
         let all: unknown[] = []
         for (const ct of TUSHARE_MONEYFLOW_CONTENT_TYPES) {
           const rows = await this.api.getMoneyflowIndDcByTradeDate(td, ct)
-          const mapped = rows.map((r) => mapMoneyflowIndDcRecord(r, collector)).filter((r): r is NonNullable<typeof r> => Boolean(r))
+          const mapped = rows
+            .map((r) => mapMoneyflowIndDcRecord(r, collector))
+            .filter((r): r is NonNullable<typeof r> => Boolean(r))
           all = all.concat(mapped)
         }
         return all
@@ -177,7 +179,9 @@ export class MoneyflowSyncService {
       fullHistoryOverride: mode === 'full' ? true : undefined,
       fetchAndMap: async (td) => {
         const rows = await this.api.getMoneyflowMktDcByTradeDate(td)
-        return rows.map((r) => mapMoneyflowMktDcRecord(r, collector)).filter((r): r is NonNullable<typeof r> => Boolean(r))
+        return rows
+          .map((r) => mapMoneyflowMktDcRecord(r, collector))
+          .filter((r): r is NonNullable<typeof r> => Boolean(r))
       },
     })
     await this.helper.flushValidationLogs(collector)
@@ -323,7 +327,9 @@ export class MoneyflowSyncService {
     try {
       const rows = await this.api.getMoneyflowHsgtByDateRange(startDate, targetTradeDate)
       const collector = new ValidationCollector(TushareSyncTaskName.MONEYFLOW_HSGT)
-      const mapped = rows.map((r) => mapMoneyflowHsgtRecord(r, collector)).filter((r): r is NonNullable<typeof r> => Boolean(r))
+      const mapped = rows
+        .map((r) => mapMoneyflowHsgtRecord(r, collector))
+        .filter((r): r is NonNullable<typeof r> => Boolean(r))
 
       // 按日期幂等写入
       const tradeDate = this.helper.toDate(targetTradeDate)

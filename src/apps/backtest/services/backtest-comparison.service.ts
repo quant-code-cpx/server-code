@@ -6,12 +6,7 @@ import { PrismaService } from 'src/shared/prisma.service'
 import { BACKTESTING_QUEUE, BacktestingJobName } from 'src/constant/queue.constant'
 import { BacktestEngineService } from './backtest-engine.service'
 import { BacktestReportService } from './backtest-report.service'
-import {
-  BacktestConfig,
-  BacktestStrategyType,
-  RebalanceFrequency,
-  Universe,
-} from '../types/backtest-engine.types'
+import { BacktestConfig, BacktestStrategyType, RebalanceFrequency, Universe } from '../types/backtest-engine.types'
 import { CreateBacktestComparisonDto } from '../dto/backtest-comparison.dto'
 
 interface ComparisonJobData {
@@ -90,10 +85,7 @@ export class BacktestComparisonService {
     return { groupId: group.id, jobId: job.id?.toString() ?? '', status: 'QUEUED' }
   }
 
-  async runComparison(
-    groupId: string,
-    onProgress?: (pct: number, step: string) => Promise<void>,
-  ): Promise<void> {
+  async runComparison(groupId: string, onProgress?: (pct: number, step: string) => Promise<void>): Promise<void> {
     const group = await this.prisma.backtestComparisonGroup.findUnique({ where: { id: groupId } })
     if (!group) throw new NotFoundException(`ComparisonGroup ${groupId} not found`)
 

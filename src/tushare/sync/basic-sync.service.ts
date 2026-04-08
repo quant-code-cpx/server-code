@@ -412,6 +412,8 @@ export class BasicSyncService {
       .map((r) => mapThsIndexRecord(r, collector))
       .filter((r): r is NonNullable<typeof r> => Boolean(r))
 
+    // 先清空依赖子表，再删除主表，避免外键约束报错
+    await (this.helper.prisma as any).thsMember.deleteMany()
     await (this.helper.prisma as any).thsIndex.deleteMany()
     const result = await (this.helper.prisma as any).thsIndex.createMany({ data: mapped })
     const count: number = result.count

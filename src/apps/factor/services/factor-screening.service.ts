@@ -41,7 +41,10 @@ export class FactorScreeningService {
     // Apply each condition to filter
     for (const condition of dto.conditions) {
       const fMap = factorMaps.get(condition.factorName)
-      if (!fMap) { candidateCodes = []; break }
+      if (!fMap) {
+        candidateCodes = []
+        break
+      }
 
       // For percent-based operators, compute threshold from the current candidate set
       let passSet: Set<string>
@@ -106,29 +109,33 @@ export class FactorScreeningService {
 
   private passesCondition(val: number, cond: FactorCondition): boolean {
     switch (cond.operator) {
-      case 'gt':  return cond.value != null && val > cond.value
-      case 'gte': return cond.value != null && val >= cond.value
-      case 'lt':  return cond.value != null && val < cond.value
-      case 'lte': return cond.value != null && val <= cond.value
+      case 'gt':
+        return cond.value != null && val > cond.value
+      case 'gte':
+        return cond.value != null && val >= cond.value
+      case 'lt':
+        return cond.value != null && val < cond.value
+      case 'lte':
+        return cond.value != null && val <= cond.value
       case 'between':
         return cond.min != null && cond.max != null && val >= cond.min && val <= cond.max
-      default: return true
+      default:
+        return true
     }
   }
 
-  private rankStocks(
-    fMap: Map<string, number | null>,
-    order: 'asc' | 'desc',
-  ): Array<{ tsCode: string; val: number }> {
+  private rankStocks(fMap: Map<string, number | null>, order: 'asc' | 'desc'): Array<{ tsCode: string; val: number }> {
     const entries: Array<{ tsCode: string; val: number }> = []
     for (const [tsCode, val] of fMap) {
       if (val != null) entries.push({ tsCode, val })
     }
-    entries.sort((a, b) => order === 'desc' ? b.val - a.val : a.val - b.val)
+    entries.sort((a, b) => (order === 'desc' ? b.val - a.val : a.val - b.val))
     return entries
   }
 
-  private async getStockInfo(tsCodes: string[]): Promise<Map<string, { name: string | null; industry: string | null }>> {
+  private async getStockInfo(
+    tsCodes: string[],
+  ): Promise<Map<string, { name: string | null; industry: string | null }>> {
     if (!tsCodes.length) return new Map()
     const rows = await this.prisma.stockBasic.findMany({
       where: { tsCode: { in: tsCodes } },

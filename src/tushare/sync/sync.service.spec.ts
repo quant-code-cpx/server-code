@@ -45,10 +45,14 @@ describe('TushareSyncService', () => {
     addCronJob: jest.fn(),
   }
 
-  const eventsGateway: Pick<EventsGateway, 'broadcastSyncStarted' | 'broadcastSyncCompleted' | 'broadcastSyncFailed'> = {
+  const eventsGateway: Partial<EventsGateway> = {
     broadcastSyncStarted: jest.fn(),
     broadcastSyncCompleted: jest.fn(),
     broadcastSyncFailed: jest.fn(),
+    broadcastSyncProgress: jest.fn(),
+    broadcastSyncOverallProgress: jest.fn(),
+    broadcastDataQualityCompleted: jest.fn(),
+    broadcastAutoRepairQueued: jest.fn(),
   }
 
   const cacheService = {
@@ -127,6 +131,7 @@ describe('TushareSyncService', () => {
       trigger: 'manual',
       mode: 'incremental',
       targetTradeDate: '20260327',
+      onProgress: expect.any(Function),
     })
     expect(result.executedTasks).toEqual([TushareSyncTaskName.DAILY])
   })

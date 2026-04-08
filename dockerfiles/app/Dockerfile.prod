@@ -1,0 +1,78 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# 生产镜像 - NestJS（多阶段构建）
+#
+# 阶段 1 (deps)    — 安装全部依赖
+# 阶段 2 (builder) — 编译 TypeScript → dist/ + 生成 Prisma Client
+# 阶段 3 (prod)    — 仅复制运行时所需文件，最小化镜像体积
+#
+# 构建命令：
+#   docker build -f dockerfiles/app/Dockerfile.prod -t quant-server:latest .
+#
+# 运行命令（需传入环境变量）：
+#   docker run --env-file .env -p 3000:3000 quant-server:latest
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── 阶段 1：安装依赖 ───────────────────────────────────────────────────────
+FROM node:22-alpine AS deps
+
+RUN npm install -g pnpm
+
+WORKDIR /app
+
+COPY package.json pnpm-lock.yaml ./
+
+# 安装全部依赖（含 devDependencies，编译阶段需要）
+RUN pnpm install --frozen-lockfile
+
+# ── 阶段 2：编译 + Prisma Client ────────────────────────────────────────────
+FROM node:22-alpine AS builder
+
+RUN npm install -g pnpm
+
+WORKDIR /app
+
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+
+# 生成 Prisma Client（需要 prisma/ schema 文件）
+RUN pnpm exec prisma generate
+
+# 编译 TypeScript
+RUN pnpm build
+
+# 仅安装生产依赖（去除 devDependencies）
+RUN pnpm install --frozen-lockfile --prod
+
+# ── 阶段 3：生产运行时 ─────────────────────────────────────────────────────
+FROM node:22-alpine AS prod
+
+# 安全：使用非 root 用户
+RUN addgroup -g 1001 -S appgroup && \
+    adduser -S appuser -u 1001 -G appgroup
+
+WORKDIR /app
+
+# 复制编译产物
+COPY --from=builder --chown=appuser:appgroup /app/dist ./dist
+
+# 复制生产依赖
+COPY --from=builder --chown=appuser:appgroup /app/node_modules ./node_modules
+
+# 复制 package.json（start:prod 脚本引用）
+COPY --from=builder --chown=appuser:appgroup /app/package.json ./
+
+# 复制 Prisma schema（运行时 migrate deploy 需要）和生成的 Client
+COPY --from=builder --chown=appuser:appgroup /app/prisma ./prisma
+COPY --from=builder --chown=appuser:appgroup /app/prisma.config.ts ./
+
+# 切换到非 root 用户
+USER appuser
+
+EXPOSE 3000
+
+# 健康检查
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 --start-period=15s \
+  CMD wget -qO- http://localhost:3000/api/health || exit 1
+
+# 启动：先运行 Prisma migrate deploy（仅应用已有迁移），再启动生产服务器
+CMD ["sh", "-c", "node dist/main"]

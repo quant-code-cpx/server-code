@@ -4,12 +4,7 @@ import { BusinessException } from 'src/common/exceptions/business.exception'
 import { ErrorEnum } from 'src/constant/response-code.constant'
 import { TushareSyncExecutionStatus, TushareSyncTaskName } from 'src/constant/tushare.constant'
 import { AlternativeDataApiService } from '../api/alternative-data-api.service'
-import {
-  mapBlockTradeRecord,
-  mapShareFloatRecord,
-  mapTopInstRecord,
-  mapTopListRecord,
-} from '../tushare-sync.mapper'
+import { mapBlockTradeRecord, mapShareFloatRecord, mapTopInstRecord, mapTopListRecord } from '../tushare-sync.mapper'
 import { SyncHelperService } from './sync-helper.service'
 import { TushareSyncMode, TushareSyncPlan } from './sync-plan.types'
 import { ValidationCollector } from './quality/validation-collector'
@@ -49,8 +44,7 @@ export class AlternativeDataSyncService {
           description: '交易日盘后同步龙虎榜明细（需 Tushare 2000 积分）',
           tradingDayOnly: true,
         },
-        execute: ({ mode, targetTradeDate }) =>
-          this.syncTopList(this.requireTradeDate(targetTradeDate), mode),
+        execute: ({ mode, targetTradeDate }) => this.syncTopList(this.requireTradeDate(targetTradeDate), mode),
       },
       {
         task: TushareSyncTaskName.TOP_INST,
@@ -67,8 +61,7 @@ export class AlternativeDataSyncService {
           description: '交易日盘后同步龙虎榜机构明细（需 Tushare 2000 积分）',
           tradingDayOnly: true,
         },
-        execute: ({ mode, targetTradeDate }) =>
-          this.syncTopInst(this.requireTradeDate(targetTradeDate), mode),
+        execute: ({ mode, targetTradeDate }) => this.syncTopInst(this.requireTradeDate(targetTradeDate), mode),
       },
       {
         task: TushareSyncTaskName.BLOCK_TRADE,
@@ -85,8 +78,7 @@ export class AlternativeDataSyncService {
           description: '交易日盘后同步大宗交易（需 Tushare 2000 积分）',
           tradingDayOnly: true,
         },
-        execute: ({ mode, targetTradeDate }) =>
-          this.syncBlockTrade(this.requireTradeDate(targetTradeDate), mode),
+        execute: ({ mode, targetTradeDate }) => this.syncBlockTrade(this.requireTradeDate(targetTradeDate), mode),
       },
       {
         task: TushareSyncTaskName.SHARE_FLOAT,
@@ -176,7 +168,9 @@ export class AlternativeDataSyncService {
     for (const [i, stock] of stocks.entries()) {
       try {
         const rows = await this.api.getShareFloat(stock.tsCode)
-        const mapped = rows.map((r) => mapShareFloatRecord(r, collector)).filter((r): r is NonNullable<typeof r> => Boolean(r))
+        const mapped = rows
+          .map((r) => mapShareFloatRecord(r, collector))
+          .filter((r): r is NonNullable<typeof r> => Boolean(r))
         if (mapped.length > 0) {
           await this.helper.prisma.$transaction([
             this.helper.prisma.shareFloat.deleteMany({ where: { tsCode: stock.tsCode } }),

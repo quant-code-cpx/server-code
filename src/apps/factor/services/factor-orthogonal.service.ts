@@ -184,9 +184,7 @@ export class FactorOrthogonalService {
     }
 
     // 3. Build factor matrix (stocks × factors)
-    const factorMatrix: number[][] = commonCodes.map((code) =>
-      factorNames.map((fn) => factorMaps.get(fn)!.get(code)!),
-    )
+    const factorMatrix: number[][] = commonCodes.map((code) => factorNames.map((fn) => factorMaps.get(fn)!.get(code)!))
 
     // 4. Standardize (z-score)
     const standardized = this.standardizeColumns(factorMatrix)
@@ -356,16 +354,11 @@ export class FactorOrthogonalService {
 
   // ── Private helpers ────────────────────────────────────────────────────────
 
-  private findCommonCodes(
-    factorMaps: Map<string, Map<string, number>>,
-    factorNames: string[],
-  ): string[] {
+  private findCommonCodes(factorMaps: Map<string, Map<string, number>>, factorNames: string[]): string[] {
     const maps = factorNames.map((fn) => factorMaps.get(fn)!)
     const firstMap = maps[0]
     if (!firstMap) return []
-    return Array.from(firstMap.keys()).filter((code) =>
-      maps.every((m) => m.has(code)),
-    )
+    return Array.from(firstMap.keys()).filter((code) => maps.every((m) => m.has(code)))
   }
 
   private findCommonCodesWithReturns(
@@ -450,10 +443,7 @@ export class FactorOrthogonalService {
    * Regression orthogonalization: sequentially regress each factor on all preceding factors
    * and take the residuals.
    */
-  private regressionOrthogonalize(
-    matrix: number[][],
-    factorNames: string[],
-  ): { matrix: number[][]; names: string[] } {
+  private regressionOrthogonalize(matrix: number[][], factorNames: string[]): { matrix: number[][]; names: string[] } {
     const n = matrix.length
     // Cap k to MAX_FACTORS (validated by DTO @ArrayMaxSize but enforce here for safety)
     const k = Math.min(factorNames.length, MAX_FACTORS)
@@ -555,7 +545,7 @@ export class FactorOrthogonalService {
     const p = 0.3275911
     const x = z / Math.SQRT2
     const tt = 1 / (1 + p * x)
-    const erfApprox = 1 - (((((a5 * tt + a4) * tt) + a3) * tt + a2) * tt + a1) * tt * Math.exp(-x * x)
+    const erfApprox = 1 - ((((a5 * tt + a4) * tt + a3) * tt + a2) * tt + a1) * tt * Math.exp(-x * x)
     const phi = 0.5 * (1 + erfApprox)
     return 2 * (1 - phi)
   }

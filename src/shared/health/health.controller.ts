@@ -27,9 +27,6 @@ export class HealthController {
   @ApiOperation({ summary: '就绪探针（Readiness）' })
   @HealthCheck()
   readiness() {
-    return this.health.check([
-      () => this.prismaHealth.isHealthy('database'),
-      () => this.redisHealth.isHealthy('redis'),
-    ])
+    return this.health.check([() => this.prismaHealth.isHealthy('database'), () => this.redisHealth.isHealthy('redis')])
   }
 }

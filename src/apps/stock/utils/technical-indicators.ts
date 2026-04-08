@@ -1053,10 +1053,8 @@ export function detectCross(
     const slowPrev = slowArr[i - 1]
     if (!isValidNumber(fastNow) || !isValidNumber(slowNow) || !isValidNumber(fastPrev) || !isValidNumber(slowPrev))
       continue
-    if ((fastPrev as number) <= (slowPrev as number) && (fastNow as number) > (slowNow as number))
-      return 'golden_cross'
-    if ((fastPrev as number) >= (slowPrev as number) && (fastNow as number) < (slowNow as number))
-      return 'death_cross'
+    if ((fastPrev as number) <= (slowPrev as number) && (fastNow as number) > (slowNow as number)) return 'golden_cross'
+    if ((fastPrev as number) >= (slowPrev as number) && (fastNow as number) < (slowNow as number)) return 'death_cross'
   }
   return null
 }

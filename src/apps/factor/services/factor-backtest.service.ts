@@ -197,8 +197,14 @@ export class FactorBacktestService {
       // Simple attribution: proportion of exposure relative to total exposure magnitude
       // This is a simplified Brinson-style attribution
       const rawContribution = totalReturn * (Math.abs(avgExposure) / (Math.abs(avgExposure) + 0.001))
-      const signAdjustedContribution = avgExposure >= 0 ? Math.abs(rawContribution) * Math.sign(totalReturn) : -Math.abs(rawContribution) * Math.sign(totalReturn)
-      const normalizedContribution = Math.abs(signAdjustedContribution) > Math.abs(totalReturn) ? totalReturn / factorNames.length : signAdjustedContribution
+      const signAdjustedContribution =
+        avgExposure >= 0
+          ? Math.abs(rawContribution) * Math.sign(totalReturn)
+          : -Math.abs(rawContribution) * Math.sign(totalReturn)
+      const normalizedContribution =
+        Math.abs(signAdjustedContribution) > Math.abs(totalReturn)
+          ? totalReturn / factorNames.length
+          : signAdjustedContribution
 
       factorContributions.push({
         factorName,

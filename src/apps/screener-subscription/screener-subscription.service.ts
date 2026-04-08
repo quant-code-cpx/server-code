@@ -5,7 +5,11 @@ import { SubscriptionFrequency, SubscriptionStatus } from '@prisma/client'
 import { PrismaService } from 'src/shared/prisma.service'
 import { SCREENER_SUBSCRIPTION_QUEUE, ScreenerSubscriptionJobName } from 'src/constant/queue.constant'
 import { CreateSubscriptionDto, SubscriptionLogsQueryDto, UpdateSubscriptionDto } from './dto/subscription.dto'
-import { MAX_CONSECUTIVE_FAILS, MAX_SUBSCRIPTIONS_PER_USER, MANUAL_TRIGGER_COOLDOWN_MS } from './constants/subscription.constant'
+import {
+  MAX_CONSECUTIVE_FAILS,
+  MAX_SUBSCRIPTIONS_PER_USER,
+  MANUAL_TRIGGER_COOLDOWN_MS,
+} from './constants/subscription.constant'
 
 @Injectable()
 export class ScreenerSubscriptionService {

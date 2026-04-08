@@ -41,9 +41,7 @@ export class BacktestMetricsService {
     // Sortino - only downside deviation
     const negativeExcess = excessDailyReturns.filter((r) => r < 0)
     const downsideVariance =
-      negativeExcess.length > 0
-        ? negativeExcess.reduce((a, b) => a + b ** 2, 0) / negativeExcess.length
-        : 0
+      negativeExcess.length > 0 ? negativeExcess.reduce((a, b) => a + b ** 2, 0) / negativeExcess.length : 0
     const downsideStd = Math.sqrt(downsideVariance) * Math.sqrt(TRADING_DAYS_PER_YEAR)
     const sortinoRatio = downsideStd > 0 ? (annualizedReturn - RISK_FREE_RATE) / downsideStd : 0
 
@@ -55,15 +53,13 @@ export class BacktestMetricsService {
 
     // Alpha & Beta (vs benchmark)
     const benchmarkMean = benchmarkReturns.reduce((a, b) => a + b, 0) / benchmarkReturns.length
-    const bmVariance =
-      benchmarkReturns.reduce((a, b) => a + (b - benchmarkMean) ** 2, 0) / benchmarkReturns.length
+    const bmVariance = benchmarkReturns.reduce((a, b) => a + (b - benchmarkMean) ** 2, 0) / benchmarkReturns.length
 
     let beta = 0
     if (bmVariance > 0) {
       const returnsMean = returns.reduce((a, b) => a + b, 0) / returns.length
       const covariance =
-        returns.reduce((a, r, i) => a + (r - returnsMean) * (benchmarkReturns[i] - benchmarkMean), 0) /
-        returns.length
+        returns.reduce((a, r, i) => a + (r - returnsMean) * (benchmarkReturns[i] - benchmarkMean), 0) / returns.length
       beta = covariance / bmVariance
     }
     const annualizedBmReturn = years > 0 ? Math.pow(1 + benchmarkReturn, 1 / years) - 1 : 0

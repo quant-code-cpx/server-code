@@ -62,49 +62,184 @@ export class DataQualityService {
 
   private readonly DATA_SET_CONFIG: Record<string, DataSetCheckConfig> = {
     // ── 日频行情（与交易日历逐日对比）──
-    daily:          { modelName: 'daily',          dateField: 'tradeDate', dateType: 'datetime', checkStrategy: 'daily-trade-date', suspendAware: true, completenessDepthDays: 30 },
-    dailyBasic:     { modelName: 'dailyBasic',     dateField: 'tradeDate', dateType: 'datetime', checkStrategy: 'daily-trade-date', suspendAware: true, completenessDepthDays: 30 },
-    adjFactor:      { modelName: 'adjFactor',      dateField: 'tradeDate', dateType: 'datetime', checkStrategy: 'daily-trade-date', suspendAware: true, completenessDepthDays: 30 },
-    indexDaily:     { modelName: 'indexDaily',     dateField: 'tradeDate', dateType: 'datetime', checkStrategy: 'daily-trade-date', completenessDepthDays: 30 },
-    marginDetail:   { modelName: 'marginDetail',   dateField: 'tradeDate', dateType: 'datetime', checkStrategy: 'daily-trade-date', completenessDepthDays: 30 },
-    moneyflow:      { modelName: 'moneyflow',      dateField: 'tradeDate', dateType: 'datetime', checkStrategy: 'daily-trade-date', completenessDepthDays: 30 },
-    moneyflowIndDc: { modelName: 'moneyflowIndDc', dateField: 'tradeDate', dateType: 'datetime', checkStrategy: 'daily-trade-date', completenessDepthDays: 30 },
-    moneyflowMktDc: { modelName: 'moneyflowMktDc', dateField: 'tradeDate', dateType: 'datetime', checkStrategy: 'daily-trade-date', completenessDepthDays: 30 },
-    moneyflowHsgt:  { modelName: 'moneyflowHsgt',  dateField: 'tradeDate', dateType: 'datetime', checkStrategy: 'daily-trade-date', completenessDepthDays: 30 },
+    daily: {
+      modelName: 'daily',
+      dateField: 'tradeDate',
+      dateType: 'datetime',
+      checkStrategy: 'daily-trade-date',
+      suspendAware: true,
+      completenessDepthDays: 30,
+    },
+    dailyBasic: {
+      modelName: 'dailyBasic',
+      dateField: 'tradeDate',
+      dateType: 'datetime',
+      checkStrategy: 'daily-trade-date',
+      suspendAware: true,
+      completenessDepthDays: 30,
+    },
+    adjFactor: {
+      modelName: 'adjFactor',
+      dateField: 'tradeDate',
+      dateType: 'datetime',
+      checkStrategy: 'daily-trade-date',
+      suspendAware: true,
+      completenessDepthDays: 30,
+    },
+    indexDaily: {
+      modelName: 'indexDaily',
+      dateField: 'tradeDate',
+      dateType: 'datetime',
+      checkStrategy: 'daily-trade-date',
+      completenessDepthDays: 30,
+    },
+    marginDetail: {
+      modelName: 'marginDetail',
+      dateField: 'tradeDate',
+      dateType: 'datetime',
+      checkStrategy: 'daily-trade-date',
+      completenessDepthDays: 30,
+    },
+    moneyflow: {
+      modelName: 'moneyflow',
+      dateField: 'tradeDate',
+      dateType: 'datetime',
+      checkStrategy: 'daily-trade-date',
+      completenessDepthDays: 30,
+    },
+    moneyflowIndDc: {
+      modelName: 'moneyflowIndDc',
+      dateField: 'tradeDate',
+      dateType: 'datetime',
+      checkStrategy: 'daily-trade-date',
+      completenessDepthDays: 30,
+    },
+    moneyflowMktDc: {
+      modelName: 'moneyflowMktDc',
+      dateField: 'tradeDate',
+      dateType: 'datetime',
+      checkStrategy: 'daily-trade-date',
+      completenessDepthDays: 30,
+    },
+    moneyflowHsgt: {
+      modelName: 'moneyflowHsgt',
+      dateField: 'tradeDate',
+      dateType: 'datetime',
+      checkStrategy: 'daily-trade-date',
+      completenessDepthDays: 30,
+    },
 
     // ── 周频/月频行情 ──
-    weekly:  { modelName: 'weekly',  dateField: 'tradeDate', dateType: 'datetime', checkStrategy: 'weekly-trade-date',  completenessDepthDays: 90 },
-    monthly: { modelName: 'monthly', dateField: 'tradeDate', dateType: 'datetime', checkStrategy: 'monthly-trade-date', completenessDepthDays: 365 },
+    weekly: {
+      modelName: 'weekly',
+      dateField: 'tradeDate',
+      dateType: 'datetime',
+      checkStrategy: 'weekly-trade-date',
+      completenessDepthDays: 90,
+    },
+    monthly: {
+      modelName: 'monthly',
+      dateField: 'tradeDate',
+      dateType: 'datetime',
+      checkStrategy: 'monthly-trade-date',
+      completenessDepthDays: 365,
+    },
 
     // ── 事件型（日频 String 日期，不是每天都有事件）──
-    stkLimit:  { modelName: 'stkLimit',  dateField: 'tradeDate', dateType: 'string', checkStrategy: 'daily-trade-date', completenessDepthDays: 30 },
-    suspendD:  { modelName: 'suspendD',  dateField: 'tradeDate', dateType: 'string', checkStrategy: 'event-trade-date' },
-    topList:   { modelName: 'topList',   dateField: 'tradeDate', dateType: 'string', checkStrategy: 'event-trade-date' },
-    topInst:   { modelName: 'topInst',   dateField: 'tradeDate', dateType: 'string', checkStrategy: 'event-trade-date' },
-    blockTrade:{ modelName: 'blockTrade',dateField: 'tradeDate', dateType: 'string', checkStrategy: 'event-trade-date' },
+    stkLimit: {
+      modelName: 'stkLimit',
+      dateField: 'tradeDate',
+      dateType: 'string',
+      checkStrategy: 'daily-trade-date',
+      completenessDepthDays: 30,
+    },
+    suspendD: { modelName: 'suspendD', dateField: 'tradeDate', dateType: 'string', checkStrategy: 'event-trade-date' },
+    topList: { modelName: 'topList', dateField: 'tradeDate', dateType: 'string', checkStrategy: 'event-trade-date' },
+    topInst: { modelName: 'topInst', dateField: 'tradeDate', dateType: 'string', checkStrategy: 'event-trade-date' },
+    blockTrade: {
+      modelName: 'blockTrade',
+      dateField: 'tradeDate',
+      dateType: 'string',
+      checkStrategy: 'event-trade-date',
+    },
 
     // ── 事件型（非日频）──
-    shareFloat: { modelName: 'shareFloat', dateField: 'floatDate', dateType: 'string', checkStrategy: 'event-date-field' },
+    shareFloat: {
+      modelName: 'shareFloat',
+      dateField: 'floatDate',
+      dateType: 'string',
+      checkStrategy: 'event-date-field',
+    },
 
     // ── 财务报表（按报告期覆盖率检查）──
-    income:        { modelName: 'income',        dateField: 'endDate', dateType: 'datetime', checkStrategy: 'financial-report', completenessDepthDays: 365 },
-    balanceSheet:  { modelName: 'balanceSheet',  dateField: 'endDate', dateType: 'datetime', checkStrategy: 'financial-report', completenessDepthDays: 365 },
-    cashflow:      { modelName: 'cashflow',      dateField: 'endDate', dateType: 'datetime', checkStrategy: 'financial-report', completenessDepthDays: 365 },
-    express:       { modelName: 'express',       dateField: 'endDate', dateType: 'datetime', checkStrategy: 'financial-report', completenessDepthDays: 365 },
-    finaIndicator: { modelName: 'finaIndicator', dateField: 'endDate', dateType: 'datetime', checkStrategy: 'financial-report', completenessDepthDays: 365 },
+    income: {
+      modelName: 'income',
+      dateField: 'endDate',
+      dateType: 'datetime',
+      checkStrategy: 'financial-report',
+      completenessDepthDays: 365,
+    },
+    balanceSheet: {
+      modelName: 'balanceSheet',
+      dateField: 'endDate',
+      dateType: 'datetime',
+      checkStrategy: 'financial-report',
+      completenessDepthDays: 365,
+    },
+    cashflow: {
+      modelName: 'cashflow',
+      dateField: 'endDate',
+      dateType: 'datetime',
+      checkStrategy: 'financial-report',
+      completenessDepthDays: 365,
+    },
+    express: {
+      modelName: 'express',
+      dateField: 'endDate',
+      dateType: 'datetime',
+      checkStrategy: 'financial-report',
+      completenessDepthDays: 365,
+    },
+    finaIndicator: {
+      modelName: 'finaIndicator',
+      dateField: 'endDate',
+      dateType: 'datetime',
+      checkStrategy: 'financial-report',
+      completenessDepthDays: 365,
+    },
 
     // ── 财务事件（有数据但不要求每个报告期都有）──
-    dividend:          { modelName: 'dividend',          dateField: 'endDate', dateType: 'datetime', checkStrategy: 'financial-event' },
-    top10Holders:      { modelName: 'top10Holders',      dateField: 'endDate', dateType: 'datetime', checkStrategy: 'financial-event' },
-    top10FloatHolders: { modelName: 'top10FloatHolders', dateField: 'endDate', dateType: 'datetime', checkStrategy: 'financial-event' },
+    dividend: { modelName: 'dividend', dateField: 'endDate', dateType: 'datetime', checkStrategy: 'financial-event' },
+    top10Holders: {
+      modelName: 'top10Holders',
+      dateField: 'endDate',
+      dateType: 'datetime',
+      checkStrategy: 'financial-event',
+    },
+    top10FloatHolders: {
+      modelName: 'top10FloatHolders',
+      dateField: 'endDate',
+      dateType: 'datetime',
+      checkStrategy: 'financial-event',
+    },
 
     // ── 基础信息（全量刷新）──
-    stockBasic:  { modelName: 'stockBasic',  dateField: 'listDate', dateType: 'datetime', checkStrategy: 'full-refresh' },
-    tradeCal:    { modelName: 'tradeCal',    dateField: 'calDate',  dateType: 'datetime', checkStrategy: 'full-refresh' },
-    stockCompany:{ modelName: 'stockCompany',dateField: 'annDate',  dateType: 'datetime', checkStrategy: 'full-refresh' },
+    stockBasic: { modelName: 'stockBasic', dateField: 'listDate', dateType: 'datetime', checkStrategy: 'full-refresh' },
+    tradeCal: { modelName: 'tradeCal', dateField: 'calDate', dateType: 'datetime', checkStrategy: 'full-refresh' },
+    stockCompany: {
+      modelName: 'stockCompany',
+      dateField: 'annDate',
+      dateType: 'datetime',
+      checkStrategy: 'full-refresh',
+    },
 
     // ── 因子（月频字符串日期）──
-    indexWeight: { modelName: 'indexWeight', dateField: 'tradeDate', dateType: 'string', checkStrategy: 'monthly-string-date' },
+    indexWeight: {
+      modelName: 'indexWeight',
+      dateField: 'tradeDate',
+      dateType: 'string',
+      checkStrategy: 'monthly-string-date',
+    },
   }
 
   constructor(
@@ -152,19 +287,25 @@ export class DataQualityService {
       return { dataSet, checkType: 'timeliness', status: 'pass', message: `${dataSet} 数据已是最新（${latestDate}）` }
     } else if (effectiveLag <= warnThreshold) {
       return {
-        dataSet, checkType: 'timeliness', status: 'pass',
+        dataSet,
+        checkType: 'timeliness',
+        status: 'pass',
         message: `${dataSet} 最新日期 ${latestDate}（正常范围内）`,
         details: { latestDate, latestTradeDateStr, lagDays: effectiveLag },
       }
     } else if (effectiveLag <= failThreshold) {
       return {
-        dataSet, checkType: 'timeliness', status: 'warn',
+        dataSet,
+        checkType: 'timeliness',
+        status: 'warn',
         message: `${dataSet} 落后（本地最新: ${latestDate}，最近交易日: ${latestTradeDateStr}）`,
         details: { latestDate, latestTradeDateStr, lagDays: effectiveLag },
       }
     } else {
       return {
-        dataSet, checkType: 'timeliness', status: 'fail',
+        dataSet,
+        checkType: 'timeliness',
+        status: 'fail',
         message: `${dataSet} 严重滞后（本地最新: ${latestDate}，最近交易日: ${latestTradeDateStr}）`,
         details: { latestDate, latestTradeDateStr, lagDays: effectiveLag },
       }
@@ -216,14 +357,18 @@ export class DataQualityService {
 
     if (lastSyncHoursAgo !== null && lastSyncHoursAgo > 48) {
       return {
-        dataSet, checkType: 'timeliness', status: 'warn',
+        dataSet,
+        checkType: 'timeliness',
+        status: 'warn',
         message: `${dataSet} 最后同步于 ${lastSyncHoursAgo} 小时前（共 ${count} 条）`,
         details: { rowCount: count, lastSyncHoursAgo },
       }
     }
 
     return {
-      dataSet, checkType: 'timeliness', status: 'pass',
+      dataSet,
+      checkType: 'timeliness',
+      status: 'pass',
       message: `${dataSet} 正常（${count} 条）`,
       details: { rowCount: count, lastSyncHoursAgo },
     }
@@ -240,7 +385,9 @@ export class DataQualityService {
     }
 
     return {
-      dataSet, checkType: 'timeliness', status: 'pass',
+      dataSet,
+      checkType: 'timeliness',
+      status: 'pass',
       message: `${dataSet} 已有数据（${count} 条）`,
       details: { rowCount: count },
     }
@@ -259,9 +406,7 @@ export class DataQualityService {
       return { dataSet, checkType: 'completeness', status: 'pass', message: `${dataSet} 检查范围内无交易日` }
     }
 
-    const queryDates = config.dateType === 'datetime'
-      ? tradeDates.map((d) => this.helper.toDate(d))
-      : tradeDates
+    const queryDates = config.dateType === 'datetime' ? tradeDates.map((d) => this.helper.toDate(d)) : tradeDates
 
     const model = (this.prisma as any)[config.modelName]
     const existingRows = await model.findMany({
@@ -299,7 +444,9 @@ export class DataQualityService {
     if (missingDates.length === 0) {
       const suffix = suspendedCount > 0 ? `（另有 ${suspendedCount} 个停牌日正常缺失）` : ''
       return {
-        dataSet, checkType: 'completeness', status: 'pass',
+        dataSet,
+        checkType: 'completeness',
+        status: 'pass',
         message: `${dataSet} ${startDate}~${endDate} 数据完整（${tradeDates.length} 个交易日）${suffix}`,
         ...(suspendedCount > 0 ? { details: { suspendedCount } } : {}),
       }
@@ -307,9 +454,11 @@ export class DataQualityService {
 
     const missingRatio = missingDates.length / tradeDates.length
     return {
-      dataSet, checkType: 'completeness',
+      dataSet,
+      checkType: 'completeness',
       status: missingRatio > 0.1 ? 'fail' : 'warn',
-      message: `${dataSet} 缺失 ${missingDates.length}/${tradeDates.length} 个交易日数据` +
+      message:
+        `${dataSet} 缺失 ${missingDates.length}/${tradeDates.length} 个交易日数据` +
         (suspendedCount > 0 ? `（已排除 ${suspendedCount} 个停牌日）` : ''),
       details: {
         missingDates: missingDates.slice(0, 50),
@@ -331,7 +480,9 @@ export class DataQualityService {
     const expectedDates = await this.helper.getPeriodEndTradeDates(startDate, endDate, unit)
     if (!expectedDates.length) {
       return {
-        dataSet, checkType: 'completeness', status: 'pass',
+        dataSet,
+        checkType: 'completeness',
+        status: 'pass',
         message: `${dataSet} 检查范围内无 ${unit} 期末交易日`,
       }
     }
@@ -352,14 +503,17 @@ export class DataQualityService {
 
     if (missingDates.length === 0) {
       return {
-        dataSet, checkType: 'completeness', status: 'pass',
+        dataSet,
+        checkType: 'completeness',
+        status: 'pass',
         message: `${dataSet} ${startDate}~${endDate} 数据完整（${expectedDates.length} 个${unit === 'week' ? '周' : '月'}）`,
       }
     }
 
     const missingRatio = missingDates.length / expectedDates.length
     return {
-      dataSet, checkType: 'completeness',
+      dataSet,
+      checkType: 'completeness',
       status: missingRatio > 0.1 ? 'fail' : 'warn',
       message: `${dataSet} 缺失 ${missingDates.length}/${expectedDates.length} 个${unit === 'week' ? '周' : '月'}数据`,
       details: { missingDates: missingDates.slice(0, 50), totalMissing: missingDates.length },
@@ -384,7 +538,9 @@ export class DataQualityService {
 
     if (emptyPeriods.length === 0 && sparsePeriods.length === 0) {
       return {
-        dataSet, checkType: 'completeness', status: 'pass',
+        dataSet,
+        checkType: 'completeness',
+        status: 'pass',
         message: `${dataSet} 最近 ${recentPeriods.length} 个报告期覆盖正常`,
         details: { periodCounts, totalStocks },
       }
@@ -392,7 +548,9 @@ export class DataQualityService {
 
     const status = emptyPeriods.length > 0 ? 'fail' : 'warn'
     return {
-      dataSet, checkType: 'completeness', status,
+      dataSet,
+      checkType: 'completeness',
+      status,
       message: `${dataSet} ${emptyPeriods.length} 个报告期无数据，${sparsePeriods.length} 个报告期覆盖率低于 30%`,
       details: {
         emptyPeriods: emptyPeriods.map((p) => p.period),
@@ -519,7 +677,9 @@ export class DataQualityService {
       this.logger.error(`[数据质量检查] 跨表对账失败: ${(error as Error).message}`)
     }
 
-    this.logger.log(`[数据质量检查] 完成（${datasets.length} 个数据集）：通过 ${passCount}，警告 ${warnCount}，失败 ${failCount}`)
+    this.logger.log(
+      `[数据质量检查] 完成（${datasets.length} 个数据集）：通过 ${passCount}，警告 ${warnCount}，失败 ${failCount}`,
+    )
     return allReports
   }
 

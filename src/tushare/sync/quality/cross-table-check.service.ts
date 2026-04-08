@@ -27,14 +27,14 @@ export class CrossTableCheckService {
     private readonly helper: SyncHelperService,
   ) {
     this.CROSS_CHECKS = [
-      { id: 'C-01', name: '日线 ↔ 每日指标',     minMode: 'recent', run: (m) => this.checkDailyVsDailyBasic(m) },
-      { id: 'C-02', name: '日线 ↔ 复权因子',     minMode: 'recent', run: (m) => this.checkDailyVsAdjFactor(m) },
-      { id: 'C-03', name: '日线 ↔ 涨跌停',       minMode: 'recent', run: (m) => this.checkDailyVsStkLimit(m) },
-      { id: 'C-04', name: '日线 ↔ 停牌互斥',     minMode: 'recent', run: (m) => this.checkDailyVsSuspend(m) },
+      { id: 'C-01', name: '日线 ↔ 每日指标', minMode: 'recent', run: (m) => this.checkDailyVsDailyBasic(m) },
+      { id: 'C-02', name: '日线 ↔ 复权因子', minMode: 'recent', run: (m) => this.checkDailyVsAdjFactor(m) },
+      { id: 'C-03', name: '日线 ↔ 涨跌停', minMode: 'recent', run: (m) => this.checkDailyVsStkLimit(m) },
+      { id: 'C-04', name: '日线 ↔ 停牌互斥', minMode: 'recent', run: (m) => this.checkDailyVsSuspend(m) },
       { id: 'C-05', name: '利润表 ↔ 资产负债表', minMode: 'recent', run: (m) => this.checkIncomeVsBalance(m) },
       { id: 'C-06', name: '利润表 ↔ 现金流量表', minMode: 'recent', run: (m) => this.checkIncomeVsCashflow(m) },
-      { id: 'C-07', name: '指数权重 → 基础信息', minMode: 'full',   run: (m) => this.checkIndexWeightRefIntegrity(m) },
-      { id: 'C-08', name: '指数行情 ↔ 指数权重', minMode: 'full',   run: (m) => this.checkIndexDailyVsWeight(m) },
+      { id: 'C-07', name: '指数权重 → 基础信息', minMode: 'full', run: (m) => this.checkIndexWeightRefIntegrity(m) },
+      { id: 'C-08', name: '指数行情 ↔ 指数权重', minMode: 'full', run: (m) => this.checkIndexDailyVsWeight(m) },
     ]
   }
 
@@ -62,7 +62,9 @@ export class CrossTableCheckService {
       } catch (error) {
         this.logger.error(`[跨表对账] ${def.id} ${def.name} 失败: ${(error as Error).message}`)
         results.push({
-          dataSet: def.id, checkType: 'cross-table', status: 'fail',
+          dataSet: def.id,
+          checkType: 'cross-table',
+          status: 'fail',
           message: `对账执行异常: ${(error as Error).message}`,
         })
       }
@@ -92,7 +94,9 @@ export class CrossTableCheckService {
 
     if (tradeDates.length === 0) {
       return {
-        dataSet: checkId, checkType: 'cross-table', status: 'pass',
+        dataSet: checkId,
+        checkType: 'cross-table',
+        status: 'pass',
         message: `${leftLabel} ↔ ${rightLabel} 检查范围内无交易日`,
       }
     }
@@ -114,13 +118,16 @@ export class CrossTableCheckService {
 
     if (mismatches.length === 0) {
       return {
-        dataSet: checkId, checkType: 'cross-table', status: 'pass',
+        dataSet: checkId,
+        checkType: 'cross-table',
+        status: 'pass',
         message: `${leftLabel} ↔ ${rightLabel} 最近 ${tradeDates.length} 个交易日对齐正常`,
       }
     }
 
     return {
-      dataSet: checkId, checkType: 'cross-table',
+      dataSet: checkId,
+      checkType: 'cross-table',
       status: mismatches.length > tradeDates.length * 0.5 ? 'fail' : 'warn',
       message: `${leftLabel} ↔ ${rightLabel} 有 ${mismatches.length}/${tradeDates.length} 个交易日记录数不一致`,
       details: { mismatches: mismatches.slice(0, 20) },
@@ -158,13 +165,16 @@ export class CrossTableCheckService {
 
     if (mismatches.length === 0) {
       return {
-        dataSet: 'C-03', checkType: 'cross-table', status: 'pass',
+        dataSet: 'C-03',
+        checkType: 'cross-table',
+        status: 'pass',
         message: `日线 ↔ 涨跌停 最近 ${tradeDates.length} 个交易日对齐正常`,
       }
     }
 
     return {
-      dataSet: 'C-03', checkType: 'cross-table',
+      dataSet: 'C-03',
+      checkType: 'cross-table',
       status: mismatches.length > 3 ? 'fail' : 'warn',
       message: `日线 ↔ 涨跌停 有 ${mismatches.length} 个交易日日线有数据但涨跌停无数据`,
       details: { mismatches },
@@ -216,13 +226,16 @@ export class CrossTableCheckService {
 
     if (conflictCount === 0) {
       return {
-        dataSet: 'C-04', checkType: 'cross-table', status: 'pass',
+        dataSet: 'C-04',
+        checkType: 'cross-table',
+        status: 'pass',
         message: `日线 ↔ 停牌 最近 ${tradeDates.length} 个交易日无互斥冲突`,
       }
     }
 
     return {
-      dataSet: 'C-04', checkType: 'cross-table',
+      dataSet: 'C-04',
+      checkType: 'cross-table',
       // 少量冲突是 Tushare 本身数据特性（如集合竞价产生的半天交易），阈值设为 warn 而非 fail
       status: conflictCount > 50 ? 'warn' : 'pass',
       message: `日线 ↔ 停牌 发现 ${conflictCount} 条冲突记录（停牌日仍有日线数据）`,
@@ -240,9 +253,10 @@ export class CrossTableCheckService {
     checkId: string,
     mode: 'recent' | 'full',
   ): Promise<DataQualityReport> {
-    const recentPeriods = mode === 'recent'
-      ? this.helper.buildRecentQuarterPeriods(1)   // 最近 4 个季度
-      : this.helper.buildRecentQuarterPeriods(3)   // 最近 12 个季度
+    const recentPeriods =
+      mode === 'recent'
+        ? this.helper.buildRecentQuarterPeriods(1) // 最近 4 个季度
+        : this.helper.buildRecentQuarterPeriods(3) // 最近 12 个季度
 
     const mismatches: Array<{ period: string; leftCodes: number; rightCodes: number; missingInRight: number }> = []
 
@@ -279,13 +293,16 @@ export class CrossTableCheckService {
 
     if (mismatches.length === 0) {
       return {
-        dataSet: checkId, checkType: 'cross-table', status: 'pass',
+        dataSet: checkId,
+        checkType: 'cross-table',
+        status: 'pass',
         message: `${leftLabel} ↔ ${rightLabel} 最近 ${recentPeriods.length} 个报告期对齐正常`,
       }
     }
 
     return {
-      dataSet: checkId, checkType: 'cross-table',
+      dataSet: checkId,
+      checkType: 'cross-table',
       status: mismatches.length > recentPeriods.length * 0.5 ? 'fail' : 'warn',
       message: `${leftLabel} ↔ ${rightLabel} 有 ${mismatches.length}/${recentPeriods.length} 个报告期覆盖不一致`,
       details: { mismatches },
@@ -316,7 +333,12 @@ export class CrossTableCheckService {
     const conCodeSet = new Set(conCodes.map((r) => r.conCode))
 
     if (conCodeSet.size === 0) {
-      return { dataSet: 'C-07', checkType: 'cross-table', status: 'warn', message: `指数权重 ${latestDate} 无成分股数据` }
+      return {
+        dataSet: 'C-07',
+        checkType: 'cross-table',
+        status: 'warn',
+        message: `指数权重 ${latestDate} 无成分股数据`,
+      }
     }
 
     const existingStocks = await this.prisma.stockBasic.findMany({
@@ -329,13 +351,16 @@ export class CrossTableCheckService {
 
     if (orphanCodes.length === 0) {
       return {
-        dataSet: 'C-07', checkType: 'cross-table', status: 'pass',
+        dataSet: 'C-07',
+        checkType: 'cross-table',
+        status: 'pass',
         message: `指数权重 → 基础信息 引用完整（${conCodeSet.size} 只成分股全部存在于 StockBasic）`,
       }
     }
 
     return {
-      dataSet: 'C-07', checkType: 'cross-table',
+      dataSet: 'C-07',
+      checkType: 'cross-table',
       status: orphanCodes.length > conCodeSet.size * 0.05 ? 'fail' : 'warn',
       message: `指数权重中 ${orphanCodes.length}/${conCodeSet.size} 只成分股不存在于 StockBasic`,
       details: { orphanCodes: orphanCodes.slice(0, 50), total: orphanCodes.length },
@@ -361,14 +386,17 @@ export class CrossTableCheckService {
 
     if (noWeight.length === 0) {
       return {
-        dataSet: 'C-08', checkType: 'cross-table', status: 'pass',
+        dataSet: 'C-08',
+        checkType: 'cross-table',
+        status: 'pass',
         message: `指数行情 ↔ 指数权重 覆盖正常（${indexCodes.length} 个指数均有权重）`,
       }
     }
 
     // IndexWeight 通常只覆盖主要指数，大量 noWeight 是正常的
     return {
-      dataSet: 'C-08', checkType: 'cross-table',
+      dataSet: 'C-08',
+      checkType: 'cross-table',
       status: weightIndexSet.size === 0 ? 'fail' : 'pass',
       message: `${weightIndexSet.size}/${indexCodes.length} 个指数有权重数据，${noWeight.length} 个仅有行情`,
       details: { withWeight: weightIndexSet.size, total: indexCodes.length },

@@ -1,4 +1,9 @@
-export type BacktestStrategyType = 'MA_CROSS_SINGLE' | 'SCREENING_ROTATION' | 'FACTOR_RANKING' | 'CUSTOM_POOL_REBALANCE' | 'FACTOR_SCREENING_ROTATION'
+export type BacktestStrategyType =
+  | 'MA_CROSS_SINGLE'
+  | 'SCREENING_ROTATION'
+  | 'FACTOR_RANKING'
+  | 'CUSTOM_POOL_REBALANCE'
+  | 'FACTOR_SCREENING_ROTATION'
 export const BACKTEST_STRATEGY_TYPES = [
   'MA_CROSS_SINGLE',
   'SCREENING_ROTATION',
@@ -131,10 +136,10 @@ export interface DailyBar {
   downLimit: number | null
   isSuspended: boolean
   // ── 前复权价格（用于信号生成）──
-  adjClose: number | null   // close * adjFactor / latestAdjFactor
-  adjOpen: number | null    // open  * adjFactor / latestAdjFactor
-  adjHigh: number | null    // high  * adjFactor / latestAdjFactor
-  adjLow: number | null     // low   * adjFactor / latestAdjFactor
+  adjClose: number | null // close * adjFactor / latestAdjFactor
+  adjOpen: number | null // open  * adjFactor / latestAdjFactor
+  adjHigh: number | null // high  * adjFactor / latestAdjFactor
+  adjLow: number | null // low   * adjFactor / latestAdjFactor
 }
 
 export interface Position {
@@ -220,8 +225,8 @@ export interface BacktestConfig<T extends BacktestStrategyType = BacktestStrateg
   minDaysListed: number
   enableTradeConstraints: boolean
   // ── 新增 ──
-  enableT1Restriction: boolean     // 是否启用 T+1 限制（默认 true）
-  partialFillEnabled: boolean      // 是否允许部分成交（默认 true）
+  enableT1Restriction: boolean // 是否启用 T+1 限制（默认 true）
+  partialFillEnabled: boolean // 是否允许部分成交（默认 true）
 }
 
 export interface BacktestResult {

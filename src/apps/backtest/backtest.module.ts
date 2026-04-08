@@ -16,10 +16,7 @@ import { BacktestComparisonService } from './services/backtest-comparison.servic
 import { BacktestMonteCarloService } from './services/backtest-monte-carlo.service'
 
 @Module({
-  imports: [
-    BullModule.registerQueue({ name: BACKTESTING_QUEUE }),
-    WebsocketModule,
-  ],
+  imports: [BullModule.registerQueue({ name: BACKTESTING_QUEUE }), WebsocketModule],
   controllers: [BacktestController],
   providers: [
     BacktestRunService,

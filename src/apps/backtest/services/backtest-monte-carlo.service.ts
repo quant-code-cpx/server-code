@@ -50,9 +50,7 @@ export class BacktestMonteCarloService {
     const { numSimulations, confidenceLevels, seed } = options
     const n = navRows.length
     const originalNavs = navRows.map((r) => Number(r.nav ?? 1))
-    const dailyReturns = navRows
-      .map((r) => r.dailyReturn ?? 0)
-      .filter((r) => isFinite(r))
+    const dailyReturns = navRows.map((r) => r.dailyReturn ?? 0).filter((r) => isFinite(r))
 
     const originalFinalNav = originalNavs[n - 1] / originalNavs[0]
     const originalTotalReturn = originalFinalNav - 1

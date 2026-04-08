@@ -268,7 +268,9 @@ export class TushareSyncService implements OnApplicationBootstrap {
       const elapsedMs = Date.now() - overallStartedAt
       const percentage = totalTaskCount > 0 ? Math.round((completedTaskCount / totalTaskCount) * 100) : 0
       const estimatedRemainingMs =
-        completedTaskCount > 0 ? Math.round((elapsedMs / completedTaskCount) * (totalTaskCount - completedTaskCount)) : undefined
+        completedTaskCount > 0
+          ? Math.round((elapsedMs / completedTaskCount) * (totalTaskCount - completedTaskCount))
+          : undefined
       this.eventsGateway.broadcastSyncOverallProgress({
         completedTasks: completedTaskCount,
         totalTasks: totalTaskCount,
@@ -280,7 +282,14 @@ export class TushareSyncService implements OnApplicationBootstrap {
 
     try {
       // 按 concurrencyGroup（默认 category）分组，组间并行执行
-      const CATEGORY_ORDER: TushareSyncCategory[] = ['basic', 'market', 'financial', 'moneyflow', 'factor', 'alternative']
+      const CATEGORY_ORDER: TushareSyncCategory[] = [
+        'basic',
+        'market',
+        'financial',
+        'moneyflow',
+        'factor',
+        'alternative',
+      ]
 
       // 将 sortedPlans 按 concurrencyGroup（默认 category）分组，各组内串行
       const groups = new Map<string, TushareSyncPlan[]>()
@@ -542,9 +551,7 @@ export class TushareSyncService implements OnApplicationBootstrap {
           summary.repairTaskCount = repairSummary.executed
 
           this.eventsGateway.broadcastAutoRepairQueued(repairSummary)
-          this.logger.log(
-            `[自动补数] 生成 ${repairSummary.repairTasks} 个补数任务，${repairSummary.executed} 个已入队`,
-          )
+          this.logger.log(`[自动补数] 生成 ${repairSummary.repairTasks} 个补数任务，${repairSummary.executed} 个已入队`)
         }
       } catch (error) {
         this.logger.error(`盘后数据质量检查失败: ${(error as Error).message}`)
@@ -552,7 +559,10 @@ export class TushareSyncService implements OnApplicationBootstrap {
     })()
   }
 
-  private buildQualityCheckSummary(reports: DataQualityReport[], repairInfo?: { executed: number }): QualityCheckSummary {
+  private buildQualityCheckSummary(
+    reports: DataQualityReport[],
+    repairInfo?: { executed: number },
+  ): QualityCheckSummary {
     const nonCross = reports.filter((r) => r.checkType !== 'cross-table')
     const cross = reports.filter((r) => r.checkType === 'cross-table')
 

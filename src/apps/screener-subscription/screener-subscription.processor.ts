@@ -82,7 +82,12 @@ export class ScreenerSubscriptionProcessor extends WorkerHost {
         where: { id: sub.id },
         data: {
           lastRunAt: new Date(),
-          lastRunResult: { tradeDate: data.tradeDate, matchCount: currentCodes.length, newEntryCount: newEntryCodes.length, exitCount: exitCodes.length },
+          lastRunResult: {
+            tradeDate: data.tradeDate,
+            matchCount: currentCodes.length,
+            newEntryCount: newEntryCodes.length,
+            exitCount: exitCodes.length,
+          },
           lastMatchCodes: currentCodes,
           consecutiveFails: 0,
         },

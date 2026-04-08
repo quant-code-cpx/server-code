@@ -3,6 +3,7 @@ import { JwtModule } from '@nestjs/jwt'
 import { CacheService } from './cache.service'
 import { PrismaService } from './prisma.service'
 import { RedisProvider } from './redis.provider'
+import { RedisShutdownService } from './redis-shutdown.service'
 import { TokenService } from './token.service'
 import { LoggerModule } from './logger/logger.module'
 
@@ -25,7 +26,7 @@ import { LoggerModule } from './logger/logger.module'
 @Global()
 @Module({
   imports: [LoggerModule.forRoot(), JwtModule.register({ global: true, secret: '' })],
-  providers: [PrismaService, RedisProvider, TokenService, CacheService],
+  providers: [PrismaService, RedisProvider, RedisShutdownService, TokenService, CacheService],
   exports: [PrismaService, RedisProvider, TokenService, CacheService],
 })
 export class SharedModule {}

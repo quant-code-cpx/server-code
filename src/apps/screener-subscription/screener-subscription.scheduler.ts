@@ -8,9 +8,7 @@ import { SCREENER_SUBSCRIPTION_QUEUE, ScreenerSubscriptionJobName } from 'src/co
 export class ScreenerSubscriptionScheduler {
   private readonly logger = new Logger(ScreenerSubscriptionScheduler.name)
 
-  constructor(
-    @InjectQueue(SCREENER_SUBSCRIPTION_QUEUE) private readonly queue: Queue,
-  ) {}
+  constructor(@InjectQueue(SCREENER_SUBSCRIPTION_QUEUE) private readonly queue: Queue) {}
 
   /**
    * 每个交易日（周一至周五）20:30 触发日频订阅。

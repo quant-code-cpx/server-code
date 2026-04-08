@@ -1,0 +1,18 @@
+// 同花顺板块目录（来自 ths_index 接口）
+// 包含概念（N）、行业（I）、地域（R）等板块类型
+model ThsIndex {
+  tsCode   String    @id @map("ts_code") @db.VarChar(24)
+  name     String    @db.VarChar(64)
+  count    Int?
+  exchange String?   @db.VarChar(8)
+  listDate DateTime? @map("list_date") @db.Date
+  type     String    @db.VarChar(8) // N-概念 I-行业 R-地域 S-特色
+  syncedAt DateTime  @default(now()) @map("synced_at")
+
+  members ThsMember[]
+
+  @@index([type])
+  @@index([exchange])
+  @@index([name])
+  @@map("ths_index_boards")
+}

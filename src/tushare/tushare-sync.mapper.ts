@@ -1827,3 +1827,53 @@ export function mapCbDailyRecord(
     cbOverRate: readNumber(record, 'cb_over_rate'),
   }
 }
+
+export function mapThsIndexRecord(
+  record: TushareRecord,
+  collector?: ValidationCollector,
+): Prisma.ThsIndexCreateManyInput | null {
+  const tsCode = readString(record, 'ts_code')
+  if (!tsCode) {
+    collector?.add({ tsCode, ruleName: 'missing_pk', severity: 'error', message: 'ts_code 缺失', rawData: record })
+    return null
+  }
+  const type = readString(record, 'type')
+  if (!type) {
+    collector?.add({ tsCode, ruleName: 'missing_type', severity: 'error', message: 'type 缺失', rawData: record })
+    return null
+  }
+
+  return {
+    tsCode,
+    name: readString(record, 'name') ?? '',
+    count: readInt(record, 'count'),
+    exchange: readString(record, 'exchange'),
+    listDate: readDate(record, 'list_date'),
+    type,
+  }
+}
+
+export function mapThsMemberRecord(
+  record: TushareRecord,
+  collector?: ValidationCollector,
+): Prisma.ThsMemberCreateManyInput | null {
+  const tsCode = readString(record, 'ts_code')
+  const conCode = readString(record, 'con_code')
+  if (!tsCode || !conCode) {
+    collector?.add({
+      tsCode,
+      ruleName: 'missing_pk',
+      severity: 'error',
+      message: 'ts_code 或 con_code 缺失',
+      rawData: record,
+    })
+    return null
+  }
+
+  return {
+    tsCode,
+    conCode,
+    conName: readString(record, 'con_name'),
+    isNew: readString(record, 'is_new'),
+  }
+}

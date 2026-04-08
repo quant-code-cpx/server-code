@@ -1,0 +1,17 @@
+// 同花顺板块成分映射（来自 ths_member 接口）
+model ThsMember {
+  id      Int     @id @default(autoincrement())
+  tsCode  String  @map("ts_code") @db.VarChar(24) // 板块代码
+  conCode String  @map("con_code") @db.VarChar(16) // 成分股票代码
+  conName String? @map("con_name") @db.VarChar(64)
+  isNew   String? @map("is_new") @db.VarChar(4) // Y-最新成分 N-历史成分
+  syncedAt DateTime @default(now()) @map("synced_at")
+
+  board ThsIndex @relation(fields: [tsCode], references: [tsCode])
+
+  @@unique([tsCode, conCode])
+  @@index([tsCode])
+  @@index([conCode])
+  @@index([conCode, isNew])
+  @@map("ths_index_members")
+}

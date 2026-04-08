@@ -50,6 +50,7 @@ docs/
 | [数据扩展第一批-后端设计](design/数据扩展第一批-后端设计.md)         | Tushare 第一批数据扩展（forecast / stk_holdernumber / hk_hold / index_dailybasic）             | 🔧 待实现              |
 | [数据扩展第二批-后端设计](design/数据扩展第二批-后端设计.md)         | Tushare 第二批数据扩展（stk_holdertrade / pledge_stat / fina_audit / disclosure_date）         | 🔧 待实现              |
 | [数据扩展第三批-后端设计](design/数据扩展第三批-后端设计.md)         | Tushare 第三批数据扩展（fina_mainbz / index_classify+member / repurchase / cb_basic+cb_daily） | 🔧 待实现              |
+| [概念板块映射-后端设计](design/概念板块映射-后端设计.md)             | 概念板块映射（ths_index + ths_member）— 板块目录、成分映射、个股所属概念查询                   | 🔧 待实现              |
 
 ---
 

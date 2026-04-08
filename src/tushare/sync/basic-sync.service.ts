@@ -13,6 +13,8 @@ import {
   mapIndexMemberAllRecord,
   mapStockBasicRecord,
   mapStockCompanyRecord,
+  mapThsIndexRecord,
+  mapThsMemberRecord,
   mapTradeCalRecord,
 } from '../tushare-sync.mapper'
 import { SyncHelperService } from './sync-helper.service'
@@ -131,6 +133,38 @@ export class BasicSyncService {
           description: '每周一全量刷新可转债基础信息',
         },
         execute: ({ mode }) => this.syncCbBasic(mode),
+      },
+      {
+        task: TushareSyncTaskName.THS_INDEX,
+        label: '同花顺板块目录',
+        category: 'basic',
+        order: 70,
+        bootstrapEnabled: true,
+        supportsManual: true,
+        supportsFullSync: true,
+        requiresTradeDate: false,
+        schedule: {
+          cron: '0 30 9 * * 0',
+          timeZone: this.helper.syncTimeZone,
+          description: '每周日刷新同花顺板块目录',
+        },
+        execute: () => this.syncThsIndex(),
+      },
+      {
+        task: TushareSyncTaskName.THS_MEMBER,
+        label: '同花顺概念成分',
+        category: 'basic',
+        order: 71,
+        bootstrapEnabled: true,
+        supportsManual: true,
+        supportsFullSync: true,
+        requiresTradeDate: false,
+        schedule: {
+          cron: '0 0 10 * * 0',
+          timeZone: this.helper.syncTimeZone,
+          description: '每周日刷新同花顺概念成分',
+        },
+        execute: () => this.syncThsMember(),
       },
     ]
   }
@@ -361,6 +395,83 @@ export class BasicSyncService {
         status: TushareSyncExecutionStatus.SUCCESS,
         message: `可转债基础信息同步完成，共 ${count} 条`,
         payload: { rowCount: count },
+      },
+      startedAt,
+    )
+  }
+
+  // ─── 同花顺板块目录 ────────────────────────────────────────────────────────
+
+  async syncThsIndex(): Promise<void> {
+    const startedAt = new Date()
+    this.logger.log('[同花顺板块目录] 开始全量同步...')
+
+    const collector = new ValidationCollector(TushareSyncTaskName.THS_INDEX)
+    const rows = await this.api.getThsIndex()
+    const mapped = rows
+      .map((r) => mapThsIndexRecord(r, collector))
+      .filter((r): r is NonNullable<typeof r> => Boolean(r))
+
+    await (this.helper.prisma as any).thsIndex.deleteMany()
+    const result = await (this.helper.prisma as any).thsIndex.createMany({ data: mapped })
+    const count: number = result.count
+
+    await this.helper.flushValidationLogs(collector)
+    this.logger.log(`[同花顺板块目录] 同步完成，共 ${count} 条`)
+    await this.helper.writeSyncLog(
+      TushareSyncTaskName.THS_INDEX,
+      {
+        status: TushareSyncExecutionStatus.SUCCESS,
+        message: `同花顺板块目录同步完成，共 ${count} 条`,
+        payload: { rowCount: count },
+      },
+      startedAt,
+    )
+  }
+
+  // ─── 同花顺概念成分 ────────────────────────────────────────────────────────
+
+  async syncThsMember(): Promise<void> {
+    const startedAt = new Date()
+    this.logger.log('[同花顺概念成分] 开始全量同步...')
+
+    const boards: { tsCode: string }[] = await (this.helper.prisma as any).thsIndex.findMany({
+      where: { type: 'N' },
+      select: { tsCode: true },
+    })
+
+    if (!boards.length) {
+      this.logger.warn('[同花顺概念成分] 概念板块为空，请先同步 THS_INDEX')
+      return
+    }
+
+    this.logger.log(`[同花顺概念成分] 将遍历 ${boards.length} 个概念板块`)
+
+    const collector = new ValidationCollector(TushareSyncTaskName.THS_MEMBER)
+    await (this.helper.prisma as any).thsMember.deleteMany()
+    let totalRows = 0
+
+    for (const board of boards) {
+      const rows = await this.api.getThsMemberByCode(board.tsCode)
+      const mapped = rows
+        .map((r) => mapThsMemberRecord(r, collector))
+        .filter((r): r is NonNullable<typeof r> => Boolean(r))
+
+      if (mapped.length > 0) {
+        const result = await (this.helper.prisma as any).thsMember.createMany({ data: mapped, skipDuplicates: true })
+        totalRows += result.count
+      }
+      await new Promise((resolve) => setTimeout(resolve, 300))
+    }
+
+    await this.helper.flushValidationLogs(collector)
+    this.logger.log(`[同花顺概念成分] 同步完成，${boards.length} 个板块，共 ${totalRows} 条`)
+    await this.helper.writeSyncLog(
+      TushareSyncTaskName.THS_MEMBER,
+      {
+        status: TushareSyncExecutionStatus.SUCCESS,
+        message: `同花顺概念成分同步完成，${boards.length} 个板块，共 ${totalRows} 条`,
+        payload: { rowCount: totalRows, boardCount: boards.length },
       },
       startedAt,
     )

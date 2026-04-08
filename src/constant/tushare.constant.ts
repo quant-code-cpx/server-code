@@ -42,6 +42,8 @@ export enum TushareApiName {
   REPURCHASE = 'repurchase',
   CB_BASIC = 'cb_basic',
   CB_DAILY = 'cb_daily',
+  THS_INDEX = 'ths_index',
+  THS_MEMBER = 'ths_member',
 }
 
 /** A 股常用交易所代码 */
@@ -118,6 +120,8 @@ export enum TushareSyncTaskName {
   REPURCHASE = 'REPURCHASE',
   CB_BASIC = 'CB_BASIC',
   CB_DAILY = 'CB_DAILY',
+  THS_INDEX = 'THS_INDEX',
+  THS_MEMBER = 'THS_MEMBER',
 }
 
 /** 同步执行状态 */
@@ -835,6 +839,7 @@ export const FACTOR_UNIVERSE_INDEX_CODES = [
   '000905.SH', // 中证500
   '000852.SH', // 中证1000
   '000016.SH', // 上证50
+  '399006.SZ', // 创业板指
 ] as const
 
 export const TUSHARE_TOP_LIST_FIELDS = [
@@ -1080,3 +1085,7 @@ export const TUSHARE_CB_DAILY_FIELDS = [
   'cb_value',
   'cb_over_rate',
 ] as const
+
+export const TUSHARE_THS_INDEX_FIELDS = ['ts_code', 'name', 'count', 'exchange', 'list_date', 'type'] as const
+
+export const TUSHARE_THS_MEMBER_FIELDS = ['ts_code', 'con_code', 'con_name', 'is_new'] as const

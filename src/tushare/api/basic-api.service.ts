@@ -7,6 +7,8 @@ import {
   TUSHARE_INDEX_MEMBER_ALL_FIELDS,
   TUSHARE_STOCK_BASIC_FIELDS,
   TUSHARE_STOCK_COMPANY_FIELDS,
+  TUSHARE_THS_INDEX_FIELDS,
+  TUSHARE_THS_MEMBER_FIELDS,
   TUSHARE_TRADE_CAL_FIELDS,
   TushareApiName,
 } from 'src/constant/tushare.constant'
@@ -65,6 +67,24 @@ export class BasicApiService {
       api_name: TushareApiName.CB_BASIC,
       params: {},
       fields: [...TUSHARE_CB_BASIC_FIELDS],
+    })
+  }
+
+  /** 获取同花顺板块列表（A 股全量，不过滤 type） */
+  getThsIndex() {
+    return this.client.call({
+      api_name: TushareApiName.THS_INDEX,
+      params: { exchange: 'A' },
+      fields: [...TUSHARE_THS_INDEX_FIELDS],
+    })
+  }
+
+  /** 获取指定板块的成分股（按板块代码查询） */
+  getThsMemberByCode(tsCode: string) {
+    return this.client.call({
+      api_name: TushareApiName.THS_MEMBER,
+      params: { ts_code: tsCode },
+      fields: [...TUSHARE_THS_MEMBER_FIELDS],
     })
   }
 }

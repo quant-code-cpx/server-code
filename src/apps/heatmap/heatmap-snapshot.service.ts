@@ -125,7 +125,13 @@ export class HeatmapSnapshotService {
         totalRecords += items.length
         this.logger.log(`维度 ${groupByKey} 聚合完成，写入 ${items.length} 条记录`)
       } catch (err) {
-        this.logger.error(`维度 ${groupByKey} 聚合失败：${(err as Error).message}`)
+        const errMsg = (err as Error).message
+        // 数据缺失（如权重尚未同步）属于预期内的数据可用性问题，降级为 warn
+        if ((err as { status?: number }).status === 404 || errMsg.includes('暂无')) {
+          this.logger.warn(`维度 ${groupByKey} 数据暂不可用，跳过：${errMsg}`)
+        } else {
+          this.logger.error(`维度 ${groupByKey} 聚合失败：${errMsg}`)
+        }
         // 写入失败状态
         await this.prisma.heatmapSnapshotStatus.upsert({
           where: { tradeDate_groupBy: { tradeDate: resolvedDate, groupBy: groupByStored } },

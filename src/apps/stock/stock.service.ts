@@ -55,6 +55,10 @@ export class StockService {
     return this.stockDetailService.getDetailChart(dto)
   }
 
+  getStockConcepts(tsCode: string) {
+    return this.stockDetailService.getStockConcepts(tsCode)
+  }
+
   // ─── 资金流 ───────────────────────────────────────────────────────────────────
 
   getDetailTodayFlow(tsCode: string) {

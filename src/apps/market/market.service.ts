@@ -754,6 +754,45 @@ export class MarketService {
     })
   }
 
+  // ─── 概念板块 ──────────────────────────────────────────────────────────────
+
+  async getConceptList(dto: { keyword?: string; page?: number; pageSize?: number }) {
+    const page = dto.page ?? 1
+    const pageSize = dto.pageSize ?? 50
+    const where: Record<string, unknown> = { type: 'N' }
+    if (dto.keyword) {
+      where['name'] = { contains: dto.keyword }
+    }
+    const [total, items] = await Promise.all([
+      (this.prisma as any).thsIndex.count({ where }),
+      (this.prisma as any).thsIndex.findMany({
+        where,
+        select: { tsCode: true, name: true, count: true, listDate: true },
+        orderBy: { count: 'desc' },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+    ])
+    return { total, page, pageSize, items }
+  }
+
+  async getConceptMembers(dto: { tsCode: string; page?: number; pageSize?: number }) {
+    const page = dto.page ?? 1
+    const pageSize = dto.pageSize ?? 100
+    const { tsCode } = dto
+    const [board, total, items] = await Promise.all([
+      (this.prisma as any).thsIndex.findUnique({ where: { tsCode }, select: { name: true } }),
+      (this.prisma as any).thsMember.count({ where: { tsCode } }),
+      (this.prisma as any).thsMember.findMany({
+        where: { tsCode },
+        select: { conCode: true, conName: true },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+    ])
+    return { tsCode, name: board?.name ?? null, total, items }
+  }
+
   // ═══════════════════════════════════════════════════════════════════════════
   // 私有辅助方法
   // ═══════════════════════════════════════════════════════════════════════════

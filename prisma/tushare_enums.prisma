@@ -68,6 +68,8 @@ enum TushareSyncTask {
   REPURCHASE
   CB_BASIC
   CB_DAILY
+  THS_INDEX
+  THS_MEMBER
 }
 
 // 同步任务执行结果

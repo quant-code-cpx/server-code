@@ -279,6 +279,13 @@ export class SyncHelperService {
       const key = unit === 'week' ? `${d.isoWeekYear()}-${d.isoWeek()}` : d.format('YYYY-MM')
       grouped.set(key, date)
     })
+
+    // 排除进行中的当前周/月，避免将未结束的周期末日期误报为数据缺失
+    // （例如：周三时本周还未产生周线收盘数据，不应将本周期纳入完整性检查）
+    const today = this.getCurrentShanghaiDay(this.getCurrentShanghaiDateString())
+    const currentPeriodKey = unit === 'week' ? `${today.isoWeekYear()}-${today.isoWeek()}` : today.format('YYYY-MM')
+    grouped.delete(currentPeriodKey)
+
     return Array.from(grouped.values())
   }
 

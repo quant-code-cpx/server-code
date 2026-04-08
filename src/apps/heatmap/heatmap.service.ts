@@ -89,12 +89,15 @@ export class HeatmapService {
    * 注：index_constituent_weights 按月更新，取距离 tradeDate 最近的权重日期。
    */
   private async getIndexHeatmap(tradeDate: Date, indexCode: string): Promise<HeatmapItemDto[]> {
-    // 查询最近的权重日期
-    const weightDateResult = await this.prisma.$queryRaw<[{ maxDate: Date | null }]>`
+    // index_constituent_weights.trade_date 存储为 text（YYYYMMDD），需用字符串比较而非 Date 对象
+    const tradeDateStr = `${tradeDate.getFullYear()}${String(tradeDate.getMonth() + 1).padStart(2, '0')}${String(tradeDate.getDate()).padStart(2, '0')}`
+
+    // 查询最近的权重日期（text 列使用 text 参数，避免 text <= timestamptz 类型错误）
+    const weightDateResult = await this.prisma.$queryRaw<[{ maxDate: string | null }]>`
       SELECT MAX(trade_date) AS "maxDate"
       FROM index_constituent_weights
       WHERE index_code = ${indexCode}
-        AND trade_date <= ${tradeDate}
+        AND trade_date <= ${tradeDateStr}
     `
     const latestWeightDate = weightDateResult[0]?.maxDate
     if (!latestWeightDate) {

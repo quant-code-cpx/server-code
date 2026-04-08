@@ -714,3 +714,14 @@ export class StockRelativeStrengthDataDto {
   @ApiProperty({ type: RelativeStrengthSummaryDto }) summary: RelativeStrengthSummaryDto
   @ApiProperty({ type: [RelativeStrengthPointDto] }) history: RelativeStrengthPointDto[]
 }
+
+export class StockConceptItemDto {
+  @ApiProperty() tsCode: string
+  @ApiProperty() name: string
+}
+
+export class StockConceptsDataDto {
+  @ApiProperty() tsCode: string
+  @ApiProperty({ required: false, nullable: true }) name: string | null
+  @ApiProperty({ type: [StockConceptItemDto] }) concepts: StockConceptItemDto[]
+}

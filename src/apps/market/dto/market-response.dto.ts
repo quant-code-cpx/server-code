@@ -290,3 +290,29 @@ export class StockFlowDetailResponseDto {
   @ApiProperty({ required: false, nullable: true }) name: string | null
   @ApiProperty({ type: [StockFlowDetailItemDto] }) data: StockFlowDetailItemDto[]
 }
+
+export class ConceptListItemDto {
+  @ApiProperty() tsCode: string
+  @ApiProperty() name: string
+  @ApiProperty({ required: false, nullable: true }) count: number | null
+  @ApiProperty({ required: false, nullable: true }) listDate: Date | null
+}
+
+export class ConceptListResponseDto {
+  @ApiProperty() total: number
+  @ApiProperty() page: number
+  @ApiProperty() pageSize: number
+  @ApiProperty({ type: [ConceptListItemDto] }) items: ConceptListItemDto[]
+}
+
+export class ConceptMemberItemDto {
+  @ApiProperty() conCode: string
+  @ApiProperty({ required: false, nullable: true }) conName: string | null
+}
+
+export class ConceptMembersResponseDto {
+  @ApiProperty() tsCode: string
+  @ApiProperty({ required: false, nullable: true }) name: string | null
+  @ApiProperty() total: number
+  @ApiProperty({ type: [ConceptMemberItemDto] }) items: ConceptMemberItemDto[]
+}

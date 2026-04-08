@@ -14,6 +14,7 @@ import { StockDetailFinancingDto } from './dto/stock-detail-financing.dto'
 import { StockDetailFinancialStatementsDto } from './dto/stock-detail-financial-statements.dto'
 import { StockScreenerQueryDto } from './dto/stock-screener-query.dto'
 import { CreateScreenerStrategyDto, UpdateScreenerStrategyDto } from './dto/stock-screener-strategy.dto'
+import { StockConceptsDto } from './dto/stock-concepts.dto'
 import {
   StockTechnicalIndicatorsDto,
   StockTimingSignalsDto,
@@ -48,6 +49,7 @@ import {
   ChipDistributionDataDto,
   StockMarginDataResponseDto,
   StockRelativeStrengthDataDto,
+  StockConceptsDataDto,
 } from './dto/stock-response.dto'
 import { CurrentUser } from 'src/common/decorators/current-user.decorator'
 import { TokenPayload } from 'src/shared/token.interface'
@@ -188,6 +190,13 @@ export class StockController {
   @ApiSuccessResponse(StockRelativeStrengthDataDto)
   getRelativeStrength(@Body() dto: StockRelativeStrengthDto) {
     return this.stockAnalysisService.getRelativeStrength(dto)
+  }
+
+  @Post('detail/concepts')
+  @ApiOperation({ summary: '查询个股所属的同花顺概念板块列表' })
+  @ApiSuccessResponse(StockConceptsDataDto)
+  getStockConcepts(@Body() dto: StockConceptsDto) {
+    return this.stockService.getStockConcepts(dto.tsCode)
   }
 
   // ─── 选股器 ─────────────────────────────────────────────────────────────────

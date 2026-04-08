@@ -16,9 +16,13 @@ import { HsgtTrendQueryDto } from './dto/hsgt-trend-query.dto'
 import { MainFlowRankingQueryDto } from './dto/main-flow-ranking-query.dto'
 import { StockFlowDetailQueryDto } from './dto/stock-flow-detail-query.dto'
 import { IndexQuoteQueryDto } from './dto/index-quote-query.dto'
+import { ConceptListDto } from './dto/concept-list.dto'
+import { ConceptMembersDto } from './dto/concept-members.dto'
 import { ApiSuccessResponse } from 'src/common/decorators/api-success-response.decorator'
 import {
   ChangeDistributionResponseDto,
+  ConceptListResponseDto,
+  ConceptMembersResponseDto,
   HsgtFlowHistoryDto,
   HsgtTrendResponseDto,
   IndexQuoteItemDto,
@@ -167,5 +171,19 @@ export class MarketController {
   @ApiSuccessResponse(StockFlowDetailResponseDto)
   getStockFlowDetail(@Body() query: StockFlowDetailQueryDto) {
     return this.marketService.getStockFlowDetail(query)
+  }
+
+  @Post('concept/list')
+  @ApiOperation({ summary: '获取同花顺概念板块列表（支持关键词模糊搜索 + 分页）' })
+  @ApiSuccessResponse(ConceptListResponseDto)
+  getConceptList(@Body() dto: ConceptListDto) {
+    return this.marketService.getConceptList(dto)
+  }
+
+  @Post('concept/members')
+  @ApiOperation({ summary: '获取概念板块成分股列表（按板块代码查询，分页）' })
+  @ApiSuccessResponse(ConceptMembersResponseDto)
+  getConceptMembers(@Body() dto: ConceptMembersDto) {
+    return this.marketService.getConceptMembers(dto)
   }
 }

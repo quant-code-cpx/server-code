@@ -287,4 +287,22 @@ export class StockDetailService {
 
     return parsed
   }
+
+  async getStockConcepts(tsCode: string) {
+    const [memberships, stock] = await Promise.all([
+      (this.prisma as any).thsMember.findMany({
+        where: { conCode: tsCode },
+        include: { board: { select: { tsCode: true, name: true } } },
+      }),
+      this.prisma.stockBasic.findUnique({ where: { tsCode }, select: { name: true } }),
+    ])
+    return {
+      tsCode,
+      name: stock?.name ?? null,
+      concepts: memberships.map((m: { board: { tsCode: string; name: string } }) => ({
+        tsCode: m.board.tsCode,
+        name: m.board.name,
+      })),
+    }
+  }
 }

@@ -34,12 +34,12 @@ export class FactorBacktestSubmitDto {
 
   @ApiProperty({ description: '回测起始日 YYYYMMDD', example: '20250101' })
   @IsString()
-  @Matches(/^\d{8}$/)
+  @Matches(/^\d{8}$/, { message: 'startDate 格式应为 YYYYMMDD，例如 20240101' })
   startDate: string
 
   @ApiProperty({ description: '回测结束日 YYYYMMDD', example: '20260327' })
   @IsString()
-  @Matches(/^\d{8}$/)
+  @Matches(/^\d{8}$/, { message: 'endDate 格式应为 YYYYMMDD，例如 20240101' })
   endDate: string
 
   @ApiPropertyOptional({ description: '初始资金（默认 100 万）', default: 1000000 })

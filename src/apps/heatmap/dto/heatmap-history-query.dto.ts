@@ -4,7 +4,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
 export class HeatmapHistoryQueryDto {
   @ApiProperty({ description: '查询日期（YYYYMMDD）', example: '20260404' })
   @IsNotEmpty()
-  @Matches(/^\d{8}$/, { message: 'trade_date 格式应为 YYYYMMDD' })
+  @Matches(/^\d{8}$/, { message: 'trade_date 格式应为 YYYYMMDD，例如 20240101' })
   trade_date: string
 
   @ApiPropertyOptional({

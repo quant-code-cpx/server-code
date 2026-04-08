@@ -7,6 +7,6 @@ export class TriggerSnapshotDto {
     example: '20260404',
   })
   @IsOptional()
-  @Matches(/^\d{8}$/, { message: 'trade_date 格式应为 YYYYMMDD' })
+  @Matches(/^\d{8}$/, { message: 'trade_date 格式应为 YYYYMMDD，例如 20240101' })
   trade_date?: string
 }

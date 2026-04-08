@@ -11,7 +11,7 @@ import {
 export class FactorPrecomputeTriggerDto {
   @ApiProperty({ description: '目标交易日 YYYYMMDD', example: '20260327' })
   @IsString()
-  @Matches(/^\d{8}$/, { message: '日期格式必须为 YYYYMMDD' })
+  @Matches(/^\d{8}$/, { message: 'tradeDate 格式应为 YYYYMMDD，例如 20240101' })
   tradeDate: string
 
   @ApiPropertyOptional({
@@ -28,12 +28,12 @@ export class FactorPrecomputeTriggerDto {
 export class FactorBackfillDto {
   @ApiProperty({ description: '回补起始日期 YYYYMMDD', example: '20230101' })
   @IsString()
-  @Matches(/^\d{8}$/, { message: '日期格式必须为 YYYYMMDD' })
+  @Matches(/^\d{8}$/, { message: 'startDate 格式应为 YYYYMMDD，例如 20240101' })
   startDate: string
 
   @ApiProperty({ description: '回补结束日期 YYYYMMDD', example: '20260327' })
   @IsString()
-  @Matches(/^\d{8}$/, { message: '日期格式必须为 YYYYMMDD' })
+  @Matches(/^\d{8}$/, { message: 'endDate 格式应为 YYYYMMDD，例如 20240101' })
   endDate: string
 
   @ApiPropertyOptional({

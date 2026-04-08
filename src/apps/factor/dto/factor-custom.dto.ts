@@ -95,7 +95,7 @@ export class TestCustomFactorDto {
 
   @ApiProperty({ description: '试算日期 YYYYMMDD', example: '20260327' })
   @IsString()
-  @Matches(/^\d{8}$/, { message: '日期格式必须为 YYYYMMDD' })
+  @Matches(/^\d{8}$/, { message: 'tradeDate 格式应为 YYYYMMDD，例如 20240101' })
   tradeDate: string
 
   @ApiPropertyOptional({ description: '股票池（如 000300.SH）' })

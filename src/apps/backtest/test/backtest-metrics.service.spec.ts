@@ -1,4 +1,4 @@
-import { BacktestMetricsService } from './backtest-metrics.service'
+import { BacktestMetricsService } from '../services/backtest-metrics.service'
 import { DailyNavRecord, TradeRecord, BacktestConfig } from '../types/backtest-engine.types'
 
 // ── 测试数据工厂 ───────────────────────────────────────────────────────────────

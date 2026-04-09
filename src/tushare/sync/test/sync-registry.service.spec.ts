@@ -1,6 +1,6 @@
 import { TushareSyncTaskName } from 'src/constant/tushare.constant'
-import { TushareSyncRegistryService } from './sync-registry.service'
-import { TushareSyncPlan } from './sync-plan.types'
+import { TushareSyncRegistryService } from '../sync-registry.service'
+import { TushareSyncPlan } from '../sync-plan.types'
 
 function createPlan(task: TushareSyncTaskName, order: number): TushareSyncPlan {
   return {

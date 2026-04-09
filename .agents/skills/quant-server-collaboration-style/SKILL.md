@@ -111,6 +111,16 @@ argument-hint: '可选关注点，例如：tushare sync、docker 启动、prisma
 - 对于有固定结构的 CRUD 接口，应创建对应的 `*-response.dto.ts` 文件并使用 `@ApiSuccessResponse`。
 - Import 路径：`import { ApiSuccessResponse, ApiSuccessRawResponse } from 'src/common/decorators/api-success-response.decorator'`
 
+### 13. 测试文件必须放在模块的 test/ 子目录下
+
+- 每个模块/子目录的所有 `.spec.ts` 文件**统一放到**该模块目录下的 `test/` 子目录中。
+- 例如：`src/apps/backtest/` 模块的测试放到 `src/apps/backtest/test/`。
+- 例如：`src/tushare/sync/` 的测试放到 `src/tushare/sync/test/`。
+- spec 文件内的**相对路径 import** 需相应上移一层，如 `'./sync.service'` → `'../sync.service'`。
+- 使用 `src/*` 绝对路径的 import 无需修改。
+- 根级别的 `test/` 目录（`test/setup.ts`、`test/helpers/`）保留原位，专门放全局 setup 和通用 mock 工具。
+- 新建测试文件时**不得**将 spec 文件与源文件放在同一目录下。
+
 ## 推荐工作流程
 
 1. 编辑前先读取相关代码和当前项目结构。
@@ -155,8 +165,8 @@ argument-hint: '可选关注点，例如：tushare sync、docker 启动、prisma
 
 ### 日期参数格式
 
-- 所有 `trade_date` 参数统一使用 **YYYYMMDD** 格式（8 位纯数字字符串）。  
-- DTO 统一用 `@Matches(/^\d{8}$/)` 校验，示例：  
+- 所有 `trade_date` 参数统一使用 **YYYYMMDD** 格式（8 位纯数字字符串）。
+- DTO 统一用 `@Matches(/^\d{8}$/)` 校验，示例：
   ```typescript
   @Matches(/^\d{8}$/, { message: 'trade_date 格式应为 YYYYMMDD，例如 20240101' })
   trade_date?: string
@@ -167,10 +177,10 @@ argument-hint: '可选关注点，例如：tushare sync、docker 启动、prisma
 
 `parseDate(yyyymmdd)` 与 `resolveLatestXxx()` 会返回不同的 JS `Date` 对象：
 
-| 来源 | Date 值（UTC）| 含义 |
-|---|---|---|
+| 来源                                                       | Date 值（UTC）             | 含义              |
+| ---------------------------------------------------------- | -------------------------- | ----------------- |
 | `parseDate("20260403")` — `dayjs.tz(..., 'Asia/Shanghai')` | `2026-04-02T16:00:00.000Z` | 上海凌晨 = UTC-8h |
-| `resolveLatestXxx()` — Prisma `@db.Date` | `2026-04-03T00:00:00.000Z` | UTC 午夜 |
+| `resolveLatestXxx()` — Prisma `@db.Date`                   | `2026-04-03T00:00:00.000Z` | UTC 午夜          |
 
 两者指向同一个日历日期 **4 月 3 日**，但 UTC 值不同。
 
@@ -196,16 +206,16 @@ WHERE trade_date = ${tradeDateStr}::date
 - **禁止**用 Prisma 模型名（camelCase，如 `MoneyflowMktDc`）直接当作原生 SQL 表名。
 - 常用映射速查：
 
-  | Prisma 模型 | 实际表名 |
-  |---|---|
-  | `Daily` | `stock_daily_prices` |
-  | `Moneyflow` | `stock_capital_flows` |
-  | `MoneyflowIndDc` | `stock_sector_flows` |
-  | `MoneyflowMktDc` | `market_daily_flows` |
-  | `MoneyflowHsgt` | `hsgt_north_flows` |
-  | `DailyBasic` | `stock_daily_valuation_metrics` |
-  | `StockBasic` | `stock_basic_profiles` |
-  | `IndexDaily` | `index_daily_prices` |
+  | Prisma 模型      | 实际表名                        |
+  | ---------------- | ------------------------------- |
+  | `Daily`          | `stock_daily_prices`            |
+  | `Moneyflow`      | `stock_capital_flows`           |
+  | `MoneyflowIndDc` | `stock_sector_flows`            |
+  | `MoneyflowMktDc` | `market_daily_flows`            |
+  | `MoneyflowHsgt`  | `hsgt_north_flows`              |
+  | `DailyBasic`     | `stock_daily_valuation_metrics` |
+  | `StockBasic`     | `stock_basic_profiles`          |
+  | `IndexDaily`     | `index_daily_prices`            |
 
 ### 枚举参数大小写
 

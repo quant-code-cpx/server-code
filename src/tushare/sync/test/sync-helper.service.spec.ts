@@ -8,7 +8,7 @@
  *
  * 通过最小化 mock 直接 new SyncHelperService，不依赖 NestJS Test Module。
  */
-import { SyncHelperService } from './sync-helper.service'
+import { SyncHelperService } from '../sync-helper.service'
 
 // ── 最简单的 mock 依赖 ────────────────────────────────────────────────────────
 

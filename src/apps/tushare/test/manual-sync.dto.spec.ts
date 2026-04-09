@@ -1,6 +1,6 @@
 import { validate } from 'class-validator'
 import { TushareSyncTaskName } from 'src/constant/tushare.constant'
-import { ManualSyncDto } from './manual-sync.dto'
+import { ManualSyncDto } from '../dto/manual-sync.dto'
 
 describe('ManualSyncDto', () => {
   it('accepts a valid mode and task list', async () => {

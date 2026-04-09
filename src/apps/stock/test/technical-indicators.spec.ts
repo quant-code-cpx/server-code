@@ -8,7 +8,7 @@ import {
   calcSAR,
   calcATR,
   OhlcvBar,
-} from './technical-indicators'
+} from '../utils/technical-indicators'
 
 // ─── 测试辅助 ──────────────────────────────────────────────────────────────────
 

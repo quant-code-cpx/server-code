@@ -5,7 +5,7 @@ model StkHolderTrade {
 
   tsCode       String    @map("ts_code") @db.VarChar(16)
   annDate      DateTime  @map("ann_date") @db.Date
-  holderName   String    @map("holder_name") @db.VarChar(128)
+  holderName   String    @map("holder_name") @db.VarChar(512)
   holderType   String    @map("holder_type") @db.VarChar(4)   // G / P / C
   inDe         String    @map("in_de") @db.VarChar(4)         // IN / DE
   changeVol    Float?    @map("change_vol")

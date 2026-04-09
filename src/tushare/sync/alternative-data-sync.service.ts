@@ -251,7 +251,7 @@ export class AlternativeDataSyncService {
         const mapped = await fetchAndMap(td)
         const [, result] = await this.helper.prisma.$transaction([
           model.deleteMany({ where: { tradeDate: td } }),
-          model.createMany({ data: mapped }),
+          model.createMany({ data: mapped, skipDuplicates: true }),
         ])
         totalRows += (result as { count: number }).count
         if (i === 0 || (i + 1) % 200 === 0 || i === tradeDates.length - 1) {

@@ -1408,7 +1408,7 @@ export class FinancialSyncService {
           periodDate,
           mapped,
           {},
-          { skipDuplicates: false },
+          { skipDuplicates: true },
         )
         totalRows += count
 

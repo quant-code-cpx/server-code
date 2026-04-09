@@ -126,7 +126,8 @@ export class DataQualityService {
       dateField: 'tradeDate',
       dateType: 'datetime',
       checkStrategy: 'daily-trade-date',
-      completenessDepthDays: 30,
+      // 不设 completenessDepthDays：沪深港通资金流在港股休市日（如复活节）不产生数据，
+      // 无法用 A 股交易日历做完整性检查，只保留时效性检查即可。
     },
 
     // ── 周频/月频行情 ──
@@ -523,7 +524,21 @@ export class DataQualityService {
   // ─── Private: 财务报表报告期覆盖率检查 ─────────────────────────────────────
 
   private async checkFinancialReportCoverage(dataSet: string, config: DataSetCheckConfig): Promise<DataQualityReport> {
-    const recentPeriods = this.helper.buildRecentQuarterPeriods(1)
+    // 只检查距今 120 天以前结束的报告期，避免因年报/季报尚在披露窗口内（如 Q4 报告期截止日 4 月 30 日）
+    // 而误报为 fail。取最近 2 年的季度列表，过滤掉不成熟的报告期。
+    const today = this.helper.getCurrentShanghaiDateString()
+    const cutoff = this.helper.addDays(today, -120) // YYYYMMDD
+    const recentPeriods = this.helper.buildRecentQuarterPeriods(2).filter((p) => p <= cutoff)
+
+    if (recentPeriods.length === 0) {
+      return {
+        dataSet,
+        checkType: 'completeness',
+        status: 'pass',
+        message: `${dataSet} 近期报告期均在披露窗口内，暂不检查`,
+      }
+    }
+
     const model = (this.prisma as any)[config.modelName]
 
     const periodCounts: Array<{ period: string; stockCount: number }> = []

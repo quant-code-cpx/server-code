@@ -176,7 +176,10 @@ export class SyncHelperService {
       await model.deleteMany(deleteArgs)
       return 0
     }
-    const [, result] = await this.prisma.$transaction([model.deleteMany(deleteArgs), model.createMany({ data })])
+    const [, result] = await this.prisma.$transaction([
+      model.deleteMany(deleteArgs),
+      model.createMany({ data, skipDuplicates: true }),
+    ])
     return result.count as number
   }
 

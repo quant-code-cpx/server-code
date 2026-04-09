@@ -36,7 +36,8 @@ export class BacktestMetricsService {
     const annualizedStd = stdDev * Math.sqrt(TRADING_DAYS_PER_YEAR)
     const volatility = annualizedStd
 
-    const sharpeRatio = annualizedStd > 0 ? (annualizedReturn - RISK_FREE_RATE) / annualizedStd : 0
+    // 极小 std（浮点精度噪声）视为零波动，Sharpe = 0
+    const sharpeRatio = annualizedStd > 1e-8 ? (annualizedReturn - RISK_FREE_RATE) / annualizedStd : 0
 
     // Sortino - only downside deviation
     const negativeExcess = excessDailyReturns.filter((r) => r < 0)

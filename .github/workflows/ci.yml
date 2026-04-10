@@ -123,8 +123,9 @@ jobs:
         run: |
           BASE_SHA="${{ github.event.before }}"
           HEAD_SHA="${{ github.sha }}"
+          NULL_SHA="0000000000000000000000000000000000000000"
 
-          if [ "$BASE_SHA" = "0000000000000000000000000000000000000000" ]; then
+          if [ "$BASE_SHA" = "$NULL_SHA" ]; then
             # 新建分支，没有基准提交 → 回退为全量
             echo "mode=full" >> "$GITHUB_OUTPUT"
           else
@@ -142,9 +143,9 @@ jobs:
 
       - name: Test (incremental — feature branch)
         if: steps.changed.outputs.mode == 'incremental'
-        # shellcheck disable=SC2086
         run: |
           echo "🧪 增量测试，受影响文件：${{ steps.changed.outputs.files }}"
+          # 文件列表通过空格分隔直接展开（word splitting 为预期行为）
           pnpm exec jest --findRelatedTests ${{ steps.changed.outputs.files }} \
             --passWithNoTests --forceExit
 

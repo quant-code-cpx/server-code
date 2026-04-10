@@ -6,16 +6,23 @@
 UPSTREAM=$(git rev-parse --abbrev-ref @{upstream} 2>/dev/null)
 
 if [ -n "$UPSTREAM" ]; then
-  SRC_FILES=$(git diff --name-only "$UPSTREAM..HEAD" 2>/dev/null \
+  BASE="$UPSTREAM"
+else
+  # 尚未设置上游（新分支第一次推送）：以 origin/main 作为基准，
+  # 确保分支上所有 commit 的变更都能被检测到
+  BASE=$(git rev-parse origin/main 2>/dev/null)
+fi
+
+if [ -n "$BASE" ]; then
+  SRC_FILES=$(git diff --name-only "$BASE..HEAD" 2>/dev/null \
     | grep '^src/.*\.ts$' \
     | grep -v '\.spec\.ts$' \
     | tr '\n' ' ')
 else
-  # 尚未设置上游（新分支第一次推送），与上一个提交比较
-  SRC_FILES=$(git diff --name-only HEAD~1..HEAD 2>/dev/null \
-    | grep '^src/.*\.ts$' \
-    | grep -v '\.spec\.ts$' \
-    | tr '\n' ' ')
+  # 找不到比较基准（例如离线环境或全新仓库），回退为全量测试
+  echo "🔍 无法确定比较基准，运行全量测试..."
+  pnpm test --passWithNoTests
+  exit $?
 fi
 
 if [ -z "$(echo "$SRC_FILES" | tr -d ' ')" ]; then

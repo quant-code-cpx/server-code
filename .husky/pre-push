@@ -1,0 +1,38 @@
+#!/bin/sh
+# Pre-push hook: 仅运行与本次推送变更相关的测试（增量测试）
+# 使用 jest --findRelatedTests 检测受影响的 spec 文件并执行
+
+# 找到本地分支与远端追踪分支的差异
+UPSTREAM=$(git rev-parse --abbrev-ref @{upstream} 2>/dev/null)
+
+if [ -n "$UPSTREAM" ]; then
+  SRC_FILES=$(git diff --name-only "$UPSTREAM..HEAD" 2>/dev/null \
+    | grep '^src/.*\.ts$' \
+    | grep -v '\.spec\.ts$' \
+    | tr '\n' ' ')
+else
+  # 尚未设置上游（新分支第一次推送），与上一个提交比较
+  SRC_FILES=$(git diff --name-only HEAD~1..HEAD 2>/dev/null \
+    | grep '^src/.*\.ts$' \
+    | grep -v '\.spec\.ts$' \
+    | tr '\n' ' ')
+fi
+
+if [ -z "$(echo "$SRC_FILES" | tr -d ' ')" ]; then
+  echo "🔍 未检测到 src/ 源文件变更，跳过增量测试"
+  exit 0
+fi
+
+echo "🧪 运行增量测试，受影响的源文件："
+echo "   $SRC_FILES"
+
+# shellcheck disable=SC2086
+pnpm exec jest --findRelatedTests $SRC_FILES --passWithNoTests --forceExit
+
+STATUS=$?
+if [ $STATUS -ne 0 ]; then
+  echo "❌ 测试失败，推送已中止。请修复后重试。"
+  exit 1
+fi
+
+echo "✅ 增量测试全部通过"

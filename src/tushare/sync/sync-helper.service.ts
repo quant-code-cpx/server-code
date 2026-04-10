@@ -142,10 +142,13 @@ export class SyncHelperService {
 
   /** 获取某个模型的某个日期字段的最大值（返回 YYYYMMDD 字符串；兼容 DateTime 和 String 两种类型） */
   async getLatestDateString(modelName: string, fieldName = 'tradeDate'): Promise<string | null> {
-    const result = await (this.prisma as any)[modelName].aggregate({
-      _max: { [fieldName]: true },
+    // 使用 findFirst + orderBy 代替 aggregate._max，对大表更友好（利用索引倒序扫描）
+    const latest = await (this.prisma as any)[modelName].findFirst({
+      orderBy: { [fieldName]: 'desc' },
+      select: { [fieldName]: true },
     })
-    const maxValue = result?._max?.[fieldName]
+    if (!latest) return null
+    const maxValue = latest[fieldName]
     if (!maxValue) return null
     if (maxValue instanceof Date) return this.formatDate(maxValue)
     if (typeof maxValue === 'string') return maxValue

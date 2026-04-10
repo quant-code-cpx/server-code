@@ -240,14 +240,20 @@ export class FactorDataSyncService {
         const mapped = await fetchAndMap(td)
         const [, result] = await this.helper.prisma.$transaction([
           model.deleteMany({ where: { tradeDate: td } }),
-          model.createMany({ data: mapped }),
+          model.createMany({ data: mapped, skipDuplicates: true }),
         ])
         totalRows += (result as { count: number }).count
         if (i === 0 || (i + 1) % 200 === 0 || i === tradeDates.length - 1) {
           this.logger.log(`[${label}] 进度 ${i + 1}/${tradeDates.length}，当前 ${td}，累计 ${totalRows} 条`)
         }
       } catch (error) {
-        const msg = (error as Error).message
+        const msg =
+          error instanceof Error
+            ? (error.message
+                ?.trim()
+                .split('\n')
+                .find((l) => l.trim()) ?? String(error))
+            : String(error)
         this.logger.error(`[${label}] ${td} 同步失败: ${msg}`)
         failed.push({ date: td, error: msg })
       }

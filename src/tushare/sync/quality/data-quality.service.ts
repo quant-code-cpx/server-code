@@ -675,7 +675,14 @@ export class DataQualityService {
           }
         }
       } catch (error) {
-        this.logger.error(`[数据质量检查] ${dataSet} 检查失败: ${(error as Error).message}`)
+        const msg =
+          error instanceof Error
+            ? (error.message
+                ?.trim()
+                .split('\n')
+                .find((l) => l.trim()) ?? String(error))
+            : String(error)
+        this.logger.error(`[数据质量检查] ${dataSet} 检查失败: ${msg}`)
       }
     }
 
@@ -689,7 +696,16 @@ export class DataQualityService {
       }
       this.logger.log(`[数据质量检查] 跨表对账完成（${crossReports.length} 项）`)
     } catch (error) {
-      this.logger.error(`[数据质量检查] 跨表对账失败: ${(error as Error).message}`)
+      this.logger.error(
+        `[数据质量检查] 跨表对账失败: ${
+          error instanceof Error
+            ? (error.message
+                ?.trim()
+                .split('\n')
+                .find((l) => l.trim()) ?? String(error))
+            : String(error)
+        }`,
+      )
     }
 
     this.logger.log(

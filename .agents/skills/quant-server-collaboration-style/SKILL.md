@@ -121,6 +121,33 @@ argument-hint: '可选关注点，例如：tushare sync、docker 启动、prisma
 - 根级别的 `test/` 目录（`test/setup.ts`、`test/helpers/`）保留原位，专门放全局 setup 和通用 mock 工具。
 - 新建测试文件时**不得**将 spec 文件与源文件放在同一目录下。
 
+### 14. 代码改动必须同步维护测试用例
+
+**这条规则是强制性的，不需要用户每次单独提示。**
+
+#### 何时必须更新测试
+
+| 改动类型 | 要求 |
+|----------|------|
+| 新增 service / controller 方法 | 在对应 `*.spec.ts` 中新增测试用例，覆盖正常路径与主要错误路径 |
+| 修改现有方法的业务逻辑 | 更新依赖该方法的所有 `*.spec.ts` 中的断言和 mock |
+| 修改方法签名（参数 / 返回值类型） | 同步更新测试中的调用方式与 mock 返回值 |
+| 修改错误处理逻辑 | 确保异常路径测试仍然正确，必要时补充新 case |
+| 新增模块 | 必须在 `test/` 子目录下创建对应的 `*.spec.ts` 文件 |
+| 删除方法或模块 | 同步删除或调整对应测试用例，避免僵尸测试 |
+
+#### 允许跳过测试更新的例外
+
+- 纯注释、JSDoc、Swagger 装饰器（`@ApiProperty`、`@ApiTags` 等）的变更
+- 仅修改类型别名、枚举名，无逻辑变化
+- 纯 `docs/`、`prisma/migrations/`、`.env.example` 等配置类文件变更
+
+#### 执行机制
+
+- **本地**：手动执行 `pnpm test` 或 `pnpm exec jest --findRelatedTests <文件>` 验证。
+- **CI**：feature 分支 push 触发增量测试（`jest --findRelatedTests`）；main 分支 push 与 PR to main 触发全量测试。
+- 代理执行改动后**必须**在同一 PR/commit 内同步维护测试，不得留下"TODO: 补测试"的空承诺。
+
 ## 推荐工作流程
 
 1. 编辑前先读取相关代码和当前项目结构。
@@ -159,6 +186,7 @@ argument-hint: '可选关注点，例如：tushare sync、docker 启动、prisma
 - 不泄露本机私有路径
 - Tushare 行为同时符合文档和真实返回
 - NestJS 结构保持清晰、可扩展
+- 代码改动与测试用例保持同步，无未更新的 spec 文件
 - 总结里清楚说明频控、迁移、启动行为等运行权衡
 
 ## API 参数与响应约定

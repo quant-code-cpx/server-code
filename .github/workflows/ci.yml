@@ -2,8 +2,13 @@
 # CI 工作流 — Lint → Build → Test
 #
 # 触发条件：
-#   - push 到 main 分支
+#   - push 到任意分支
 #   - 针对 main 分支的 Pull Request
+#
+# 测试策略（增量 vs 全量）：
+#   - main 分支 push 或 PR to main：全量测试（pnpm test）
+#   - feature 分支 push：检测变更的 src/*.ts 源文件，
+#     仅运行受影响的测试（jest --findRelatedTests）
 #
 # 环境：
 #   - Node.js 22 + pnpm
@@ -15,7 +20,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: ['**']
   pull_request:
     branches: [main]
 
@@ -111,5 +116,39 @@ jobs:
       - name: Build
         run: pnpm build
 
-      - name: Test
+      - name: Detect changed source files
+        id: changed
+        # 仅在非 main 的 push 事件上做增量检测；main push 与 PR 始终走全量
+        if: github.event_name == 'push' && github.ref != 'refs/heads/main'
+        run: |
+          BASE_SHA="${{ github.event.before }}"
+          HEAD_SHA="${{ github.sha }}"
+          NULL_SHA="0000000000000000000000000000000000000000"
+
+          if [ "$BASE_SHA" = "$NULL_SHA" ]; then
+            # 新建分支，没有基准提交 → 回退为全量
+            echo "mode=full" >> "$GITHUB_OUTPUT"
+          else
+            SRC_FILES=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA" \
+              | grep '^src/.*\.ts$' \
+              | grep -v '\.spec\.ts$' \
+              | tr '\n' ' ')
+            if [ -n "$(echo "$SRC_FILES" | tr -d ' ')" ]; then
+              echo "mode=incremental" >> "$GITHUB_OUTPUT"
+              echo "files=$SRC_FILES" >> "$GITHUB_OUTPUT"
+            else
+              echo "mode=full" >> "$GITHUB_OUTPUT"
+            fi
+          fi
+
+      - name: Test (incremental — feature branch)
+        if: steps.changed.outputs.mode == 'incremental'
+        run: |
+          echo "🧪 增量测试，受影响文件：${{ steps.changed.outputs.files }}"
+          # 文件列表通过空格分隔直接展开（word splitting 为预期行为）
+          pnpm exec jest --findRelatedTests ${{ steps.changed.outputs.files }} \
+            --passWithNoTests --forceExit
+
+      - name: Test (full — main / PR / new branch)
+        if: steps.changed.outputs.mode != 'incremental'
         run: pnpm test --passWithNoTests

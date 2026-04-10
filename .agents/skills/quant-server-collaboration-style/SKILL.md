@@ -144,7 +144,7 @@ argument-hint: '可选关注点，例如：tushare sync、docker 启动、prisma
 
 #### 执行机制
 
-- **本地**：`.husky/pre-push` 钩子在 `git push` 前自动运行 `jest --findRelatedTests <changed-src-files>`，若测试失败则中止推送。
+- **本地**：手动执行 `pnpm test` 或 `pnpm exec jest --findRelatedTests <文件>` 验证。
 - **CI**：feature 分支 push 触发增量测试（`jest --findRelatedTests`）；main 分支 push 与 PR to main 触发全量测试。
 - 代理执行改动后**必须**在同一 PR/commit 内同步维护测试，不得留下"TODO: 补测试"的空承诺。
 

@@ -94,6 +94,11 @@ export class TushareMarketDataProvider implements IMarketDataProvider {
     }))
   }
 
+  /** Convert Date to YYYYMMDD string (for tables that store tradeDate as string) */
+  private toYYYYMMDD(date: Date): string {
+    return date.toISOString().slice(0, 10).replace(/-/g, '')
+  }
+
   async getLimitPrices(
     tsCodes: string[],
     startDate: Date,
@@ -101,8 +106,8 @@ export class TushareMarketDataProvider implements IMarketDataProvider {
   ): Promise<LimitPriceData[]> {
     if (tsCodes.length === 0) return []
 
-    const startStr = startDate.toISOString().slice(0, 10).replace(/-/g, '')
-    const endStr = endDate.toISOString().slice(0, 10).replace(/-/g, '')
+    const startStr = this.toYYYYMMDD(startDate)
+    const endStr = this.toYYYYMMDD(endDate)
 
     const rows = await this.prisma.stkLimit.findMany({
       where: {
@@ -127,8 +132,8 @@ export class TushareMarketDataProvider implements IMarketDataProvider {
   ): Promise<SuspendInfoData[]> {
     if (tsCodes.length === 0) return []
 
-    const startStr = startDate.toISOString().slice(0, 10).replace(/-/g, '')
-    const endStr = endDate.toISOString().slice(0, 10).replace(/-/g, '')
+    const startStr = this.toYYYYMMDD(startDate)
+    const endStr = this.toYYYYMMDD(endDate)
 
     const rows = await this.prisma.suspendD.findMany({
       where: {

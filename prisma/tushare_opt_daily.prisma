@@ -1,0 +1,23 @@
+// 期权日线行情
+
+model OptDaily {
+  tsCode    String   @map("ts_code") @db.VarChar(30)
+  tradeDate DateTime @map("trade_date") @db.Date
+  exchange  String?  @db.VarChar(10)
+  preSettle Float?   @map("pre_settle")
+  preClose  Float?   @map("pre_close")
+  open      Float?
+  high      Float?
+  low       Float?
+  close     Float?
+  settle    Float?
+  vol       Float?
+  amount    Float?
+  oi        Float?
+  syncedAt  DateTime @default(now()) @map("synced_at")
+
+  @@id([tsCode, tradeDate])
+  @@index([tradeDate])
+  @@index([exchange, tradeDate])
+  @@map("opt_daily")
+}

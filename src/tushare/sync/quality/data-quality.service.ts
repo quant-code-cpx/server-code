@@ -6,6 +6,14 @@ import { PrismaService } from 'src/shared/prisma.service'
 import { SyncHelperService } from '../sync-helper.service'
 import { CrossTableCheckService } from './cross-table-check.service'
 
+type AnyModelDelegate = {
+  findFirst(args?: Record<string, unknown>): Promise<Record<string, unknown> | null>
+  findMany(args?: Record<string, unknown>): Promise<Record<string, unknown>[]>
+  createMany(args: Record<string, unknown>): Prisma.PrismaPromise<{ count: number }>
+  deleteMany(args?: Record<string, unknown>): Prisma.PrismaPromise<{ count: number }>
+  count(args?: Record<string, unknown>): Prisma.PrismaPromise<number>
+}
+
 export interface DataQualityReport {
   dataSet: string
   checkType: string
@@ -344,7 +352,7 @@ export class DataQualityService {
   // ─── Private: 全量刷新型时效性检查 ─────────────────────────────────────────
 
   private async checkFullRefreshTimeliness(dataSet: string, config: DataSetCheckConfig): Promise<DataQualityReport> {
-    const model = (this.prisma as any)[config.modelName]
+    const model = (this.prisma as unknown as Record<string, AnyModelDelegate>)[config.modelName]
     const count = await model.count()
 
     if (count === 0) {
@@ -378,7 +386,7 @@ export class DataQualityService {
   // ─── Private: 财务事件型时效性检查 ─────────────────────────────────────────
 
   private async checkFinancialEventTimeliness(dataSet: string, config: DataSetCheckConfig): Promise<DataQualityReport> {
-    const model = (this.prisma as any)[config.modelName]
+    const model = (this.prisma as unknown as Record<string, AnyModelDelegate>)[config.modelName]
     const count = await model.count()
 
     if (count === 0) {
@@ -409,7 +417,7 @@ export class DataQualityService {
 
     const queryDates = config.dateType === 'datetime' ? tradeDates.map((d) => this.helper.toDate(d)) : tradeDates
 
-    const model = (this.prisma as any)[config.modelName]
+    const model = (this.prisma as unknown as Record<string, AnyModelDelegate>)[config.modelName]
     const existingRows = await model.findMany({
       select: { [config.dateField]: true },
       where: { [config.dateField]: { in: queryDates } },
@@ -489,7 +497,7 @@ export class DataQualityService {
     }
 
     const queryDates = expectedDates.map((d) => this.helper.toDate(d))
-    const model = (this.prisma as any)[config.modelName]
+    const model = (this.prisma as unknown as Record<string, AnyModelDelegate>)[config.modelName]
     const existingRows = await model.findMany({
       select: { [config.dateField]: true },
       where: { [config.dateField]: { in: queryDates } },
@@ -539,7 +547,7 @@ export class DataQualityService {
       }
     }
 
-    const model = (this.prisma as any)[config.modelName]
+    const model = (this.prisma as unknown as Record<string, AnyModelDelegate>)[config.modelName]
 
     const periodCounts: Array<{ period: string; stockCount: number }> = []
     for (const period of recentPeriods) {

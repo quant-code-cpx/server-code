@@ -1,0 +1,59 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// 量化报告模块 Schema
+//
+// 包含报告相关的枚举与数据模型：
+//   - ReportType    报告类型（回测 / 个股 / 组合）
+//   - ReportFormat  输出格式（JSON / HTML / PDF）
+//   - ReportStatus  生成状态（排队中 / 生成中 / 完成 / 失败）
+//   - Report        报告元数据表
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum ReportType {
+  BACKTEST
+  STOCK
+  PORTFOLIO
+
+  @@map("report_type")
+}
+
+enum ReportFormat {
+  JSON
+  HTML
+  PDF
+
+  @@map("report_format")
+}
+
+enum ReportStatus {
+  PENDING
+  GENERATING
+  COMPLETED
+  FAILED
+
+  @@map("report_status")
+}
+
+model Report {
+  id           String       @id @default(cuid())
+  userId       Int          @map("user_id")
+  type         ReportType   @map("report_type")
+  title        String       @db.VarChar(200)
+  /// 生成报告时使用的参数（JSON）
+  params       Json         @db.JsonB
+  /// 报告结构化数据（JSON），前端可直接渲染
+  data         Json?        @db.JsonB
+  /// 报告文件存储路径（HTML/PDF）
+  filePath     String?      @map("file_path") @db.VarChar(500)
+  format       ReportFormat @default(JSON)
+  status       ReportStatus @default(PENDING)
+  errorMessage String?      @map("error_message") @db.Text
+  fileSize     Int?         @map("file_size")
+  createdAt    DateTime     @default(now()) @map("created_at")
+  completedAt  DateTime?    @map("completed_at")
+
+  user         User         @relation(fields: [userId], references: [id])
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([type])
+  @@map("reports")
+}

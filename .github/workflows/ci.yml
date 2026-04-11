@@ -102,6 +102,21 @@ jobs:
       - name: Generate Prisma Client
         run: pnpm exec prisma generate
 
+      - name: Create shadow database for drift check
+        run: psql -h localhost -U postgres -c "CREATE DATABASE quant_shadow;"
+        env:
+          PGPASSWORD: ci_test_password
+
+      - name: Check migration drift (schema ↔ migrations consistency)
+        run: |
+          pnpm exec prisma migrate diff \
+            --from-migrations ./prisma/migrations \
+            --to-schema-datamodel ./prisma \
+            --shadow-database-url postgresql://postgres:ci_test_password@localhost:5432/quant_shadow \
+            --exit-code
+        # 若 schema 有未迁移的变更，此步失败并输出 diff，阻止后续操作。
+        # 修复方法：本地运行 `pnpm prisma:migrate` 生成 migration 文件后提交。
+
       - name: Push schema to test DB
         run: pnpm exec prisma db push --accept-data-loss
 

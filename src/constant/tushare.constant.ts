@@ -44,6 +44,18 @@ export enum TushareApiName {
   CB_DAILY = 'cb_daily',
   THS_INDEX = 'ths_index',
   THS_MEMBER = 'ths_member',
+  // Fund
+  FUND_BASIC = 'fund_basic',
+  FUND_NAV = 'fund_nav',
+  FUND_DAILY = 'fund_daily',
+  // Macro
+  CN_CPI = 'cn_cpi',
+  CN_PPI = 'cn_ppi',
+  CN_GDP = 'cn_gdp',
+  SHIBOR = 'shibor',
+  // Option
+  OPT_BASIC = 'opt_basic',
+  OPT_DAILY = 'opt_daily',
 }
 
 /** A 股常用交易所代码 */
@@ -122,6 +134,18 @@ export enum TushareSyncTaskName {
   CB_DAILY = 'CB_DAILY',
   THS_INDEX = 'THS_INDEX',
   THS_MEMBER = 'THS_MEMBER',
+  // Fund
+  FUND_BASIC = 'FUND_BASIC',
+  FUND_NAV = 'FUND_NAV',
+  FUND_DAILY = 'FUND_DAILY',
+  // Macro
+  CN_CPI = 'CN_CPI',
+  CN_PPI = 'CN_PPI',
+  CN_GDP = 'CN_GDP',
+  SHIBOR = 'SHIBOR',
+  // Option
+  OPT_BASIC = 'OPT_BASIC',
+  OPT_DAILY = 'OPT_DAILY',
 }
 
 /** 同步执行状态 */
@@ -1089,3 +1113,154 @@ export const TUSHARE_CB_DAILY_FIELDS = [
 export const TUSHARE_THS_INDEX_FIELDS = ['ts_code', 'name', 'count', 'exchange', 'list_date', 'type'] as const
 
 export const TUSHARE_THS_MEMBER_FIELDS = ['ts_code', 'con_code', 'con_name', 'is_new'] as const
+
+// ─── Fund（基金）字段 ─────────────────────────────────────────────────────────
+
+export const TUSHARE_FUND_BASIC_FIELDS = [
+  'ts_code',
+  'name',
+  'management',
+  'custodian',
+  'fund_type',
+  'found_date',
+  'due_date',
+  'list_date',
+  'issue_date',
+  'delist_date',
+  'issue_amount',
+  'm_fee',
+  'c_fee',
+  'duration_year',
+  'p_value',
+  'min_amount',
+  'exp_return',
+  'benchmark',
+  'status',
+  'invest_type',
+  'type',
+  'trustee',
+  'purc_startdate',
+  'redm_startdate',
+  'market',
+] as const
+
+export const TUSHARE_FUND_NAV_FIELDS = [
+  'ts_code',
+  'ann_date',
+  'nav_date',
+  'unit_nav',
+  'accum_nav',
+  'accum_div',
+  'net_asset',
+  'total_netasset',
+  'adj_nav',
+] as const
+
+export const TUSHARE_FUND_DAILY_FIELDS = [
+  'ts_code',
+  'trade_date',
+  'open',
+  'high',
+  'low',
+  'close',
+  'pre_close',
+  'change',
+  'pct_chg',
+  'vol',
+  'amount',
+] as const
+
+// ─── Macro（宏观经济）字段 ────────────────────────────────────────────────────
+
+export const TUSHARE_CPI_FIELDS = [
+  'month',
+  'nt_val',
+  'nt_yoy',
+  'nt_mom',
+  'nt_accu',
+  'town_val',
+  'town_yoy',
+  'town_mom',
+  'town_accu',
+  'cnt_val',
+  'cnt_yoy',
+  'cnt_mom',
+  'cnt_accu',
+] as const
+
+export const TUSHARE_PPI_FIELDS = [
+  'month',
+  'ppi_yoy',
+  'ppi_mp_yoy',
+  'ppi_mp_qm_yoy',
+  'ppi_mp_rm_yoy',
+  'ppi_mp_p_yoy',
+  'ppi_cg_yoy',
+  'ppi_cg_f_yoy',
+  'ppi_cg_c_yoy',
+  'ppi_cg_adu_yoy',
+  'ppi_cg_dcg_yoy',
+  'ppi_mom',
+  'ppi_mp_mom',
+  'ppi_mp_qm_mom',
+  'ppi_mp_rm_mom',
+  'ppi_mp_p_mom',
+  'ppi_cg_mom',
+  'ppi_cg_f_mom',
+  'ppi_cg_c_mom',
+  'ppi_cg_adu_mom',
+  'ppi_cg_dcg_mom',
+  'ppi_accu',
+  'ppi_mp_accu',
+  'ppi_mp_qm_accu',
+  'ppi_mp_rm_accu',
+  'ppi_mp_p_accu',
+  'ppi_cg_accu',
+  'ppi_cg_f_accu',
+  'ppi_cg_c_accu',
+  'ppi_cg_adu_accu',
+  'ppi_cg_dcg_accu',
+] as const
+
+export const TUSHARE_GDP_FIELDS = ['quarter', 'gdp', 'gdp_yoy', 'pi', 'pi_yoy', 'si', 'si_yoy', 'ti', 'ti_yoy'] as const
+
+export const TUSHARE_SHIBOR_FIELDS = ['date', 'on', '1w', '2w', '1m', '3m', '6m', '9m', '1y'] as const
+
+// ─── Option（期权）字段 ───────────────────────────────────────────────────────
+
+export const TUSHARE_OPT_BASIC_FIELDS = [
+  'ts_code',
+  'exchange',
+  'name',
+  'per_unit',
+  'opt_code',
+  'opt_type',
+  'call_put',
+  'exercise_type',
+  'exercise_price',
+  's_month',
+  'maturity_date',
+  'list_price',
+  'list_date',
+  'delist_date',
+  'last_edate',
+  'last_ddate',
+  'quote_unit',
+  'min_price_chg',
+] as const
+
+export const TUSHARE_OPT_DAILY_FIELDS = [
+  'ts_code',
+  'trade_date',
+  'exchange',
+  'pre_settle',
+  'pre_close',
+  'open',
+  'high',
+  'low',
+  'close',
+  'settle',
+  'vol',
+  'amount',
+  'oi',
+] as const

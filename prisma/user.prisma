@@ -39,6 +39,8 @@ model User {
   screenerSubscriptions ScreenerSubscription[]         // 条件订阅
   strategyDrafts     StrategyDraft[]                   // 策略草稿
   strategies         Strategy[]                        // 策略模板
+  portfolios         Portfolio[]                        // 虚拟投资组合
+  reports            Report[]                          // 量化报告
   createdAt      DateTime   @default(now())
   updatedAt      DateTime   @updatedAt
 

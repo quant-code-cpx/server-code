@@ -8,6 +8,9 @@ export const CACHE_NAMESPACE = {
   TRADE_CALENDAR: 'trade-calendar',
   WATCHLIST: 'watchlist',
   WATCHLIST_STOCKS: 'watchlist-stocks',
+  INDUSTRY_ROTATION: 'industry-rotation',
+  PORTFOLIO: 'portfolio',
+  TUSHARE_SYNC_OVERVIEW: 'tushare-sync-overview',
 } as const
 
 export type CacheNamespace = (typeof CACHE_NAMESPACE)[keyof typeof CACHE_NAMESPACE]
@@ -30,8 +33,12 @@ export const CACHE_KEY_PREFIX = {
   TRADE_CALENDAR_RECENT_OPEN: 'trade-cal:recent-open',
   TRADE_CALENDAR_IS_TODAY_TRADING: 'trade-cal:is-today-trading',
   TRADE_CALENDAR_LATEST_COMPLETED: 'trade-cal:latest-completed',
+  PORTFOLIO_DETAIL: 'portfolio:detail',
+  PORTFOLIO_PNL_TODAY: 'portfolio:pnl:today',
+  PORTFOLIO_PNL_HIST: 'portfolio:pnl:hist',
+  PORTFOLIO_RISK: 'portfolio:risk',
 } as const
 
 export const MONITORED_CACHE_NAMESPACES = Object.values(CACHE_NAMESPACE)
 
-export const SYNC_INVALIDATION_PREFIXES = ['market:', 'factor:'] as const
+export const SYNC_INVALIDATION_PREFIXES = ['market:', 'factor:', 'ind-rotation:', 'portfolio:'] as const

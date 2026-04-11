@@ -10,6 +10,7 @@ import { IAppConfig, APP_CONFIG_TOKEN } from './config/app.config'
 import { LoggerService } from './shared/logger/logger.service'
 import { TransformInterceptor } from './lifecycle/interceptors/transform.interceptor'
 import { LoggingInterceptor } from './lifecycle/interceptors/logging.interceptor'
+import { HttpMetricsInterceptor } from './shared/metrics/http-metrics.interceptor'
 import { GlobalExceptionsFilter } from './lifecycle/filters/global.exception'
 import { REFRESH_TOKEN_COOKIE } from './constant/auth.constant'
 
@@ -61,6 +62,7 @@ async function bootstrap() {
 
   // ── 拦截器 ──
   app.useGlobalInterceptors(new TransformInterceptor())
+  app.useGlobalInterceptors(app.get(HttpMetricsInterceptor))
   if (logHttpRequests) {
     app.useGlobalInterceptors(new LoggingInterceptor(loggerService, logHttpBody))
   }

@@ -42,6 +42,7 @@
     "@nestjs/throttler": "^6.4.0",
     "@nestjs/websockets": "^11.0.0",
     "@prisma/client": "^6.5.0",
+    "@willsoto/nestjs-prometheus": "^6.1.0",
     "bcrypt": "^5.1.1",
     "bullmq": "^5.51.0",
     "class-transformer": "^0.5.1",
@@ -49,10 +50,13 @@
     "cookie-parser": "^1.4.7",
     "cron": "^4.4.0",
     "dayjs": "^1.11.13",
+    "handlebars": "^4.7.9",
     "helmet": "^8.0.0",
     "lodash": "^4.17.21",
     "nanoid": "3",
     "passport-jwt": "^4.0.1",
+    "prom-client": "^15.1.3",
+    "puppeteer": "^24.40.0",
     "redis": "^4.7.0",
     "reflect-metadata": "^0.2.0",
     "rxjs": "^7.8.1",
@@ -69,6 +73,7 @@
     "@types/cookie-parser": "^1.4.10",
     "@types/cron": "^2.4.3",
     "@types/express": "^5.0.0",
+    "@types/handlebars": "^4.1.0",
     "@types/jest": "^29.5.14",
     "@types/lodash": "^4.17.0",
     "@types/node": "^22.13.0",
@@ -99,6 +104,16 @@
       "bcrypt",
       "msgpackr-extract",
       "prisma"
+    ],
+    "ignoredBuiltDependencies": [
+      "@nestjs/core",
+      "@prisma/client",
+      "@prisma/engines",
+      "@scarf/scarf",
+      "bcrypt",
+      "msgpackr-extract",
+      "prisma",
+      "puppeteer"
     ]
   }
 }

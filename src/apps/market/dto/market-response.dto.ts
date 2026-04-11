@@ -1,21 +1,27 @@
 import { ApiProperty } from '@nestjs/swagger'
 
 export class MarketMoneyFlowItemDto {
-  @ApiProperty() tradeDate: Date
-  @ApiProperty({ required: false, nullable: true }) netAmount: number | null
-  @ApiProperty({ required: false, nullable: true }) netAmountRate: number | null
-  @ApiProperty({ required: false, nullable: true }) buyElgAmount: number | null
-  @ApiProperty({ required: false, nullable: true }) buyElgAmountRate: number | null
-  @ApiProperty({ required: false, nullable: true }) buyLgAmount: number | null
-  @ApiProperty({ required: false, nullable: true }) buyLgAmountRate: number | null
-  @ApiProperty({ required: false, nullable: true }) buyMdAmount: number | null
-  @ApiProperty({ required: false, nullable: true }) buyMdAmountRate: number | null
-  @ApiProperty({ required: false, nullable: true }) buySmAmount: number | null
-  @ApiProperty({ required: false, nullable: true }) buySmAmountRate: number | null
-  @ApiProperty({ description: '沪市收盘点位', required: false, nullable: true }) closeSh: number | null
-  @ApiProperty({ description: '沪市涨跌幅', required: false, nullable: true }) pctChangeSh: number | null
-  @ApiProperty({ description: '深市收盘点位', required: false, nullable: true }) closeSz: number | null
-  @ApiProperty({ description: '深市涨跌幅', required: false, nullable: true }) pctChangeSz: number | null
+  @ApiProperty({ example: '2024-03-20' }) tradeDate: Date
+  @ApiProperty({ example: -523400, required: false, nullable: true, description: '净流入额（万元）' }) netAmount:
+    | number
+    | null
+  @ApiProperty({ example: -0.0182, required: false, nullable: true }) netAmountRate: number | null
+  @ApiProperty({ example: 125000, required: false, nullable: true }) buyElgAmount: number | null
+  @ApiProperty({ example: 0.0043, required: false, nullable: true }) buyElgAmountRate: number | null
+  @ApiProperty({ example: 890000, required: false, nullable: true }) buyLgAmount: number | null
+  @ApiProperty({ example: 0.031, required: false, nullable: true }) buyLgAmountRate: number | null
+  @ApiProperty({ example: 2340000, required: false, nullable: true }) buyMdAmount: number | null
+  @ApiProperty({ example: 0.081, required: false, nullable: true }) buyMdAmountRate: number | null
+  @ApiProperty({ example: 5670000, required: false, nullable: true }) buySmAmount: number | null
+  @ApiProperty({ example: 0.197, required: false, nullable: true }) buySmAmountRate: number | null
+  @ApiProperty({ description: '沪市收盘点位', example: 3050.23, required: false, nullable: true }) closeSh:
+    | number
+    | null
+  @ApiProperty({ description: '沪市涨跌幅', example: 0.35, required: false, nullable: true }) pctChangeSh: number | null
+  @ApiProperty({ description: '深市收盘点位', example: 9872.45, required: false, nullable: true }) closeSz:
+    | number
+    | null
+  @ApiProperty({ description: '深市涨跌幅', example: 0.42, required: false, nullable: true }) pctChangeSz: number | null
 }
 
 export class SectorFlowItemDto {

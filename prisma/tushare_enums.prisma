@@ -70,6 +70,18 @@ enum TushareSyncTask {
   CB_DAILY
   THS_INDEX
   THS_MEMBER
+  // Fund
+  FUND_BASIC
+  FUND_NAV
+  FUND_DAILY
+  // Macro
+  CN_CPI
+  CN_PPI
+  CN_GDP
+  SHIBOR
+  // Option
+  OPT_BASIC
+  OPT_DAILY
 }
 
 // 同步任务执行结果

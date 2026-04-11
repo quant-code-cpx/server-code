@@ -1877,3 +1877,308 @@ export function mapThsMemberRecord(
     isNew: readString(record, 'is_new'),
   }
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Fund（基金）
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export function mapFundBasicRecord(
+  record: TushareRecord,
+  collector?: ValidationCollector,
+): Prisma.FundBasicCreateInput | null {
+  const tsCode = readString(record, 'ts_code')
+  if (!tsCode) {
+    collector?.add({ tsCode, ruleName: 'missing_pk', severity: 'error', message: 'ts_code 缺失', rawData: record })
+    return null
+  }
+
+  return {
+    tsCode,
+    name: readString(record, 'name'),
+    management: readString(record, 'management'),
+    custodian: readString(record, 'custodian'),
+    fundType: readString(record, 'fund_type'),
+    foundDate: readDate(record, 'found_date'),
+    dueDate: readDate(record, 'due_date'),
+    listDate: readDate(record, 'list_date'),
+    issueDate: readDate(record, 'issue_date'),
+    delistDate: readDate(record, 'delist_date'),
+    issueAmount: readNumber(record, 'issue_amount'),
+    mFee: readNumber(record, 'm_fee'),
+    cFee: readNumber(record, 'c_fee'),
+    durationYear: readNumber(record, 'duration_year'),
+    pValue: readNumber(record, 'p_value'),
+    minAmount: readNumber(record, 'min_amount'),
+    expReturn: readNumber(record, 'exp_return'),
+    benchmark: readString(record, 'benchmark'),
+    status: readString(record, 'status'),
+    investType: readString(record, 'invest_type'),
+    type: readString(record, 'type'),
+    trustee: readString(record, 'trustee'),
+    purcStartdate: readDate(record, 'purc_startdate'),
+    redmStartdate: readDate(record, 'redm_startdate'),
+    market: readString(record, 'market'),
+  }
+}
+
+export function mapFundNavRecord(
+  record: TushareRecord,
+  collector?: ValidationCollector,
+): Prisma.FundNavCreateManyInput | null {
+  const tsCode = readString(record, 'ts_code')
+  const navDate = readDate(record, 'nav_date')
+  if (!tsCode || !navDate) {
+    collector?.add({
+      tsCode,
+      ruleName: 'missing_pk',
+      severity: 'error',
+      message: 'ts_code 或 nav_date 缺失',
+      rawData: record,
+    })
+    return null
+  }
+
+  return {
+    tsCode,
+    annDate: readDate(record, 'ann_date'),
+    navDate,
+    unitNav: readNumber(record, 'unit_nav'),
+    accumNav: readNumber(record, 'accum_nav'),
+    accumDiv: readNumber(record, 'accum_div'),
+    netAsset: readNumber(record, 'net_asset'),
+    totalNetasset: readNumber(record, 'total_netasset'),
+    adjNav: readNumber(record, 'adj_nav'),
+  }
+}
+
+export function mapFundDailyRecord(
+  record: TushareRecord,
+  collector?: ValidationCollector,
+): Prisma.FundDailyCreateManyInput | null {
+  const tsCode = readString(record, 'ts_code')
+  const tradeDate = readDate(record, 'trade_date')
+  if (!tsCode || !tradeDate) {
+    collector?.add({
+      tsCode,
+      tradeDate: readString(record, 'trade_date'),
+      ruleName: 'missing_pk',
+      severity: 'error',
+      message: 'ts_code 或 trade_date 缺失',
+      rawData: record,
+    })
+    return null
+  }
+
+  return {
+    tsCode,
+    tradeDate,
+    open: readNumber(record, 'open'),
+    high: readNumber(record, 'high'),
+    low: readNumber(record, 'low'),
+    close: readNumber(record, 'close'),
+    preClose: readNumber(record, 'pre_close'),
+    change: readNumber(record, 'change'),
+    pctChg: readNumber(record, 'pct_chg'),
+    vol: readNumber(record, 'vol'),
+    amount: readNumber(record, 'amount'),
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Macro（宏观经济）
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export function mapMacroCpiRecord(
+  record: TushareRecord,
+  collector?: ValidationCollector,
+): Prisma.MacroCpiCreateInput | null {
+  const month = readString(record, 'month')
+  if (!month) {
+    collector?.add({ tsCode: null, ruleName: 'missing_pk', severity: 'error', message: 'month 缺失', rawData: record })
+    return null
+  }
+
+  return {
+    month,
+    ntVal: readNumber(record, 'nt_val'),
+    ntYoy: readNumber(record, 'nt_yoy'),
+    ntMom: readNumber(record, 'nt_mom'),
+    ntAccu: readNumber(record, 'nt_accu'),
+    townVal: readNumber(record, 'town_val'),
+    townYoy: readNumber(record, 'town_yoy'),
+    townMom: readNumber(record, 'town_mom'),
+    townAccu: readNumber(record, 'town_accu'),
+    cntVal: readNumber(record, 'cnt_val'),
+    cntYoy: readNumber(record, 'cnt_yoy'),
+    cntMom: readNumber(record, 'cnt_mom'),
+    cntAccu: readNumber(record, 'cnt_accu'),
+  }
+}
+
+export function mapMacroPpiRecord(
+  record: TushareRecord,
+  collector?: ValidationCollector,
+): Prisma.MacroPpiCreateInput | null {
+  const month = readString(record, 'month')
+  if (!month) {
+    collector?.add({ tsCode: null, ruleName: 'missing_pk', severity: 'error', message: 'month 缺失', rawData: record })
+    return null
+  }
+
+  return {
+    month,
+    ppiYoy: readNumber(record, 'ppi_yoy'),
+    ppiMpYoy: readNumber(record, 'ppi_mp_yoy'),
+    ppiMpQmYoy: readNumber(record, 'ppi_mp_qm_yoy'),
+    ppiMpRmYoy: readNumber(record, 'ppi_mp_rm_yoy'),
+    ppiMpPYoy: readNumber(record, 'ppi_mp_p_yoy'),
+    ppiCgYoy: readNumber(record, 'ppi_cg_yoy'),
+    ppiCgFYoy: readNumber(record, 'ppi_cg_f_yoy'),
+    ppiCgCYoy: readNumber(record, 'ppi_cg_c_yoy'),
+    ppiCgAduYoy: readNumber(record, 'ppi_cg_adu_yoy'),
+    ppiCgDcgYoy: readNumber(record, 'ppi_cg_dcg_yoy'),
+    ppiMom: readNumber(record, 'ppi_mom'),
+    ppiMpMom: readNumber(record, 'ppi_mp_mom'),
+    ppiMpQmMom: readNumber(record, 'ppi_mp_qm_mom'),
+    ppiMpRmMom: readNumber(record, 'ppi_mp_rm_mom'),
+    ppiMpPMom: readNumber(record, 'ppi_mp_p_mom'),
+    ppiCgMom: readNumber(record, 'ppi_cg_mom'),
+    ppiCgFMom: readNumber(record, 'ppi_cg_f_mom'),
+    ppiCgCMom: readNumber(record, 'ppi_cg_c_mom'),
+    ppiCgAduMom: readNumber(record, 'ppi_cg_adu_mom'),
+    ppiCgDcgMom: readNumber(record, 'ppi_cg_dcg_mom'),
+    ppiAccu: readNumber(record, 'ppi_accu'),
+    ppiMpAccu: readNumber(record, 'ppi_mp_accu'),
+    ppiMpQmAccu: readNumber(record, 'ppi_mp_qm_accu'),
+    ppiMpRmAccu: readNumber(record, 'ppi_mp_rm_accu'),
+    ppiMpPAccu: readNumber(record, 'ppi_mp_p_accu'),
+    ppiCgAccu: readNumber(record, 'ppi_cg_accu'),
+    ppiCgFAccu: readNumber(record, 'ppi_cg_f_accu'),
+    ppiCgCAccu: readNumber(record, 'ppi_cg_c_accu'),
+    ppiCgAduAccu: readNumber(record, 'ppi_cg_adu_accu'),
+    ppiCgDcgAccu: readNumber(record, 'ppi_cg_dcg_accu'),
+  }
+}
+
+export function mapMacroGdpRecord(
+  record: TushareRecord,
+  collector?: ValidationCollector,
+): Prisma.MacroGdpCreateInput | null {
+  const quarter = readString(record, 'quarter')
+  if (!quarter) {
+    collector?.add({
+      tsCode: null,
+      ruleName: 'missing_pk',
+      severity: 'error',
+      message: 'quarter 缺失',
+      rawData: record,
+    })
+    return null
+  }
+
+  return {
+    quarter,
+    gdp: readNumber(record, 'gdp'),
+    gdpYoy: readNumber(record, 'gdp_yoy'),
+    pi: readNumber(record, 'pi'),
+    piYoy: readNumber(record, 'pi_yoy'),
+    si: readNumber(record, 'si'),
+    siYoy: readNumber(record, 'si_yoy'),
+    ti: readNumber(record, 'ti'),
+    tiYoy: readNumber(record, 'ti_yoy'),
+  }
+}
+
+export function mapMacroShiborRecord(
+  record: TushareRecord,
+  collector?: ValidationCollector,
+): Prisma.MacroShiborCreateManyInput | null {
+  const date = readDate(record, 'date')
+  if (!date) {
+    collector?.add({ tsCode: null, ruleName: 'missing_pk', severity: 'error', message: 'date 缺失', rawData: record })
+    return null
+  }
+
+  return {
+    date,
+    on: readNumber(record, 'on'),
+    w1: readNumber(record, '1w'),
+    w2: readNumber(record, '2w'),
+    m1: readNumber(record, '1m'),
+    m3: readNumber(record, '3m'),
+    m6: readNumber(record, '6m'),
+    m9: readNumber(record, '9m'),
+    y1: readNumber(record, '1y'),
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Option（期权）
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export function mapOptBasicRecord(
+  record: TushareRecord,
+  collector?: ValidationCollector,
+): Prisma.OptBasicCreateInput | null {
+  const tsCode = readString(record, 'ts_code')
+  if (!tsCode) {
+    collector?.add({ tsCode, ruleName: 'missing_pk', severity: 'error', message: 'ts_code 缺失', rawData: record })
+    return null
+  }
+
+  return {
+    tsCode,
+    exchange: readString(record, 'exchange'),
+    name: readString(record, 'name'),
+    perUnit: readString(record, 'per_unit'),
+    optCode: readString(record, 'opt_code'),
+    optType: readString(record, 'opt_type'),
+    callPut: readString(record, 'call_put'),
+    exerciseType: readString(record, 'exercise_type'),
+    exercisePrice: readNumber(record, 'exercise_price'),
+    sMonth: readString(record, 's_month'),
+    maturityDate: readDate(record, 'maturity_date'),
+    listPrice: readNumber(record, 'list_price'),
+    listDate: readDate(record, 'list_date'),
+    delistDate: readDate(record, 'delist_date'),
+    lastEdate: readDate(record, 'last_edate'),
+    lastDdate: readDate(record, 'last_ddate'),
+    quoteUnit: readString(record, 'quote_unit'),
+    minPriceChg: readString(record, 'min_price_chg'),
+  }
+}
+
+export function mapOptDailyRecord(
+  record: TushareRecord,
+  collector?: ValidationCollector,
+): Prisma.OptDailyCreateManyInput | null {
+  const tsCode = readString(record, 'ts_code')
+  const tradeDate = readDate(record, 'trade_date')
+  if (!tsCode || !tradeDate) {
+    collector?.add({
+      tsCode,
+      tradeDate: readString(record, 'trade_date'),
+      ruleName: 'missing_pk',
+      severity: 'error',
+      message: 'ts_code 或 trade_date 缺失',
+      rawData: record,
+    })
+    return null
+  }
+
+  return {
+    tsCode,
+    tradeDate,
+    exchange: readString(record, 'exchange'),
+    preSettle: readNumber(record, 'pre_settle'),
+    preClose: readNumber(record, 'pre_close'),
+    open: readNumber(record, 'open'),
+    high: readNumber(record, 'high'),
+    low: readNumber(record, 'low'),
+    close: readNumber(record, 'close'),
+    settle: readNumber(record, 'settle'),
+    vol: readNumber(record, 'vol'),
+    amount: readNumber(record, 'amount'),
+    oi: readNumber(record, 'oi'),
+  }
+}

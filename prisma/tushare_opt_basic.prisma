@@ -1,0 +1,27 @@
+// 期权合约信息
+
+model OptBasic {
+  tsCode        String    @id @map("ts_code") @db.VarChar(30)
+  exchange      String?   @db.VarChar(10)
+  name          String?   @db.VarChar(100)
+  perUnit       String?   @map("per_unit") @db.VarChar(20)
+  optCode       String?   @map("opt_code") @db.VarChar(30)
+  optType       String?   @map("opt_type") @db.VarChar(10)
+  callPut       String?   @map("call_put") @db.VarChar(4)
+  exerciseType  String?   @map("exercise_type") @db.VarChar(10)
+  exercisePrice Float?    @map("exercise_price")
+  sMonth        String?   @map("s_month") @db.VarChar(10)
+  maturityDate  DateTime? @map("maturity_date") @db.Date
+  listPrice     Float?    @map("list_price")
+  listDate      DateTime? @map("list_date") @db.Date
+  delistDate    DateTime? @map("delist_date") @db.Date
+  lastEdate     DateTime? @map("last_edate") @db.Date
+  lastDdate     DateTime? @map("last_ddate") @db.Date
+  quoteUnit     String?   @map("quote_unit") @db.VarChar(20)
+  minPriceChg   String?   @map("min_price_chg") @db.VarChar(20)
+  syncedAt      DateTime  @default(now()) @map("synced_at")
+
+  @@index([exchange])
+  @@index([callPut])
+  @@map("opt_basic")
+}

@@ -1,0 +1,106 @@
+<html lang='zh-CN'>
+  <head>
+    <meta charset='UTF-8' />
+    <title>{{overview.name}}({{overview.tsCode}}) - 个股研报</title>
+    <style>
+      body {
+        font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif;
+        margin: 40px;
+        color: #333;
+        font-size: 14px;
+      }
+      h1 {
+        font-size: 22px;
+        border-bottom: 2px solid #1a73e8;
+        padding-bottom: 8px;
+      }
+      h2 {
+        font-size: 16px;
+        color: #1a73e8;
+        margin-top: 28px;
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+        margin: 12px 0;
+      }
+      th,
+      td {
+        border: 1px solid #ddd;
+        padding: 6px 10px;
+        text-align: right;
+      }
+      th {
+        background: #f5f7fa;
+        text-align: center;
+        font-weight: 600;
+      }
+      .info {
+        background: #f5f7fa;
+        border-radius: 6px;
+        padding: 12px 16px;
+        margin: 12px 0;
+      }
+      .info span {
+        margin-right: 24px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>{{overview.name}}（{{overview.tsCode}}）个股研报</h1>
+    <div class='info'>
+      <span>行业：{{overview.industry}}</span>
+      <span>地域：{{overview.area}}</span>
+      <span>上市日期：{{overview.listDate}}</span>
+    </div>
+
+    <h2>财务摘要</h2>
+    {{#if financialSummary}}
+      <table>
+        <thead>
+          <tr>
+            <th>报告期</th>
+            {{#each financialSummary.periods}}<th>{{this}}</th>{{/each}}
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>ROE (%)</td>{{#each financialSummary.roe}}<td>{{this}}</td>{{/each}}</tr>
+          <tr><td>净利率 (%)</td>{{#each financialSummary.netProfitMargin}}<td>{{this}}</td>{{/each}}</tr>
+          <tr><td>营收同比 (%)</td>{{#each financialSummary.revenueYoyGrowth}}<td>{{this}}</td>{{/each}}</tr>
+        </tbody>
+      </table>
+    {{else}}
+      <p>暂无财务数据</p>
+    {{/if}}
+
+    <h2>十大股东</h2>
+    {{#if top10Holders.length}}
+      <table>
+        <thead><tr><th>股东名称</th><th>持股数量</th><th>持股比例 (%)</th></tr></thead>
+        <tbody>
+          {{#each top10Holders}}
+            <tr><td style='text-align:left'>{{this.holderName}}</td><td>{{this.holdAmount}}</td><td
+              >{{this.holdRatio}}</td></tr>
+          {{/each}}
+        </tbody>
+      </table>
+    {{else}}
+      <p>暂无股东数据</p>
+    {{/if}}
+
+    <h2>分红记录</h2>
+    {{#if dividends.length}}
+      <table>
+        <thead><tr><th>截止日</th><th>分红进度</th><th>每股现金（税后）</th><th>每股送转</th></tr></thead>
+        <tbody>
+          {{#each dividends}}
+            <tr><td>{{this.endDate}}</td><td>{{this.divProc}}</td><td>{{this.cashDivTax}}</td><td
+              >{{this.stkDiv}}</td></tr>
+          {{/each}}
+        </tbody>
+      </table>
+    {{else}}
+      <p>暂无分红记录</p>
+    {{/if}}
+  </body>
+</html>

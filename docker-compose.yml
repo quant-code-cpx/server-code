@@ -107,10 +107,49 @@ services:
       start_period: 30s
     restart: unless-stopped
 
+  # ── Prometheus（可观测性，仅 monitoring 配置启用）─────────────────────────
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    container_name: quant_prometheus
+    profiles: ['monitoring']
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - '9090:9090'
+    networks:
+      - quant-net
+    depends_on:
+      app:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ── Grafana（可观测性，仅 monitoring 配置启用）────────────────────────────
+  grafana:
+    image: grafana/grafana:11.1.0
+    container_name: quant_grafana
+    profiles: ['monitoring']
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - '3001:3000'
+    networks:
+      - quant-net
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
 # ── 网络 ──────────────────────────────────────────────────────────────────────
 networks:
   quant-net:
     driver: bridge
 
 # ── 数据卷 ────────────────────────────────────────────────────────────────────
-# 本文件已使用宿主机 bind mounts（见各 service 的 volumes）
+volumes:
+  prometheus_data:
+  grafana_data:

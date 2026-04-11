@@ -290,7 +290,7 @@ export class StockDetailService {
 
   async getStockConcepts(tsCode: string) {
     const [memberships, stock] = await Promise.all([
-      (this.prisma as any).thsMember.findMany({
+      this.prisma.thsMember.findMany({
         where: { conCode: tsCode },
         include: { board: { select: { tsCode: true, name: true } } },
       }),

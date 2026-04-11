@@ -1,5 +1,14 @@
 import { Injectable, Logger } from '@nestjs/common'
+import { Prisma } from '@prisma/client'
 import { TushareSyncExecutionStatus, TushareSyncTaskName } from 'src/constant/tushare.constant'
+
+type AnyModelDelegate = {
+  findFirst(args?: Record<string, unknown>): Promise<Record<string, unknown> | null>
+  findMany(args?: Record<string, unknown>): Promise<Record<string, unknown>[]>
+  createMany(args: Record<string, unknown>): Prisma.PrismaPromise<{ count: number }>
+  deleteMany(args?: Record<string, unknown>): Prisma.PrismaPromise<{ count: number }>
+  count(args?: Record<string, unknown>): Prisma.PrismaPromise<number>
+}
 import { FinancialApiService } from '../api/financial-api.service'
 import {
   mapBalanceSheetRecord,
@@ -339,7 +348,7 @@ export class FinancialSyncService {
       return
     }
 
-    await (this.helper.prisma as any).income.deleteMany({})
+    await this.helper.prisma.income.deleteMany({})
     this.logger.log(`[利润表] 已清空旧数据，开始按股票重建最近 ${years} 年（${stocks.length} 只股票）`)
 
     let totalRows = 0
@@ -358,7 +367,7 @@ export class FinancialSyncService {
           })
 
         if (mapped.length > 0) {
-          const result = await (this.helper.prisma as any).income.createMany({ data: mapped, skipDuplicates: true })
+          const result = await this.helper.prisma.income.createMany({ data: mapped, skipDuplicates: true })
           totalRows += result.count
         }
 
@@ -384,8 +393,7 @@ export class FinancialSyncService {
               return endDateKey ? periodSet.has(endDateKey) : false
             })
           if (mapped.length > 0) {
-            totalRows += (await (this.helper.prisma as any).income.createMany({ data: mapped, skipDuplicates: true }))
-              .count
+            totalRows += (await this.helper.prisma.income.createMany({ data: mapped, skipDuplicates: true })).count
           }
           this.logger.log(`[利润表] ${tsCode} 重试成功`)
         } catch (error) {
@@ -438,7 +446,7 @@ export class FinancialSyncService {
       return
     }
 
-    await (this.helper.prisma as any).balanceSheet.deleteMany({})
+    await this.helper.prisma.balanceSheet.deleteMany({})
     this.logger.log(`[资产负债表] 已清空旧数据，开始按股票重建最近 ${years} 年（${stocks.length} 只股票）`)
 
     let totalRows = 0
@@ -457,7 +465,7 @@ export class FinancialSyncService {
           })
 
         if (mapped.length > 0) {
-          const result = await (this.helper.prisma as any).balanceSheet.createMany({
+          const result = await this.helper.prisma.balanceSheet.createMany({
             data: mapped,
             skipDuplicates: true,
           })
@@ -486,9 +494,8 @@ export class FinancialSyncService {
               return endDateKey ? periodSet.has(endDateKey) : false
             })
           if (mapped.length > 0) {
-            totalRows += (
-              await (this.helper.prisma as any).balanceSheet.createMany({ data: mapped, skipDuplicates: true })
-            ).count
+            totalRows += (await this.helper.prisma.balanceSheet.createMany({ data: mapped, skipDuplicates: true }))
+              .count
           }
           this.logger.log(`[资产负债表] ${tsCode} 重试成功`)
         } catch (error) {
@@ -541,7 +548,7 @@ export class FinancialSyncService {
       return
     }
 
-    await (this.helper.prisma as any).cashflow.deleteMany({})
+    await this.helper.prisma.cashflow.deleteMany({})
     this.logger.log(`[现金流量表] 已清空旧数据，开始按股票重建最近 ${years} 年（${stocks.length} 只股票）`)
 
     let totalRows = 0
@@ -560,7 +567,7 @@ export class FinancialSyncService {
           })
 
         if (mapped.length > 0) {
-          const result = await (this.helper.prisma as any).cashflow.createMany({ data: mapped, skipDuplicates: true })
+          const result = await this.helper.prisma.cashflow.createMany({ data: mapped, skipDuplicates: true })
           totalRows += result.count
         }
 
@@ -586,8 +593,7 @@ export class FinancialSyncService {
               return endDateKey ? periodSet.has(endDateKey) : false
             })
           if (mapped.length > 0) {
-            totalRows += (await (this.helper.prisma as any).cashflow.createMany({ data: mapped, skipDuplicates: true }))
-              .count
+            totalRows += (await this.helper.prisma.cashflow.createMany({ data: mapped, skipDuplicates: true })).count
           }
           this.logger.log(`[现金流量表] ${tsCode} 重试成功`)
         } catch (error) {
@@ -1210,7 +1216,7 @@ export class FinancialSyncService {
         const rows = await fetchByPeriod(period)
         const mapped = rows.map((r) => mapRecord(r, collector)).filter((r): r is NonNullable<typeof r> => Boolean(r))
 
-        const model = (this.helper.prisma as any)[modelName]
+        const model = (this.helper.prisma as unknown as Record<string, AnyModelDelegate>)[modelName]
         await model.deleteMany({ where: { endDate: this.helper.toDate(period) } })
         if (mapped.length > 0) {
           const result = await model.createMany({ data: mapped, skipDuplicates: true })
@@ -1232,7 +1238,7 @@ export class FinancialSyncService {
         try {
           const rows = await fetchByPeriod(item.period)
           const mapped = rows.map((r) => mapRecord(r, collector)).filter((r): r is NonNullable<typeof r> => Boolean(r))
-          const model = (this.helper.prisma as any)[modelName]
+          const model = (this.helper.prisma as unknown as Record<string, AnyModelDelegate>)[modelName]
           await model.deleteMany({ where: { endDate: this.helper.toDate(item.period) } })
           if (mapped.length > 0) {
             await model.createMany({ data: mapped, skipDuplicates: true })
@@ -1271,7 +1277,7 @@ export class FinancialSyncService {
   }
 
   private async shouldRebuildRecentYears(modelName: string, label: string): Promise<boolean> {
-    const rowCount = await (this.helper.prisma as any)[modelName].count()
+    const rowCount = await (this.helper.prisma as unknown as Record<string, AnyModelDelegate>)[modelName].count()
     if (rowCount > 0) {
       return false
     }
@@ -1286,7 +1292,10 @@ export class FinancialSyncService {
     years: number
     modelName: 'top10Holders' | 'top10FloatHolders'
     fetchRows: (tsCode: string, startDate: string, endDate: string) => Promise<Record<string, unknown>[]>
-    mapRecord: (record: Record<string, unknown>, collector?: ValidationCollector) => unknown | null
+    mapRecord: (
+      record: Record<string, unknown>,
+      collector?: ValidationCollector,
+    ) => ({ endDate?: Date | string | null } & Record<string, unknown>) | null | undefined
   }): Promise<void> {
     const { task, label, years, modelName, fetchRows, mapRecord } = opts
     const startedAt = new Date()
@@ -1299,7 +1308,7 @@ export class FinancialSyncService {
       return
     }
 
-    const model = (this.helper.prisma as any)[modelName]
+    const model = (this.helper.prisma as unknown as Record<string, AnyModelDelegate>)[modelName]
     await model.deleteMany({})
     this.logger.log(`[${label}] 已清空旧数据，开始按股票重建最近 ${years} 年`)
 
@@ -1315,7 +1324,7 @@ export class FinancialSyncService {
         const mapped = rows
           .map((r) => mapRecord(r, collector))
           .filter((row): row is NonNullable<typeof row> => Boolean(row))
-          .filter((row: any) => {
+          .filter((row) => {
             const endDateKey = this.normalizeDateKey(row.endDate)
             return endDateKey ? periodSet.has(endDateKey) : false
           })
@@ -1341,7 +1350,7 @@ export class FinancialSyncService {
           const mapped = rows
             .map((r) => mapRecord(r, collector))
             .filter((row): row is NonNullable<typeof row> => Boolean(row))
-            .filter((row: any) => {
+            .filter((row) => {
               const endDateKey = this.normalizeDateKey(row.endDate)
               return endDateKey ? periodSet.has(endDateKey) : false
             })
@@ -1461,7 +1470,7 @@ export class FinancialSyncService {
           .filter((r): r is NonNullable<typeof r> => Boolean(r))
 
         if (mapped.length > 0) {
-          const count = await (this.helper.prisma as any).stkHolderNumber.createMany({
+          const count = await this.helper.prisma.stkHolderNumber.createMany({
             data: mapped,
             skipDuplicates: true,
           })
@@ -1519,7 +1528,7 @@ export class FinancialSyncService {
           .filter((r): r is NonNullable<typeof r> => Boolean(r))
 
         if (mapped.length > 0) {
-          const count = await (this.helper.prisma as any).stkHolderTrade.createMany({
+          const count = await this.helper.prisma.stkHolderTrade.createMany({
             data: mapped,
             skipDuplicates: true,
           })
@@ -1580,7 +1589,7 @@ export class FinancialSyncService {
           .filter((r): r is NonNullable<typeof r> => Boolean(r))
 
         if (mapped.length > 0) {
-          const count = await (this.helper.prisma as any).pledgeStat.createMany({
+          const count = await this.helper.prisma.pledgeStat.createMany({
             data: mapped,
             skipDuplicates: true,
           })
@@ -1636,7 +1645,7 @@ export class FinancialSyncService {
       return
     }
 
-    await (this.helper.prisma as any).finaAudit.deleteMany({})
+    await this.helper.prisma.finaAudit.deleteMany({})
     this.logger.log(`[财务审计意见] 已清空旧数据，开始按股票全量重建（${stocks.length} 只股票）`)
 
     let totalRows = 0
@@ -1651,7 +1660,7 @@ export class FinancialSyncService {
           .filter((r): r is NonNullable<typeof r> => Boolean(r))
 
         if (mapped.length > 0) {
-          const count = await (this.helper.prisma as any).finaAudit.createMany({
+          const count = await this.helper.prisma.finaAudit.createMany({
             data: mapped,
             skipDuplicates: true,
           })
@@ -1766,7 +1775,7 @@ export class FinancialSyncService {
       return
     }
 
-    await (this.helper.prisma as any).finaMainbz.deleteMany({})
+    await this.helper.prisma.finaMainbz.deleteMany({})
     this.logger.log(`[主营业务构成] 已清空旧数据，开始按股票全量重建（${stocks.length} 只股票）`)
 
     let totalRows = 0
@@ -1781,7 +1790,7 @@ export class FinancialSyncService {
           .filter((r): r is NonNullable<typeof r> => Boolean(r))
 
         if (mapped.length > 0) {
-          const count = await (this.helper.prisma as any).finaMainbz.createMany({
+          const count = await this.helper.prisma.finaMainbz.createMany({
             data: mapped,
             skipDuplicates: true,
           })
@@ -1841,7 +1850,7 @@ export class FinancialSyncService {
           .filter((r): r is NonNullable<typeof r> => Boolean(r))
 
         if (mapped.length > 0) {
-          const count = await (this.helper.prisma as any).repurchase.createMany({
+          const count = await this.helper.prisma.repurchase.createMany({
             data: mapped,
             skipDuplicates: true,
           })

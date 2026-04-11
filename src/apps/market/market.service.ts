@@ -1,9 +1,8 @@
 import { Injectable } from '@nestjs/common'
 import { MoneyflowContentType, Prisma } from '@prisma/client'
-import * as dayjs from 'dayjs'
-// use require for plugins to ensure compatibility with commonjs output
-const timezone = require('dayjs/plugin/timezone')
-const utc = require('dayjs/plugin/utc')
+import dayjs from 'dayjs'
+import timezone from 'dayjs/plugin/timezone'
+import utc from 'dayjs/plugin/utc'
 import { CACHE_NAMESPACE } from 'src/constant/cache.constant'
 import { CacheService } from 'src/shared/cache.service'
 import { PrismaService } from 'src/shared/prisma.service'
@@ -134,7 +133,7 @@ export class MarketService {
       }
     }
 
-    const tradeDateStr = (dayjs(tradeDate) as any).tz('Asia/Shanghai').format('YYYYMMDD')
+    const tradeDateStr = dayjs(tradeDate).tz('Asia/Shanghai').format('YYYYMMDD')
 
     // 当日 PE/PB 中位数（使用 PostgreSQL percentile_cont 函数）
     const currentMedian = await this.prisma.$queryRaw<{ pe_ttm_median: number; pb_median: number }[]>`
@@ -253,7 +252,7 @@ export class MarketService {
     const tradeDate = query.trade_date ? this.parseDate(query.trade_date) : await this.resolveLatestDailyTradeDate()
     if (!tradeDate) return null
 
-    const tradeDateStr = (dayjs(tradeDate) as any).tz('Asia/Shanghai').format('YYYY-MM-DD')
+    const tradeDateStr = dayjs(tradeDate).tz('Asia/Shanghai').format('YYYY-MM-DD')
     const cacheKey = `market:change-dist:${tradeDateStr}`
 
     return this.rememberMarketCache(cacheKey, MARKET_STANDARD_CACHE_TTL_SECONDS, async () => {
@@ -656,7 +655,7 @@ export class MarketService {
     const order = query.order ?? 'desc'
     const limit = query.limit ?? 20
 
-    const tradeDateStr = (dayjs(tradeDate) as any).tz('Asia/Shanghai').format('YYYYMMDD')
+    const tradeDateStr = dayjs(tradeDate).tz('Asia/Shanghai').format('YYYYMMDD')
     const cacheKey = `market:main-flow-rank:${tradeDateStr}:${order}:${limit}`
 
     return this.rememberMarketCache(cacheKey, MARKET_STANDARD_CACHE_TTL_SECONDS, async () => {
@@ -764,8 +763,8 @@ export class MarketService {
       where['name'] = { contains: dto.keyword }
     }
     const [total, items] = await Promise.all([
-      (this.prisma as any).thsIndex.count({ where }),
-      (this.prisma as any).thsIndex.findMany({
+      this.prisma.thsIndex.count({ where }),
+      this.prisma.thsIndex.findMany({
         where,
         select: { tsCode: true, name: true, count: true, listDate: true },
         orderBy: { count: 'desc' },
@@ -781,9 +780,9 @@ export class MarketService {
     const pageSize = dto.pageSize ?? 100
     const { tsCode } = dto
     const [board, total, items] = await Promise.all([
-      (this.prisma as any).thsIndex.findUnique({ where: { tsCode }, select: { name: true } }),
-      (this.prisma as any).thsMember.count({ where: { tsCode } }),
-      (this.prisma as any).thsMember.findMany({
+      this.prisma.thsIndex.findUnique({ where: { tsCode }, select: { name: true } }),
+      this.prisma.thsMember.count({ where: { tsCode } }),
+      this.prisma.thsMember.findMany({
         where: { tsCode },
         select: { conCode: true, conName: true },
         skip: (page - 1) * pageSize,
@@ -900,7 +899,7 @@ export class MarketService {
   }
 
   private parseDate(value: string) {
-    return (dayjs as any).tz(value, 'YYYYMMDD', 'Asia/Shanghai').toDate()
+    return dayjs.tz(value, 'YYYYMMDD', 'Asia/Shanghai').toDate()
   }
 
   private rememberMarketCache<T>(key: string, ttlSeconds: number, loader: () => Promise<T>) {

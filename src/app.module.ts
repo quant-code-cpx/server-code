@@ -25,6 +25,13 @@ import { ScreenerSubscriptionModule } from './apps/screener-subscription/screene
 import { StrategyDraftModule } from './apps/strategy-draft/strategy-draft.module'
 import { IndexModule } from './apps/index/index.module'
 import { StrategyModule } from './apps/strategy/strategy.module'
+import { IndustryRotationModule } from './apps/industry-rotation/industry-rotation.module'
+import { PortfolioModule } from './apps/portfolio/portfolio.module'
+import { EventStudyModule } from './apps/event-study/event-study.module'
+import { PatternModule } from './apps/pattern/pattern.module'
+import { ReportModule } from './apps/report/report.module'
+import { AlertModule } from './apps/alert/alert.module'
+import { MetricsModule } from './shared/metrics/metrics.module'
 
 @Module({
   imports: [
@@ -45,6 +52,9 @@ import { StrategyModule } from './apps/strategy/strategy.module'
 
     // ── 核心共享模块（Prisma、Redis、Logger、Token） ──
     SharedModule,
+
+    // ── Prometheus 指标（全局） ──
+    MetricsModule,
 
     // ── 请求上下文（traceId 传播，必须在功能模块之前） ──
     RequestContextModule,
@@ -73,6 +83,12 @@ import { StrategyModule } from './apps/strategy/strategy.module'
     ScreenerSubscriptionModule,
     StrategyDraftModule,
     StrategyModule,
+    IndustryRotationModule,
+    PortfolioModule,
+    EventStudyModule,
+    PatternModule,
+    ReportModule,
+    AlertModule,
 
     // ── 队列模块（BullMQ 回测任务） ──
     QueueModule,

@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common'
-import * as dayjs from 'dayjs'
-const timezone = require('dayjs/plugin/timezone')
-const utc = require('dayjs/plugin/utc')
+import dayjs from 'dayjs'
+import timezone from 'dayjs/plugin/timezone'
+import utc from 'dayjs/plugin/utc'
 import { CORE_INDEX_CODES } from 'src/constant/tushare.constant'
 import { CACHE_NAMESPACE } from 'src/constant/cache.constant'
 import { CacheService } from 'src/shared/cache.service'
@@ -166,7 +166,7 @@ export class IndexService {
   }
 
   private parseDate(value: string): Date {
-    return (dayjs as any).tz(value, 'YYYYMMDD', 'Asia/Shanghai').toDate()
+    return dayjs.tz(value, 'YYYYMMDD', 'Asia/Shanghai').toDate()
   }
 
   private async resolveLatestIndexTradeDate(): Promise<Date | null> {

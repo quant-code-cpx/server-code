@@ -1,13 +1,21 @@
 import { BadRequestException, ConflictException, Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { SchedulerRegistry } from '@nestjs/schedule'
+import { InjectMetric } from '@willsoto/nestjs-prometheus'
 import { CronJob } from 'cron'
+import { Counter, Gauge, Histogram } from 'prom-client'
 import { BusinessException } from 'src/common/exceptions/business.exception'
 import { ITushareConfig, TUSHARE_CONFIG_TOKEN } from 'src/config/tushare.config'
 import { MONITORED_CACHE_NAMESPACES, SYNC_INVALIDATION_PREFIXES } from 'src/constant/cache.constant'
 import { ErrorEnum } from 'src/constant/response-code.constant'
 import { TushareSyncTaskName } from 'src/constant/tushare.constant'
 import { CacheService } from 'src/shared/cache.service'
+import {
+  TUSHARE_SYNC_DURATION,
+  TUSHARE_SYNC_TOTAL,
+  TUSHARE_SYNC_ROUND_DURATION,
+  TUSHARE_SYNC_ROUND_TASKS,
+} from 'src/shared/metrics/metrics.constants'
 import { EventsGateway } from 'src/websocket/events.gateway'
 import { HeatmapSnapshotService } from 'src/apps/heatmap/heatmap-snapshot.service'
 import { DataQualityService, DataQualityReport, QualityCheckSummary } from './quality/data-quality.service'
@@ -60,6 +68,10 @@ export class TushareSyncService implements OnApplicationBootstrap {
     private readonly heatmapSnapshotService: HeatmapSnapshotService,
     private readonly dataQualityService: DataQualityService,
     private readonly autoRepair: AutoRepairService,
+    @InjectMetric(TUSHARE_SYNC_DURATION) private readonly syncDurationHistogram: Histogram,
+    @InjectMetric(TUSHARE_SYNC_TOTAL) private readonly syncTotalCounter: Counter,
+    @InjectMetric(TUSHARE_SYNC_ROUND_DURATION) private readonly syncRoundDurationGauge: Gauge,
+    @InjectMetric(TUSHARE_SYNC_ROUND_TASKS) private readonly syncRoundTasksGauge: Gauge,
   ) {
     const cfg = this.configService.get<ITushareConfig>(TUSHARE_CONFIG_TOKEN, { infer: true })
     if (!cfg) {
@@ -392,6 +404,7 @@ export class TushareSyncService implements OnApplicationBootstrap {
                   }),
                 failedTasks,
                 executedTasks,
+                trigger,
               )
 
               completedTaskCount++
@@ -468,6 +481,12 @@ export class TushareSyncService implements OnApplicationBootstrap {
       throw error
     } finally {
       this.running = false
+      // 记录整轮同步指标
+      const finalElapsed = Number(((Date.now() - startedAt) / 1000).toFixed(1))
+      this.syncRoundDurationGauge.set({ trigger, mode }, finalElapsed)
+      this.syncRoundTasksGauge.set({ trigger, mode, status: 'executed' }, executedTasks.length)
+      this.syncRoundTasksGauge.set({ trigger, mode, status: 'failed' }, failedTasks.length)
+      this.syncRoundTasksGauge.set({ trigger, mode, status: 'skipped' }, skippedTasks.length)
     }
   }
 
@@ -476,14 +495,27 @@ export class TushareSyncService implements OnApplicationBootstrap {
     fn: () => Promise<void>,
     failedTasks: FailedTask[],
     executedTasks: TushareSyncTaskName[],
+    trigger: TushareSyncTrigger,
   ) {
+    const endTimer = this.syncDurationHistogram.startTimer({
+      task: plan.task,
+      category: plan.category,
+      trigger,
+    })
+
     try {
       this.logger.log(`▶ ${plan.label}`)
       await fn()
       executedTasks.push(plan.task)
+
+      endTimer({ status: 'success' })
+      this.syncTotalCounter.inc({ task: plan.task, category: plan.category, trigger, status: 'success' })
     } catch (error) {
       this.logger.error(`✗ ${plan.label} 失败: ${(error as Error).message}`)
       failedTasks.push({ task: plan.task, label: plan.label, fn, error: error as Error })
+
+      endTimer({ status: 'failure' })
+      this.syncTotalCounter.inc({ task: plan.task, category: plan.category, trigger, status: 'failure' })
     }
   }
 

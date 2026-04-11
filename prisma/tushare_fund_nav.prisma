@@ -1,0 +1,19 @@
+// 公募基金净值
+
+model FundNav {
+  tsCode        String    @map("ts_code") @db.VarChar(16)
+  annDate       DateTime? @map("ann_date") @db.Date
+  navDate       DateTime  @map("nav_date") @db.Date
+  unitNav       Float?    @map("unit_nav")
+  accumNav      Float?    @map("accum_nav")
+  accumDiv      Float?    @map("accum_div")
+  netAsset      Float?    @map("net_asset")
+  totalNetasset Float?    @map("total_netasset")
+  adjNav        Float?    @map("adj_nav")
+  syncedAt      DateTime  @default(now()) @map("synced_at")
+
+  @@id([tsCode, navDate])
+  @@index([navDate])
+  @@index([tsCode, navDate(sort: Desc)])
+  @@map("fund_nav")
+}

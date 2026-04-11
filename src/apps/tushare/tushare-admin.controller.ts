@@ -10,6 +10,7 @@ import { DataQualityService } from 'src/tushare/sync/quality/data-quality.servic
 import { CrossTableCheckService } from 'src/tushare/sync/quality/cross-table-check.service'
 import { AutoRepairService } from 'src/tushare/sync/quality/auto-repair.service'
 import { SyncLogService } from 'src/tushare/sync/sync-log.service'
+import { SyncStatusOverviewService } from 'src/tushare/sync/sync-status-overview.service'
 import { PrismaService } from 'src/shared/prisma.service'
 import { ManualSyncDto } from './dto/manual-sync.dto'
 import { CacheMetricsDataDto, TushareSyncPlanDto } from './dto/tushare-sync-response.dto'
@@ -27,6 +28,7 @@ export class TushareAdminController {
     private readonly crossTableCheckService: CrossTableCheckService,
     private readonly autoRepairService: AutoRepairService,
     private readonly syncLogService: SyncLogService,
+    private readonly syncStatusOverviewService: SyncStatusOverviewService,
     private readonly prisma: PrismaService,
   ) {}
 
@@ -259,5 +261,19 @@ export class TushareAdminController {
     })
 
     return { message: `已重置 ${result.count} 条记录为 PENDING` }
+  }
+
+  @Post('sync-status-overview')
+  @ApiOperation({
+    summary: '数据同步状态总览（仅超级管理员）',
+    description:
+      '聚合各数据表的实际行数、最早/最晚日期、缺失交易日数及最后同步时间。结果缓存 5 分钟，可传 { refresh: true } 强制刷新。',
+  })
+  @ApiSuccessRawResponse({ type: 'object' })
+  async getSyncStatusOverview(@Body() dto: { refresh?: boolean }) {
+    if (dto.refresh) {
+      return this.syncStatusOverviewService.refresh()
+    }
+    return this.syncStatusOverviewService.getOverview()
   }
 }

@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common'
+import type { Income, BalanceSheet, Cashflow } from '@prisma/client'
 import { PrismaService } from 'src/shared/prisma.service'
 import { FinancialSyncService } from 'src/tushare/sync/financial-sync.service'
 import { StockDetailFinancialsDto } from './dto/stock-detail-financials.dto'
@@ -31,7 +32,7 @@ function yoy(curr: number | null, prev: number | null): number | null {
   return Math.round(((curr - prev) / Math.abs(prev)) * 10000) / 100
 }
 
-function buildIncomeItems(rows: any[], limit: number) {
+function buildIncomeItems(rows: Income[], limit: number) {
   // rows 已按 endDate desc 排序
   const byKey = new Map<string, any>()
   for (const r of rows) byKey.set(fmtPeriodKey(r.endDate), r)
@@ -62,7 +63,7 @@ function buildIncomeItems(rows: any[], limit: number) {
   })
 }
 
-function buildBalanceSheetItems(rows: any[], limit: number) {
+function buildBalanceSheetItems(rows: BalanceSheet[], limit: number) {
   const byKey = new Map<string, any>()
   for (const r of rows) byKey.set(fmtPeriodKey(r.endDate), r)
 
@@ -91,7 +92,7 @@ function buildBalanceSheetItems(rows: any[], limit: number) {
   })
 }
 
-function buildCashflowItems(rows: any[], limit: number) {
+function buildCashflowItems(rows: Cashflow[], limit: number) {
   const byKey = new Map<string, any>()
   for (const r of rows) byKey.set(fmtPeriodKey(r.endDate), r)
 
@@ -316,17 +317,17 @@ export class StockFinancialService {
     const fetchLimit = periods + 4
 
     const [incomeRows, balanceRows, cashflowRows] = await Promise.all([
-      (this.prisma as any).income.findMany({
+      this.prisma.income.findMany({
         where: { tsCode, reportType: '1' },
         orderBy: { endDate: 'desc' },
         take: fetchLimit,
       }),
-      (this.prisma as any).balanceSheet.findMany({
+      this.prisma.balanceSheet.findMany({
         where: { tsCode, reportType: '1' },
         orderBy: { endDate: 'desc' },
         take: fetchLimit,
       }),
-      (this.prisma as any).cashflow.findMany({
+      this.prisma.cashflow.findMany({
         where: { tsCode, reportType: '1' },
         orderBy: { endDate: 'desc' },
         take: fetchLimit,

@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common'
-import { Prisma } from '@prisma/client'
+import { Prisma, StockListStatus } from '@prisma/client'
 import { CACHE_KEY_PREFIX, CACHE_NAMESPACE, CACHE_TTL_SECONDS } from 'src/constant/cache.constant'
 import { CacheService } from 'src/shared/cache.service'
 import { PrismaService } from 'src/shared/prisma.service'
@@ -183,7 +183,7 @@ export class StockListService {
       loader: () =>
         this.prisma.stockBasic.findMany({
           where: {
-            listStatus: 'L' as any,
+            listStatus: StockListStatus.L,
             OR: [
               { tsCode: { contains: normalizedKeyword, mode: 'insensitive' } },
               { name: { contains: normalizedKeyword, mode: 'insensitive' } },

@@ -1,5 +1,14 @@
 import { Injectable, Logger } from '@nestjs/common'
+import { Prisma } from '@prisma/client'
 import { BusinessException } from 'src/common/exceptions/business.exception'
+
+type AnyModelDelegate = {
+  findFirst(args?: Record<string, unknown>): Promise<Record<string, unknown> | null>
+  findMany(args?: Record<string, unknown>): Promise<Record<string, unknown>[]>
+  createMany(args: Record<string, unknown>): Prisma.PrismaPromise<{ count: number }>
+  deleteMany(args?: Record<string, unknown>): Prisma.PrismaPromise<{ count: number }>
+  count(args?: Record<string, unknown>): Prisma.PrismaPromise<number>
+}
 import { ErrorEnum } from 'src/constant/response-code.constant'
 import {
   FACTOR_UNIVERSE_INDEX_CODES,
@@ -233,7 +242,7 @@ export class FactorDataSyncService {
 
     let totalRows = 0
     const failed: Array<{ date: string; error: string }> = []
-    const model = (this.helper.prisma as any)[modelName]
+    const model = (this.helper.prisma as unknown as Record<string, AnyModelDelegate>)[modelName]
 
     for (const [i, td] of tradeDates.entries()) {
       try {

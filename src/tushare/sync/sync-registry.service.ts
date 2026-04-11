@@ -3,6 +3,9 @@ import { BusinessException } from 'src/common/exceptions/business.exception'
 import { ErrorEnum } from 'src/constant/response-code.constant'
 import { TushareSyncTaskName } from 'src/constant/tushare.constant'
 import { AlternativeDataSyncService } from './alternative-data-sync.service'
+import { FundSyncService } from './fund-sync.service'
+import { MacroSyncService } from './macro-sync.service'
+import { OptionSyncService } from './option-sync.service'
 import { BasicSyncService } from './basic-sync.service'
 import { FactorDataSyncService } from './factor-data-sync.service'
 import { FinancialSyncService } from './financial-sync.service'
@@ -22,6 +25,9 @@ export class TushareSyncRegistryService {
     private readonly moneyflowSync: MoneyflowSyncService,
     private readonly factorDataSync: FactorDataSyncService,
     private readonly alternativeDataSync: AlternativeDataSyncService,
+    private readonly fundSync: FundSyncService,
+    private readonly macroSync: MacroSyncService,
+    private readonly optionSync: OptionSyncService,
   ) {
     this.plans = this.collectPlans()
     this.planMap = new Map(this.plans.map((plan) => [plan.task, plan]))
@@ -59,6 +65,9 @@ export class TushareSyncRegistryService {
       ...this.moneyflowSync.getSyncPlans(),
       ...this.factorDataSync.getSyncPlans(),
       ...this.alternativeDataSync.getSyncPlans(),
+      ...this.fundSync.getSyncPlans(),
+      ...this.macroSync.getSyncPlans(),
+      ...this.optionSync.getSyncPlans(),
     ].sort((a, b) => a.order - b.order)
 
     const seen = new Set<TushareSyncTaskName>()

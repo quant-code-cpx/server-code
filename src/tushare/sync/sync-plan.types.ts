@@ -4,7 +4,16 @@ export const TUSHARE_SYNC_MODES = ['incremental', 'full'] as const
 
 export type TushareSyncMode = (typeof TUSHARE_SYNC_MODES)[number]
 export type TushareSyncTrigger = 'bootstrap' | 'schedule' | 'manual'
-export type TushareSyncCategory = 'basic' | 'market' | 'financial' | 'moneyflow' | 'factor' | 'alternative'
+export type TushareSyncCategory =
+  | 'basic'
+  | 'market'
+  | 'financial'
+  | 'moneyflow'
+  | 'factor'
+  | 'alternative'
+  | 'fund'
+  | 'macro'
+  | 'option'
 
 export interface TushareSyncSchedule {
   cron: string

@@ -1,0 +1,92 @@
+// 宏观经济指标
+
+/// 居民消费价格指数（CPI）— 月度数据
+model MacroCpi {
+  month    String   @id @db.VarChar(8) // YYYYMM
+  ntVal    Float?   @map("nt_val")     // 全国当月值
+  ntYoy    Float?   @map("nt_yoy")     // 全国同比（%）
+  ntMom    Float?   @map("nt_mom")     // 全国环比（%）
+  ntAccu   Float?   @map("nt_accu")    // 全国累计值
+  townVal  Float?   @map("town_val")   // 城市当月值
+  townYoy  Float?   @map("town_yoy")   // 城市同比（%）
+  townMom  Float?   @map("town_mom")   // 城市环比（%）
+  townAccu Float?   @map("town_accu")  // 城市累计值
+  cntVal   Float?   @map("cnt_val")    // 农村当月值
+  cntYoy   Float?   @map("cnt_yoy")    // 农村同比（%）
+  cntMom   Float?   @map("cnt_mom")    // 农村环比（%）
+  cntAccu  Float?   @map("cnt_accu")   // 农村累计值
+  syncedAt DateTime @default(now()) @map("synced_at")
+
+  @@map("macro_cpi")
+}
+
+/// 工业生产者出厂价格指数（PPI）— 月度数据
+model MacroPpi {
+  month        String   @id @db.VarChar(8) // YYYYMM
+  ppiYoy       Float?   @map("ppi_yoy")
+  ppiMpYoy     Float?   @map("ppi_mp_yoy")
+  ppiMpQmYoy   Float?   @map("ppi_mp_qm_yoy")
+  ppiMpRmYoy   Float?   @map("ppi_mp_rm_yoy")
+  ppiMpPYoy    Float?   @map("ppi_mp_p_yoy")
+  ppiCgYoy     Float?   @map("ppi_cg_yoy")
+  ppiCgFYoy    Float?   @map("ppi_cg_f_yoy")
+  ppiCgCYoy    Float?   @map("ppi_cg_c_yoy")
+  ppiCgAduYoy  Float?   @map("ppi_cg_adu_yoy")
+  ppiCgDcgYoy  Float?   @map("ppi_cg_dcg_yoy")
+  ppiMom       Float?   @map("ppi_mom")
+  ppiMpMom     Float?   @map("ppi_mp_mom")
+  ppiMpQmMom   Float?   @map("ppi_mp_qm_mom")
+  ppiMpRmMom   Float?   @map("ppi_mp_rm_mom")
+  ppiMpPMom    Float?   @map("ppi_mp_p_mom")
+  ppiCgMom     Float?   @map("ppi_cg_mom")
+  ppiCgFMom    Float?   @map("ppi_cg_f_mom")
+  ppiCgCMom    Float?   @map("ppi_cg_c_mom")
+  ppiCgAduMom  Float?   @map("ppi_cg_adu_mom")
+  ppiCgDcgMom  Float?   @map("ppi_cg_dcg_mom")
+  ppiAccu      Float?   @map("ppi_accu")
+  ppiMpAccu    Float?   @map("ppi_mp_accu")
+  ppiMpQmAccu  Float?   @map("ppi_mp_qm_accu")
+  ppiMpRmAccu  Float?   @map("ppi_mp_rm_accu")
+  ppiMpPAccu   Float?   @map("ppi_mp_p_accu")
+  ppiCgAccu    Float?   @map("ppi_cg_accu")
+  ppiCgFAccu   Float?   @map("ppi_cg_f_accu")
+  ppiCgCAccu   Float?   @map("ppi_cg_c_accu")
+  ppiCgAduAccu Float?   @map("ppi_cg_adu_accu")
+  ppiCgDcgAccu Float?   @map("ppi_cg_dcg_accu")
+  syncedAt     DateTime @default(now()) @map("synced_at")
+
+  @@map("macro_ppi")
+}
+
+/// 国内生产总值（GDP）— 季度数据
+model MacroGdp {
+  quarter  String   @id @db.VarChar(8) // 2019Q1 格式
+  gdp      Float?                      // GDP 累计值（亿元）
+  gdpYoy   Float?   @map("gdp_yoy")   // 当季同比增速（%）
+  pi       Float?                      // 第一产业累计值（亿元）
+  piYoy    Float?   @map("pi_yoy")    // 第一产业同比（%）
+  si       Float?                      // 第二产业累计值（亿元）
+  siYoy    Float?   @map("si_yoy")    // 第二产业同比（%）
+  ti       Float?                      // 第三产业累计值（亿元）
+  tiYoy    Float?   @map("ti_yoy")    // 第三产业同比（%）
+  syncedAt DateTime @default(now()) @map("synced_at")
+
+  @@map("macro_gdp")
+}
+
+/// Shibor 利率 — 每个工作日
+model MacroShibor {
+  date     DateTime @id @db.Date        // 日期
+  on       Float?                        // 隔夜
+  w1       Float?   @map("1w")          // 1周
+  w2       Float?   @map("2w")          // 2周
+  m1       Float?   @map("1m")          // 1个月
+  m3       Float?   @map("3m")          // 3个月
+  m6       Float?   @map("6m")          // 6个月
+  m9       Float?   @map("9m")          // 9个月
+  y1       Float?   @map("1y")          // 1年
+  syncedAt DateTime @default(now()) @map("synced_at")
+
+  @@index([date(sort: Desc)])
+  @@map("macro_shibor")
+}

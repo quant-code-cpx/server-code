@@ -1,7 +1,13 @@
 import { Injectable, Logger } from '@nestjs/common'
+import { Prisma } from '@prisma/client'
 import { PrismaService } from 'src/shared/prisma.service'
 import { SyncHelperService } from '../sync-helper.service'
 import { DataQualityReport } from './data-quality.service'
+
+type AnyModelDelegate = {
+  findMany(args?: Record<string, unknown>): Promise<Record<string, unknown>[]>
+  count(args?: Record<string, unknown>): Prisma.PrismaPromise<number>
+}
 
 interface CrossCheckDef {
   id: string
@@ -106,8 +112,12 @@ export class CrossTableCheckService {
     for (const td of tradeDates) {
       const dateVal = this.helper.toDate(td)
       const [leftCount, rightCount] = await Promise.all([
-        (this.prisma as any)[leftModel].count({ where: { tradeDate: dateVal } }),
-        (this.prisma as any)[rightModel].count({ where: { tradeDate: dateVal } }),
+        (this.prisma as unknown as Record<string, AnyModelDelegate>)[leftModel].count({
+          where: { tradeDate: dateVal },
+        }),
+        (this.prisma as unknown as Record<string, AnyModelDelegate>)[rightModel].count({
+          where: { tradeDate: dateVal },
+        }),
       ])
 
       // 允许 5% 的偏差（部分股票数据可能延迟）
@@ -263,7 +273,7 @@ export class CrossTableCheckService {
     for (const period of recentPeriods) {
       const periodDate = this.helper.toDate(period)
 
-      const leftCodes = await (this.prisma as any)[leftModel].findMany({
+      const leftCodes = await (this.prisma as unknown as Record<string, AnyModelDelegate>)[leftModel].findMany({
         where: { endDate: periodDate },
         select: { tsCode: true },
         distinct: ['tsCode'],
@@ -272,7 +282,7 @@ export class CrossTableCheckService {
 
       if (leftCodeSet.size === 0) continue
 
-      const rightCodes = await (this.prisma as any)[rightModel].findMany({
+      const rightCodes = await (this.prisma as unknown as Record<string, AnyModelDelegate>)[rightModel].findMany({
         where: { endDate: periodDate },
         select: { tsCode: true },
         distinct: ['tsCode'],

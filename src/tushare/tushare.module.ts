@@ -8,6 +8,9 @@ import { FinancialApiService } from './api/financial-api.service'
 import { MoneyflowApiService } from './api/moneyflow-api.service'
 import { FactorDataApiService } from './api/factor-data-api.service'
 import { AlternativeDataApiService } from './api/alternative-data-api.service'
+import { FundApiService } from './api/fund-api.service'
+import { MacroApiService } from './api/macro-api.service'
+import { OptionApiService } from './api/option-api.service'
 
 // 同步层
 import { SyncHelperService } from './sync/sync-helper.service'
@@ -17,6 +20,9 @@ import { FinancialSyncService } from './sync/financial-sync.service'
 import { MoneyflowSyncService } from './sync/moneyflow-sync.service'
 import { FactorDataSyncService } from './sync/factor-data-sync.service'
 import { AlternativeDataSyncService } from './sync/alternative-data-sync.service'
+import { FundSyncService } from './sync/fund-sync.service'
+import { MacroSyncService } from './sync/macro-sync.service'
+import { OptionSyncService } from './sync/option-sync.service'
 import { TushareSyncRegistryService } from './sync/sync-registry.service'
 import { TushareSyncService } from './sync/sync.service'
 import { DataQualityService } from './sync/quality/data-quality.service'
@@ -24,6 +30,7 @@ import { CrossTableCheckService } from './sync/quality/cross-table-check.service
 import { AutoRepairService } from './sync/quality/auto-repair.service'
 import { SyncLogService } from './sync/sync-log.service'
 import { SyncRetryService } from './sync/sync-retry.service'
+import { SyncStatusOverviewService } from './sync/sync-status-overview.service'
 import { WebsocketModule } from 'src/websocket/websocket.module'
 import { HeatmapModule } from 'src/apps/heatmap/heatmap.module'
 
@@ -44,6 +51,9 @@ import { HeatmapModule } from 'src/apps/heatmap/heatmap.module'
     MoneyflowApiService,
     FactorDataApiService,
     AlternativeDataApiService,
+    FundApiService,
+    MacroApiService,
+    OptionApiService,
     // Sync
     SyncHelperService,
     BasicSyncService,
@@ -52,6 +62,9 @@ import { HeatmapModule } from 'src/apps/heatmap/heatmap.module'
     MoneyflowSyncService,
     FactorDataSyncService,
     AlternativeDataSyncService,
+    FundSyncService,
+    MacroSyncService,
+    OptionSyncService,
     TushareSyncRegistryService,
     TushareSyncService,
     DataQualityService,
@@ -59,6 +72,7 @@ import { HeatmapModule } from 'src/apps/heatmap/heatmap.module'
     AutoRepairService,
     SyncLogService,
     SyncRetryService,
+    SyncStatusOverviewService,
   ],
   exports: [
     TushareClient,
@@ -69,6 +83,7 @@ import { HeatmapModule } from 'src/apps/heatmap/heatmap.module'
     CrossTableCheckService,
     AutoRepairService,
     SyncLogService,
+    SyncStatusOverviewService,
   ],
 })
 export class TushareModule {}

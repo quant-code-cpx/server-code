@@ -1,11 +1,16 @@
-import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common'
+import { Inject, Injectable, OnModuleDestroy, OnModuleInit, Optional } from '@nestjs/common'
 import { PrismaClient } from '@prisma/client'
+import type { Counter, Histogram } from 'prom-client'
+import { LoggerService } from './logger/logger.service'
+import { PRISMA_QUERY_DURATION_TOKEN, PRISMA_QUERY_TOTAL_TOKEN } from './metrics/metrics.constants'
 
 const DEFAULT_PRISMA_CONNECTION_LIMIT = 15
 const DEFAULT_PRISMA_POOL_TIMEOUT_SECONDS = 20
 const DEFAULT_PRISMA_CONNECT_TIMEOUT_SECONDS = 10
 const DEFAULT_PRISMA_TRANSACTION_MAX_WAIT_MS = 10_000
 const DEFAULT_PRISMA_TRANSACTION_TIMEOUT_MS = 30_000
+
+const SLOW_QUERY_THRESHOLD_MS = readPositiveIntegerEnv('PRISMA_SLOW_QUERY_THRESHOLD_MS', 500)
 
 /**
  * PrismaService — 数据库访问层的核心服务。
@@ -19,7 +24,12 @@ const DEFAULT_PRISMA_TRANSACTION_TIMEOUT_MS = 30_000
  */
 @Injectable()
 export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
-  constructor() {
+  constructor(
+    private readonly logger: LoggerService,
+    @Optional() @Inject(PRISMA_QUERY_DURATION_TOKEN) private readonly queryDuration?: Histogram,
+    @Optional() @Inject(PRISMA_QUERY_TOTAL_TOKEN) private readonly queryTotal?: Counter,
+  ) {
+    const metricsEnabled = !!queryDuration || !!queryTotal
     const datasourceUrl = buildPrismaDatasourceUrl(process.env.DATABASE_URL)
 
     super({
@@ -28,17 +38,48 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
         maxWait: readPositiveIntegerEnv('PRISMA_TRANSACTION_MAX_WAIT_MS', DEFAULT_PRISMA_TRANSACTION_MAX_WAIT_MS),
         timeout: readPositiveIntegerEnv('PRISMA_TRANSACTION_TIMEOUT_MS', DEFAULT_PRISMA_TRANSACTION_TIMEOUT_MS),
       },
+      ...(metricsEnabled ? { log: [{ emit: 'event' as const, level: 'query' as const }] } : {}),
     })
   }
 
   /** 应用启动时由 NestJS 的模块初始化流程调用，建立 PostgreSQL 连接池。 */
   async onModuleInit() {
+    // Prisma v6 移除了 $use；改用 $on('query') 监听查询事件
+    if (this.queryDuration || this.queryTotal) {
+      // Prisma v6: $on is available when log emit is configured.
+      // Cast to unknown first to satisfy TypeScript's strict type-check.
+      ;(this as unknown as { $on(event: string, cb: (e: { duration: number; query: string }) => void): void }).$on(
+        'query',
+        (e: { duration: number; query: string }) => {
+          this.recordQueryMetrics(e.duration)
+        },
+      )
+    }
+
     await this.$connect()
   }
 
   /** 应用关闭时由 NestJS 的模块销毁流程调用，优雅地释放数据库连接。 */
   async onModuleDestroy() {
     await this.$disconnect()
+  }
+
+  private recordQueryMetrics(durationMs: number) {
+    const durationSec = durationMs / 1000
+
+    this.queryDuration?.observe(durationSec)
+    this.queryTotal?.inc()
+
+    if (durationMs > SLOW_QUERY_THRESHOLD_MS) {
+      this.logger.warn(
+        {
+          message: `慢查询检测: 耗时 ${durationMs.toFixed(1)}ms`,
+          durationMs: Math.round(durationMs),
+          threshold: SLOW_QUERY_THRESHOLD_MS,
+        },
+        'PrismaSlowQuery',
+      )
+    }
   }
 }
 

@@ -1,0 +1,119 @@
+<html lang='zh-CN'>
+  <head>
+    <meta charset='UTF-8' />
+    <title>{{strategy.name}} - 回测报告</title>
+    <style>
+      body {
+        font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif;
+        margin: 40px;
+        color: #333;
+        font-size: 14px;
+      }
+      h1 {
+        font-size: 22px;
+        border-bottom: 2px solid #1a73e8;
+        padding-bottom: 8px;
+      }
+      h2 {
+        font-size: 16px;
+        color: #1a73e8;
+        margin-top: 28px;
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+        margin: 12px 0;
+      }
+      th,
+      td {
+        border: 1px solid #ddd;
+        padding: 6px 10px;
+        text-align: right;
+      }
+      th {
+        background: #f5f7fa;
+        text-align: center;
+        font-weight: 600;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+      }
+      .metric-card {
+        background: #f5f7fa;
+        border-radius: 6px;
+        padding: 12px 16px;
+      }
+      .metric-card .label {
+        font-size: 12px;
+        color: #666;
+      }
+      .metric-card .value {
+        font-size: 20px;
+        font-weight: 600;
+        margin-top: 4px;
+      }
+      .positive {
+        color: #e23;
+      }
+      .negative {
+        color: #0a0;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>{{strategy.name}} 回测报告</h1>
+    <p>回测区间：{{strategy.startDate}}
+      ~
+      {{strategy.endDate}}
+      &nbsp;|&nbsp; 初始资金：{{strategy.initialCapital}}
+      &nbsp;|&nbsp; 基准：{{strategy.benchmark}}</p>
+
+    <h2>核心指标</h2>
+    <div class='grid'>
+      <div class='metric-card'><div class='label'>总收益</div><div class='value'>{{metrics.totalReturn}}</div></div>
+      <div class='metric-card'><div class='label'>年化收益</div><div
+          class='value'
+        >{{metrics.annualizedReturn}}</div></div>
+      <div class='metric-card'><div class='label'>最大回撤</div><div class='value'>{{metrics.maxDrawdown}}</div></div>
+      <div class='metric-card'><div class='label'>夏普比率</div><div class='value'>{{metrics.sharpeRatio}}</div></div>
+      <div class='metric-card'><div class='label'>胜率</div><div class='value'>{{metrics.winRate}}</div></div>
+      <div class='metric-card'><div class='label'>交易次数</div><div class='value'>{{metrics.tradeCount}}</div></div>
+    </div>
+
+    <h2>交易记录（前 50 条）</h2>
+    <table>
+      <thead><tr><th>日期</th><th>代码</th><th>方向</th><th>价格</th><th>数量</th><th>金额</th></tr></thead>
+      <tbody>
+        {{#each trades}}
+          {{#if @index}}{{#ifCond @index 50}}{{else}}
+              <tr>
+                <td>{{this.date}}</td><td>{{this.tsCode}}</td><td>{{this.side}}</td>
+                <td>{{this.price}}</td><td>{{this.quantity}}</td><td>{{this.amount}}</td>
+              </tr>
+            {{/ifCond}}{{/if}}
+          {{#unless @index}}
+            <tr>
+              <td>{{this.date}}</td><td>{{this.tsCode}}</td><td>{{this.side}}</td>
+              <td>{{this.price}}</td><td>{{this.quantity}}</td><td>{{this.amount}}</td>
+            </tr>
+          {{/unless}}
+        {{/each}}
+      </tbody>
+    </table>
+
+    <h2>期末持仓</h2>
+    <table>
+      <thead><tr><th>代码</th><th>数量</th><th>权重</th><th>未实现盈亏</th></tr></thead>
+      <tbody>
+        {{#each endPositions}}
+          <tr>
+            <td>{{this.tsCode}}</td><td>{{this.quantity}}</td>
+            <td>{{this.weight}}</td><td>{{this.unrealizedPnl}}</td>
+          </tr>
+        {{/each}}
+      </tbody>
+    </table>
+  </body>
+</html>

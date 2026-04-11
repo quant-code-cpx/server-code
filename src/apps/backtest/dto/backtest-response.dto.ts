@@ -1,51 +1,51 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
 
 export class DataReadinessDto {
-  @ApiProperty() hasDaily: boolean
-  @ApiProperty() hasAdjFactor: boolean
-  @ApiProperty() hasTradeCal: boolean
-  @ApiProperty() hasIndexDaily: boolean
-  @ApiProperty() hasStkLimit: boolean
-  @ApiProperty() hasSuspendD: boolean
-  @ApiProperty() hasIndexWeight: boolean
+  @ApiProperty({ example: true }) hasDaily: boolean
+  @ApiProperty({ example: true }) hasAdjFactor: boolean
+  @ApiProperty({ example: true }) hasTradeCal: boolean
+  @ApiProperty({ example: true }) hasIndexDaily: boolean
+  @ApiProperty({ example: false }) hasStkLimit: boolean
+  @ApiProperty({ example: false }) hasSuspendD: boolean
+  @ApiProperty({ example: false }) hasIndexWeight: boolean
 }
 
 export class ValidateStatsDto {
-  @ApiProperty() tradingDays: number
-  @ApiPropertyOptional({ nullable: true }) estimatedUniverseSize: number | null
-  @ApiPropertyOptional({ nullable: true }) earliestAvailableDate: string | null
-  @ApiPropertyOptional({ nullable: true }) latestAvailableDate: string | null
+  @ApiProperty({ example: 242 }) tradingDays: number
+  @ApiPropertyOptional({ example: 1850, nullable: true }) estimatedUniverseSize: number | null
+  @ApiPropertyOptional({ example: '2023-01-03', nullable: true }) earliestAvailableDate: string | null
+  @ApiPropertyOptional({ example: '2023-12-29', nullable: true }) latestAvailableDate: string | null
 }
 
 export class ValidateBacktestRunResponseDto {
-  @ApiProperty() isValid: boolean
-  @ApiProperty({ type: [String] }) warnings: string[]
-  @ApiProperty({ type: [String] }) errors: string[]
+  @ApiProperty({ example: true }) isValid: boolean
+  @ApiProperty({ type: [String], example: [] }) warnings: string[]
+  @ApiProperty({ type: [String], example: [] }) errors: string[]
   @ApiProperty({ type: DataReadinessDto }) dataReadiness: DataReadinessDto
   @ApiProperty({ type: ValidateStatsDto }) stats: ValidateStatsDto
 }
 
 export class CreateBacktestRunResponseDto {
-  @ApiProperty() runId: string
-  @ApiProperty() jobId: string
-  @ApiProperty() status: string
+  @ApiProperty({ example: 'cld1a2b3c4d5e6f7g8h9i0jk' }) runId: string
+  @ApiProperty({ example: 'bull:backtest:cld1a2b3c4d5e6f7g8h9i0jk' }) jobId: string
+  @ApiProperty({ example: 'PENDING' }) status: string
 }
 
 export class BacktestRunSummaryDto {
-  @ApiProperty() runId: string
-  @ApiPropertyOptional({ nullable: true }) name: string | null
-  @ApiProperty() strategyType: string
-  @ApiProperty() status: string
-  @ApiProperty() startDate: string
-  @ApiProperty() endDate: string
-  @ApiProperty() benchmarkTsCode: string
-  @ApiPropertyOptional({ nullable: true }) totalReturn: number | null
-  @ApiPropertyOptional({ nullable: true }) annualizedReturn: number | null
-  @ApiPropertyOptional({ nullable: true }) maxDrawdown: number | null
-  @ApiPropertyOptional({ nullable: true }) sharpeRatio: number | null
-  @ApiProperty() progress: number
-  @ApiProperty() createdAt: string
-  @ApiPropertyOptional({ nullable: true }) completedAt: string | null
+  @ApiProperty({ example: 'cld1a2b3c4d5e6f7g8h9i0jk' }) runId: string
+  @ApiPropertyOptional({ example: '低估值价值策略', nullable: true }) name: string | null
+  @ApiProperty({ example: 'VALUE_FACTOR' }) strategyType: string
+  @ApiProperty({ example: 'COMPLETED' }) status: string
+  @ApiProperty({ example: '2023-01-01' }) startDate: string
+  @ApiProperty({ example: '2023-12-31' }) endDate: string
+  @ApiProperty({ example: '000300.SH' }) benchmarkTsCode: string
+  @ApiPropertyOptional({ example: 0.2341, nullable: true, description: '总收益率' }) totalReturn: number | null
+  @ApiPropertyOptional({ example: 0.2341, nullable: true, description: '年化收益率' }) annualizedReturn: number | null
+  @ApiPropertyOptional({ example: -0.1523, nullable: true, description: '最大回撤' }) maxDrawdown: number | null
+  @ApiPropertyOptional({ example: 1.42, nullable: true, description: '夏普比率' }) sharpeRatio: number | null
+  @ApiProperty({ example: 100 }) progress: number
+  @ApiProperty({ example: '2024-01-15T08:00:00.000Z' }) createdAt: string
+  @ApiPropertyOptional({ example: '2024-01-15T08:05:32.000Z', nullable: true }) completedAt: string | null
 }
 
 export class BacktestRunListResponseDto {

@@ -1,0 +1,89 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// 组合管理与风控 Schema
+//
+// 包含虚拟投资组合相关的所有枚举与数据模型：
+//   - PortfolioRiskRuleType  风控规则类型枚举
+//   - Portfolio              虚拟投资组合主表
+//   - PortfolioHolding       组合当前持仓
+//   - PortfolioRiskRule      风控规则配置
+//   - RiskViolationLog       风控违规记录
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// 风控规则类型
+enum PortfolioRiskRuleType {
+  MAX_SINGLE_POSITION // 单票仓位上限（占组合总市值比例，0~1）
+  MAX_INDUSTRY_WEIGHT // 行业集中度上限（占组合总市值比例，0~1）
+  MAX_DRAWDOWN_STOP // 最大回撤止损线（组合净值跌幅，0~1）
+}
+
+/// 虚拟投资组合
+model Portfolio {
+  id          String   @id @default(cuid())
+  userId      Int
+  name        String   @db.VarChar(100)
+  description String?  @db.VarChar(500)
+  initialCash Decimal  @db.Decimal(18, 4) /// 初始本金（元）
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user       User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  holdings   PortfolioHolding[]
+  riskRules  PortfolioRiskRule[]
+  violations RiskViolationLog[]
+
+  @@map("portfolios")
+}
+
+/// 组合持仓（每条记录代表当前持有某只股票的状态）
+model PortfolioHolding {
+  id          String   @id @default(cuid())
+  portfolioId String
+  tsCode      String   @db.VarChar(15) /// 股票代码（如 000001.SZ）
+  stockName   String   @db.VarChar(60) /// 股票名称（冗余，避免关联查询）
+  quantity    Int /// 持股数量（股，非手）
+  avgCost     Decimal  @db.Decimal(12, 4) /// 平均持仓成本（元/股）
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  portfolio Portfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+
+  @@unique([portfolioId, tsCode])
+  @@index([portfolioId])
+  @@map("portfolio_holdings")
+}
+
+/// 组合绑定的风控规则
+model PortfolioRiskRule {
+  id          String               @id @default(cuid())
+  portfolioId String
+  ruleType    PortfolioRiskRuleType
+  threshold   Float /// 触发阈值，含义见 ruleType 注释
+  isEnabled   Boolean              @default(true)
+  memo        String?              @db.VarChar(200)
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+
+  portfolio  Portfolio        @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+  violations RiskViolationLog[]
+
+  @@unique([portfolioId, ruleType]) /// 每组合每类型只允许一条规则
+  @@map("portfolio_risk_rules")
+}
+
+/// 风控违规记录
+model RiskViolationLog {
+  id          String               @id @default(cuid())
+  portfolioId String
+  ruleId      String
+  ruleType    PortfolioRiskRuleType
+  actualValue Float /// 实测值（如实际仓位 0.35）
+  threshold   Float /// 规则阈值（如 0.2）
+  detail      String?              @db.Text /// 详细描述（如 "000001.SZ 占比 35%"）
+  checkedAt   DateTime             @default(now())
+
+  portfolio Portfolio        @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+  rule      PortfolioRiskRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+
+  @@index([portfolioId, checkedAt])
+  @@map("risk_violation_logs")
+}

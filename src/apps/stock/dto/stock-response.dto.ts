@@ -2,44 +2,52 @@ import { ApiProperty } from '@nestjs/swagger'
 import { ScreenerSortBy } from './stock-screener-query.dto'
 
 export class StockListItemDto {
-  @ApiProperty() tsCode: string
-  @ApiProperty({ required: false, nullable: true }) symbol: string | null
-  @ApiProperty({ required: false, nullable: true }) name: string | null
-  @ApiProperty({ required: false, nullable: true }) fullname: string | null
-  @ApiProperty({ required: false, nullable: true }) exchange: string | null
-  @ApiProperty({ required: false, nullable: true }) currType: string | null
-  @ApiProperty({ required: false, nullable: true }) market: string | null
-  @ApiProperty({ required: false, nullable: true }) industry: string | null
-  @ApiProperty({ required: false, nullable: true }) area: string | null
-  @ApiProperty({ required: false, nullable: true }) listStatus: string | null
-  @ApiProperty({ required: false, nullable: true }) listDate: Date | null
-  @ApiProperty({ required: false, nullable: true }) latestTradeDate: Date | null
-  @ApiProperty({ required: false, nullable: true }) peTtm: number | null
-  @ApiProperty({ required: false, nullable: true }) pb: number | null
-  @ApiProperty({ required: false, nullable: true }) dvTtm: number | null
-  @ApiProperty({ required: false, nullable: true }) totalMv: number | null
-  @ApiProperty({ required: false, nullable: true }) circMv: number | null
-  @ApiProperty({ required: false, nullable: true }) turnoverRate: number | null
-  @ApiProperty({ required: false, nullable: true }) pctChg: number | null
-  @ApiProperty({ required: false, nullable: true }) amount: number | null
-  @ApiProperty({ required: false, nullable: true }) close: number | null
+  @ApiProperty({ example: '000001.SZ' }) tsCode: string
+  @ApiProperty({ example: '000001', required: false, nullable: true }) symbol: string | null
+  @ApiProperty({ example: '平安银行', required: false, nullable: true }) name: string | null
+  @ApiProperty({ example: '平安银行股份有限公司', required: false, nullable: true }) fullname: string | null
+  @ApiProperty({ example: 'SZSE', required: false, nullable: true }) exchange: string | null
+  @ApiProperty({ example: 'CNY', required: false, nullable: true }) currType: string | null
+  @ApiProperty({ example: '主板', required: false, nullable: true }) market: string | null
+  @ApiProperty({ example: '银行', required: false, nullable: true }) industry: string | null
+  @ApiProperty({ example: '广东', required: false, nullable: true }) area: string | null
+  @ApiProperty({ example: 'L', required: false, nullable: true }) listStatus: string | null
+  @ApiProperty({ example: '1991-04-03', required: false, nullable: true }) listDate: Date | null
+  @ApiProperty({ example: '2024-03-20', required: false, nullable: true }) latestTradeDate: Date | null
+  @ApiProperty({ example: 5.8, required: false, nullable: true, description: 'TTM 市盈率' }) peTtm: number | null
+  @ApiProperty({ example: 0.62, required: false, nullable: true, description: '市净率' }) pb: number | null
+  @ApiProperty({ example: 5.2, required: false, nullable: true, description: 'TTM 股息率（%）' }) dvTtm: number | null
+  @ApiProperty({ example: 2880000, required: false, nullable: true, description: '总市值（万元）' }) totalMv:
+    | number
+    | null
+  @ApiProperty({ example: 1920000, required: false, nullable: true, description: '流通市值（万元）' }) circMv:
+    | number
+    | null
+  @ApiProperty({ example: 1.23, required: false, nullable: true, description: '换手率（%）' }) turnoverRate:
+    | number
+    | null
+  @ApiProperty({ example: 1.5, required: false, nullable: true, description: '涨跌幅（%）' }) pctChg: number | null
+  @ApiProperty({ example: 980000, required: false, nullable: true, description: '成交额（千元）' }) amount:
+    | number
+    | null
+  @ApiProperty({ example: 13.2, required: false, nullable: true, description: '收盘价（元）' }) close: number | null
 }
 
 export class StockListDataDto {
-  @ApiProperty() page: number
-  @ApiProperty() pageSize: number
-  @ApiProperty() total: number
+  @ApiProperty({ example: 1 }) page: number
+  @ApiProperty({ example: 20 }) pageSize: number
+  @ApiProperty({ example: 5372, description: '符合条件的总股票数' }) total: number
   @ApiProperty({ type: [StockListItemDto] })
   items: StockListItemDto[]
 }
 
 export class StockSearchItemDto {
-  @ApiProperty() tsCode: string
-  @ApiProperty({ required: false, nullable: true }) symbol: string | null
-  @ApiProperty({ required: false, nullable: true }) name: string | null
-  @ApiProperty({ required: false, nullable: true }) exchange: string | null
-  @ApiProperty({ required: false, nullable: true }) market: string | null
-  @ApiProperty({ required: false, nullable: true }) industry: string | null
+  @ApiProperty({ example: '000001.SZ' }) tsCode: string
+  @ApiProperty({ example: '000001', required: false, nullable: true }) symbol: string | null
+  @ApiProperty({ example: '平安银行', required: false, nullable: true }) name: string | null
+  @ApiProperty({ example: 'SZSE', required: false, nullable: true }) exchange: string | null
+  @ApiProperty({ example: '主板', required: false, nullable: true }) market: string | null
+  @ApiProperty({ example: '银行', required: false, nullable: true }) industry: string | null
 }
 
 export class StockDetailOverviewDataDto {
@@ -60,23 +68,25 @@ export class StockDetailOverviewDataDto {
 }
 
 export class StockChartItemDto {
-  @ApiProperty() tradeDate: Date
-  @ApiProperty({ required: false, nullable: true }) open: number | null
-  @ApiProperty({ required: false, nullable: true }) high: number | null
-  @ApiProperty({ required: false, nullable: true }) low: number | null
-  @ApiProperty({ required: false, nullable: true }) close: number | null
-  @ApiProperty({ required: false, nullable: true }) vol: number | null
-  @ApiProperty({ required: false, nullable: true }) amount: number | null
-  @ApiProperty({ required: false, nullable: true }) pctChg: number | null
-  @ApiProperty({ required: false, nullable: true }) ma5: number | null
-  @ApiProperty({ required: false, nullable: true }) ma10: number | null
-  @ApiProperty({ required: false, nullable: true }) ma20: number | null
+  @ApiProperty({ example: '2024-03-20' }) tradeDate: Date
+  @ApiProperty({ example: 12.8, required: false, nullable: true }) open: number | null
+  @ApiProperty({ example: 13.5, required: false, nullable: true }) high: number | null
+  @ApiProperty({ example: 12.75, required: false, nullable: true }) low: number | null
+  @ApiProperty({ example: 13.2, required: false, nullable: true }) close: number | null
+  @ApiProperty({ example: 1234567, required: false, nullable: true, description: '成交量（手）' }) vol: number | null
+  @ApiProperty({ example: 980000, required: false, nullable: true, description: '成交额（千元）' }) amount:
+    | number
+    | null
+  @ApiProperty({ example: 1.5, required: false, nullable: true, description: '涨跌幅（%）' }) pctChg: number | null
+  @ApiProperty({ example: 12.9, required: false, nullable: true, description: '5日均线' }) ma5: number | null
+  @ApiProperty({ example: 12.6, required: false, nullable: true, description: '10日均线' }) ma10: number | null
+  @ApiProperty({ example: 12.3, required: false, nullable: true, description: '20日均线' }) ma20: number | null
 }
 
 export class StockChartDataDto {
-  @ApiProperty() tsCode: string
-  @ApiProperty() period: string
-  @ApiProperty() adjustType: string
+  @ApiProperty({ example: '000001.SZ' }) tsCode: string
+  @ApiProperty({ example: 'daily', description: 'daily | weekly | monthly' }) period: string
+  @ApiProperty({ example: 'qfq', description: 'none | qfq | hfq' }) adjustType: string
   @ApiProperty({ type: [StockChartItemDto] }) items: StockChartItemDto[]
 }
 

@@ -3,6 +3,9 @@
 /node_modules
 /build
 
+# pnpm local store (created when pnpm cannot use global store)
+.pnpm-store/
+
 # Logs
 logs
 *.log
@@ -44,3 +47,6 @@ dockerfiles/redis/redis.acl
 
 # Temporary helper scripts and probe outputs
 .tmp/
+
+# Report file output
+/storage/

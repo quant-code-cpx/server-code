@@ -1,0 +1,32 @@
+// 公募基金列表（含场内 ETF/LOF 和场外基金）
+
+model FundBasic {
+  tsCode        String    @id @map("ts_code") @db.VarChar(16)
+  name          String?   @db.VarChar(100)
+  management    String?   @db.VarChar(100)
+  custodian     String?   @db.VarChar(100)
+  fundType      String?   @map("fund_type") @db.VarChar(20)
+  foundDate     DateTime? @map("found_date") @db.Date
+  dueDate       DateTime? @map("due_date") @db.Date
+  listDate      DateTime? @map("list_date") @db.Date
+  issueDate     DateTime? @map("issue_date") @db.Date
+  delistDate    DateTime? @map("delist_date") @db.Date
+  issueAmount   Float?    @map("issue_amount")
+  mFee          Float?    @map("m_fee")
+  cFee          Float?    @map("c_fee")
+  durationYear  Float?    @map("duration_year")
+  pValue        Float?    @map("p_value")
+  minAmount     Float?    @map("min_amount")
+  expReturn     Float?    @map("exp_return")
+  benchmark     String?   @db.Text
+  status        String?   @db.VarChar(4)
+  investType    String?   @map("invest_type") @db.VarChar(40)
+  type          String?   @db.VarChar(40)
+  trustee       String?   @db.VarChar(100)
+  purcStartdate DateTime? @map("purc_startdate") @db.Date
+  redmStartdate DateTime? @map("redm_startdate") @db.Date
+  market        String?   @db.VarChar(4)
+  syncedAt      DateTime  @default(now()) @map("synced_at")
+
+  @@map("fund_basic")
+}

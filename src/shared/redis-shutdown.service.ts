@@ -1,4 +1,5 @@
 import { Inject, Injectable, OnApplicationShutdown } from '@nestjs/common'
+import type { createClient } from 'redis'
 import { REDIS_CLIENT } from './redis.provider'
 import { LoggerService } from './logger/logger.service'
 
@@ -13,7 +14,7 @@ import { LoggerService } from './logger/logger.service'
 @Injectable()
 export class RedisShutdownService implements OnApplicationShutdown {
   constructor(
-    @Inject(REDIS_CLIENT) private readonly redis: any,
+    @Inject(REDIS_CLIENT) private readonly redis: ReturnType<typeof createClient>,
     private readonly logger: LoggerService,
   ) {}
 

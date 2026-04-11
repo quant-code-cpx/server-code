@@ -331,7 +331,7 @@ export class BasicSyncService {
     this.logger.log('[申万行业成分] 开始全量同步...')
 
     // 从 index_classify 表获取所有 L1 代码
-    const l1Records = await (this.helper.prisma as any).indexClassify.findMany({
+    const l1Records = await this.helper.prisma.indexClassify.findMany({
       where: { level: 'L1' },
       select: { indexCode: true },
     })
@@ -354,7 +354,7 @@ export class BasicSyncService {
         .filter((r): r is NonNullable<typeof r> => Boolean(r))
 
       if (mapped.length > 0) {
-        const count = await (this.helper.prisma as any).indexMemberAll.createMany({
+        const count = await this.helper.prisma.indexMemberAll.createMany({
           data: mapped,
           skipDuplicates: true,
         })
@@ -413,9 +413,9 @@ export class BasicSyncService {
       .filter((r): r is NonNullable<typeof r> => Boolean(r))
 
     // 先清空依赖子表，再删除主表，避免外键约束报错
-    await (this.helper.prisma as any).thsMember.deleteMany()
-    await (this.helper.prisma as any).thsIndex.deleteMany()
-    const result = await (this.helper.prisma as any).thsIndex.createMany({ data: mapped })
+    await this.helper.prisma.thsMember.deleteMany()
+    await this.helper.prisma.thsIndex.deleteMany()
+    const result = await this.helper.prisma.thsIndex.createMany({ data: mapped })
     const count: number = result.count
 
     await this.helper.flushValidationLogs(collector)
@@ -437,7 +437,7 @@ export class BasicSyncService {
     const startedAt = new Date()
     this.logger.log('[同花顺概念成分] 开始全量同步...')
 
-    const boards: { tsCode: string }[] = await (this.helper.prisma as any).thsIndex.findMany({
+    const boards: { tsCode: string }[] = await this.helper.prisma.thsIndex.findMany({
       where: { type: 'N' },
       select: { tsCode: true },
     })
@@ -450,7 +450,7 @@ export class BasicSyncService {
     this.logger.log(`[同花顺概念成分] 将遍历 ${boards.length} 个概念板块`)
 
     const collector = new ValidationCollector(TushareSyncTaskName.THS_MEMBER)
-    await (this.helper.prisma as any).thsMember.deleteMany()
+    await this.helper.prisma.thsMember.deleteMany()
     let totalRows = 0
 
     for (const board of boards) {
@@ -460,7 +460,7 @@ export class BasicSyncService {
         .filter((r): r is NonNullable<typeof r> => Boolean(r))
 
       if (mapped.length > 0) {
-        const result = await (this.helper.prisma as any).thsMember.createMany({ data: mapped, skipDuplicates: true })
+        const result = await this.helper.prisma.thsMember.createMany({ data: mapped, skipDuplicates: true })
         totalRows += result.count
       }
       await new Promise((resolve) => setTimeout(resolve, 300))

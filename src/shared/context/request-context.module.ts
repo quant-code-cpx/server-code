@@ -4,6 +4,6 @@ import { RequestContextMiddleware } from './request-context.middleware'
 @Module({})
 export class RequestContextModule implements NestModule {
   configure(consumer: MiddlewareConsumer): void {
-    consumer.apply(RequestContextMiddleware).forRoutes('*')
+    consumer.apply(RequestContextMiddleware).forRoutes('*path')
   }
 }

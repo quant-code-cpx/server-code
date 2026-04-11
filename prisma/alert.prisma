@@ -1,0 +1,75 @@
+// ── 价格预警规则枚举 ────────────────────────────────────────────────────────
+
+enum PriceAlertRuleType {
+  PCT_CHANGE_UP   // 当日涨幅 >= threshold%
+  PCT_CHANGE_DOWN // 当日跌幅 <= -threshold%（threshold 填正数）
+  PRICE_ABOVE     // 收盘价 >= threshold
+  PRICE_BELOW     // 收盘价 <= threshold
+  LIMIT_UP        // 涨停（close >= up_limit）
+  LIMIT_DOWN      // 跌停（close <= down_limit）
+
+  @@map("price_alert_rule_type")
+}
+
+enum PriceAlertRuleStatus {
+  ACTIVE
+  PAUSED
+  DELETED
+
+  @@map("price_alert_rule_status")
+}
+
+// ── 异动监控类型枚举 ────────────────────────────────────────────────────────
+
+enum MarketAnomalyType {
+  VOLUME_SURGE         // 成交量异常放大（当日量 >= N 倍 20 日均量）
+  CONSECUTIVE_LIMIT_UP // 连板（连续 N 日涨停）
+  LARGE_NET_INFLOW     // 超大单净流入异常
+
+  @@map("market_anomaly_type")
+}
+
+// ── 价格预警规则 ─────────────────────────────────────────────────────────────
+
+/// 价格预警规则
+model PriceAlertRule {
+  id        Int                  @id @default(autoincrement())
+  userId    Int                  @map("user_id")
+  tsCode    String               @map("ts_code") @db.VarChar(16)
+  stockName String?              @map("stock_name") @db.VarChar(64)
+
+  ruleType  PriceAlertRuleType   @map("rule_type")
+  threshold Float?               // PCT_CHANGE_UP/DOWN 或 PRICE_ABOVE/BELOW 时必填；LIMIT_UP/DOWN 为 null
+  memo      String?              @db.VarChar(256)
+  status    PriceAlertRuleStatus @default(ACTIVE)
+
+  lastTriggeredAt DateTime? @map("last_triggered_at")
+  triggerCount    Int       @default(0) @map("trigger_count")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([userId, status])
+  @@index([tsCode, status])
+  @@map("price_alert_rules")
+}
+
+// ── 盘后异动监控记录 ─────────────────────────────────────────────────────────
+
+/// 盘后异动监控记录
+model MarketAnomaly {
+  id          Int               @id @default(autoincrement())
+  tradeDate   DateTime          @map("trade_date") @db.Date
+  tsCode      String            @map("ts_code") @db.VarChar(16)
+  stockName   String?           @map("stock_name") @db.VarChar(64)
+  anomalyType MarketAnomalyType @map("anomaly_type")
+  value       Float
+  threshold   Float
+  detail      Json              @default("{}")
+  scannedAt   DateTime          @default(now()) @map("scanned_at")
+
+  @@unique([tradeDate, tsCode, anomalyType])
+  @@index([tradeDate])
+  @@index([anomalyType, tradeDate])
+  @@map("market_anomalies")
+}

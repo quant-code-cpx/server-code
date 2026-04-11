@@ -1,9 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
-import * as dayjs from 'dayjs'
-const isoWeek = require('dayjs/plugin/isoWeek')
-const timezone = require('dayjs/plugin/timezone')
-const utc = require('dayjs/plugin/utc')
+import dayjs from 'dayjs'
+import isoWeek from 'dayjs/plugin/isoWeek'
+import timezone from 'dayjs/plugin/timezone'
+import utc from 'dayjs/plugin/utc'
 import {
   MoneyflowContentType as PrismaMoneyflowContentType,
   Prisma,
@@ -28,6 +28,15 @@ import { CacheService } from 'src/shared/cache.service'
 import { ITushareConfig, TUSHARE_CONFIG_TOKEN } from 'src/config/tushare.config'
 import { PrismaService } from 'src/shared/prisma.service'
 import { ValidationCollector } from './quality/validation-collector'
+
+/** Minimal interface for dynamically-resolved Prisma model delegates (string-key access). */
+type AnyModelDelegate = {
+  findFirst(args?: Record<string, unknown>): Promise<Record<string, unknown> | null>
+  findMany(args?: Record<string, unknown>): Promise<Record<string, unknown>[]>
+  createMany(args: Record<string, unknown>): Prisma.PrismaPromise<{ count: number }>
+  deleteMany(args?: Record<string, unknown>): Prisma.PrismaPromise<{ count: number }>
+  count(args?: Record<string, unknown>): Prisma.PrismaPromise<number>
+}
 
 dayjs.extend(utc)
 dayjs.extend(timezone)
@@ -82,7 +91,7 @@ export class SyncHelperService {
       orderBy: { startedAt: 'desc' },
     })
     if (!log) return false
-    const logDate = (dayjs as any)(log.startedAt).tz(this.syncTimeZone).format('YYYYMMDD')
+    const logDate = dayjs(log.startedAt).tz(this.syncTimeZone).format('YYYYMMDD')
     return logDate === todayStr
   }
 
@@ -143,7 +152,7 @@ export class SyncHelperService {
   /** 获取某个模型的某个日期字段的最大值（返回 YYYYMMDD 字符串；兼容 DateTime 和 String 两种类型） */
   async getLatestDateString(modelName: string, fieldName = 'tradeDate'): Promise<string | null> {
     // 使用 findFirst + orderBy 代替 aggregate._max，对大表更友好（利用索引倒序扫描）
-    const latest = await (this.prisma as any)[modelName].findFirst({
+    const latest = await (this.prisma as unknown as Record<string, AnyModelDelegate>)[modelName].findFirst({
       orderBy: { [fieldName]: 'desc' },
       select: { [fieldName]: true },
     })
@@ -157,7 +166,7 @@ export class SyncHelperService {
 
   /** 全量替换：先删后插 */
   async replaceAllRows(modelName: string, data: unknown[]): Promise<number> {
-    const model = (this.prisma as any)[modelName]
+    const model = (this.prisma as unknown as Record<string, AnyModelDelegate>)[modelName]
     if (!data.length) {
       await model.deleteMany()
       return 0
@@ -173,7 +182,7 @@ export class SyncHelperService {
     data: unknown[],
     extraWhere: Record<string, unknown> = {},
   ): Promise<number> {
-    const model = (this.prisma as any)[modelName]
+    const model = (this.prisma as unknown as Record<string, AnyModelDelegate>)[modelName]
     const deleteArgs = { where: { tradeDate, ...extraWhere } }
     if (!data.length) {
       await model.deleteMany(deleteArgs)
@@ -196,7 +205,7 @@ export class SyncHelperService {
     extraWhere: Record<string, unknown> = {},
     options: { skipDuplicates?: boolean } = {},
   ): Promise<number> {
-    const model = (this.prisma as any)[modelName]
+    const model = (this.prisma as unknown as Record<string, AnyModelDelegate>)[modelName]
     const deleteArgs = {
       where: { ...extraWhere, [fieldName]: { gte: startDate, lte: endDate } },
     }
@@ -218,7 +227,7 @@ export class SyncHelperService {
     cutoffDate: Date,
     extraWhere: Record<string, unknown> = {},
   ): Promise<number> {
-    const model = (this.prisma as any)[modelName]
+    const model = (this.prisma as unknown as Record<string, AnyModelDelegate>)[modelName]
     const result = await model.deleteMany({
       where: { ...extraWhere, [fieldName]: { lt: cutoffDate } },
     })
@@ -365,7 +374,7 @@ export class SyncHelperService {
   // ═══════════════════════════════════════════════════════════════════════════
 
   getCurrentShanghaiNow() {
-    return (dayjs as any)().tz(this.syncTimeZone)
+    return dayjs().tz(this.syncTimeZone)
   }
 
   getCurrentShanghaiDateString(): string {
@@ -380,7 +389,7 @@ export class SyncHelperService {
   }
 
   getCurrentShanghaiDay(value: string) {
-    return (dayjs as any).tz(value, 'YYYYMMDD', this.syncTimeZone)
+    return dayjs.tz(value, 'YYYYMMDD', this.syncTimeZone)
   }
 
   /** YYYYMMDD → Date (UTC 表示) */

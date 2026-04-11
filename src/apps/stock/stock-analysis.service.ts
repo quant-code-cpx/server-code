@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common'
-import * as dayjs from 'dayjs'
+import dayjs from 'dayjs'
 import { PrismaService } from 'src/shared/prisma.service'
 import { computeAllIndicators, OhlcvBar, detectMALatestCross } from './utils/technical-indicators'
 import { estimateChipDistribution } from './utils/chip-estimation'

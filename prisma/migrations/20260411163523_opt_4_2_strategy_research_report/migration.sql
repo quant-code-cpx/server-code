@@ -1,0 +1,2 @@
+-- AlterEnum
+ALTER TYPE "report_type" ADD VALUE 'STRATEGY_RESEARCH';

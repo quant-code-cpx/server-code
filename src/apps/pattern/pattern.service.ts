@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common'
-import * as dayjs from 'dayjs'
+import dayjs from 'dayjs'
 import { BusinessException } from 'src/common/exceptions/business.exception'
 import { PrismaService } from 'src/shared/prisma.service'
 import { PatternAlgorithm, PatternScope, PatternSearchBySeriesDto, PatternSearchDto } from './dto/pattern-search.dto'

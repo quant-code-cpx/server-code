@@ -1,4 +1,4 @@
-import * as dayjs from 'dayjs'
+import dayjs from 'dayjs'
 const timezone = require('dayjs/plugin/timezone')
 const utc = require('dayjs/plugin/utc')
 import {

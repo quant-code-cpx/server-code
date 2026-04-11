@@ -29,6 +29,12 @@ import {
 } from './dto/backtest-comparison.dto'
 import { CreateRollingBacktestDto } from './dto/rolling-backtest.dto'
 import { RunMonteCarloDto, MonteCarloResultDto } from './dto/monte-carlo.dto'
+import { BrinsonAttributionDto, BrinsonAttributionResponseDto } from './dto/brinson-attribution.dto'
+import { BacktestAttributionService } from './services/backtest-attribution.service'
+import { CostSensitivityDto, CostSensitivityResponseDto } from './dto/cost-sensitivity.dto'
+import { BacktestCostSensitivityService } from './services/backtest-cost-sensitivity.service'
+import { ParamSensitivityDto, ParamSensitivityResultDto, ParamSensitivityCreateResponseDto } from './dto/param-sensitivity.dto'
+import { BacktestParamSensitivityService } from './services/backtest-param-sensitivity.service'
 import {
   BacktestEquityResponseDto,
   BacktestPositionResponseDto,
@@ -52,6 +58,9 @@ export class BacktestController {
     private readonly walkForwardService: BacktestWalkForwardService,
     private readonly comparisonService: BacktestComparisonService,
     private readonly monteCarloService: BacktestMonteCarloService,
+    private readonly attributionService: BacktestAttributionService,
+    private readonly costSensitivityService: BacktestCostSensitivityService,
+    private readonly paramSensitivityService: BacktestParamSensitivityService,
   ) {}
 
   @Post('strategy-templates')
@@ -122,6 +131,34 @@ export class BacktestController {
   @ApiSuccessResponse(MonteCarloResultDto)
   runMonteCarlo(@Body() dto: RunMonteCarloDto & { runId: string }) {
     return this.monteCarloService.runMonteCarloSimulation(dto.runId, dto)
+  }
+
+  @Post('runs/attribution')
+  @ApiOperation({ summary: 'Brinson 归因分析（BHB 三因素分解：资产配置 + 个股选择 + 交互效应）' })
+  @ApiSuccessResponse(BrinsonAttributionResponseDto)
+  runAttribution(@Body() dto: BrinsonAttributionDto, @CurrentUser() user: TokenPayload) {
+    return this.attributionService.brinson(dto, user.id)
+  }
+
+  @Post('runs/cost-sensitivity')
+  @ApiOperation({ summary: '交易成本敏感性分析（基于已有交易记录重算费用，输出参数→指标映射表）' })
+  @ApiSuccessResponse(CostSensitivityResponseDto)
+  analyzeCostSensitivity(@Body() dto: CostSensitivityDto, @CurrentUser() user: TokenPayload) {
+    return this.costSensitivityService.analyze(dto, user.id)
+  }
+
+  @Post('runs/param-sensitivity')
+  @ApiOperation({ summary: '参数敏感性扫描（批量创建回测，汇总为二维热力图数据）' })
+  @ApiSuccessResponse(ParamSensitivityCreateResponseDto)
+  createParamSensitivity(@Body() dto: ParamSensitivityDto, @CurrentUser() user: TokenPayload) {
+    return this.paramSensitivityService.create(dto, user.id)
+  }
+
+  @Post('runs/param-sensitivity/result')
+  @ApiOperation({ summary: '查询参数扫描结果（热力图）' })
+  @ApiSuccessResponse(ParamSensitivityResultDto)
+  getParamSensitivityResult(@Body() { sweepId }: { sweepId: string }, @CurrentUser() user: TokenPayload) {
+    return this.paramSensitivityService.getResult(sweepId, user.id)
   }
 
   // ── Walk-Forward ────────────────────────────────────────────────────────────

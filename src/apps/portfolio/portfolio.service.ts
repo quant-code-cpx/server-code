@@ -8,6 +8,7 @@ import { UpdatePortfolioDto } from './dto/update-portfolio.dto'
 import { AddHoldingDto } from './dto/add-holding.dto'
 import { UpdateHoldingDto } from './dto/update-holding.dto'
 import { PortfolioPnlHistoryDto } from './dto/portfolio-pnl.dto'
+import { PortfolioTradeLogService } from './services/portfolio-trade-log.service'
 
 // TTL 常量
 const TTL_5MIN = 5 * 60
@@ -18,6 +19,7 @@ export class PortfolioService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly cacheService: CacheService,
+    private readonly tradeLogService: PortfolioTradeLogService,
   ) {}
 
   // ─── 组合 CRUD ────────────────────────────────────────────────────────────
@@ -111,13 +113,25 @@ export class PortfolioService {
     }
 
     await this.invalidatePortfolioCache(dto.portfolioId)
+
+    await this.tradeLogService.log({
+      portfolioId: dto.portfolioId,
+      userId,
+      tsCode: dto.tsCode,
+      stockName: holding.stockName,
+      action: 'ADD',
+      quantity: dto.quantity,
+      price: dto.avgCost,
+      reason: 'MANUAL',
+    })
+
     return holding
   }
 
   async updateHolding(dto: UpdateHoldingDto, userId: number) {
     const holding = await this.prisma.portfolioHolding.findUniqueOrThrow({
       where: { id: dto.holdingId },
-      select: { id: true, portfolioId: true },
+      select: { id: true, portfolioId: true, tsCode: true, stockName: true, quantity: true },
     })
     await this.assertOwner(holding.portfolioId, userId)
 
@@ -126,17 +140,40 @@ export class PortfolioService {
       data: { quantity: dto.quantity, avgCost: new Decimal(dto.avgCost) },
     })
     await this.invalidatePortfolioCache(holding.portfolioId)
+
+    await this.tradeLogService.log({
+      portfolioId: holding.portfolioId,
+      userId,
+      tsCode: holding.tsCode,
+      stockName: holding.stockName,
+      action: 'ADJUST',
+      quantity: dto.quantity,
+      price: dto.avgCost,
+      reason: 'MANUAL',
+    })
+
     return updated
   }
 
   async removeHolding(holdingId: string, userId: number) {
     const holding = await this.prisma.portfolioHolding.findUniqueOrThrow({
       where: { id: holdingId },
-      select: { id: true, portfolioId: true },
+      select: { id: true, portfolioId: true, tsCode: true, stockName: true, quantity: true },
     })
     await this.assertOwner(holding.portfolioId, userId)
     await this.prisma.portfolioHolding.delete({ where: { id: holdingId } })
     await this.invalidatePortfolioCache(holding.portfolioId)
+
+    await this.tradeLogService.log({
+      portfolioId: holding.portfolioId,
+      userId,
+      tsCode: holding.tsCode,
+      stockName: holding.stockName,
+      action: 'REMOVE',
+      quantity: holding.quantity,
+      reason: 'MANUAL',
+    })
+
     return { success: true }
   }
 

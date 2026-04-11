@@ -10,6 +10,7 @@ import { UpdateStrategyDto } from './dto/update-strategy.dto'
 import { QueryStrategyDto } from './dto/query-strategy.dto'
 import { RunStrategyDto } from './dto/run-strategy.dto'
 import { StrategyListResponseDto, StrategyResponseDto } from './dto/strategy-response.dto'
+import { CompareVersionsDto, ListVersionsDto } from './dto/strategy-version.dto'
 
 @ApiTags('Strategy - 策略管理')
 @UseGuards(JwtAuthGuard)
@@ -71,5 +72,19 @@ export class StrategyController {
   @ApiSuccessRawResponse({ type: 'object' })
   schemas() {
     return this.strategyService.getSchemas()
+  }
+
+  @Post('versions')
+  @ApiOperation({ summary: '查询策略历史版本列表' })
+  @ApiSuccessRawResponse({ type: 'array' })
+  listVersions(@CurrentUser() user: TokenPayload, @Body() dto: ListVersionsDto) {
+    return this.strategyService.listVersions(user.id, dto.strategyId)
+  }
+
+  @Post('compare-versions')
+  @ApiOperation({ summary: '对比两个版本的策略配置差异及回测指标' })
+  @ApiSuccessRawResponse({ type: 'object' })
+  compareVersions(@CurrentUser() user: TokenPayload, @Body() dto: CompareVersionsDto) {
+    return this.strategyService.compareVersions(user.id, dto)
   }
 }

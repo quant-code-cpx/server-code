@@ -1,0 +1,14 @@
+/// 策略版本历史（OPT-2.4：每次 strategyConfig 变更时自动快照）
+model StrategyVersion {
+  id               String   @id @default(cuid())
+  strategyId       String   @map("strategy_id")
+  version          Int
+  strategyConfig   Json     @map("strategy_config") @db.JsonB
+  backtestDefaults Json?    @map("backtest_defaults") @db.JsonB
+  changelog        String?  @db.Text
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  @@unique([strategyId, version])
+  @@index([strategyId, version(sort: Desc)])
+  @@map("strategy_versions")
+}

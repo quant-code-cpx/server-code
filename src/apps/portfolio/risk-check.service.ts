@@ -4,6 +4,7 @@ import { PrismaService } from 'src/shared/prisma.service'
 import { CreateRiskRuleDto, UpdateRiskRuleDto } from './dto/risk-rule.dto'
 import { PortfolioService } from './portfolio.service'
 import { PortfolioRiskService } from './portfolio-risk.service'
+import { EventsGateway } from 'src/websocket/events.gateway'
 
 @Injectable()
 export class RiskCheckService {
@@ -11,6 +12,7 @@ export class RiskCheckService {
     private readonly prisma: PrismaService,
     private readonly portfolioService: PortfolioService,
     private readonly riskService: PortfolioRiskService,
+    private readonly eventsGateway: EventsGateway,
   ) {}
 
   // ─── 规则管理 ─────────────────────────────────────────────────────────────
@@ -105,6 +107,17 @@ export class RiskCheckService {
           detail: v.detail,
         })),
       })
+      // 推送风控告警给组合所属用户
+      this.eventsGateway.emitToUser(userId, 'risk_violation', {
+        portfolioId,
+        violations: violations.map((v) => ({
+          ruleType: v.ruleType,
+          actualValue: v.actualValue,
+          threshold: v.threshold,
+          detail: v.detail,
+        })),
+        checkedAt: new Date(),
+      })
     }
 
     return {
@@ -160,6 +173,17 @@ export class RiskCheckService {
           threshold: v.threshold,
           detail: v.detail,
         })),
+      })
+      // 推送风控告警给组合所属用户
+      this.eventsGateway.emitToUser(userId, 'risk_violation', {
+        portfolioId,
+        violations: violations.map((v) => ({
+          ruleType: v.ruleType,
+          actualValue: v.actualValue,
+          threshold: v.threshold,
+          detail: v.detail,
+        })),
+        checkedAt: new Date(),
       })
     }
   }

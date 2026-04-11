@@ -7,12 +7,22 @@ import { TokenPayload } from 'src/shared/token.interface'
 import { PortfolioService } from './portfolio.service'
 import { PortfolioRiskService } from './portfolio-risk.service'
 import { RiskCheckService } from './risk-check.service'
+import { BacktestPortfolioBridgeService } from './services/backtest-portfolio-bridge.service'
+import { PortfolioPerformanceService } from './services/portfolio-performance.service'
+import { PortfolioTradeLogService } from './services/portfolio-trade-log.service'
 import { CreatePortfolioDto } from './dto/create-portfolio.dto'
 import { UpdatePortfolioDto } from './dto/update-portfolio.dto'
 import { AddHoldingDto } from './dto/add-holding.dto'
 import { UpdateHoldingDto } from './dto/update-holding.dto'
 import { PortfolioPnlHistoryDto } from './dto/portfolio-pnl.dto'
 import { CreateRiskRuleDto, UpdateRiskRuleDto } from './dto/risk-rule.dto'
+import { ApplyBacktestDto, ApplyBacktestResponseDto } from './dto/apply-backtest.dto'
+import { RebalancePlanDto, RebalancePlanResponseDto } from './dto/rebalance-plan.dto'
+import { RebalancePlanService } from './services/rebalance-plan.service'
+import { PortfolioPerformanceDto, PortfolioPerformanceResponseDto } from './dto/portfolio-performance.dto'
+import { DriftDetectionDto, DriftDetectionResponseDto } from 'src/apps/signal/dto/drift-detection.dto'
+import { DriftDetectionService } from 'src/apps/signal/drift-detection.service'
+import { TradeLogQueryDto, TradeLogSummaryDto } from './dto/trade-log.dto'
 import {
   BetaAnalysisDto,
   HoldingItemDto,
@@ -40,6 +50,11 @@ export class PortfolioController {
     private readonly portfolioService: PortfolioService,
     private readonly riskService: PortfolioRiskService,
     private readonly riskCheckService: RiskCheckService,
+    private readonly bridgeService: BacktestPortfolioBridgeService,
+    private readonly rebalancePlanService: RebalancePlanService,
+    private readonly performanceService: PortfolioPerformanceService,
+    private readonly driftDetectionService: DriftDetectionService,
+    private readonly tradeLogService: PortfolioTradeLogService,
   ) {}
 
   // ─── 组合 CRUD ────────────────────────────────────────────────────────────
@@ -192,5 +207,55 @@ export class PortfolioController {
   @ApiSuccessResponse(ViolationRecordDto, { isArray: true })
   listViolations(@CurrentUser() user: TokenPayload, @Body() body: { portfolioId: string; limit?: number }) {
     return this.riskCheckService.listViolations(body.portfolioId, user.id, body.limit)
+  }
+
+  // ─── 回测导入 ──────────────────────────────────────────────────────────────
+
+  @Post('apply-backtest')
+  @ApiOperation({ summary: '将回测末日持仓导入组合（REPLACE 清空替换 / MERGE 合并加仓）' })
+  @ApiSuccessResponse(ApplyBacktestResponseDto)
+  applyBacktest(@CurrentUser() user: TokenPayload, @Body() dto: ApplyBacktestDto) {
+    return this.bridgeService.applyBacktest(dto, user.id)
+  }
+
+  // ─── 调仓清单 ──────────────────────────────────────────────────────────────
+
+  @Post('rebalance-plan')
+  @ApiOperation({ summary: '生成调仓清单（纯计算，不写库；含整手约束 / 停牌跳过 / 成本估算）' })
+  @ApiSuccessResponse(RebalancePlanResponseDto)
+  rebalancePlan(@CurrentUser() user: TokenPayload, @Body() dto: RebalancePlanDto) {
+    return this.rebalancePlanService.rebalancePlan(dto, user.id)
+  }
+
+  // ─── 绩效跟踪 ──────────────────────────────────────────────────────────────
+
+  @Post('performance')
+  @ApiOperation({ summary: '组合绩效跟踪（净值曲线 vs 基准对比，含超额收益 / 跟踪误差 / 信息比率）' })
+  @ApiSuccessResponse(PortfolioPerformanceResponseDto)
+  getPerformance(@CurrentUser() user: TokenPayload, @Body() dto: PortfolioPerformanceDto) {
+    return this.performanceService.getPerformance(dto, user.id)
+  }
+
+  // ─── 策略漂移检测 ──────────────────────────────────────────────────────────
+
+  @Post('drift-detection')
+  @ApiOperation({ summary: '策略漂移检测（对比当前持仓与最新信号的偏离度）' })
+  @ApiSuccessResponse(DriftDetectionResponseDto)
+  detectDrift(@CurrentUser() user: TokenPayload, @Body() dto: DriftDetectionDto) {
+    return this.driftDetectionService.detect(dto, user.id)
+  }
+
+  // ─── 交易日志 ──────────────────────────────────────────────────────────────
+
+  @Post('trade-log')
+  @ApiOperation({ summary: '查询组合交易日志（分页）' })
+  queryTradeLog(@CurrentUser() user: TokenPayload, @Body() dto: TradeLogQueryDto) {
+    return this.tradeLogService.query(dto, user.id)
+  }
+
+  @Post('trade-log/summary')
+  @ApiOperation({ summary: '交易日志按维度汇总' })
+  tradeLogSummary(@CurrentUser() user: TokenPayload, @Body() dto: TradeLogSummaryDto) {
+    return this.tradeLogService.summary(dto, user.id)
   }
 }

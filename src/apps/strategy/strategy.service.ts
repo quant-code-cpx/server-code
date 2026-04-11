@@ -9,6 +9,7 @@ import { UpdateStrategyDto } from './dto/update-strategy.dto'
 import { QueryStrategyDto } from './dto/query-strategy.dto'
 import { RunStrategyDto } from './dto/run-strategy.dto'
 import { StrategySchemaValidatorService } from './strategy-schema-validator.service'
+import { CompareVersionsDto, CompareVersionsResponseDto, ConfigDiffItem, StrategyVersionItemDto, VersionMetrics } from './dto/strategy-version.dto'
 
 /** 每用户最大策略数量 */
 const MAX_STRATEGIES_PER_USER = 50
@@ -117,6 +118,15 @@ export class StrategyService {
       // 策略参数变更时重新校验，并递增版本号
       validatedConfig = this.schemaValidator.validate(strategy.strategyType, dto.strategyConfig)
       versionIncrement = 1
+      // 快照当前版本到 StrategyVersion
+      await this.prisma.strategyVersion.create({
+        data: {
+          strategyId: strategy.id,
+          version: strategy.version,
+          strategyConfig: strategy.strategyConfig as Prisma.InputJsonValue,
+          backtestDefaults: strategy.backtestDefaults ? (strategy.backtestDefaults as Prisma.InputJsonValue) : undefined,
+        },
+      })
     }
 
     try {
@@ -222,6 +232,112 @@ export class StrategyService {
       },
       userId,
     )
+  }
+
+  async listVersions(userId: number, strategyId: string): Promise<StrategyVersionItemDto[]> {
+    const strategy = await this.prisma.strategy.findFirst({ where: { id: strategyId, userId } })
+    if (!strategy) throw new BusinessException(ErrorEnum.STRATEGY_NOT_FOUND)
+
+    const snapshots = await this.prisma.strategyVersion.findMany({
+      where: { strategyId },
+      orderBy: { version: 'asc' },
+    })
+
+    const items: StrategyVersionItemDto[] = snapshots.map((s) => ({
+      version: s.version,
+      strategyConfig: s.strategyConfig as Record<string, unknown>,
+      backtestDefaults: s.backtestDefaults as Record<string, unknown> | null,
+      changelog: s.changelog,
+      createdAt: s.createdAt,
+      isCurrent: false,
+    }))
+
+    // Append the current (live) version
+    items.push({
+      version: strategy.version,
+      strategyConfig: strategy.strategyConfig as Record<string, unknown>,
+      backtestDefaults: strategy.backtestDefaults as Record<string, unknown> | null,
+      changelog: null,
+      createdAt: strategy.updatedAt,
+      isCurrent: true,
+    })
+
+    return items
+  }
+
+  async compareVersions(userId: number, dto: CompareVersionsDto): Promise<CompareVersionsResponseDto> {
+    const strategy = await this.prisma.strategy.findFirst({ where: { id: dto.strategyId, userId } })
+    if (!strategy) throw new BusinessException(ErrorEnum.STRATEGY_NOT_FOUND)
+
+    if (dto.versionA >= dto.versionB) {
+      throw new BusinessException('版本 A 必须小于版本 B')
+    }
+
+    const resolveConfig = async (version: number): Promise<Record<string, unknown>> => {
+      if (version === strategy.version) {
+        return strategy.strategyConfig as Record<string, unknown>
+      }
+      const snap = await this.prisma.strategyVersion.findUnique({
+        where: { strategyId_version: { strategyId: dto.strategyId, version } },
+      })
+      if (!snap) throw new BusinessException(`版本 ${version} 不存在`)
+      return snap.strategyConfig as Record<string, unknown>
+    }
+
+    const [configA, configB] = await Promise.all([resolveConfig(dto.versionA), resolveConfig(dto.versionB)])
+    const diff = this.diffConfigs(configA, configB)
+
+    const findMetrics = async (config: Record<string, unknown>): Promise<VersionMetrics | null> => {
+      const run = await this.prisma.backtestRun.findFirst({
+        where: { userId, strategyConfig: { equals: config as unknown as Prisma.InputJsonValue } },
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          totalReturn: true,
+          annualizedReturn: true,
+          sharpeRatio: true,
+          maxDrawdown: true,
+          sortinoRatio: true,
+        },
+      })
+      if (!run) return null
+      return {
+        runId: run.id,
+        totalReturn: run.totalReturn,
+        annualizedReturn: run.annualizedReturn,
+        sharpeRatio: run.sharpeRatio,
+        maxDrawdown: run.maxDrawdown,
+        sortinoRatio: run.sortinoRatio,
+      }
+    }
+
+    const [metricsA, metricsB] = await Promise.all([findMetrics(configA), findMetrics(configB)])
+
+    return {
+      strategyId: dto.strategyId,
+      versionA: dto.versionA,
+      versionB: dto.versionB,
+      configA,
+      configB,
+      diff,
+      metricsA,
+      metricsB,
+    }
+  }
+
+  private diffConfigs(a: Record<string, unknown>, b: Record<string, unknown>): ConfigDiffItem[] {
+    const allKeys = new Set([...Object.keys(a), ...Object.keys(b)])
+    const result: ConfigDiffItem[] = []
+    for (const key of allKeys) {
+      if (!(key in a)) {
+        result.push({ path: key, oldValue: undefined, newValue: b[key], changeType: 'ADDED' })
+      } else if (!(key in b)) {
+        result.push({ path: key, oldValue: a[key], newValue: undefined, changeType: 'REMOVED' })
+      } else if (JSON.stringify(a[key]) !== JSON.stringify(b[key])) {
+        result.push({ path: key, oldValue: a[key], newValue: b[key], changeType: 'CHANGED' })
+      }
+    }
+    return result
   }
 
   getSchemas() {

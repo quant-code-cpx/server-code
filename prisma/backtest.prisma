@@ -44,6 +44,11 @@ model BacktestRun {
   turnoverRate       Float?    @map("turnover_rate")
   tradeCount         Int?      @map("trade_count")
 
+  // ── Param sweep (OPT-2.3) ──────────────────────────────────────
+  sweepId            String?   @map("sweep_id")
+  sweepXIdx          Int?      @map("sweep_x_idx")
+  sweepYIdx          Int?      @map("sweep_y_idx")
+
   createdAt          DateTime  @default(now()) @map("created_at")
   startedAt          DateTime? @map("started_at")
   completedAt        DateTime? @map("completed_at")

@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common'
-import * as dayjs from 'dayjs'
+import dayjs from 'dayjs'
 import { PrismaService } from 'src/shared/prisma.service'
 import { CalendarEventDto, CalendarResultDto } from './dto/calendar-response.dto'
 import { CalendarEventType, CalendarQueryDto } from './dto/calendar-query.dto'

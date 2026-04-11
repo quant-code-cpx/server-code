@@ -35,8 +35,15 @@ enum MarketAnomalyType {
 model PriceAlertRule {
   id        Int                  @id @default(autoincrement())
   userId    Int                  @map("user_id")
-  tsCode    String               @map("ts_code") @db.VarChar(16)
+  tsCode    String?              @map("ts_code") @db.VarChar(16)
   stockName String?              @map("stock_name") @db.VarChar(64)
+
+  /// 关联自选股组（可选；关联后扫描时动态展开组内股票）
+  watchlistId Int?    @map("watchlist_id")
+  /// 关联投资组合（可选；关联后扫描时动态展开组合持仓）
+  portfolioId String? @map("portfolio_id")
+  /// 来源名称（冗余缓存，避免查询时关联）
+  sourceName  String? @map("source_name") @db.VarChar(100)
 
   ruleType  PriceAlertRuleType   @map("rule_type")
   threshold Float?               // PCT_CHANGE_UP/DOWN 或 PRICE_ABOVE/BELOW 时必填；LIMIT_UP/DOWN 为 null
@@ -49,8 +56,13 @@ model PriceAlertRule {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
+  watchlist Watchlist? @relation(fields: [watchlistId], references: [id], onDelete: SetNull)
+  portfolio Portfolio? @relation(fields: [portfolioId], references: [id], onDelete: SetNull)
+
   @@index([userId, status])
   @@index([tsCode, status])
+  @@index([watchlistId])
+  @@index([portfolioId])
   @@map("price_alert_rules")
 }
 

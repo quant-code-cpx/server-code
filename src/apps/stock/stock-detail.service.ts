@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common'
 import { Prisma } from '@prisma/client'
-import * as dayjs from 'dayjs'
+import dayjs from 'dayjs'
 import { BusinessException } from 'src/common/exceptions/business.exception'
 import { CACHE_KEY_PREFIX, CACHE_NAMESPACE, CACHE_TTL_SECONDS } from 'src/constant/cache.constant'
 import { ErrorEnum } from 'src/constant/response-code.constant'

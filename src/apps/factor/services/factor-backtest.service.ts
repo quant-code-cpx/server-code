@@ -3,8 +3,12 @@ import type { Prisma } from '@prisma/client'
 import { PrismaService } from 'src/shared/prisma.service'
 import { FactorComputeService } from './factor-compute.service'
 import { FactorBacktestSubmitDto, FactorAttributionDto } from '../dto/factor-backtest.dto'
+import { SaveAsStrategyDto, SaveAsStrategyResponseDto } from '../dto/save-as-strategy.dto'
 import { BacktestRunService } from 'src/apps/backtest/services/backtest-run.service'
+import { BacktestStrategyRegistryService } from 'src/apps/backtest/services/backtest-strategy-registry.service'
 import { FactorScreeningRotationStrategyConfig } from 'src/apps/backtest/types/backtest-engine.types'
+import { BusinessException } from 'src/common/exceptions/business.exception'
+import { ErrorEnum } from 'src/constant/response-code.constant'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -29,6 +33,7 @@ export class FactorBacktestService {
     private readonly prisma: PrismaService,
     private readonly compute: FactorComputeService,
     private readonly backtestRun: BacktestRunService,
+    private readonly strategyRegistry: BacktestStrategyRegistryService,
   ) {}
 
   /**
@@ -225,6 +230,110 @@ export class FactorBacktestService {
       factorContributions,
       residualReturn: Number(residualReturn.toFixed(6)),
       residualPct: totalReturn !== 0 ? Number(((residualReturn / totalReturn) * 100).toFixed(1)) : 0,
+    }
+  }
+
+  /**
+   * Save factor screening conditions as a reusable strategy template.
+   * Creates a FACTOR_SCREENING_ROTATION Strategy record with backtestDefaults prefilled.
+   */
+  async saveAsStrategy(dto: SaveAsStrategyDto, userId: number): Promise<SaveAsStrategyResponseDto> {
+    const MAX_STRATEGIES_PER_USER = 50
+    const MAX_TAGS = 10
+
+    // 1. 校验所有因子名称存在且已启用
+    for (const cond of dto.conditions) {
+      const exists = await this.prisma.factorDefinition.findUnique({
+        where: { name: cond.factorName },
+        select: { name: true, isEnabled: true },
+      })
+      if (!exists) throw new NotFoundException(`因子 "${cond.factorName}" 不存在`)
+      if (!exists.isEnabled) throw new NotFoundException(`因子 "${cond.factorName}" 已禁用`)
+    }
+
+    // 2. 校验标签数量
+    if (dto.tags && dto.tags.length > MAX_TAGS) {
+      throw new BusinessException(`标签最多 ${MAX_TAGS} 个`)
+    }
+
+    // 3. 校验用户策略数量上限
+    const count = await this.prisma.strategy.count({ where: { userId } })
+    if (count >= MAX_STRATEGIES_PER_USER) {
+      throw new BusinessException(ErrorEnum.STRATEGY_LIMIT_EXCEEDED)
+    }
+
+    // 4. 构建 strategyConfig
+    const rawConfig: FactorScreeningRotationStrategyConfig = {
+      conditions: dto.conditions.map((c) => ({
+        factorName: c.factorName,
+        operator: c.operator,
+        value: c.value,
+        min: c.min,
+        max: c.max,
+        percent: c.percent,
+      })),
+      sortBy: dto.sortBy ?? dto.conditions[0]?.factorName,
+      sortOrder: dto.sortOrder ?? 'desc',
+      topN: dto.topN ?? 20,
+      weightMethod: dto.weightMethod ?? 'equal_weight',
+    }
+
+    // 5. 校验 strategyConfig 合法性
+    const validatedConfig = this.strategyRegistry.validateStrategyConfig(
+      'FACTOR_SCREENING_ROTATION',
+      rawConfig,
+    ) as unknown as Record<string, unknown>
+
+    // 6. 构建 backtestDefaults
+    const rebalanceDays = dto.rebalanceDays ?? 5
+    let rebalanceFrequency: string
+    if (rebalanceDays <= 1) rebalanceFrequency = 'DAILY'
+    else if (rebalanceDays <= 7) rebalanceFrequency = 'WEEKLY'
+    else if (rebalanceDays <= 25) rebalanceFrequency = 'MONTHLY'
+    else rebalanceFrequency = 'QUARTERLY'
+
+    const backtestDefaults = {
+      initialCapital: dto.initialCapital ?? 1_000_000,
+      rebalanceFrequency,
+      commissionRate: dto.commissionRate ?? 0.0003,
+      stampDutyRate: 0.0005,
+      slippageBps: dto.slippageBps ?? 5,
+      benchmarkTsCode: dto.benchmarkCode ?? '000300.SH',
+      universe: dto.universe ? 'CUSTOM' : 'ALL_A',
+      maxPositions: dto.topN ?? 20,
+      maxWeightPerStock: 0.2,
+      minDaysListed: 60,
+      priceMode: 'NEXT_OPEN',
+    }
+
+    // 7. 写入 Strategy 表
+    try {
+      const strategy = await this.prisma.strategy.create({
+        data: {
+          userId,
+          name: dto.name,
+          description: dto.description ?? null,
+          strategyType: 'FACTOR_SCREENING_ROTATION',
+          strategyConfig: validatedConfig as Prisma.InputJsonValue,
+          backtestDefaults: backtestDefaults as Prisma.InputJsonValue,
+          tags: dto.tags ?? [],
+          version: 1,
+        },
+      })
+
+      return {
+        strategyId: strategy.id,
+        name: strategy.name,
+        strategyType: strategy.strategyType,
+        strategyConfig: strategy.strategyConfig as Record<string, unknown>,
+        backtestDefaults: strategy.backtestDefaults as Record<string, unknown>,
+        createdAt: strategy.createdAt,
+      }
+    } catch (e: unknown) {
+      if ((e as Prisma.PrismaClientKnownRequestError).code === 'P2002') {
+        throw new BusinessException(ErrorEnum.STRATEGY_NAME_EXISTS)
+      }
+      throw e
     }
   }
 }

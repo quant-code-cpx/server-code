@@ -1,0 +1,30 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// 组合交易日志 Schema
+//
+// 记录组合内每一次持仓变动（手动操作、回测导入、信号触发、风控操作等），
+// 用于复盘分析与操作审计。
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// 组合交易日志
+model PortfolioTradeLog {
+  id          String   @id @default(uuid()) @db.Uuid
+  portfolioId String   @map("portfolio_id")
+  userId      Int      @map("user_id")
+  tsCode      String   @map("ts_code") @db.VarChar(20)
+  stockName   String?  @map("stock_name") @db.VarChar(60)
+  /// ADD | REMOVE | ADJUST | BUY | SELL
+  action      String   @db.VarChar(16)
+  quantity    Int      @default(0)
+  price       Float?
+  /// MANUAL | BACKTEST_IMPORT | SIGNAL | RISK_CONTROL
+  reason      String   @db.VarChar(32)
+  detail      Json?    @db.JsonB
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  portfolio Portfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+
+  @@index([portfolioId, createdAt(sort: Desc)])
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([tsCode])
+  @@map("portfolio_trade_log")
+}

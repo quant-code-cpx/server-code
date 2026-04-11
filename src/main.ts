@@ -55,7 +55,8 @@ async function bootstrap() {
   app.use(cookieParser())
 
   // ── 前缀 ──
-  app.setGlobalPrefix(globalPrefix)
+  // 排除基础设施端点，使其不受全局前缀影响（Prometheus scraper 访问 /metrics）
+  app.setGlobalPrefix(globalPrefix, { exclude: ['/metrics', '/health', '/ready'] })
 
   // ── 日志 ──
   app.useLogger(loggerService)

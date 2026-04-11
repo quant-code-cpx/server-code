@@ -30,6 +30,8 @@ model Portfolio {
   holdings   PortfolioHolding[]
   riskRules  PortfolioRiskRule[]
   violations RiskViolationLog[]
+  tradeLogs  PortfolioTradeLog[]
+  alertRules PriceAlertRule[]
 
   @@map("portfolios")
 }

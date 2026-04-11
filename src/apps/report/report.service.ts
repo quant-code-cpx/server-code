@@ -7,6 +7,7 @@ import {
   CreateBacktestReportDto,
   CreatePortfolioReportDto,
   CreateStockReportDto,
+  CreateStrategyResearchReportDto,
   QueryReportsDto,
   ReportFormatEnum,
 } from './dto/create-report.dto'
@@ -17,6 +18,7 @@ const TEMPLATE_MAP: Record<ReportType, string> = {
   [ReportType.BACKTEST]: 'backtest',
   [ReportType.STOCK]: 'stock',
   [ReportType.PORTFOLIO]: 'portfolio',
+  [ReportType.STRATEGY_RESEARCH]: 'strategy-research',
 }
 
 @Injectable()
@@ -208,6 +210,29 @@ export class ReportService {
       })
       throw new BusinessException('报告生成失败，请稍后重试')
     }
+  }
+
+  // ─── 创建策略研究报告 ──────────────────────────────────────────────────────
+
+  async createStrategyResearchReport(dto: CreateStrategyResearchReportDto, userId: number) {
+    const run = await this.prisma.backtestRun.findFirst({
+      where: { id: dto.backtestRunId, userId },
+    })
+    if (!run) throw new BusinessException('回测记录不存在或无权访问')
+
+    const title = dto.title ?? `策略研究报告 - ${run.name ?? run.strategyType}`
+    return this.generateReport({
+      userId,
+      type: ReportType.STRATEGY_RESEARCH,
+      title,
+      params: { backtestRunId: dto.backtestRunId, strategyId: dto.strategyId, portfolioId: dto.portfolioId },
+      format: this.toFormat(dto.format),
+      collect: () =>
+        this.dataCollector.collectStrategyResearchData(dto.backtestRunId, userId, {
+          portfolioId: dto.portfolioId,
+          sections: dto.sections,
+        }),
+    })
   }
 
   private toFormat(format?: ReportFormatEnum): ReportFormat {

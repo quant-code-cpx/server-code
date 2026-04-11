@@ -31,6 +31,7 @@ import { EventStudyModule } from './apps/event-study/event-study.module'
 import { PatternModule } from './apps/pattern/pattern.module'
 import { ReportModule } from './apps/report/report.module'
 import { AlertModule } from './apps/alert/alert.module'
+import { SignalModule } from './apps/signal/signal.module'
 import { MetricsModule } from './shared/metrics/metrics.module'
 
 @Module({
@@ -89,6 +90,7 @@ import { MetricsModule } from './shared/metrics/metrics.module'
     PatternModule,
     ReportModule,
     AlertModule,
+    SignalModule,
 
     // ── 队列模块（BullMQ 回测任务） ──
     QueueModule,

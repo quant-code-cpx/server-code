@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{title}}</title>
+  <style>
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; color: #333; line-height: 1.6; margin: 0; padding: 20px; }
+    h1 { color: #1a1a2e; border-bottom: 3px solid #e94560; padding-bottom: 10px; }
+    h2 { color: #16213e; border-left: 4px solid #e94560; padding-left: 12px; margin-top: 32px; }
+    h3 { color: #0f3460; }
+    table { border-collapse: collapse; width: 100%; margin: 12px 0; }
+    th, td { border: 1px solid #ddd; padding: 8px 12px; text-align: left; }
+    th { background: #f5f5f5; font-weight: 600; }
+    tr:nth-child(even) { background: #fafafa; }
+    .metric { display: inline-block; margin: 8px 16px 8px 0; }
+    .metric-label { font-size: 12px; color: #666; }
+    .metric-value { font-size: 20px; font-weight: 700; color: #e94560; }
+    .positive { color: #2ecc71; }
+    .negative { color: #e74c3c; }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 12px; background: #e8f4fd; color: #2980b9; }
+    .section { margin-bottom: 32px; }
+    .meta { color: #888; font-size: 13px; margin-bottom: 24px; }
+  </style>
+</head>
+<body>
+
+<h1>{{title}}</h1>
+<p class="meta">报告生成时间：{{generatedAt}} | 策略研究报告</p>
+
+<!-- ─── 第一章：策略概览 ──────────────────────────────────────────── -->
+<div class="section">
+  <h2>一、策略概览</h2>
+  {{#if sections.overview}}
+  <p>{{sections.overview.description}}</p>
+  <table>
+    <tr><th>属性</th><th>值</th></tr>
+    <tr><td>策略名称</td><td>{{sections.overview.strategyName}}</td></tr>
+    <tr><td>策略类型</td><td><span class="badge">{{sections.overview.strategyType}}</span></td></tr>
+    {{#if sections.overview.backtestRunId}}
+    <tr><td>关联回测</td><td>{{sections.overview.backtestRunId}}</td></tr>
+    {{/if}}
+    {{#if sections.overview.portfolioId}}
+    <tr><td>关联组合</td><td>{{sections.overview.portfolioId}}</td></tr>
+    {{/if}}
+    <tr><td>创建时间</td><td>{{sections.overview.createdAt}}</td></tr>
+  </table>
+  {{else}}
+  <p style="color:#aaa">无策略概览数据</p>
+  {{/if}}
+</div>
+
+<!-- ─── 第二章：回测绩效 ──────────────────────────────────────────── -->
+{{#if sections.backtestPerformance}}
+<div class="section">
+  <h2>二、回测绩效</h2>
+  <div>
+    <div class="metric">
+      <div class="metric-label">年化收益率</div>
+      <div class="metric-value {{#if sections.backtestPerformance.annualReturn}}{{#gt sections.backtestPerformance.annualReturn 0}}positive{{else}}negative{{/gt}}{{/if}}">
+        {{sections.backtestPerformance.annualReturn}}%
+      </div>
+    </div>
+    <div class="metric">
+      <div class="metric-label">最大回撤</div>
+      <div class="metric-value negative">{{sections.backtestPerformance.maxDrawdown}}%</div>
+    </div>
+    <div class="metric">
+      <div class="metric-label">夏普比率</div>
+      <div class="metric-value">{{sections.backtestPerformance.sharpe}}</div>
+    </div>
+    <div class="metric">
+      <div class="metric-label">信息比率</div>
+      <div class="metric-value">{{sections.backtestPerformance.informationRatio}}</div>
+    </div>
+    <div class="metric">
+      <div class="metric-label">胜率</div>
+      <div class="metric-value">{{sections.backtestPerformance.winRate}}%</div>
+    </div>
+    <div class="metric">
+      <div class="metric-label">总收益率</div>
+      <div class="metric-value">{{sections.backtestPerformance.totalReturn}}%</div>
+    </div>
+  </div>
+  {{#if sections.backtestPerformance.benchmarkComparison}}
+  <h3>vs 基准对比</h3>
+  <table>
+    <tr><th>指标</th><th>策略</th><th>基准 ({{sections.backtestPerformance.benchmarkTsCode}})</th></tr>
+    <tr>
+      <td>年化收益率</td>
+      <td>{{sections.backtestPerformance.annualReturn}}%</td>
+      <td>{{sections.backtestPerformance.benchmarkComparison.annualReturn}}%</td>
+    </tr>
+    <tr>
+      <td>年化波动率</td>
+      <td>{{sections.backtestPerformance.volatility}}%</td>
+      <td>{{sections.backtestPerformance.benchmarkComparison.volatility}}%</td>
+    </tr>
+    <tr>
+      <td>超额收益</td>
+      <td colspan="2">{{sections.backtestPerformance.benchmarkComparison.excessReturn}}%</td>
+    </tr>
+  </table>
+  {{/if}}
+</div>
+{{/if}}
+
+<!-- ─── 第三章：持仓分析 ──────────────────────────────────────────── -->
+{{#if sections.holdingsAnalysis}}
+<div class="section">
+  <h2>三、持仓分析</h2>
+  {{#if sections.holdingsAnalysis.topHoldings}}
+  <h3>前十大持仓</h3>
+  <table>
+    <tr><th>排名</th><th>股票代码</th><th>股票名称</th><th>权重</th></tr>
+    {{#each sections.holdingsAnalysis.topHoldings}}
+    <tr>
+      <td>{{@index-plus-one}}</td>
+      <td>{{tsCode}}</td>
+      <td>{{stockName}}</td>
+      <td>{{weight}}%</td>
+    </tr>
+    {{/each}}
+  </table>
+  {{/if}}
+  {{#if sections.holdingsAnalysis.industryDistribution}}
+  <h3>行业分布</h3>
+  <table>
+    <tr><th>行业</th><th>权重</th></tr>
+    {{#each sections.holdingsAnalysis.industryDistribution}}
+    <tr><td>{{industry}}</td><td>{{weight}}%</td></tr>
+    {{/each}}
+  </table>
+  {{/if}}
+</div>
+{{/if}}
+
+<!-- ─── 第四章：风险评估 ──────────────────────────────────────────── -->
+{{#if sections.riskAssessment}}
+<div class="section">
+  <h2>四、风险评估</h2>
+  <table>
+    <tr><th>风险指标</th><th>值</th></tr>
+    {{#if sections.riskAssessment.beta}}
+    <tr><td>Beta (vs 基准)</td><td>{{sections.riskAssessment.beta}}</td></tr>
+    {{/if}}
+    {{#if sections.riskAssessment.volatility}}
+    <tr><td>年化波动率</td><td>{{sections.riskAssessment.volatility}}%</td></tr>
+    {{/if}}
+    {{#if sections.riskAssessment.maxDrawdown}}
+    <tr><td>最大回撤</td><td>{{sections.riskAssessment.maxDrawdown}}%</td></tr>
+    {{/if}}
+    {{#if sections.riskAssessment.var95}}
+    <tr><td>95% VaR（日）</td><td>{{sections.riskAssessment.var95}}%</td></tr>
+    {{/if}}
+    {{#if sections.riskAssessment.concentrationHHI}}
+    <tr><td>赫芬达尔指数</td><td>{{sections.riskAssessment.concentrationHHI}}</td></tr>
+    {{/if}}
+  </table>
+  {{#if sections.riskAssessment.violations}}
+  <h3>风控违规记录（近期）</h3>
+  {{#if sections.riskAssessment.violations.length}}
+  <table>
+    <tr><th>规则类型</th><th>实测值</th><th>阈值</th><th>时间</th></tr>
+    {{#each sections.riskAssessment.violations}}
+    <tr>
+      <td>{{ruleType}}</td>
+      <td class="negative">{{actualValue}}</td>
+      <td>{{threshold}}</td>
+      <td>{{createdAt}}</td>
+    </tr>
+    {{/each}}
+  </table>
+  {{else}}
+  <p>暂无风控违规记录</p>
+  {{/if}}
+  {{/if}}
+</div>
+{{/if}}
+
+<!-- ─── 第五章：交易行为复盘 ──────────────────────────────────────── -->
+{{#if sections.tradeLogs}}
+<div class="section">
+  <h2>五、交易行为复盘</h2>
+  <table>
+    <tr><th>时间</th><th>操作</th><th>股票</th><th>数量</th><th>价格</th><th>来源</th></tr>
+    {{#each sections.tradeLogs.recentLogs}}
+    <tr>
+      <td>{{createdAt}}</td>
+      <td><span class="badge">{{action}}</span></td>
+      <td>{{stockName}} ({{tsCode}})</td>
+      <td>{{quantity}}</td>
+      <td>{{price}}</td>
+      <td>{{reason}}</td>
+    </tr>
+    {{/each}}
+  </table>
+  {{#if sections.tradeLogs.summary}}
+  <h3>操作汇总</h3>
+  <table>
+    <tr><th>操作类型</th><th>来源</th><th>股票</th><th>次数</th></tr>
+    {{#each sections.tradeLogs.summary}}
+    <tr>
+      <td>{{action}}</td>
+      <td>{{reason}}</td>
+      <td>{{tsCode}}</td>
+      <td>{{_count.id}}</td>
+    </tr>
+    {{/each}}
+  </table>
+  {{/if}}
+</div>
+{{/if}}
+
+<!-- ─── 第六章：综合结论 ──────────────────────────────────────────── -->
+<div class="section">
+  <h2>六、综合结论</h2>
+  {{#if sections.conclusion}}
+  <p>{{sections.conclusion}}</p>
+  {{else}}
+  <p>本报告由系统自动生成，涵盖策略绩效、持仓分布、风险评估及交易行为复盘。如需深入分析，请结合实际市场情况进行判断。</p>
+  {{/if}}
+</div>
+
+<hr style="margin-top:40px; border:none; border-top:1px solid #eee">
+<p style="color:#aaa; font-size:12px; text-align:center">本报告仅供参考，不构成投资建议。</p>
+
+</body>
+</html>

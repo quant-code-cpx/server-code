@@ -11,6 +11,7 @@ model Watchlist {
 
   user   User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   stocks WatchlistStock[]
+  alertRules PriceAlertRule[]
 
   @@map("watchlists")
   @@index([userId])

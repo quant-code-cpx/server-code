@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common'
 import { Cron } from '@nestjs/schedule'
 import { MarketAnomalyType } from '@prisma/client'
-import * as dayjs from 'dayjs'
+import dayjs from 'dayjs'
 import { PrismaService } from 'src/shared/prisma.service'
 import { EventsGateway } from 'src/websocket/events.gateway'
 import { MarketAnomalyDto, MarketAnomalyQueryDto } from './dto/market-anomaly.dto'

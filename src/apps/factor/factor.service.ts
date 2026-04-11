@@ -12,6 +12,7 @@ import { FactorScreeningDto } from './dto/factor-screening.dto'
 import { FactorBackfillDto, FactorPrecomputeTriggerDto } from './dto/factor-precompute.dto'
 import { CreateCustomFactorDto, TestCustomFactorDto, UpdateCustomFactorDto } from './dto/factor-custom.dto'
 import { FactorBacktestSubmitDto, FactorAttributionDto } from './dto/factor-backtest.dto'
+import { SaveAsStrategyDto } from './dto/save-as-strategy.dto'
 import { FactorOrthogonalizeDto, FamaMacBethDto } from './dto/factor-orthogonal.dto'
 import { FactorLibraryService } from './services/factor-library.service'
 import { FactorComputeService } from './services/factor-compute.service'
@@ -21,6 +22,8 @@ import { FactorPrecomputeService } from './services/factor-precompute.service'
 import { FactorCustomService } from './services/factor-custom.service'
 import { FactorBacktestService } from './services/factor-backtest.service'
 import { FactorOrthogonalService } from './services/factor-orthogonal.service'
+import { FactorOptimizationService } from './services/factor-optimization.service'
+import { FactorOptimizationDto } from './dto/factor-optimization.dto'
 import { PrismaService } from 'src/shared/prisma.service'
 
 @Injectable()
@@ -34,6 +37,7 @@ export class FactorService {
     private readonly customSvc: FactorCustomService,
     private readonly backtestSvc: FactorBacktestService,
     private readonly orthogonalSvc: FactorOrthogonalService,
+    private readonly optimizationSvc: FactorOptimizationService,
     private readonly prisma: PrismaService,
   ) {}
 
@@ -138,6 +142,10 @@ export class FactorService {
     return this.backtestSvc.attribution(dto)
   }
 
+  saveAsStrategy(dto: SaveAsStrategyDto, userId: number) {
+    return this.backtestSvc.saveAsStrategy(dto, userId)
+  }
+
   // ── Phase 4: Orthogonalization ────────────────────────────────────────────
 
   orthogonalize(dto: FactorOrthogonalizeDto) {
@@ -146,5 +154,11 @@ export class FactorService {
 
   famaMacBeth(dto: FamaMacBethDto) {
     return this.orthogonalSvc.famaMacBeth(dto)
+  }
+
+  // ── Phase 4: Portfolio Optimization ──────────────────────────────────────
+
+  optimize(dto: FactorOptimizationDto, userId: number) {
+    return this.optimizationSvc.optimize(dto, userId)
   }
 }

@@ -1,4 +1,12 @@
-import { BadRequestException, ConflictException, Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common'
+import {
+  BadRequestException,
+  ConflictException,
+  Inject,
+  Injectable,
+  Logger,
+  OnApplicationBootstrap,
+  forwardRef,
+} from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { SchedulerRegistry } from '@nestjs/schedule'
 import { InjectMetric } from '@willsoto/nestjs-prometheus'
@@ -18,6 +26,7 @@ import {
 } from 'src/shared/metrics/metrics.constants'
 import { EventsGateway } from 'src/websocket/events.gateway'
 import { HeatmapSnapshotService } from 'src/apps/heatmap/heatmap-snapshot.service'
+import { SignalGenerationService } from 'src/apps/signal/signal-generation.service'
 import { DataQualityService, DataQualityReport, QualityCheckSummary } from './quality/data-quality.service'
 import { AutoRepairService } from './quality/auto-repair.service'
 import { SyncHelperService } from './sync-helper.service'
@@ -68,6 +77,8 @@ export class TushareSyncService implements OnApplicationBootstrap {
     private readonly heatmapSnapshotService: HeatmapSnapshotService,
     private readonly dataQualityService: DataQualityService,
     private readonly autoRepair: AutoRepairService,
+    @Inject(forwardRef(() => SignalGenerationService))
+    private readonly signalGenerationService: SignalGenerationService,
     @InjectMetric(TUSHARE_SYNC_DURATION) private readonly syncDurationHistogram: Histogram,
     @InjectMetric(TUSHARE_SYNC_TOTAL) private readonly syncTotalCounter: Counter,
     @InjectMetric(TUSHARE_SYNC_ROUND_DURATION) private readonly syncRoundDurationGauge: Gauge,
@@ -452,6 +463,7 @@ export class TushareSyncService implements OnApplicationBootstrap {
         await this.invalidateCachesAfterSync(result1)
         this.triggerHeatmapSnapshotAsync(result1)
         this.triggerDataQualityCheckAsync(result1)
+        this.triggerSignalGenerationAsync(result1)
         this.eventsGateway.broadcastSyncCompleted(result1)
         return result1
       }
@@ -473,6 +485,7 @@ export class TushareSyncService implements OnApplicationBootstrap {
       await this.invalidateCachesAfterSync(result2)
       this.triggerHeatmapSnapshotAsync(result2)
       this.triggerDataQualityCheckAsync(result2)
+      this.triggerSignalGenerationAsync(result2)
       this.eventsGateway.broadcastSyncCompleted(result2)
       return result2
     } catch (error) {
@@ -566,6 +579,16 @@ export class TushareSyncService implements OnApplicationBootstrap {
     }
     void this.heatmapSnapshotService.aggregateSnapshot(result.targetTradeDate ?? undefined).catch((err) => {
       this.logger.warn(`热力图快照聚合失败（不影响主同步流程）：${(err as Error).message}`)
+    })
+  }
+
+  /**
+   * 异步触发盘后信号生成（不阻塞同步完成流程）。
+   */
+  private triggerSignalGenerationAsync(result: RunPlansResult): void {
+    if (result.executedTasks.length === 0) return
+    void this.signalGenerationService.generateAllSignals(result.targetTradeDate ?? undefined).catch((err) => {
+      this.logger.warn(`信号生成失败（不影响主同步流程）：${(err as Error).message}`)
     })
   }
 

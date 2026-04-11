@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common'
+import { forwardRef, Module } from '@nestjs/common'
 
 // API 层
 import { TushareClient } from './api/tushare-client.service'
@@ -33,6 +33,7 @@ import { SyncRetryService } from './sync/sync-retry.service'
 import { SyncStatusOverviewService } from './sync/sync-status-overview.service'
 import { WebsocketModule } from 'src/websocket/websocket.module'
 import { HeatmapModule } from 'src/apps/heatmap/heatmap.module'
+import { SignalModule } from 'src/apps/signal/signal.module'
 
 /**
  * TushareModule
@@ -41,7 +42,7 @@ import { HeatmapModule } from 'src/apps/heatmap/heatmap.module'
  * 同步层按分类独立维护，由 TushareSyncService 统一编排
  */
 @Module({
-  imports: [WebsocketModule, HeatmapModule],
+  imports: [WebsocketModule, HeatmapModule, forwardRef(() => SignalModule)],
   providers: [
     // API
     TushareClient,

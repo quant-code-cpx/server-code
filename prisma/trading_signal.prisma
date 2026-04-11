@@ -1,0 +1,38 @@
+/// 盘后信号（由已激活策略在 Tushare 同步完成后自动生成）
+model TradingSignal {
+  id           String   @id @default(cuid())
+  activationId String   @map("activation_id")
+  strategyId   String   @map("strategy_id")
+  userId       Int      @map("user_id")
+  tradeDate    DateTime @map("trade_date") @db.Date
+  tsCode       String   @map("ts_code") @db.VarChar(15)
+  action       String   @db.VarChar(16) /// BUY / SELL / HOLD
+  targetWeight Float?   @map("target_weight")
+  confidence   Float?
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@unique([activationId, tradeDate, tsCode])
+  @@index([userId, tradeDate(sort: Desc)])
+  @@index([strategyId, tradeDate(sort: Desc)])
+  @@map("trading_signals")
+}
+
+/// 策略信号激活状态（用户为策略开启/关闭每日信号生成）
+model SignalActivation {
+  id              String    @id @default(cuid())
+  userId          Int       @map("user_id")
+  strategyId      String    @map("strategy_id")
+  portfolioId     String?   @map("portfolio_id")
+  isActive        Boolean   @default(true) @map("is_active")
+  universe        String    @default("ALL_A") @db.VarChar(32)
+  benchmarkTsCode String    @default("000300.SH") @map("benchmark_ts_code") @db.VarChar(16)
+  lookbackDays    Int       @default(250) @map("lookback_days")
+  alertThreshold  Float     @default(0.3) @map("alert_threshold")
+  lastSignalDate  DateTime? @map("last_signal_date") @db.Date
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  @@unique([userId, strategyId])
+  @@index([isActive])
+  @@map("signal_activations")
+}

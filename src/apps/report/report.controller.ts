@@ -8,6 +8,7 @@ import {
   CreateBacktestReportDto,
   CreatePortfolioReportDto,
   CreateStockReportDto,
+  CreateStrategyResearchReportDto,
   QueryReportsDto,
 } from './dto/create-report.dto'
 import { ReportService } from './report.service'
@@ -34,6 +35,12 @@ export class ReportController {
   @ApiOperation({ summary: '生成组合分析报告' })
   createPortfolioReport(@CurrentUser() user: TokenPayload, @Body() dto: CreatePortfolioReportDto) {
     return this.reportService.createPortfolioReport(dto, user.id)
+  }
+
+  @Post('strategy-research')
+  @ApiOperation({ summary: '生成策略研究报告（回测+持仓+交易日志综合）' })
+  createStrategyResearchReport(@CurrentUser() user: TokenPayload, @Body() dto: CreateStrategyResearchReportDto) {
+    return this.reportService.createStrategyResearchReport(dto, user.id)
   }
 
   @Post('list')

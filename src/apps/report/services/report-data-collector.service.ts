@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common'
 import { Prisma } from '@prisma/client'
-import * as dayjs from 'dayjs'
+import dayjs from 'dayjs'
 
 import { PrismaService } from 'src/shared/prisma.service'
 import { BacktestReportData, PortfolioReportData, StockReportData } from '../dto/report-data.interface'
@@ -306,5 +306,167 @@ export class ReportDataCollectorService {
         count: val.count,
       }))
       .sort((a, b) => b.weight - a.weight)
+  }
+
+  // ─── 策略研究报告 ──────────────────────────────────────────────────────────
+
+  async collectStrategyResearchData(
+    backtestRunId: string,
+    userId: number,
+    opts: {
+      portfolioId?: string
+      sections?: { performance?: boolean; holdings?: boolean; riskAssessment?: boolean; tradeLog?: boolean }
+    },
+  ) {
+    const sections = opts.sections ?? {}
+
+    // 1. 回测基本信息（必选）
+    const run = await this.prisma.backtestRun.findFirstOrThrow({
+      where: { id: backtestRunId, userId },
+    })
+
+    const overview = {
+      strategyName: run.name ?? run.strategyType,
+      strategyType: run.strategyType,
+      description: `回测区间：${dayjs(run.startDate).format('YYYY-MM-DD')} ~ ${dayjs(run.endDate).format('YYYY-MM-DD')}`,
+      backtestRunId,
+      portfolioId: opts.portfolioId ?? null,
+      createdAt: dayjs(run.createdAt).format('YYYY-MM-DD HH:mm'),
+    }
+
+    // 2. 回测绩效（默认开启）
+    let backtestPerformance: Record<string, unknown> | null = null
+    if (sections.performance !== false) {
+      let benchmarkComparison: Record<string, unknown> | null = null
+
+      if (run.benchmarkTsCode && run.benchmarkReturn != null) {
+        benchmarkComparison = {
+          annualReturn: run.benchmarkReturn != null ? Math.round(Number(run.benchmarkReturn) * 10000) / 100 : null,
+          volatility: null,
+          excessReturn: run.excessReturn != null ? Math.round(Number(run.excessReturn) * 10000) / 100 : null,
+        }
+      }
+
+      backtestPerformance = {
+        totalReturn: run.totalReturn != null ? Math.round(Number(run.totalReturn) * 10000) / 100 : null,
+        annualReturn: run.annualizedReturn != null ? Math.round(Number(run.annualizedReturn) * 10000) / 100 : null,
+        maxDrawdown: run.maxDrawdown != null ? Math.round(Number(run.maxDrawdown) * 10000) / 100 : null,
+        sharpe: run.sharpeRatio != null ? Math.round(Number(run.sharpeRatio) * 100) / 100 : null,
+        informationRatio: null,
+        winRate: run.winRate != null ? Math.round(Number(run.winRate) * 10000) / 100 : null,
+        volatility: run.volatility != null ? Math.round(Number(run.volatility) * 10000) / 100 : null,
+        benchmarkTsCode: run.benchmarkTsCode ?? null,
+        benchmarkComparison,
+      }
+    }
+
+    // 3. 持仓分析（默认开启）：取回测最后一个交易日持仓快照
+    let holdingsAnalysis: Record<string, unknown> | null = null
+    if (sections.holdings !== false) {
+      const lastSnapshot = await this.prisma.backtestPositionSnapshot.findFirst({
+        where: { runId: backtestRunId },
+        orderBy: { tradeDate: 'desc' },
+        select: { tradeDate: true },
+      })
+      if (lastSnapshot) {
+        const positions = await this.prisma.backtestPositionSnapshot.findMany({
+          where: { runId: backtestRunId, tradeDate: lastSnapshot.tradeDate },
+          orderBy: { weight: 'desc' },
+        })
+        const topHoldings = positions.slice(0, 10).map((p) => ({
+          tsCode: p.tsCode,
+          stockName: p.tsCode,
+          weight: p.weight != null ? Math.round(Number(p.weight) * 10000) / 100 : null,
+        }))
+
+        // 行业分布
+        const tsCodes = positions.map((p) => p.tsCode)
+        const stocks = await this.prisma.stockBasic.findMany({
+          where: { tsCode: { in: tsCodes } },
+          select: { tsCode: true, name: true, industry: true },
+        })
+        const nameMap = new Map(stocks.map((s) => [s.tsCode, s.name]))
+        const industryMap = new Map(stocks.map((s) => [s.tsCode, s.industry]))
+
+        // Patch names
+        for (const h of topHoldings) h.stockName = nameMap.get(h.tsCode) ?? h.tsCode
+
+        const distMap = new Map<string, number>()
+        for (const p of positions) {
+          const ind = industryMap.get(p.tsCode) ?? '未知'
+          distMap.set(ind, (distMap.get(ind) ?? 0) + Number(p.weight ?? 0))
+        }
+        const industryDistribution = Array.from(distMap.entries())
+          .map(([industry, weight]) => ({ industry, weight: Math.round(weight * 10000) / 100 }))
+          .sort((a, b) => b.weight - a.weight)
+
+        holdingsAnalysis = {
+          topHoldings,
+          industryDistribution,
+          snapshotDate: dayjs(lastSnapshot.tradeDate).format('YYYY-MM-DD'),
+        }
+      }
+    }
+
+    // 4. 风险评估（默认开启）
+    let riskAssessment: Record<string, unknown> | null = null
+    if (sections.riskAssessment !== false) {
+      riskAssessment = {
+        beta: run.beta != null ? Math.round(Number(run.beta) * 100) / 100 : null,
+        volatility: run.volatility != null ? Math.round(Number(run.volatility) * 10000) / 100 : null,
+        maxDrawdown: run.maxDrawdown != null ? Math.round(Number(run.maxDrawdown) * 10000) / 100 : null,
+        var95: null,
+        concentrationHHI: null,
+        violations: [],
+      }
+    }
+
+    // 5. 交易日志（仅当 portfolioId 且 sections.tradeLog=true 时）
+    let tradeLogs: Record<string, unknown> | null = null
+    if (opts.portfolioId && sections.tradeLog) {
+      const [recentLogs, summary] = await Promise.all([
+        this.prisma.portfolioTradeLog.findMany({
+          where: { portfolioId: opts.portfolioId, userId },
+          orderBy: { createdAt: 'desc' },
+          take: 50,
+          select: {
+            tsCode: true,
+            stockName: true,
+            action: true,
+            quantity: true,
+            price: true,
+            reason: true,
+            createdAt: true,
+          },
+        }),
+        this.prisma.portfolioTradeLog.groupBy({
+          by: ['action', 'reason', 'tsCode', 'stockName'],
+          where: { portfolioId: opts.portfolioId, userId },
+          _count: { id: true },
+          orderBy: { _count: { id: 'desc' } },
+          take: 20,
+        }),
+      ])
+      tradeLogs = {
+        recentLogs: recentLogs.map((r) => ({
+          ...r,
+          price: r.price != null ? Number(r.price) : null,
+          createdAt: dayjs(r.createdAt).format('YYYY-MM-DD HH:mm'),
+        })),
+        summary,
+      }
+    }
+
+    return {
+      title: `策略研究报告 - ${overview.strategyName}`,
+      generatedAt: dayjs().format('YYYY-MM-DD HH:mm'),
+      sections: {
+        overview,
+        backtestPerformance,
+        holdingsAnalysis,
+        riskAssessment,
+        tradeLogs,
+      },
+    }
   }
 }

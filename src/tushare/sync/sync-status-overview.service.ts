@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common'
-import * as dayjs from 'dayjs'
+import dayjs from 'dayjs'
 
 import { TushareSyncTaskName } from 'src/constant/tushare.constant'
 import { CacheService } from 'src/shared/cache.service'

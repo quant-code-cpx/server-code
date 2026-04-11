@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
-import { IsEnum, IsInt, IsOptional, IsString, Max, Min } from 'class-validator'
+import { IsBoolean, IsEnum, IsInt, IsObject, IsOptional, IsString, Max, Min, ValidateNested } from 'class-validator'
+import { Type } from 'class-transformer'
 
 export enum ReportFormatEnum {
   JSON = 'JSON',
@@ -64,8 +65,59 @@ export class CreatePortfolioReportDto {
   format?: ReportFormatEnum = ReportFormatEnum.JSON
 }
 
+export class StrategyResearchSectionsDto {
+  @IsOptional()
+  @IsBoolean()
+  performance?: boolean = true
+
+  @IsOptional()
+  @IsBoolean()
+  holdings?: boolean = true
+
+  @IsOptional()
+  @IsBoolean()
+  riskAssessment?: boolean = true
+
+  @IsOptional()
+  @IsBoolean()
+  tradeLog?: boolean = false
+}
+
+export class CreateStrategyResearchReportDto {
+  @ApiProperty({ description: '回测运行 ID' })
+  @IsString()
+  backtestRunId: string
+
+  @ApiPropertyOptional({ description: '关联策略 ID' })
+  @IsOptional()
+  @IsString()
+  strategyId?: string
+
+  @ApiPropertyOptional({ description: '关联组合 ID（填写后附带交易日志和持仓现状）' })
+  @IsOptional()
+  @IsString()
+  portfolioId?: string
+
+  @ApiPropertyOptional({ description: '报告标题' })
+  @IsOptional()
+  @IsString()
+  title?: string
+
+  @ApiPropertyOptional({ enum: ReportFormatEnum, default: ReportFormatEnum.JSON })
+  @IsOptional()
+  @IsEnum(ReportFormatEnum)
+  format?: ReportFormatEnum = ReportFormatEnum.JSON
+
+  @ApiPropertyOptional({ description: '报告章节开关', type: StrategyResearchSectionsDto })
+  @IsOptional()
+  @IsObject()
+  @ValidateNested()
+  @Type(() => StrategyResearchSectionsDto)
+  sections?: StrategyResearchSectionsDto
+}
+
 export class QueryReportsDto {
-  @ApiPropertyOptional({ enum: ['BACKTEST', 'STOCK', 'PORTFOLIO'] })
+  @ApiPropertyOptional({ enum: ['BACKTEST', 'STOCK', 'PORTFOLIO', 'STRATEGY_RESEARCH'] })
   @IsOptional()
   @IsString()
   type?: string

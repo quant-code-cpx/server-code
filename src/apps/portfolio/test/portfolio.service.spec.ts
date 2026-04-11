@@ -58,7 +58,8 @@ function buildCacheMock() {
 }
 
 function createService(prismaMock = buildPrismaMock(), cacheMock = buildCacheMock()) {
-  return new PortfolioService(prismaMock as any, cacheMock as any)
+  const tradeLogMock = { log: jest.fn(async () => {}) }
+  return new PortfolioService(prismaMock as any, cacheMock as any, tradeLogMock as any)
 }
 
 function buildPortfolio(overrides: Record<string, unknown> = {}) {

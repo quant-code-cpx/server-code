@@ -89,6 +89,7 @@ function createService(registry: Partial<TushareSyncRegistryService>, mocks = bu
     mocks.heatmapSnapshotService as never,
     mocks.dataQualityService as never,
     mocks.autoRepairService as never,
+    { generateAllSignals: jest.fn().mockResolvedValue(undefined) } as never,
     noopHistogram,
     noopCounter,
     noopGauge,

@@ -18,7 +18,9 @@ import { FactorScreeningDto } from './dto/factor-screening.dto'
 import { FactorBackfillDto, FactorPrecomputeTriggerDto } from './dto/factor-precompute.dto'
 import { CreateCustomFactorDto, TestCustomFactorDto, UpdateCustomFactorDto } from './dto/factor-custom.dto'
 import { FactorBacktestSubmitDto, FactorAttributionDto } from './dto/factor-backtest.dto'
+import { SaveAsStrategyDto } from './dto/save-as-strategy.dto'
 import { FactorOrthogonalizeDto, FamaMacBethDto } from './dto/factor-orthogonal.dto'
+import { FactorOptimizationDto } from './dto/factor-optimization.dto'
 
 @ApiTags('Factor - 因子市场')
 @UseGuards(JwtAuthGuard)
@@ -172,6 +174,15 @@ export class FactorController {
     return this.factorService.attribution(dto)
   }
 
+  // ─── 保存策略模板 ─────────────────────────────────────────────────────────
+
+  @Post('backtest/save-as-strategy')
+  @ApiOperation({ summary: '因子筛选条件保存为策略模板（FACTOR_SCREENING_ROTATION，可复用）' })
+  @ApiSuccessRawResponse({ type: 'object' })
+  saveAsStrategy(@Body() dto: SaveAsStrategyDto, @CurrentUser() user: TokenPayload) {
+    return this.factorService.saveAsStrategy(dto, user.id)
+  }
+
   // ── Phase 4: Factor orthogonalization ───────────────────────────────────
 
   @Post('analysis/orthogonalize')
@@ -186,5 +197,14 @@ export class FactorController {
   @ApiSuccessRawResponse({ type: 'object' })
   famaMacBeth(@Body() dto: FamaMacBethDto) {
     return this.factorService.famaMacBeth(dto)
+  }
+
+  // ── Phase 4: Portfolio Optimization ─────────────────────────────────────
+
+  @Post('optimization')
+  @ApiOperation({ summary: '因子组合优化（MVO / 最小方差 / 风险平价 / 最大分散化）' })
+  @ApiSuccessRawResponse({ type: 'object' })
+  optimize(@Body() dto: FactorOptimizationDto, @CurrentUser() user: TokenPayload) {
+    return this.factorService.optimize(dto, user.id)
   }
 }

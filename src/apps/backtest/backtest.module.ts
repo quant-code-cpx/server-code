@@ -14,6 +14,9 @@ import { BacktestEngineService } from './services/backtest-engine.service'
 import { BacktestWalkForwardService } from './services/backtest-walk-forward.service'
 import { BacktestComparisonService } from './services/backtest-comparison.service'
 import { BacktestMonteCarloService } from './services/backtest-monte-carlo.service'
+import { BacktestAttributionService } from './services/backtest-attribution.service'
+import { BacktestCostSensitivityService } from './services/backtest-cost-sensitivity.service'
+import { BacktestParamSensitivityService } from './services/backtest-param-sensitivity.service'
 
 @Module({
   imports: [BullModule.registerQueue({ name: BACKTESTING_QUEUE }), WebsocketModule],
@@ -30,6 +33,9 @@ import { BacktestMonteCarloService } from './services/backtest-monte-carlo.servi
     BacktestWalkForwardService,
     BacktestComparisonService,
     BacktestMonteCarloService,
+    BacktestAttributionService,
+    BacktestCostSensitivityService,
+    BacktestParamSensitivityService,
   ],
   exports: [
     BacktestRunService,
@@ -38,6 +44,7 @@ import { BacktestMonteCarloService } from './services/backtest-monte-carlo.servi
     BacktestWalkForwardService,
     BacktestComparisonService,
     BacktestStrategyRegistryService,
+    BacktestDataService,
   ],
 })
 export class BacktestModule {}

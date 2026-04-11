@@ -1,12 +1,7 @@
-import {
-  ForbiddenException,
-  Injectable,
-  Logger,
-  NotFoundException,
-} from '@nestjs/common'
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common'
 import { Cron } from '@nestjs/schedule'
-import { PriceAlertRuleStatus, PriceAlertRuleType } from '@prisma/client'
-import * as dayjs from 'dayjs'
+import { PriceAlertRule, PriceAlertRuleStatus, PriceAlertRuleType } from '@prisma/client'
+import dayjs from 'dayjs'
 import { PrismaService } from 'src/shared/prisma.service'
 import { EventsGateway } from 'src/websocket/events.gateway'
 import { CreatePriceAlertRuleDto, UpdatePriceAlertRuleDto } from './dto/price-alert-rule.dto'
@@ -20,6 +15,14 @@ interface PriceAlertPayload {
   tradeDate: string
   actualValue: number
   memo: string | null
+  source?: { type: string; id: number | string; name: string } | null
+}
+
+interface ExpandedEntry {
+  rule: PriceAlertRule
+  tsCode: string
+  stockName: string | null
+  source?: { type: string; id: number | string; name: string } | null
 }
 
 @Injectable()
@@ -34,15 +37,47 @@ export class PriceAlertService {
   // ── 规则 CRUD ──────────────────────────────────────────────────────────────
 
   async createRule(userId: number, dto: CreatePriceAlertRuleDto) {
-    const stock = await this.prisma.stockBasic.findUnique({
-      where: { tsCode: dto.tsCode },
-      select: { name: true },
-    })
+    if (!dto.tsCode && !dto.watchlistId && !dto.portfolioId) {
+      throw new BadRequestException('至少需要指定 tsCode、watchlistId 或 portfolioId 其中之一')
+    }
+
+    let stockName: string | null = null
+    let sourceName: string | null = null
+
+    if (dto.tsCode) {
+      const stock = await this.prisma.stockBasic.findUnique({
+        where: { tsCode: dto.tsCode },
+        select: { name: true },
+      })
+      stockName = stock?.name ?? null
+    }
+
+    if (dto.watchlistId) {
+      const watchlist = await this.prisma.watchlist.findFirst({
+        where: { id: dto.watchlistId, userId },
+        select: { name: true },
+      })
+      if (!watchlist) throw new NotFoundException('自选股组不存在或无权访问')
+      sourceName = watchlist.name
+    }
+
+    if (dto.portfolioId) {
+      const portfolio = await this.prisma.portfolio.findFirst({
+        where: { id: dto.portfolioId, userId },
+        select: { name: true },
+      })
+      if (!portfolio) throw new NotFoundException('投资组合不存在或无权访问')
+      sourceName = (sourceName ? `${sourceName} / ` : '') + portfolio.name
+    }
+
     return this.prisma.priceAlertRule.create({
       data: {
         userId,
-        tsCode: dto.tsCode,
-        stockName: stock?.name ?? null,
+        tsCode: dto.tsCode ?? null,
+        stockName,
+        watchlistId: dto.watchlistId ?? null,
+        portfolioId: dto.portfolioId ?? null,
+        sourceName,
         ruleType: dto.ruleType,
         threshold: dto.threshold ?? null,
         memo: dto.memo ?? null,
@@ -115,8 +150,15 @@ export class PriceAlertService {
       return { triggered: 0 }
     }
 
+    // 展开关联规则为 (rule, tsCode) 扁平列表
+    const entries = await this.expandRulesToEntries(rules)
+    if (entries.length === 0) {
+      this.logger.log('价格预警：展开后无有效股票目标，跳过扫描')
+      return { triggered: 0 }
+    }
+
     // 获取所有涉及股票的最新一日行情
-    const tsCodes = [...new Set(rules.map((r) => r.tsCode))]
+    const tsCodes = [...new Set(entries.map((e) => e.tsCode))]
 
     // 获取最新交易日
     const latestDaily = await this.prisma.daily.findFirst({
@@ -139,12 +181,11 @@ export class PriceAlertService {
     const dailyMap = new Map(dailyRows.map((r) => [r.tsCode, r]))
 
     // 批量加载当日涨跌停价（tradeDateStr 是字符串格式）
-    const limitTsCodes = rules
+    const limitTsCodes = entries
       .filter(
-        (r) =>
-          r.ruleType === PriceAlertRuleType.LIMIT_UP || r.ruleType === PriceAlertRuleType.LIMIT_DOWN,
+        (e) => e.rule.ruleType === PriceAlertRuleType.LIMIT_UP || e.rule.ruleType === PriceAlertRuleType.LIMIT_DOWN,
       )
-      .map((r) => r.tsCode)
+      .map((e) => e.tsCode)
 
     const limitMap = new Map<string, { upLimit: number | null; downLimit: number | null }>()
     if (limitTsCodes.length > 0) {
@@ -160,11 +201,11 @@ export class PriceAlertService {
       }
     }
 
-    const triggeredRuleIds: number[] = []
+    const triggeredRuleIds = new Set<number>()
     const updateOps: Promise<unknown>[] = []
 
-    for (const rule of rules) {
-      const daily = dailyMap.get(rule.tsCode)
+    for (const { rule, tsCode, stockName, source } of entries) {
+      const daily = dailyMap.get(tsCode)
       if (!daily) continue
 
       const close = daily.close
@@ -198,7 +239,7 @@ export class PriceAlertService {
           }
           break
         case PriceAlertRuleType.LIMIT_UP: {
-          const limits = limitMap.get(rule.tsCode)
+          const limits = limitMap.get(tsCode)
           if (close != null && limits?.upLimit != null && close >= limits.upLimit) {
             triggered = true
             actualValue = close
@@ -206,7 +247,7 @@ export class PriceAlertService {
           break
         }
         case PriceAlertRuleType.LIMIT_DOWN: {
-          const limits = limitMap.get(rule.tsCode)
+          const limits = limitMap.get(tsCode)
           if (close != null && limits?.downLimit != null && close <= limits.downLimit) {
             triggered = true
             actualValue = close
@@ -216,27 +257,26 @@ export class PriceAlertService {
       }
 
       if (triggered && actualValue != null) {
-        triggeredRuleIds.push(rule.id)
-
-        updateOps.push(
-          this.prisma.priceAlertRule.update({
-            where: { id: rule.id },
-            data: {
-              lastTriggeredAt: new Date(),
-              triggerCount: { increment: 1 },
-            },
-          }),
-        )
+        if (!triggeredRuleIds.has(rule.id)) {
+          triggeredRuleIds.add(rule.id)
+          updateOps.push(
+            this.prisma.priceAlertRule.update({
+              where: { id: rule.id },
+              data: { lastTriggeredAt: new Date(), triggerCount: { increment: 1 } },
+            }),
+          )
+        }
 
         const payload: PriceAlertPayload = {
           ruleId: rule.id,
-          tsCode: rule.tsCode,
-          stockName: rule.stockName,
+          tsCode,
+          stockName: stockName ?? null,
           ruleType: rule.ruleType,
           threshold: rule.threshold,
           tradeDate: tradeDateStr,
           actualValue,
           memo: rule.memo,
+          source: source ?? null,
         }
         this.eventsGateway.emitToUser(rule.userId, 'price-alert', payload)
       }
@@ -244,7 +284,71 @@ export class PriceAlertService {
 
     await Promise.all(updateOps)
 
-    this.logger.log(`价格预警扫描完成：共扫描 ${rules.length} 条规则，触发 ${triggeredRuleIds.length} 条`)
-    return { triggered: triggeredRuleIds.length }
+    this.logger.log(`价格预警扫描完成：共展开 ${entries.length} 条目标，触发 ${triggeredRuleIds.size} 条规则`)
+    return { triggered: triggeredRuleIds.size }
+  }
+
+  /** 将活跃规则展开为 (rule, tsCode) 扁平列表，含关联自选股组 / 组合 */
+  private async expandRulesToEntries(rules: PriceAlertRule[]): Promise<ExpandedEntry[]> {
+    const entries: ExpandedEntry[] = []
+
+    const watchlistIds = [...new Set(rules.flatMap((r) => (r.watchlistId ? [r.watchlistId] : [])))]
+    const portfolioIds = [...new Set(rules.flatMap((r) => (r.portfolioId ? [r.portfolioId] : [])))]
+
+    const watchlistStockMap = new Map<number, Array<{ tsCode: string }>>()
+    if (watchlistIds.length > 0) {
+      const rows = await this.prisma.watchlistStock.findMany({
+        where: { watchlistId: { in: watchlistIds } },
+        select: { watchlistId: true, tsCode: true },
+      })
+      for (const row of rows) {
+        const list = watchlistStockMap.get(row.watchlistId) ?? []
+        list.push({ tsCode: row.tsCode })
+        watchlistStockMap.set(row.watchlistId, list)
+      }
+    }
+
+    const portfolioHoldingMap = new Map<string, Array<{ tsCode: string; stockName: string }>>()
+    if (portfolioIds.length > 0) {
+      const rows = await this.prisma.portfolioHolding.findMany({
+        where: { portfolioId: { in: portfolioIds } },
+        select: { portfolioId: true, tsCode: true, stockName: true },
+      })
+      for (const row of rows) {
+        const list = portfolioHoldingMap.get(row.portfolioId) ?? []
+        list.push({ tsCode: row.tsCode, stockName: row.stockName })
+        portfolioHoldingMap.set(row.portfolioId, list)
+      }
+    }
+
+    for (const rule of rules) {
+      if (rule.tsCode) {
+        entries.push({ rule, tsCode: rule.tsCode, stockName: rule.stockName })
+      }
+      if (rule.watchlistId) {
+        const stocks = watchlistStockMap.get(rule.watchlistId) ?? []
+        for (const s of stocks) {
+          entries.push({
+            rule,
+            tsCode: s.tsCode,
+            stockName: null,
+            source: { type: 'WATCHLIST', id: rule.watchlistId, name: rule.sourceName ?? String(rule.watchlistId) },
+          })
+        }
+      }
+      if (rule.portfolioId) {
+        const holdings = portfolioHoldingMap.get(rule.portfolioId) ?? []
+        for (const h of holdings) {
+          entries.push({
+            rule,
+            tsCode: h.tsCode,
+            stockName: h.stockName,
+            source: { type: 'PORTFOLIO', id: rule.portfolioId, name: rule.sourceName ?? rule.portfolioId },
+          })
+        }
+      }
+    }
+
+    return entries
   }
 }

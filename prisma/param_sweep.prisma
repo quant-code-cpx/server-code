@@ -1,0 +1,22 @@
+/// 参数扫描任务（OPT-2.3：批量回测参数网格，汇总为二维热力图数据）
+model ParamSweep {
+  id             String   @id @default(cuid())
+  userId         Int      @map("user_id")
+  baseRunId      String   @map("base_run_id")
+  paramXKey      String   @map("param_x_key") @db.VarChar(64)
+  paramXLabel    String?  @map("param_x_label") @db.VarChar(64)
+  paramXValues   Json     @map("param_x_values")
+  paramYKey      String   @map("param_y_key") @db.VarChar(64)
+  paramYLabel    String?  @map("param_y_label") @db.VarChar(64)
+  paramYValues   Json     @map("param_y_values")
+  metric         String   @db.VarChar(32)
+  status         String   @db.VarChar(32)
+  totalCount     Int      @map("total_count")
+  completedCount Int      @default(0) @map("completed_count")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([baseRunId])
+  @@map("param_sweeps")
+}

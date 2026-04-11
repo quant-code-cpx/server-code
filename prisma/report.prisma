@@ -12,6 +12,7 @@ enum ReportType {
   BACKTEST
   STOCK
   PORTFOLIO
+  STRATEGY_RESEARCH
 
   @@map("report_type")
 }

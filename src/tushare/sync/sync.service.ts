@@ -272,9 +272,9 @@ export class TushareSyncService implements OnApplicationBootstrap {
     const skippedTasks: TushareSyncTaskName[] = []
     const failedTasks: FailedTask[] = []
     const sortedPlans = [...plans].sort((a, b) => a.order - b.order)
-    let isTradingDay: boolean | null = null
+    let isTradingDayPromise: Promise<boolean> | null = null
+    let targetTradeDatePromise: Promise<string | null> | null = null
     let targetTradeDate: string | null = null
-    let targetTradeDateResolved = false
 
     this.logger.log('═══════════════════════════════════════════════════')
     this.logger.log(`  Tushare ${trigger} 同步开始 (${mode})`)
@@ -312,6 +312,9 @@ export class TushareSyncService implements OnApplicationBootstrap {
         'moneyflow',
         'factor',
         'alternative',
+        'fund',
+        'macro',
+        'option',
       ]
 
       // 将 sortedPlans 按 concurrencyGroup（默认 category）分组，各组内串行
@@ -342,11 +345,11 @@ export class TushareSyncService implements OnApplicationBootstrap {
 
             for (const plan of groupPlans) {
               if (trigger === 'schedule' && plan.schedule?.tradingDayOnly) {
-                if (isTradingDay === null) {
-                  isTradingDay = await this.helper.isTodayTradingDay()
+                if (!isTradingDayPromise) {
+                  isTradingDayPromise = this.helper.isTodayTradingDay()
                 }
 
-                if (!isTradingDay) {
+                if (!(await isTradingDayPromise)) {
                   this.logger.log(`[${plan.label}] 今天不是交易日，跳过`)
                   skippedTasks.push(plan.task)
                   completedTaskCount++
@@ -357,12 +360,12 @@ export class TushareSyncService implements OnApplicationBootstrap {
 
               let planTargetTradeDate: string | undefined
               if (plan.requiresTradeDate) {
-                if (!targetTradeDateResolved) {
-                  targetTradeDateResolved = true
-                  targetTradeDate = await this.helper.resolveLatestCompletedTradeDate()
+                if (!targetTradeDatePromise) {
+                  targetTradeDatePromise = this.helper.resolveLatestCompletedTradeDate()
                 }
 
-                if (!targetTradeDate) {
+                const resolvedDate = await targetTradeDatePromise
+                if (!resolvedDate) {
                   this.logger.warn(`[${plan.label}] 未能解析最近已完成的交易日，跳过`)
                   skippedTasks.push(plan.task)
                   completedTaskCount++
@@ -370,7 +373,8 @@ export class TushareSyncService implements OnApplicationBootstrap {
                   continue
                 }
 
-                planTargetTradeDate = targetTradeDate
+                if (!targetTradeDate) targetTradeDate = resolvedDate
+                planTargetTradeDate = resolvedDate
               }
 
               // 构建节流的 onProgress 回调
@@ -546,6 +550,12 @@ export class TushareSyncService implements OnApplicationBootstrap {
         return '因子数据'
       case 'alternative':
         return '另类数据'
+      case 'fund':
+        return '基金数据'
+      case 'macro':
+        return '宏观数据'
+      case 'option':
+        return '期权数据'
     }
   }
 

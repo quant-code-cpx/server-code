@@ -1,15 +1,4 @@
-import {
-  Body,
-  Controller,
-  Delete,
-  Get,
-  Param,
-  ParseIntPipe,
-  Patch,
-  Post,
-  Query,
-  UseGuards,
-} from '@nestjs/common'
+import { Body, Controller, Post, UseGuards } from '@nestjs/common'
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger'
 import { UserRole } from '@prisma/client'
 import { CurrentUser } from 'src/common/decorators/current-user.decorator'
@@ -37,8 +26,8 @@ export class AlertController {
   // ── 事件日历 ──────────────────────────────────────────────────────────────
 
   @ApiOperation({ summary: '查询事件日历（财报披露/限售解禁/除权除息/业绩预告）' })
-  @Get('calendar')
-  getCalendar(@Query() query: CalendarQueryDto) {
+  @Post('calendar/list')
+  getCalendar(@Body() query: CalendarQueryDto) {
     return this.calendarService.getCalendar(query)
   }
 
@@ -51,25 +40,21 @@ export class AlertController {
   }
 
   @ApiOperation({ summary: '查询我的价格预警规则列表' })
-  @Get('price-rules')
+  @Post('price-rules/list')
   listRules(@CurrentUser() user: TokenPayload) {
     return this.priceAlertService.listRules(user.id)
   }
 
   @ApiOperation({ summary: '更新价格预警规则' })
-  @Patch('price-rules/:id')
-  updateRule(
-    @CurrentUser() user: TokenPayload,
-    @Param('id', ParseIntPipe) id: number,
-    @Body() dto: UpdatePriceAlertRuleDto,
-  ) {
-    return this.priceAlertService.updateRule(user.id, id, dto)
+  @Post('price-rules/update')
+  updateRule(@CurrentUser() user: TokenPayload, @Body() dto: UpdatePriceAlertRuleDto) {
+    return this.priceAlertService.updateRule(user.id, dto.id, dto)
   }
 
   @ApiOperation({ summary: '删除价格预警规则（软删除）' })
-  @Delete('price-rules/:id')
-  deleteRule(@CurrentUser() user: TokenPayload, @Param('id', ParseIntPipe) id: number) {
-    return this.priceAlertService.deleteRule(user.id, id)
+  @Post('price-rules/delete')
+  deleteRule(@CurrentUser() user: TokenPayload, @Body() dto: { id: number }) {
+    return this.priceAlertService.deleteRule(user.id, dto.id)
   }
 
   @ApiOperation({ summary: '手动触发价格预警扫描（管理员）' })
@@ -82,8 +67,8 @@ export class AlertController {
   // ── 异动监控 ─────────────────────────────────────────────────────────────
 
   @ApiOperation({ summary: '查询异动监控记录' })
-  @Get('anomalies')
-  getAnomalies(@Query() query: MarketAnomalyQueryDto) {
+  @Post('anomalies/list')
+  getAnomalies(@Body() query: MarketAnomalyQueryDto) {
     return this.marketAnomalyService.queryAnomalies(query)
   }
 

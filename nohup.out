@@ -1,0 +1,2 @@
+ERROR:  canceling statement due to statement timeout
+CONTEXT:  while scanning block 259307 of relation "public.stock_daily_prices"

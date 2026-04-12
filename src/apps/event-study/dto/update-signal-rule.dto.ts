@@ -1,8 +1,11 @@
-import { ApiPropertyOptional } from '@nestjs/swagger'
-import { IsIn, IsObject, IsOptional, IsString, MaxLength } from 'class-validator'
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
+import { IsIn, IsInt, IsObject, IsOptional, IsString, MaxLength } from 'class-validator'
 import { EventSignalRuleStatus } from '@prisma/client'
 
 export class UpdateSignalRuleDto {
+  @ApiProperty({ description: '规则 ID' })
+  @IsInt()
+  id: number
   @ApiPropertyOptional({ description: '规则名称' })
   @IsOptional()
   @IsString()

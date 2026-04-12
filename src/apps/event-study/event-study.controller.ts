@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, UseGuards } from '@nestjs/common'
+import { Body, Controller, Post, UseGuards } from '@nestjs/common'
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger'
 import { UserRole } from '@prisma/client'
 import { ApiSuccessResponse } from 'src/common/decorators/api-success-response.decorator'
@@ -25,7 +25,7 @@ export class EventStudyController {
 
   // ── Phase 1: 事件影响分析 ──────────────────────────────────────────────────
 
-  @Get('event-types')
+  @Post('event-types/list')
   @ApiOperation({ summary: '获取系统支持的事件类型列表' })
   getEventTypes() {
     return this.eventStudyService.getEventTypes()
@@ -58,20 +58,16 @@ export class EventStudyController {
     return this.eventSignalService.listRules(user.id, dto.page, dto.pageSize)
   }
 
-  @Patch('signal-rules/:id')
+  @Post('signal-rules/update')
   @ApiOperation({ summary: '更新事件信号规则' })
-  updateRule(
-    @CurrentUser() user: TokenPayload,
-    @Param('id', ParseIntPipe) id: number,
-    @Body() dto: UpdateSignalRuleDto,
-  ) {
-    return this.eventSignalService.updateRule(user.id, id, dto)
+  updateRule(@CurrentUser() user: TokenPayload, @Body() dto: UpdateSignalRuleDto) {
+    return this.eventSignalService.updateRule(user.id, dto.id, dto)
   }
 
-  @Delete('signal-rules/:id')
+  @Post('signal-rules/delete')
   @ApiOperation({ summary: '删除事件信号规则（软删除）' })
-  deleteRule(@CurrentUser() user: TokenPayload, @Param('id', ParseIntPipe) id: number) {
-    return this.eventSignalService.deleteRule(user.id, id)
+  deleteRule(@CurrentUser() user: TokenPayload, @Body() dto: { id: number }) {
+    return this.eventSignalService.deleteRule(user.id, dto.id)
   }
 
   // ── Phase 2: 管理端 ───────────────────────────────────────────────────────

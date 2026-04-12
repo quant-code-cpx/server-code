@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post } from '@nestjs/common'
+import { Body, Controller, Post } from '@nestjs/common'
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger'
 import { ApiSuccessResponse } from 'src/common/decorators/api-success-response.decorator'
 import { PatternSearchBySeriesDto, PatternSearchDto } from './dto/pattern-search.dto'
@@ -11,7 +11,7 @@ import { PatternService } from './pattern.service'
 export class PatternController {
   constructor(private readonly patternService: PatternService) {}
 
-  @Get('templates')
+  @Post('templates/list')
   @ApiOperation({ summary: '获取预定义经典形态模板列表（头肩顶、双底、旗形等）' })
   getTemplates() {
     return this.patternService.getTemplates()

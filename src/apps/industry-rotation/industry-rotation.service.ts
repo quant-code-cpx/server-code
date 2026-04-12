@@ -55,7 +55,7 @@ export class IndustryRotationService {
         .join(',\n      ')
 
       const returnColumns = periods
-        .map((p) => `ROUND(((latest.close / NULLIF(agg.close_${p}, 0)) - 1) * 100, 4) AS return_${p}`)
+        .map((p) => `ROUND((((latest.close / NULLIF(agg.close_${p}, 0)) - 1) * 100)::numeric, 4) AS return_${p}`)
         .join(',\n    ')
 
       const sortColumn = `return_${sortPeriod}`
@@ -252,7 +252,7 @@ export class IndustryRotationService {
         ),
         recent AS (
           SELECT scf.*,
-            ROW_NUMBER() OVER (PARTITION BY ts_code ORDER BY trade_date DESC) AS day_rn
+            ROW_NUMBER() OVER (PARTITION BY scf.ts_code ORDER BY scf.trade_date DESC) AS day_rn
           FROM sector_capital_flows scf
           JOIN date_range dr ON dr.trade_date = scf.trade_date
           WHERE scf.content_type = '行业'
@@ -291,7 +291,7 @@ export class IndustryRotationService {
         )
         SELECT
           r1.ts_code,
-          ROUND(((r1.close / NULLIF(r2.close, 0)) - 1) * 100, 4) AS cumulative_return
+          ROUND((((r1.close / NULLIF(r2.close, 0)) - 1) * 100)::numeric, 4) AS cumulative_return
         FROM ranked r1
         LEFT JOIN ranked r2 ON r2.ts_code = r1.ts_code AND r2.rn = ${days + 1}
         WHERE r1.rn = 1
@@ -432,7 +432,7 @@ export class IndustryRotationService {
               PERCENT_RANK() OVER (PARTITION BY industry ORDER BY pb_median) AS pb_pctl
             FROM daily_medians
           )
-          SELECT industry, ROUND(pe_pctl * 100, 2) AS pe_percentile, ROUND(pb_pctl * 100, 2) AS pb_percentile
+          SELECT industry, ROUND((pe_pctl * 100)::numeric, 2) AS pe_percentile, ROUND((pb_pctl * 100)::numeric, 2) AS pb_percentile
           FROM percentiles
           WHERE trade_date = $2::date
         `

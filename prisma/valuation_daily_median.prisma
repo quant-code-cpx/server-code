@@ -1,0 +1,15 @@
+// 每日估值中位数预计算表（全市场 + 行业级别）
+// scope = '__ALL__' 表示全市场，否则为行业名称
+// 在 DAILY_BASIC 同步完成后自动更新
+model ValuationDailyMedian {
+  tradeDate    DateTime @map("trade_date") @db.Date
+  scope        String   @db.VarChar(64)
+  peTtmMedian  Float?   @map("pe_ttm_median")
+  pbMedian     Float?   @map("pb_median")
+  stockCount   Int?     @map("stock_count")
+  computedAt   DateTime @default(now()) @map("computed_at")
+
+  @@id([tradeDate, scope])
+  @@index([scope, tradeDate(sort: Desc)])
+  @@map("valuation_daily_medians")
+}

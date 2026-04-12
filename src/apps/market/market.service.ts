@@ -332,10 +332,14 @@ export class MarketService {
 
     return this.rememberMarketCache(cacheKey, MARKET_STANDARD_CACHE_TTL_SECONDS, async () => {
       // 全A成交额（万元，amount字段单位为千元，除以100000转亿元）
+      // 下界：3倍日历天数，足够覆盖任意 days 个交易日（约含周末/节假日缓冲）
+      const volLowerBound = new Date(tradeDate)
+      volLowerBound.setDate(volLowerBound.getDate() - days * 3)
       const totalRows = await this.prisma.$queryRaw<{ trade_date: Date; total_amount: string }[]>`
         SELECT trade_date, SUM(amount) / 100000.0 AS total_amount
         FROM stock_daily_prices
         WHERE trade_date <= ${tradeDate}
+          AND trade_date >= ${volLowerBound}
         GROUP BY trade_date
         ORDER BY trade_date DESC
         LIMIT ${days}
@@ -391,10 +395,13 @@ export class MarketService {
     const cacheKey = `market:sentiment-trend:${tradeDateStr}:${days}`
 
     return this.rememberMarketCache(cacheKey, MARKET_STANDARD_CACHE_TTL_SECONDS, async () => {
+      const sentimentLowerBound = new Date(tradeDate)
+      sentimentLowerBound.setDate(sentimentLowerBound.getDate() - days * 3)
       const dateRows = await this.prisma.$queryRaw<{ trade_date: Date }[]>`
         SELECT DISTINCT trade_date
         FROM stock_daily_prices
         WHERE trade_date <= ${tradeDate}
+          AND trade_date >= ${sentimentLowerBound}
         ORDER BY trade_date DESC
         LIMIT ${days}
       `
@@ -833,11 +840,10 @@ export class MarketService {
       return Math.round((rank / allVals.length) * 100)
     }
 
-    const [oneYear, threeYear, fiveYear] = await Promise.all([
-      computePercentile(oneYearAgo),
-      computePercentile(threeYearAgo),
-      computePercentile(fiveYearAgo),
-    ])
+    // 顺序执行避免多个大范围 PERCENTILE_CONT 查询并发冲击
+    const oneYear = await computePercentile(oneYearAgo)
+    const threeYear = await computePercentile(threeYearAgo)
+    const fiveYear = await computePercentile(fiveYearAgo)
 
     return { oneYear, threeYear, fiveYear }
   }

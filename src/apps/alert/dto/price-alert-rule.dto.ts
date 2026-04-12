@@ -1,5 +1,5 @@
 import { IsEnum, IsInt, IsNumber, IsOptional, IsString, MaxLength, ValidateIf } from 'class-validator'
-import { PartialType } from '@nestjs/swagger'
+import { ApiProperty, PartialType } from '@nestjs/swagger'
 import { PriceAlertRuleStatus, PriceAlertRuleType } from '@prisma/client'
 
 export class CreatePriceAlertRuleDto {
@@ -33,6 +33,10 @@ export class CreatePriceAlertRuleDto {
 }
 
 export class UpdatePriceAlertRuleDto extends PartialType(CreatePriceAlertRuleDto) {
+  @ApiProperty({ description: '规则 ID' })
+  @IsInt()
+  id: number
+
   @IsOptional()
   @IsEnum(PriceAlertRuleStatus)
   status?: PriceAlertRuleStatus

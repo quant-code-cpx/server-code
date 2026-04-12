@@ -146,6 +146,8 @@ export enum TushareSyncTaskName {
   // Option
   OPT_BASIC = 'OPT_BASIC',
   OPT_DAILY = 'OPT_DAILY',
+  // Derived / computed
+  VALUATION_MEDIAN = 'VALUATION_MEDIAN',
 }
 
 /** 同步执行状态 */

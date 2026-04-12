@@ -95,7 +95,7 @@ export class FactorDataSyncService {
         label: '沪深股通持股明细',
         category: 'factor',
         order: 540,
-        bootstrapEnabled: false,
+        bootstrapEnabled: true,
         supportsManual: true,
         supportsFullSync: true,
         requiresTradeDate: true,

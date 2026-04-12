@@ -467,12 +467,18 @@ export class SyncStatusOverviewService {
   // ─── 构建总览 ─────────────────────────────────────────────────────────────
 
   private async buildOverview(): Promise<SyncStatusOverview> {
-    // 1. 获取所有任务的最后同步日志摘要
-    const logSummaries = await this.syncLogService.summarizeLogs()
+    // 1. 三项并行预取：同步日志摘要 + 全表行数估算 + 全部 SSE 交易日
+    const [logSummaries, catalogMap, tradingDaySet] = await Promise.all([
+      this.syncLogService.summarizeLogs(),
+      this.fetchCatalogStats(),
+      this.fetchAllTradingDays(),
+    ])
     const logMap = new Map(logSummaries.map((s) => [s.task, s]))
 
-    // 2. 并行查询所有表的统计信息
-    const tableStats = await Promise.all(TABLE_OVERVIEW_CONFIG.map((cfg) => this.queryTableStats(cfg, logMap)))
+    // 2. 并行查询所有表的统计信息（每张表独立 MIN/MAX + skip-scan，不再全表扫描）
+    const tableStats = await Promise.all(
+      TABLE_OVERVIEW_CONFIG.map((cfg) => this.queryTableStats(cfg, logMap, catalogMap, tradingDaySet)),
+    )
 
     // 3. 按 category 分组
     const categoryMap = new Map<string, SyncStatusOverviewItem[]>()
@@ -508,19 +514,64 @@ export class SyncStatusOverviewService {
     }
   }
 
+  // ─── 预取：全表行数估算（1 次 pg_class 批量查询，毫秒级） ─────────────────
+
+  private async fetchCatalogStats(): Promise<Map<string, number>> {
+    const inList = TABLE_OVERVIEW_CONFIG.map((c) => `'${c.tableName}'`).join(', ')
+    const rows = await this.prisma.$queryRawUnsafe<{ table_name: string; approx_rows: bigint }[]>(`
+      SELECT c.relname AS table_name,
+             GREATEST(c.reltuples, 0)::bigint AS approx_rows
+      FROM pg_class c
+      WHERE c.relname IN (${inList})
+        AND c.relkind = 'r'
+        AND c.relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = 'public')
+    `)
+    return new Map(rows.map((r) => [r.table_name, Number(r.approx_rows)]))
+  }
+
+  // ─── 预取：全部 SSE 交易日（1 次查询，供 JS 内计算缺失天数） ──────────────
+
+  private async fetchAllTradingDays(): Promise<Set<string>> {
+    const rows = await this.prisma.$queryRaw<{ d: string }[]>`
+      SELECT to_char(cal_date, 'YYYY-MM-DD') AS d
+      FROM exchange_trade_calendars
+      WHERE exchange = 'SSE' AND is_open = '1'
+    `
+    return new Set(rows.map((r) => r.d))
+  }
+
+  // ─── 用递归 CTE 模拟 index skip-scan 统计 distinct trade_date ─────────────
+  // 利用 trade_date 索引逐步跳跃，复杂度 O(distinct_values) 而非 O(all_rows)
+  // 实测：17M 行表 ~91ms，远优于 COUNT(DISTINCT) 的 ~3300ms
+
+  private async countDistinctDates(tableName: string): Promise<number> {
+    const result = await this.prisma.$queryRawUnsafe<{ cnt: bigint }[]>(`
+      WITH RECURSIVE tdates AS (
+        SELECT MIN(trade_date) AS d FROM "${tableName}"
+        UNION ALL
+        SELECT (SELECT MIN(trade_date) FROM "${tableName}" WHERE trade_date > d)
+        FROM tdates WHERE d IS NOT NULL
+      )
+      SELECT COUNT(*)::bigint AS cnt FROM tdates WHERE d IS NOT NULL
+    `)
+    return Number(result[0]?.cnt ?? 0)
+  }
+
   // ─── 单表统计查询 ─────────────────────────────────────────────────────────
 
   private async queryTableStats(
     cfg: TableConfig,
     logMap: Map<string, { lastSyncAt: Date | null; lastStatus: string | null; consecutiveFailures: number }>,
+    catalogMap: Map<string, number>,
+    tradingDaySet: Set<string>,
   ): Promise<SyncStatusOverviewItem & { category: string }> {
     const logEntry = cfg.task ? logMap.get(cfg.task) : null
 
     try {
       if (cfg.hasTradeDate) {
-        return await this.queryTimeSeries(cfg, logEntry)
+        return await this.queryTimeSeries(cfg, logEntry, catalogMap, tradingDaySet)
       } else {
-        return await this.querySimpleCount(cfg, logEntry)
+        return await this.querySimpleCount(cfg, logEntry, catalogMap)
       }
     } catch (error) {
       this.logger.warn(`查询表 ${cfg.tableName} 统计信息失败: ${(error as Error).message}`)
@@ -528,47 +579,46 @@ export class SyncStatusOverviewService {
     }
   }
 
-  /** 查询有 trade_date 列的时序表（含缺失天数） */
+  /** 查询有 trade_date 列的时序表（含缺失天数）
+   *  - 行数：取 pg_class.reltuples 估算值，避免全表 COUNT
+   *  - min/max date：索引扫描，~0.6ms
+   *  - distinct dates：递归 CTE skip-scan，~91ms（最大表）
+   *  - missing days：JS 内从预取的 tradingDaySet 计算，无额外 DB 查询
+   */
   private async queryTimeSeries(
     cfg: TableConfig,
     logEntry: { lastSyncAt: Date | null; lastStatus: string | null; consecutiveFailures: number } | null | undefined,
+    catalogMap: Map<string, number>,
+    tradingDaySet: Set<string>,
   ): Promise<SyncStatusOverviewItem & { category: string }> {
-    // 先查基础统计
-    const rows = await this.prisma.$queryRawUnsafe<
-      { row_count: bigint; min_date: Date | null; max_date: Date | null; distinct_dates: bigint }[]
-    >(
-      `SELECT COUNT(*)::bigint AS row_count,
-              MIN(trade_date)  AS min_date,
-              MAX(trade_date)  AS max_date,
-              COUNT(DISTINCT trade_date)::bigint AS distinct_dates
-       FROM "${cfg.tableName}"`,
-    )
+    const approxRows = catalogMap.get(cfg.tableName) ?? 0
 
-    const stat = rows[0]
-    const rowCount = Number(stat.row_count)
-    const distinctDates = Number(stat.distinct_dates)
-    const minDate = stat.min_date ? dayjs(stat.min_date).format('YYYY-MM-DD') : null
-    const maxDate = stat.max_date ? dayjs(stat.max_date).format('YYYY-MM-DD') : null
+    // 并行：MIN/MAX（索引极快）+ distinct 日期数（skip-scan）
+    const [mmRows, distinctDates] = await Promise.all([
+      this.prisma.$queryRawUnsafe<{ min_date: Date | null; max_date: Date | null }[]>(
+        `SELECT MIN(trade_date) AS min_date, MAX(trade_date) AS max_date FROM "${cfg.tableName}"`,
+      ),
+      this.countDistinctDates(cfg.tableName),
+    ])
 
-    // 计算缺失交易日
+    const minDate = mmRows[0]?.min_date ? dayjs(mmRows[0].min_date).format('YYYY-MM-DD') : null
+    const maxDate = mmRows[0]?.max_date ? dayjs(mmRows[0].max_date).format('YYYY-MM-DD') : null
+
+    // JS 内计算缺失交易日：遍历预取的全量 SSE 交易日集合
     let missingDays: number | null = null
-    if (minDate && maxDate && distinctDates > 0) {
-      const calRows = await this.prisma.$queryRaw<{ trading_days: bigint }[]>`
-        SELECT COUNT(*)::bigint AS trading_days
-        FROM exchange_trade_calendars
-        WHERE exchange = 'SSE'
-          AND is_open = '1'
-          AND cal_date BETWEEN ${new Date(minDate)}::date AND ${new Date(maxDate)}::date
-      `
-      const tradingDays = Number(calRows[0]?.trading_days ?? 0)
-      missingDays = Math.max(0, tradingDays - distinctDates)
+    if (minDate && maxDate && distinctDates > 0 && tradingDaySet.size > 0) {
+      let expectedDays = 0
+      for (const d of tradingDaySet) {
+        if (d >= minDate && d <= maxDate) expectedDays++
+      }
+      missingDays = Math.max(0, expectedDays - distinctDates)
     }
 
     return {
       tableName: cfg.tableName,
       displayName: cfg.displayName,
       category: cfg.category,
-      rowCount,
+      rowCount: approxRows,
       minDate,
       maxDate,
       distinctDates,
@@ -579,19 +629,30 @@ export class SyncStatusOverviewService {
     }
   }
 
-  /** 查询无 trade_date 列的参考表（仅行数） */
+  /** 查询无 trade_date 列的参考表
+   *  - 行数 < 50000：精确 COUNT（表小，快）
+   *  - 行数 >= 50000：取 pg_class.reltuples 估算值，避免全表扫描
+   */
   private async querySimpleCount(
     cfg: TableConfig,
     logEntry: { lastSyncAt: Date | null; lastStatus: string | null; consecutiveFailures: number } | null | undefined,
+    catalogMap: Map<string, number>,
   ): Promise<SyncStatusOverviewItem & { category: string }> {
-    const rows = await this.prisma.$queryRawUnsafe<{ row_count: bigint }[]>(
-      `SELECT COUNT(*)::bigint AS row_count FROM "${cfg.tableName}"`,
-    )
+    const approxRows = catalogMap.get(cfg.tableName) ?? 0
+    let rowCount: number
+    if (approxRows < 50_000) {
+      const rows = await this.prisma.$queryRawUnsafe<{ row_count: bigint }[]>(
+        `SELECT COUNT(*)::bigint AS row_count FROM "${cfg.tableName}"`,
+      )
+      rowCount = Number(rows[0].row_count)
+    } else {
+      rowCount = approxRows
+    }
     return {
       tableName: cfg.tableName,
       displayName: cfg.displayName,
       category: cfg.category,
-      rowCount: Number(rows[0].row_count),
+      rowCount,
       minDate: null,
       maxDate: null,
       distinctDates: null,

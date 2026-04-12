@@ -143,7 +143,7 @@ export class MarketSyncService {
         label: '融资融券明细',
         category: 'market',
         order: 170,
-        bootstrapEnabled: false, // 需 2000 积分，默认不启用
+        bootstrapEnabled: true, // 用户积分 ≥ 2000，已启用
         supportsManual: true,
         supportsFullSync: true,
         requiresTradeDate: true,
@@ -177,7 +177,7 @@ export class MarketSyncService {
         label: '可转债日行情',
         category: 'market',
         order: 180,
-        bootstrapEnabled: false,
+        bootstrapEnabled: true,
         supportsManual: true,
         supportsFullSync: true,
         requiresTradeDate: true,

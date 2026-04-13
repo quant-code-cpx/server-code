@@ -195,4 +195,131 @@ describe('RiskCheckService', () => {
       )
     })
   })
+
+  // ─── checkSinglePosition: 阈值边界 ─────────────────────────────────────────
+
+  describe('[BIZ] 阈值边界：权重恰好等于阈值时不触发', () => {
+    it('[BIZ] top1Weight === threshold（精确相等）时不触发违规（严格 > 判断）', async () => {
+      const prisma = buildPrismaMock()
+      const rule = buildRule({ threshold: 0.3 })
+      prisma.portfolioRiskRule.findMany.mockResolvedValue([rule])
+      const riskSvc = buildRiskServiceMock()
+      riskSvc.getPositionConcentration.mockResolvedValue({
+        concentration: { top1Weight: 0.3 }, // 精确等于阈值
+        positions: [{ stockName: '平安银行', tsCode: '000001.SZ' }],
+      })
+      const eventsGateway = buildEventsGatewayMock()
+      const svc = createService(prisma, undefined, riskSvc, eventsGateway)
+
+      const result = await svc.runCheck('portfolio-001', 10)
+
+      expect(result.violations).toHaveLength(0)
+      expect(prisma.riskViolationLog.createMany).not.toHaveBeenCalled()
+      expect(eventsGateway.emitToUser).not.toHaveBeenCalled()
+    })
+
+    it('[BIZ] top1Weight 超过阈值 0.001 时触发违规', async () => {
+      const prisma = buildPrismaMock()
+      const rule = buildRule({ threshold: 0.3 })
+      prisma.portfolioRiskRule.findMany.mockResolvedValue([rule])
+      const riskSvc = buildRiskServiceMock()
+      riskSvc.getPositionConcentration.mockResolvedValue({
+        concentration: { top1Weight: 0.301 }, // 微小超出
+        positions: [{ stockName: '平安银行', tsCode: '000001.SZ' }],
+      })
+      const eventsGateway = buildEventsGatewayMock()
+      const svc = createService(prisma, undefined, riskSvc, eventsGateway)
+
+      const result = await svc.runCheck('portfolio-001', 10)
+
+      expect(result.violations).toHaveLength(1)
+      expect(result.violations[0].actualValue).toBeCloseTo(0.301, 3)
+    })
+  })
+
+  // ─── checkIndustryWeight: 排序正确性 ──────────────────────────────────────
+
+  describe('[BIZ] 行业权重排序', () => {
+    it('[BIZ] 多个行业时取权重最大的行业进行比较', async () => {
+      const prisma = buildPrismaMock()
+      const rule = buildRule({
+        ruleType: PortfolioRiskRuleType.MAX_INDUSTRY_WEIGHT,
+        threshold: 0.5,
+      })
+      prisma.portfolioRiskRule.findMany.mockResolvedValue([rule])
+      const riskSvc = buildRiskServiceMock()
+      // 银行业 0.4，科技业 0.55 → 最大为科技业 0.55 > 0.5 → 触发违规
+      riskSvc.getIndustryDistribution.mockResolvedValue({
+        industries: [
+          { industry: '银行', weight: 0.4 },
+          { industry: '科技', weight: 0.55 },
+        ],
+      })
+      const eventsGateway = buildEventsGatewayMock()
+      const svc = createService(prisma, undefined, riskSvc, eventsGateway)
+
+      const result = await svc.runCheck('portfolio-001', 10)
+
+      expect(result.violations).toHaveLength(1)
+      expect(result.violations[0].actualValue).toBeCloseTo(0.55, 3)
+    })
+
+    it('[BIZ] 行业权重为 null 时视为 0，不触发违规', async () => {
+      const prisma = buildPrismaMock()
+      const rule = buildRule({
+        ruleType: PortfolioRiskRuleType.MAX_INDUSTRY_WEIGHT,
+        threshold: 0.3,
+      })
+      prisma.portfolioRiskRule.findMany.mockResolvedValue([rule])
+      const riskSvc = buildRiskServiceMock()
+      riskSvc.getIndustryDistribution.mockResolvedValue({
+        industries: [{ industry: '银行', weight: null }],
+      })
+      const eventsGateway = buildEventsGatewayMock()
+      const svc = createService(prisma, undefined, riskSvc, eventsGateway)
+
+      const result = await svc.runCheck('portfolio-001', 10)
+
+      expect(result.violations).toHaveLength(0)
+    })
+
+    it('[BIZ] 行业列表为空时不触发违规', async () => {
+      const prisma = buildPrismaMock()
+      const rule = buildRule({
+        ruleType: PortfolioRiskRuleType.MAX_INDUSTRY_WEIGHT,
+        threshold: 0.3,
+      })
+      prisma.portfolioRiskRule.findMany.mockResolvedValue([rule])
+      const riskSvc = buildRiskServiceMock()
+      riskSvc.getIndustryDistribution.mockResolvedValue({ industries: [] })
+      const eventsGateway = buildEventsGatewayMock()
+      const svc = createService(prisma, undefined, riskSvc, eventsGateway)
+
+      const result = await svc.runCheck('portfolio-001', 10)
+
+      expect(result.violations).toHaveLength(0)
+    })
+  })
+
+  // ─── 规则检查结果的 detail 字段 ──────────────────────────────────────────────
+
+  describe('[BIZ] violation detail 格式', () => {
+    it('[BIZ] MAX_SINGLE_POSITION 违规的 detail 包含股票名和百分比', async () => {
+      const prisma = buildPrismaMock()
+      const rule = buildRule({ threshold: 0.2 })
+      prisma.portfolioRiskRule.findMany.mockResolvedValue([rule])
+      const riskSvc = buildRiskServiceMock()
+      riskSvc.getPositionConcentration.mockResolvedValue({
+        concentration: { top1Weight: 0.35 },
+        positions: [{ stockName: '宁德时代', tsCode: '300750.SZ' }],
+      })
+      const eventsGateway = buildEventsGatewayMock()
+      const svc = createService(prisma, undefined, riskSvc, eventsGateway)
+
+      const result = await svc.runCheck('portfolio-001', 10)
+
+      expect(result.violations[0].detail).toContain('宁德时代')
+      expect(result.violations[0].detail).toContain('%')
+    })
+  })
 })

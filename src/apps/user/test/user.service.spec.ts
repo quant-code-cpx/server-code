@@ -9,12 +9,23 @@
  * - remove: 不能删除自身、角色层级限制
  * - hasHigherRole: 私有方法角色比较逻辑
  */
+
+// bcrypt 使用模块级 mock 避免 Node.js 24 的 defineProperty 限制
+jest.mock('bcrypt', () => ({
+  compare: jest.fn(),
+  hash: jest.fn(),
+  genSalt: jest.fn(),
+}))
+
 import * as bcrypt from 'bcrypt'
 import { AuditAction, UserRole, UserStatus } from '@prisma/client'
 import { BusinessException } from 'src/common/exceptions/business.exception'
 import { TokenPayload } from 'src/shared/token.interface'
 import { UserService } from '../user.service'
 import { AuditLogService } from '../audit-log.service'
+
+const bcryptCompare = bcrypt.compare as jest.Mock
+const bcryptHash = bcrypt.hash as jest.Mock
 
 // ── Mock 工厂 ─────────────────────────────────────────────────────────────────
 
@@ -80,8 +91,8 @@ function createService(prismaMock = buildPrismaMock(), auditMock = buildAuditLog
 describe('UserService', () => {
   beforeEach(() => {
     jest.clearAllMocks()
-    jest.spyOn(bcrypt, 'hash').mockResolvedValue('$2b$10$newhash' as never)
-    jest.spyOn(bcrypt, 'compare').mockResolvedValue(true as never)
+    bcryptHash.mockResolvedValue('$2b$10$newhash')
+    bcryptCompare.mockResolvedValue(true)
   })
 
   // ── create() ──────────────────────────────────────────────────────────────
@@ -187,7 +198,7 @@ describe('UserService', () => {
       const prisma = buildPrismaMock()
       prisma.user.findUnique.mockResolvedValue(buildUser())
       prisma.user.update.mockResolvedValue(buildUser())
-      jest.spyOn(bcrypt, 'compare').mockResolvedValue(true as never)
+      bcryptCompare.mockResolvedValue(true)
       const svc = createService(prisma)
 
       await svc.changePassword(buildOperator({ id: 1 }), { oldPassword: 'old', newPassword: 'new123' })
@@ -198,7 +209,7 @@ describe('UserService', () => {
     it('旧密码错误时抛 BusinessException', async () => {
       const prisma = buildPrismaMock()
       prisma.user.findUnique.mockResolvedValue(buildUser())
-      jest.spyOn(bcrypt, 'compare').mockResolvedValue(false as never)
+      bcryptCompare.mockResolvedValue(false)
       const svc = createService(prisma)
 
       await expect(

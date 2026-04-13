@@ -39,10 +39,9 @@ export class BacktestMetricsService {
     // 极小 std（浮点精度噪声）视为零波动，Sharpe = 0
     const sharpeRatio = annualizedStd > 1e-8 ? (annualizedReturn - RISK_FREE_RATE) / annualizedStd : 0
 
-    // Sortino - only downside deviation
-    const negativeExcess = excessDailyReturns.filter((r) => r < 0)
-    const downsideVariance =
-      negativeExcess.length > 0 ? negativeExcess.reduce((a, b) => a + b ** 2, 0) / negativeExcess.length : 0
+    // Sortino - only downside deviation (using all observations in denominator)
+    const downsideSquaredSum = excessDailyReturns.reduce((a, r) => a + (r < 0 ? r ** 2 : 0), 0)
+    const downsideVariance = excessDailyReturns.length > 0 ? downsideSquaredSum / excessDailyReturns.length : 0
     const downsideStd = Math.sqrt(downsideVariance) * Math.sqrt(TRADING_DAYS_PER_YEAR)
     const sortinoRatio = downsideStd > 0 ? (annualizedReturn - RISK_FREE_RATE) / downsideStd : 0
 

@@ -248,7 +248,7 @@ export class BacktestEngineService {
     for (const [tsCode, pos] of portfolio.positions) {
       const bar = todayBars.get(tsCode)
       const price = bar?.close ?? null
-      if (price) value += pos.quantity * price
+      if (price !== null) value += pos.quantity * price
       else value += pos.quantity * pos.costPrice // fallback
     }
     return value
@@ -323,11 +323,21 @@ export class BacktestEngineService {
     const prev = idx > 0 ? tradingDays[idx - 1] : null
 
     if (frequency === 'WEEKLY') {
-      // First trading day of the week (Monday or first day after weekend)
+      // First trading day of the week
       if (!prev) return true
-      const dayOfWeek = date.getDay()
-      const prevDayOfWeek = prev.getDay()
-      return dayOfWeek < prevDayOfWeek || dayOfWeek === 1
+      // Compare ISO week numbers: new week when week number changes
+      const getISOWeek = (d: Date) => {
+        const tmp = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()))
+        tmp.setUTCDate(tmp.getUTCDate() + 4 - (tmp.getUTCDay() || 7))
+        const yearStart = new Date(Date.UTC(tmp.getUTCFullYear(), 0, 1))
+        return Math.ceil(((tmp.getTime() - yearStart.getTime()) / 86400000 + 1) / 7)
+      }
+      const getISOYear = (d: Date) => {
+        const tmp = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()))
+        tmp.setUTCDate(tmp.getUTCDate() + 4 - (tmp.getUTCDay() || 7))
+        return tmp.getUTCFullYear()
+      }
+      return getISOWeek(date) !== getISOWeek(prev) || getISOYear(date) !== getISOYear(prev)
     }
 
     if (frequency === 'MONTHLY') {

@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing'
 import { INestApplication, ValidationPipe, ExecutionContext } from '@nestjs/common'
-import * as request from 'supertest'
+import request from 'supertest'
 import { UserRole } from '@prisma/client'
 import { TransformInterceptor } from 'src/lifecycle/interceptors/transform.interceptor'
 import { JwtAuthGuard } from 'src/lifecycle/guard/jwt-auth.guard'
@@ -10,6 +10,9 @@ import { BacktestStrategyRegistryService } from '../services/backtest-strategy-r
 import { BacktestWalkForwardService } from '../services/backtest-walk-forward.service'
 import { BacktestComparisonService } from '../services/backtest-comparison.service'
 import { BacktestMonteCarloService } from '../services/backtest-monte-carlo.service'
+import { BacktestAttributionService } from '../services/backtest-attribution.service'
+import { BacktestCostSensitivityService } from '../services/backtest-cost-sensitivity.service'
+import { BacktestParamSensitivityService } from '../services/backtest-param-sensitivity.service'
 
 const testUser = { id: 1, account: 'test', nickname: 'Test', role: UserRole.USER, jti: 'jti-1' }
 
@@ -45,6 +48,15 @@ const mockComparisonService = {
   getComparisonEquity: jest.fn(),
 }
 const mockMonteCarloService = { runMonteCarloSimulation: jest.fn() }
+const mockAttributionService = {
+  analyze: jest.fn(),
+}
+const mockCostSensitivityService = {
+  analyze: jest.fn(),
+}
+const mockParamSensitivityService = {
+  analyze: jest.fn(),
+}
 
 const SUCCESS_CODE = 0
 
@@ -60,6 +72,9 @@ describe('BacktestController', () => {
         { provide: BacktestWalkForwardService, useValue: mockWalkForwardService },
         { provide: BacktestComparisonService, useValue: mockComparisonService },
         { provide: BacktestMonteCarloService, useValue: mockMonteCarloService },
+        { provide: BacktestAttributionService, useValue: mockAttributionService },
+        { provide: BacktestCostSensitivityService, useValue: mockCostSensitivityService },
+        { provide: BacktestParamSensitivityService, useValue: mockParamSensitivityService },
       ],
     })
       .overrideGuard(JwtAuthGuard)

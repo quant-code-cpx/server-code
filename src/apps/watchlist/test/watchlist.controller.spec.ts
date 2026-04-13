@@ -2,7 +2,7 @@ import { INestApplication, UnauthorizedException, ValidationPipe } from '@nestjs
 import { Test, TestingModule } from '@nestjs/testing'
 import { ExecutionContext } from '@nestjs/common'
 import { UserRole } from '@prisma/client'
-import * as request from 'supertest'
+import request from 'supertest'
 import { WatchlistController } from '../watchlist.controller'
 import { WatchlistService } from '../watchlist.service'
 import { JwtAuthGuard } from 'src/lifecycle/guard/jwt-auth.guard'

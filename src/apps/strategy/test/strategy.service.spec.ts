@@ -43,6 +43,11 @@ function buildPrismaMock() {
       delete: jest.fn(),
       count: jest.fn(async () => 0),
     },
+    strategyVersion: {
+      create: jest.fn(async () => ({})),
+      findMany: jest.fn(async () => []),
+      findFirst: jest.fn(async () => null),
+    },
   }
 }
 

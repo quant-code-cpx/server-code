@@ -223,7 +223,7 @@ export class BacktestExecutionService {
     for (const [tsCode, pos] of portfolio.positions) {
       const bar = bars.get(tsCode)
       const price = bar?.close ?? this.getExecutionPrice(bar, config)
-      if (price) value += pos.quantity * price
+      if (price !== null && price !== undefined) value += pos.quantity * price
     }
     return value
   }

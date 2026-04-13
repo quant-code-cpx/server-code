@@ -258,6 +258,7 @@ export class PortfolioService {
 
     let totalCost = 0
     let totalMarketValue = 0
+    let totalCostWithPrice = 0
 
     const holdingDetails = holdings.map((h) => {
       const val = valMap.get(h.tsCode)
@@ -268,7 +269,10 @@ export class PortfolioService {
       const pnlPct = unrealizedPnl != null ? unrealizedPnl / (cost * h.quantity) : null
 
       totalCost += cost * h.quantity
-      if (marketValue != null) totalMarketValue += marketValue
+      if (marketValue != null) {
+        totalMarketValue += marketValue
+        totalCostWithPrice += cost * h.quantity
+      }
 
       return {
         tsCode: h.tsCode,
@@ -291,7 +295,8 @@ export class PortfolioService {
       })
     }
 
-    const totalUnrealizedPnl = totalMarketValue - totalCost
+    // totalUnrealizedPnl 只对有价格的持仓求和，避免部分缺价导致 PnL 错误
+    const totalUnrealizedPnl = totalMarketValue - totalCostWithPrice
     return {
       portfolio,
       holdings: holdingDetails,
@@ -299,7 +304,7 @@ export class PortfolioService {
         totalCost,
         totalMarketValue,
         totalUnrealizedPnl,
-        totalPnlPct: totalCost > 0 ? totalUnrealizedPnl / totalCost : 0,
+        totalPnlPct: totalCostWithPrice > 0 ? totalUnrealizedPnl / totalCostWithPrice : 0,
         cashBalance: Number(portfolio.initialCash) - totalCost,
       },
     }
@@ -329,7 +334,8 @@ export class PortfolioService {
       const close = p?.close ? Number(p.close) : null
       const pctChg = p?.pctChg ? Number(p.pctChg) : null
       const mv = close != null ? close * h.quantity : null
-      const todayPnl = mv != null && pctChg != null ? mv * (pctChg / 100) : null
+      // 今日盈亏 = 昨日市值 × 涨幅 = 今日市值 / (1 + pctChg/100) × pctChg/100
+      const todayPnl = mv != null && pctChg != null ? (mv / (1 + pctChg / 100)) * (pctChg / 100) : null
       if (mv != null) totalMv += mv
       if (todayPnl != null) totalPnl += todayPnl
       return { tsCode: h.tsCode, stockName: h.stockName, pctChg, todayPnl }

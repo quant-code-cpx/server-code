@@ -109,9 +109,9 @@ describe('BacktestEngineService', () => {
       it('[BUG] 跨年且日数大于前一交易日（周二→周四）→ 当前逻辑返回 false（实为新周，应为 true）', () => {
         // 2024-12-31 (Tue=2) -> 2025-01-02 (Thu=4)
         // 当前逻辑：4 < 2 = false, 4 === 1 = false → 返回 false
-        // 但实际是跨周，正确行为应返回 true
+        // 正确行为应返回 true，但此 bug 在正常 A 股场景中影响有限（A股跨年通常 Fri→Mon）
+        // 此测试记录当前行为，修复时请将断言改为 toBe(true)
         const tradingDays = dates(['2024-12-31', '2025-01-02'])
-        // 记录当前实际行为（不修改逻辑，仅标记此为已知边界问题）
         const result = (service as any).checkRebalanceDay(tradingDays[1], tradingDays, 1, 'WEEKLY')
         // 当前逻辑在周二→周四跨年场景下返回 false（此为已知问题）
         expect(result).toBe(false)
@@ -120,6 +120,8 @@ describe('BacktestEngineService', () => {
       it('[BUG] 跨周且前后都是周三（跳过中间一周）→ 当前逻辑返回 false（实为新周，应为 true）', () => {
         // 2025-01-08 (Wed=3) -> 2025-01-15 (Wed=3)，中间跳过了一整周
         // 当前逻辑：3 < 3 = false, 3 === 1 = false → 返回 false
+        // 正确行为应返回 true，但正常情况下不会跳过一整周的交易日
+        // 此测试记录当前行为，修复时请将断言改为 toBe(true)
         const tradingDays = dates(['2025-01-08', '2025-01-15'])
         const result = (service as any).checkRebalanceDay(tradingDays[1], tradingDays, 1, 'WEEKLY')
         // 当前逻辑在相同 dayOfWeek 跨周场景下返回 false（此为已知问题）
@@ -464,9 +466,9 @@ describe('BacktestEngineService', () => {
   // ── computePositionValueWithAdjFactor: 使用成本价兜底 ─────────────────────
 
   describe('[EDGE] computePositionValueWithAdjFactor() 兜底价格', () => {
-    it('[EDGE] close=0（停牌价格为 0）时仍使用 close 而非 costPrice', () => {
-      // 注意：bar 存在且 close=0，当前实现 `if (price)` 在 price=0 时不成立，会用 costPrice 兜底
-      // 这是一个已知行为，此测试验证和记录该行为
+    it('[EDGE] close=0（停牌价格为 0）时 if(price) 为 false，使用 costPrice 兜底（已知行为）', () => {
+      // 注意：bar 存在且 close=0，当前实现 `if (price)` 在 price=0 时不成立
+      // 这是 JS 的 falsy 判断行为，close=0 会回退到 costPrice，此测试记录该实际行为
       const portfolio = buildPortfolio({
         positions: new Map([['000001.SZ', { tsCode: '000001.SZ', quantity: 100, costPrice: 8, entryDate: new Date() }]]),
       })

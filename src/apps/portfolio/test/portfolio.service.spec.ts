@@ -319,8 +319,8 @@ describe('PortfolioService', () => {
 
       const updateCall = prisma.portfolioHolding.update.mock.calls[0][0]
       expect(updateCall.data.quantity).toBe(300)
-      // 加权平均 = (100*10 + 200*15)/300 = 13.333...
-      expect(Number(updateCall.data.avgCost)).toBeCloseTo(13.333, 3)
+      // 加权平均 = (100*10 + 200*15)/300 = 4000/300 = 13.333...
+      expect(Number(updateCall.data.avgCost)).toBeCloseTo(4000 / 300, 5)
     })
 
     it('[BIZ] 100股@10 + 100股@20 → 加权平均成本精确为 15.00', async () => {

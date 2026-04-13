@@ -99,33 +99,39 @@ describe('BacktestEngineService', () => {
         expect((service as any).checkRebalanceDay(tradingDays[1], tradingDays, 1, 'WEEKLY')).toBe(true)
       })
 
-      it('dayOfWeek < prevDayOfWeek（周日=0 < 周五=5）时也返回 true', () => {
-        // 模拟 dayOfWeek 回绕：前一天 dayOfWeek > 当天 dayOfWeek
-        // 2025-01-04 (Sat=6) -> 2025-01-05 (Sun=0)
+      it('同一 ISO 周内的周六→周日返回 false（A 股不开盘的极端场景）', () => {
+        // 2025-01-04 (Sat) 和 2025-01-05 (Sun) 同属 ISO week 1 of 2025
+        // A 股周末不开盘，此为极端测试场景
         const tradingDays = dates(['2025-01-04', '2025-01-05'])
+        expect((service as any).checkRebalanceDay(tradingDays[1], tradingDays, 1, 'WEEKLY')).toBe(false)
+      })
+
+      it('跨年但同一 ISO 周（周二→周四）→ 正确返回 false（同一交易周）', () => {
+        // 2024-12-31 (Tue) ISO week 1 of 2025 → 2025-01-02 (Thu) ISO week 1 of 2025
+        // 同属一个 ISO 周，不需要调仓
+        const tradingDays = dates(['2024-12-31', '2025-01-02'])
+        const result = (service as any).checkRebalanceDay(tradingDays[1], tradingDays, 1, 'WEEKLY')
+        expect(result).toBe(false)
+      })
+
+      it('跨周且前后都是周三（跳过中间一周）→ 正确返回 true', () => {
+        // 2025-01-08 (Wed) ISO week 2 → 2025-01-15 (Wed) ISO week 3
+        // 不同 ISO 周，应触发调仓
+        const tradingDays = dates(['2025-01-08', '2025-01-15'])
+        const result = (service as any).checkRebalanceDay(tradingDays[1], tradingDays, 1, 'WEEKLY')
+        expect(result).toBe(true)
+      })
+
+      it('正常跨周（Fri→Mon）返回 true', () => {
+        // 2025-01-10 (Fri, ISO week 2) -> 2025-01-13 (Mon, ISO week 3)
+        const tradingDays = dates(['2025-01-10', '2025-01-13'])
         expect((service as any).checkRebalanceDay(tradingDays[1], tradingDays, 1, 'WEEKLY')).toBe(true)
       })
 
-      it('[BUG] 跨年且日数大于前一交易日（周二→周四）→ 当前逻辑返回 false（实为新周，应为 true）', () => {
-        // 2024-12-31 (Tue=2) -> 2025-01-02 (Thu=4)
-        // 当前逻辑：4 < 2 = false, 4 === 1 = false → 返回 false
-        // 正确行为应返回 true，但此 bug 在正常 A 股场景中影响有限（A股跨年通常 Fri→Mon）
-        // 此测试记录当前行为，修复时请将断言改为 toBe(true)
-        const tradingDays = dates(['2024-12-31', '2025-01-02'])
-        const result = (service as any).checkRebalanceDay(tradingDays[1], tradingDays, 1, 'WEEKLY')
-        // 当前逻辑在周二→周四跨年场景下返回 false（此为已知问题）
-        expect(result).toBe(false)
-      })
-
-      it('[BUG] 跨周且前后都是周三（跳过中间一周）→ 当前逻辑返回 false（实为新周，应为 true）', () => {
-        // 2025-01-08 (Wed=3) -> 2025-01-15 (Wed=3)，中间跳过了一整周
-        // 当前逻辑：3 < 3 = false, 3 === 1 = false → 返回 false
-        // 正确行为应返回 true，但正常情况下不会跳过一整周的交易日
-        // 此测试记录当前行为，修复时请将断言改为 toBe(true)
-        const tradingDays = dates(['2025-01-08', '2025-01-15'])
-        const result = (service as any).checkRebalanceDay(tradingDays[1], tradingDays, 1, 'WEEKLY')
-        // 当前逻辑在相同 dayOfWeek 跨周场景下返回 false（此为已知问题）
-        expect(result).toBe(false)
+      it('跨年且跨周（Fri→Mon）→ 返回 true', () => {
+        // 2024-12-27 (Fri, ISO week 52 of 2024) → 2024-12-30 (Mon, ISO week 1 of 2025)
+        const tradingDays = dates(['2024-12-27', '2024-12-30'])
+        expect((service as any).checkRebalanceDay(tradingDays[1], tradingDays, 1, 'WEEKLY')).toBe(true)
       })
     })
 
@@ -466,17 +472,15 @@ describe('BacktestEngineService', () => {
   // ── computePositionValueWithAdjFactor: 使用成本价兜底 ─────────────────────
 
   describe('[EDGE] computePositionValueWithAdjFactor() 兜底价格', () => {
-    it('[EDGE] close=0（停牌价格为 0）时 if(price) 为 false，使用 costPrice 兜底（已知行为）', () => {
-      // 注意：bar 存在且 close=0，当前实现 `if (price)` 在 price=0 时不成立
-      // 这是 JS 的 falsy 判断行为，close=0 会回退到 costPrice，此测试记录该实际行为
+    it('[EDGE] close=0 时使用真实价格 0（不回退到 costPrice）', () => {
       const portfolio = buildPortfolio({
         positions: new Map([['000001.SZ', { tsCode: '000001.SZ', quantity: 100, costPrice: 8, entryDate: new Date() }]]),
       })
       const todayBars = new Map<string, DailyBar>([['000001.SZ', buildBar({ tsCode: '000001.SZ', close: 0 })]])
 
       const value: number = (service as any).computePositionValueWithAdjFactor(portfolio, todayBars)
-      // close=0 时 if(price) 为 false，使用 costPrice 兜底
-      expect(value).toBe(100 * 8)
+      // close=0 时 price !== null，使用 close 价格计算市值
+      expect(value).toBe(0)
     })
   })
 })

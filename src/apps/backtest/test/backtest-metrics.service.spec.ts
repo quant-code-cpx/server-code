@@ -251,6 +251,44 @@ describe('BacktestMetricsService', () => {
       const result = service.computeMetrics(records, [], baseConfig)
       expect(isFinite(result.sortinoRatio)).toBe(true)
     })
+
+    it('[BIZ] Sortino 下行偏差分母使用全体收益数量（非仅负值数量）', () => {
+      // 关键验证：固定修复后的 Sortino 使用 N(全体) 做分母
+      // 构造一半正、一半负的超额收益序列
+      const n = 252
+      const records: DailyNavRecord[] = []
+      let nav = 1.0
+      let peak = 1.0
+      for (let i = 0; i < n; i++) {
+        const r = i % 2 === 0 ? 0.005 : -0.003 // 每隔一天涨跌
+        nav = nav * (1 + r)
+        peak = Math.max(peak, nav)
+        records.push(buildNav({ nav, benchmarkNav: 1, dailyReturn: r, benchmarkReturn: 0, drawdown: nav / peak - 1 }))
+      }
+
+      const result = service.computeMetrics(records, [], baseConfig)
+
+      // 手算 downside deviation (使用全体 N=252 做分母)
+      const rfDaily = 0.02 / 252
+      const excessReturns = records.map(r => r.dailyReturn - rfDaily)
+      const downsideSquaredSum = excessReturns.reduce((a, r) => a + (r < 0 ? r ** 2 : 0), 0)
+      const downsideVar = downsideSquaredSum / excessReturns.length  // N=252, not ~126
+      const downsideStd = Math.sqrt(downsideVar) * Math.sqrt(252)
+
+      // 验证 Sortino 是有限值且非零
+      expect(isFinite(result.sortinoRatio)).toBe(true)
+      expect(result.sortinoRatio).not.toBe(0)
+
+      // 手算 annualized return
+      const firstNav = records[0].nav
+      const lastNav = records[records.length - 1].nav
+      const totalReturn = lastNav / firstNav - 1
+      const years = n / 252
+      const annualizedReturn = Math.pow(1 + totalReturn, 1 / years) - 1
+      const expectedSortino = downsideStd > 0 ? (annualizedReturn - 0.02) / downsideStd : 0
+
+      expect(result.sortinoRatio).toBeCloseTo(expectedSortino, 3)
+    })
   })
 
   // ── Alpha & Beta ──────────────────────────────────────────────────────────────

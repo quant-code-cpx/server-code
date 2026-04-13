@@ -60,7 +60,7 @@
 
 | Bug ID     | 严重度 | 模块                    | 位置                                              | 描述                                                                                                                                                                                                                                                                    |
 | ---------- | :----: | ----------------------- | ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **P5-B1**  |   S1   | GlobalExceptionsFilter  | `catch()` L43-44                                  | 500 错误日志中 `(exception as Error).message` 和 `.stack` — 当 `exception` 不是 Error 实例时（如 `throw 'string'` 或 `throw null`），`.message` 返回 undefined，`.stack` 返回 undefined。日志系统记录无效信息，且 `message` 变量可能回退到 `String(exception)` 泄露给客户端。 |
+| **P5-B1**  |   S1   | GlobalExceptionsFilter  | `catch()` L43-44                                  | 500 错误日志中 `(exception as Error).message` 和 `.stack` — 当 `exception` 不是 Error 实例时（如 `throw 'string'` 或 `throw null`），`.message` 返回 undefined，`.stack` 返回 undefined。日志系统记录无效信息，且响应 `message` 字段可能回退到 `String(exception)` 向客户端泄露原始异常内容。 |
 | **P5-B2**  |   S1   | GlobalExceptionsFilter  | `catch()` L47-48                                  | 非 dev 模式下隐藏 500 错误消息依赖 `ErrorEnum.SERVER_ERROR.split(':')[1]`。若 ErrorEnum 值格式被修改（缺少冒号），`split(':')[1]` 返回 undefined → 客户端收到 `message: undefined`。虽然当前值正确，但缺少防御性检查。                                                  |
 | **P5-B3**  |   S2   | LoggingInterceptor      | `sanitizeBody()` L10-18                           | 仅做浅层一级脱敏。若请求体为 `{ user: { password: '123' } }`，嵌套的 `password` 字段不会被脱敏，可能记录到日志中。                                                                                                                                                       |
 | **P5-B4**  |   S3   | LoggingInterceptor      | `EXCLUDED_PATHS` L6                               | 使用 `url.startsWith(p)` 匹配。`/healthz`、`/health-check` 等路径也会被意外排除（前缀匹配而非完全匹配或 `startsWith(p + '?')` / `startsWith(p + '/')` 模式）。当前项目中不存在这些路径因此无实际影响，但设计上不够精确。                                                 |
@@ -154,7 +154,7 @@ expect(logData.body.password).toBe('***')
 | #  | 类别   | 测试场景                                                         | 预期                                       | 关联 Bug |
 | -- | ------ | ---------------------------------------------------------------- | ------------------------------------------ | -------- |
 | 6  | `SEC`  | PUBLIC_PATHS 白名单 — 请求 `/metrics` 跳过 JWT                   | 返回 true，不调用 super.canActivate        | —        |
-| 7  | `SEC`  | PUBLIC_PATHS 前缀碰撞 — `/metrics-debug` 也被放行                | 返回 true（记录当前行为，标注 P5-B6）       | P5-B6    |
+| 7  | `SEC`  | PUBLIC_PATHS 前缀碰撞 — `/metrics-debug` 也被放行（假设路径） | 返回 true（记录当前行为，标注 P5-B6）       | P5-B6    |
 | 8  | `EDGE` | user 对象存在但 user.id 为 undefined                             | 返回 true，但不调用 setUserId              | P5-B5    |
 | 9  | `EDGE` | user 对象存在但 user.id 为 0                                     | 返回 true，不调用 setUserId（falsy 值）     | P5-B5    |
 | 10 | `SEC`  | request.url 为 undefined（非标准请求对象）                       | 不崩溃，进入正常 JWT 验证流程              | —        |
@@ -166,9 +166,9 @@ describe('[SEC] PUBLIC_PATHS 白名单')
     // 构造 request.url = '/metrics'
     // expect: true，super.canActivate 未调用
 
-  it('[BUG P5-B6] /metrics-debug 也被前缀匹配放行')
+  it('[BUG P5-B6] /metrics-debug 也被前缀匹配放行（假设路径，验证 startsWith 行为）')
     // request.url = '/metrics-debug'
-    // 当前行为：返回 true（跳过 JWT）
+    // 当前行为：返回 true（跳过 JWT），因为 startsWith('/metrics') 成立
     // 正确行为：不应放行（非基础设施端点）
 
 describe('[EDGE] user 对象边界')
@@ -238,7 +238,7 @@ describe('[EDGE] 特殊数据类型')
 
 | #   | 类别   | 测试场景                                           | 预期                                                      | 关联 Bug |
 | --- | ------ | -------------------------------------------------- | --------------------------------------------------------- | -------- |
-| 7   | `SEC`  | throw 字符串 `'raw error'`（非 Error 实例）        | 不泄露 stack，非 dev → 通用 500 消息                       | P5-B1    |
+| 7   | `SEC`  | throw 字符串 `'raw error'`（非 Error 实例）        | 不崩溃，日志记录 undefined stack；非 dev → 通用 500 消息 | P5-B1    |
 | 8   | `SEC`  | throw null                                         | 不崩溃，返回 500 + 通用消息                                | P5-B1    |
 | 9   | `SEC`  | throw undefined                                    | 不崩溃，返回 500 + 通用消息                                | P5-B1    |
 | 10  | `ERR`  | Prisma PrismaClientKnownRequestError（P2002 唯一约束） | status 500（Prisma 异常非 HttpException），消息隐藏        | —        |
@@ -249,11 +249,11 @@ describe('[EDGE] 特殊数据类型')
 
 ```
 describe('[SEC] 非 Error 异常')
-  it('[BUG P5-B1] throw 字符串 → 非 dev 模式隐藏内容，不泄露 stack')
+  it('[BUG P5-B1] throw 字符串 → 不崩溃，日志记录 undefined stack，非 dev 模式返回通用 500 消息')
     // exception = 'raw error text'
     // isDev = false
     // expect: status 500, message = '服务繁忙，请稍后再试'
-    // expect: logger.error 调用参数中 message 和 stack 为 undefined（记录当前行为）
+    // expect: logger.error 调用中 message=(exception as Error).message=undefined, stack=undefined（非 Error 对象无 stack）
 
   it('[BUG P5-B1] throw null → 不崩溃，返回 500')
     // exception = null
@@ -387,8 +387,9 @@ describe('sanitizeBody()')
   it('[BUG P5-B3] 嵌套敏感字段 → 不被脱敏（浅拷贝限制）')
     input: { user: { password: '123' } }
     // 当前行为：{ user: { password: '123' } }（未脱敏）
-    // 正确行为：应递归脱敏
-    expect: output.user.password === '123'  // 记录当前行为
+    // 正确行为：应递归脱敏 → { user: { password: '***' } }
+    expect: output.user.password === '123'  // 记录当前（有缺陷的）行为
+    // 注：修复后应反转断言为 expect: output.user.password === '***'
 
   it('[EDGE] body 为 null → 返回 null')
     expect: sanitizeBody(null as any) === null
@@ -582,10 +583,11 @@ describe('buildPrismaDatasourceUrl()')
   it('[EDGE] databaseUrl 为 undefined → 返回 undefined')
     expect: buildPrismaDatasourceUrl(undefined) === undefined
 
-  it('[BUG P5-B10] databaseUrl 不是有效 URL → 抛出 TypeError')
+  it('[BUG P5-B10] databaseUrl 不是有效 URL → 抛出 TypeError（当前行为）')
     // input: 'not-a-url'
     // new URL('not-a-url') → throws TypeError
     // 当前行为：异常冒泡到 PrismaService 构造函数 → 应用启动失败
+    // 建议修复：增加 try-catch 提供友好错误提示
     expect: throw TypeError
 ```
 
@@ -610,8 +612,9 @@ describe('readPositiveIntegerEnv()')
     // parseInt('0') = 0, 0 > 0 = false
     expect: fallback
 
-  it('[EDGE] 浮点数字符串 → parseInt 截断为整数')
-    // '1.5' → parseInt = 1, 1 > 0 && Number.isInteger(1) = true
+  it('[EDGE] 浮点数字符串 → parseInt 截断为整数，通过 isInteger 和 > 0 检查')
+    // '1.5' → parseInt('1.5', 10) = 1
+    // Number.isInteger(1) = true && 1 > 0 = true → 返回 1
     expect: 1
 
   it('[EDGE] 非数字字符串 → NaN → 返回 fallback')
@@ -835,7 +838,7 @@ export function makeCallHandlerWithError(error: Error): CallHandler
 | 指标                                | 目标值                      |
 | ----------------------------------- | --------------------------- |
 | Lifecycle spec 文件数               | 15（从 6 增加到 15）         |
-| Lifecycle 用例总数                  | ≥ 120（从 54 增加）         |
+| Lifecycle 用例总数                  | ≥ 129（从 54 增加）         |
 | 有安全边界测试（`SEC`）的 spec      | ≥ 8 / 15                   |
 | 有错误处理测试（`ERR`）的 spec      | ≥ 8 / 15                   |
 | 标注 `[BUG]` 的用例数               | ≥ 10                       |

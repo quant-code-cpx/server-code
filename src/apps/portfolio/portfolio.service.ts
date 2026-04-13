@@ -258,6 +258,7 @@ export class PortfolioService {
 
     let totalCost = 0
     let totalMarketValue = 0
+    // 仅累计有价格的持仓成本，用于 totalUnrealizedPnl 计算（避免缺价持仓导致 PnL 偏差）
     let totalCostWithPrice = 0
 
     const holdingDetails = holdings.map((h) => {

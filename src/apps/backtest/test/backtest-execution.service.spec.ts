@@ -155,13 +155,7 @@ describe('BacktestExecutionService', () => {
 
   describe('[BIZ] BUY 现金流计算', () => {
     it('[BIZ] 买入时 cash 减少 = amount + commission + slippageCost', () => {
-      // 初始资金 100 万，目标 000001.SZ 权重 100%
-      // open=10, LOT_SIZE=100
-      // totalNav = 1000000 + 0 = 1000000
-      // targetValue = 1000000 * 1.0 = 1000000
-      // rawQty = floor(1000000 / 10 / 100) * 100 = 10000 * 100 = 100000... wait, floor(100000/100)*100=100000
-      // amount = 100000 * 10 = 1000000 — but cash is only 1000000, so cash < amount after fees
-      // Let's use a smaller case: cash=100000, target weight=0.5
+      // cash=100000, target 000001.SZ 权重 50%
       const config = buildConfig({ slippageBps: 5 })
       const portfolio = buildPortfolio({ cash: 100000 })
       const signal: SignalOutput = { targets: [{ tsCode: '000001.SZ', weight: 0.5 }] }
@@ -274,6 +268,8 @@ describe('BacktestExecutionService', () => {
 
   describe('[BIZ] T+1 限制', () => {
     it('[BIZ] enableT1Restriction=true 时不能在同轮中卖出后买入同一只股票', () => {
+      // 注意：当前实现中，targets 中的股票不会被卖出（sell step 跳过 effectiveWeights 中的股票），
+      // 因此 T+1 限制在正常调仓流程中不会触发。此测试验证开启 T+1 后基础流程仍然正常。
       const config = buildConfig({ enableT1Restriction: true })
       const portfolio = buildPortfolio({
         cash: 100000,
@@ -281,50 +277,6 @@ describe('BacktestExecutionService', () => {
           ['000001.SZ', { tsCode: '000001.SZ', quantity: 100, costPrice: 8, entryDate: new Date() }],
         ]),
       })
-      // 信号：卖掉 000001，买入 000001（应被 T+1 阻止买入）
-      // 实际上 targets 包含 000001 意味着 "保留" 而不是 "卖后再买"
-      // 正确测试：targets=[] 卖掉，然后 targets=[000001] 买入
-      // 但 executeTrades 一次执行：先 sell 不在 targets 里的，再 buy targets
-      // 所以 targets=[000002] → 卖 000001, 买 000002 → 不触发 T+1
-      // targets=[000001] → 不卖（在 targets 中），不需 T+1
-      // 要触发 T+1：targets=[000001] with 0 weight + targets=[000001] again?
-      // No, 更合理：targets 不含 000001 → 卖出 000001，targets 含 000001 → 想买回
-      // 不对，targets 不含 000001 就卖出，但 targets 也不含 000001 就不买
-      // 要测 T+1：targets 含 000001（所以不卖出），然后...
-      // Actually the T+1 logic is: sold today set -> skip buying the same stock
-      // So we need: 000001 NOT in targets (sell it), then 000001 IS in another target? No...
-      // The targets list is what we want to hold. If 000001 is not in targets, we sell it.
-      // If 000001 IS in targets but also needs rebalancing, we might sell and rebuy.
-      // Actually, if 000001 IS in targets, `if (effectiveWeights.has(tsCode)) continue` means we DON'T sell.
-      // So T+1 only applies when targets change the stock.
-      // To trigger: position has 000001, targets = [000002, 000001 with 0 weight]... no.
-      // Actually: if we have position A, and target removes A and adds it back:
-      //   sell step: A not in targets → SELL A. buy step: A not in targets → no buy.
-      //   Unless targets includes A again.
-      // The real scenario: targets = [000001.SZ] but 000001 was already sold because it wasn't in targets initially
-      // This is contradictory.
-      // Let me just test with two stocks:
-      // Have: A. Targets: [B]. → sell A, buy B. T+1 doesn't affect (different stocks).
-      // Have: A. Targets: [A, B]. → keep A (no sell), buy B. T+1 irrelevant.
-      // T+1 trigger: sell A in step 1, try to buy A in step 2.
-      // This happens when: A was sold (not in effectiveWeights), but then... A can't be in targets since it's the sell step.
-      // Wait, no. effectiveWeights comes from signal.targets. If A is NOT in effectiveWeights → sell.
-      // Then in buy step, we iterate effectiveWeights. A is not there, so no buy attempt.
-      // So T+1 can only trigger in a multi-signal scenario where same stock appears in sell+buy in one call.
-      // Actually... I think it would trigger if: position has A and B. targets=[A]. So B is sold. But A is in targets.
-      // Then buy loop includes A. If A was sold...  A wasn't sold because it's in effectiveWeights!
-      // Hmm, T+1 seems to only be relevant when... let me look at the code again.
-      //
-      // Ah I see: the soldToday set tracks stocks sold in step 1. In step 2 (buy), if T+1 enabled and
-      // tsCode is in soldToday, skip. This would only matter if a stock is both sold AND in the buy targets,
-      // which shouldn't happen since stocks in effectiveWeights are skipped in the sell step.
-      //
-      // This means T+1 is actually never triggered in normal operation! It's a dead code path.
-      // This is itself a design observation worth noting but not a "bug" per se.
-
-      // Test that soldToday skip logic works if we force the scenario:
-      // We won't test this since it requires manipulating the portfolio mid-execution.
-      // Instead verify that normal operations work with T+1 enabled.
       const signal: SignalOutput = { targets: [{ tsCode: '000002.SZ', weight: 0.5 }] }
       const bars = new Map([
         ['000001.SZ', buildBar({ tsCode: '000001.SZ', open: 10, close: 10 })],

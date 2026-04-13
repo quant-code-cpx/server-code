@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing'
-import { INestApplication, ValidationPipe, ExecutionContext } from '@nestjs/common'
+import { INestApplication, ValidationPipe, ExecutionContext, UnauthorizedException } from '@nestjs/common'
 import request from 'supertest'
 import { UserRole } from '@prisma/client'
 import { TransformInterceptor } from 'src/lifecycle/interceptors/transform.interceptor'
@@ -93,5 +93,35 @@ describe('HeatmapController', () => {
         expect(res.body.code).toBe(SUCCESS_CODE)
         expect(res.body.data).toBeDefined()
       })
+  })
+
+  // HeatmapHistoryQueryDto.trade_date uses @IsNotEmpty() — required
+  it('[VAL] POST /heatmap/snapshot/history 缺 trade_date → 400', async () => {
+    await request(app.getHttpServer()).post('/heatmap/snapshot/history').send({}).expect(400)
+    expect(mockHeatmapSnapshotService.queryHistory).not.toHaveBeenCalled()
+  })
+
+  // HeatmapQueryDto.trade_date uses @IsOptional() @Matches — hyphen format fails
+  it('[VAL] POST /heatmap/data trade_date 含横线格式 → 400', async () => {
+    await request(app.getHttpServer())
+      .post('/heatmap/data')
+      .send({ trade_date: '2023-12-01' })
+      .expect(400)
+    expect(mockHeatmapService.getHeatmap).not.toHaveBeenCalled()
+  })
+
+  // snapshot/trigger has @UseGuards(RolesGuard) @Roles(SUPER_ADMIN); guard returning false → 403
+  it('[AUTH] 非 SUPER_ADMIN 访问 snapshot/trigger → 403', async () => {
+    mockRolesGuard.canActivate.mockImplementationOnce(() => false)
+    await request(app.getHttpServer()).post('/heatmap/snapshot/trigger').send({}).expect(403)
+    expect(mockHeatmapSnapshotService.aggregateSnapshot).not.toHaveBeenCalled()
+  })
+
+  it('[AUTH] 未认证请求 → 401', async () => {
+    mockRolesGuard.canActivate.mockImplementationOnce(() => {
+      throw new UnauthorizedException()
+    })
+    await request(app.getHttpServer()).post('/heatmap/snapshot/trigger').send({}).expect(401)
+    expect(mockHeatmapSnapshotService.aggregateSnapshot).not.toHaveBeenCalled()
   })
 })

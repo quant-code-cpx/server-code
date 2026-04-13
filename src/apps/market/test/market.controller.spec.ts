@@ -103,4 +103,16 @@ describe('MarketController', () => {
         expect(res.body.data).toBeDefined()
       })
   })
+
+  // MoneyFlowQueryDto.trade_date uses @Matches(/^\d{8}$/) — hyphen format fails
+  it('[VAL] POST /market/money-flow trade_date 含横线格式 → 400', async () => {
+    await request(app.getHttpServer()).post('/market/money-flow').send({ trade_date: '2023-12-01' }).expect(400)
+    expect(mockMarketService.getMarketMoneyFlow).not.toHaveBeenCalled()
+  })
+
+  // SectorFlowQueryDto.content_type uses @IsEnum(['INDUSTRY','CONCEPT','REGION'])
+  it('[VAL] POST /market/sector-flow content_type 非法枚举 → 400', async () => {
+    await request(app.getHttpServer()).post('/market/sector-flow').send({ content_type: 'INVALID' }).expect(400)
+    expect(mockMarketService.getSectorFlow).not.toHaveBeenCalled()
+  })
 })

@@ -1,4 +1,4 @@
-import { INestApplication, ExecutionContext, ValidationPipe } from '@nestjs/common'
+import { INestApplication, ExecutionContext, ValidationPipe, NotFoundException, UnauthorizedException } from '@nestjs/common'
 import { Test, TestingModule } from '@nestjs/testing'
 import request from 'supertest'
 import { JwtAuthGuard } from 'src/lifecycle/guard/jwt-auth.guard'
@@ -102,4 +102,22 @@ describe('StrategyDraftController (integration)', () => {
         expect(res.body.code).toBe(0)
         expect(mockService.submitDraft).toHaveBeenCalled()
       }))
+
+  // CreateStrategyDraftDto: name required (@IsString @MinLength(1)); config required (@IsObject)
+  it('[VAL] POST /strategy-draft/create 缺 name → 400', async () => {
+    await request(app.getHttpServer()).post('/strategy-draft/create').send({ config: {} }).expect(400)
+    expect(mockService.createDraft).not.toHaveBeenCalled()
+  })
+
+  it('[ERR] POST /strategy-draft/detail NotFoundException → 404', async () => {
+    mockService.getDraft.mockRejectedValueOnce(new NotFoundException('draft not found'))
+    await request(app.getHttpServer()).post('/strategy-draft/detail').send({ id: 999 }).expect(404)
+  })
+
+  it('[AUTH] 未认证请求 → 401', async () => {
+    mockJwtGuard.canActivate.mockImplementationOnce(() => {
+      throw new UnauthorizedException()
+    })
+    await request(app.getHttpServer()).post('/strategy-draft/list').expect(401)
+  })
 })

@@ -1,4 +1,4 @@
-import { INestApplication, ExecutionContext, ValidationPipe } from '@nestjs/common'
+import { INestApplication, ExecutionContext, ValidationPipe, NotFoundException, UnauthorizedException } from '@nestjs/common'
 import { Test, TestingModule } from '@nestjs/testing'
 import request from 'supertest'
 import { JwtAuthGuard } from 'src/lifecycle/guard/jwt-auth.guard'
@@ -123,4 +123,22 @@ describe('ScreenerSubscriptionController (integration)', () => {
         expect(res.body.code).toBe(0)
         expect(mockService.getLogs).toHaveBeenCalled()
       }))
+
+  // CreateSubscriptionDto.name required (@IsString @MinLength(1) @MaxLength(50))
+  it('[VAL] POST /screener-subscription/create 缺 name → 400', async () => {
+    await request(app.getHttpServer()).post('/screener-subscription/create').send({}).expect(400)
+    expect(mockService.create).not.toHaveBeenCalled()
+  })
+
+  it('[ERR] POST /screener-subscription/logs NotFoundException → 404', async () => {
+    mockService.getLogs.mockRejectedValueOnce(new NotFoundException('subscription not found'))
+    await request(app.getHttpServer()).post('/screener-subscription/logs').send({ id: 999 }).expect(404)
+  })
+
+  it('[AUTH] 未认证请求 → 401', async () => {
+    mockJwtGuard.canActivate.mockImplementationOnce(() => {
+      throw new UnauthorizedException()
+    })
+    await request(app.getHttpServer()).post('/screener-subscription/list').expect(401)
+  })
 })

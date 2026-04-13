@@ -1,5 +1,11 @@
 import { Test, TestingModule } from '@nestjs/testing'
-import { INestApplication, ValidationPipe, ExecutionContext } from '@nestjs/common'
+import {
+  INestApplication,
+  ValidationPipe,
+  ExecutionContext,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common'
 import request from 'supertest'
 import { UserRole } from '@prisma/client'
 import { TransformInterceptor } from 'src/lifecycle/interceptors/transform.interceptor'
@@ -135,5 +141,37 @@ describe('FactorController', () => {
         expect(res.body.code).toBe(SUCCESS_CODE)
         expect(res.body.data).toBeDefined()
       })
+  })
+
+  it('[VAL] POST /factor/values 缺 factorName → 400', async () => {
+    await request(app.getHttpServer()).post('/factor/values').send({ tradeDate: '20231201' }).expect(400)
+    expect(mockFactorService.getFactorValues).not.toHaveBeenCalled()
+  })
+
+  it('[VAL] POST /factor/values tradeDate 含横线格式 → 400', async () => {
+    await request(app.getHttpServer())
+      .post('/factor/values')
+      .send({ factorName: 'pe_ttm', tradeDate: '2023-12-01' })
+      .expect(400)
+    expect(mockFactorService.getFactorValues).not.toHaveBeenCalled()
+  })
+
+  it('[VAL] POST /factor/screening 缺 conditions → 400', async () => {
+    await request(app.getHttpServer()).post('/factor/screening').send({ tradeDate: '20231201' }).expect(400)
+    expect(mockFactorService.screening).not.toHaveBeenCalled()
+  })
+
+  it('[ERR] POST /factor/detail NotFoundException → 404', async () => {
+    mockFactorService.getDetail.mockRejectedValueOnce(new NotFoundException('factor not found'))
+    await request(app.getHttpServer()).post('/factor/detail').send({ factorName: 'unknown_factor' }).expect(404)
+    expect(mockFactorService.getDetail).toHaveBeenCalledTimes(1)
+  })
+
+  it('[AUTH] 未认证请求 → 401', async () => {
+    mockJwtGuard.canActivate.mockImplementationOnce(() => {
+      throw new UnauthorizedException()
+    })
+    await request(app.getHttpServer()).post('/factor/library').send({}).expect(401)
+    expect(mockFactorService.getLibrary).not.toHaveBeenCalled()
   })
 })

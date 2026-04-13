@@ -1,4 +1,4 @@
-import { INestApplication, UnauthorizedException, ValidationPipe } from '@nestjs/common'
+import { INestApplication, UnauthorizedException, NotFoundException, ValidationPipe } from '@nestjs/common'
 import { Test, TestingModule } from '@nestjs/testing'
 import { ExecutionContext } from '@nestjs/common'
 import { UserRole } from '@prisma/client'
@@ -129,6 +129,11 @@ describe('WatchlistController (integration)', () => {
       throw new UnauthorizedException()
     })
     await request(app.getHttpServer()).post('/watchlist/list').send({}).expect(401)
+  })
+
+  it('[ERR] POST /watchlist/overview NotFoundException → 404', async () => {
+    mockWatchlistService.getOverview.mockRejectedValueOnce(new NotFoundException('watchlist not found'))
+    await request(app.getHttpServer()).post('/watchlist/overview').send({}).expect(404)
   })
 })
 

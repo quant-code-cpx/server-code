@@ -1,5 +1,12 @@
 import { Test, TestingModule } from '@nestjs/testing'
-import { INestApplication, ValidationPipe, ExecutionContext } from '@nestjs/common'
+import {
+  INestApplication,
+  ValidationPipe,
+  ExecutionContext,
+  NotFoundException,
+  ForbiddenException,
+  UnauthorizedException,
+} from '@nestjs/common'
 import request from 'supertest'
 import { UserRole } from '@prisma/client'
 import { TransformInterceptor } from 'src/lifecycle/interceptors/transform.interceptor'
@@ -117,5 +124,76 @@ describe('StrategyController', () => {
         expect(res.body.code).toBe(SUCCESS_CODE)
         expect(res.body.data).toBeDefined()
       })
+  })
+
+  // ── [VAL] DTO 校验 ──────────────────────────────────────────────────────────
+
+  it('[VAL] POST /strategies/create 缺 name → 400', async () => {
+    await request(app.getHttpServer())
+      .post('/strategies/create')
+      .send({ strategyType: 'MA_CROSS_SINGLE', strategyConfig: {} })
+      .expect(400)
+  })
+
+  it('[VAL] POST /strategies/create 缺 strategyType → 400', async () => {
+    await request(app.getHttpServer()).post('/strategies/create').send({ name: 'Test', strategyConfig: {} }).expect(400)
+  })
+
+  it('[VAL] POST /strategies/create strategyType 非法枚举值 → 400', async () => {
+    await request(app.getHttpServer())
+      .post('/strategies/create')
+      .send({ name: 'Test', strategyType: 'INVALID_TYPE', strategyConfig: {} })
+      .expect(400)
+  })
+
+  // ── [ERR] 异常透传 ─────────────────────────────────────────────────────────
+
+  it('[ERR] POST /strategies/detail → service 抛 NotFoundException → 404', async () => {
+    mockStrategyService.detail.mockRejectedValueOnce(new NotFoundException('策略不存在'))
+    const res = await request(app.getHttpServer()).post('/strategies/detail').send({ id: 'nonexistent' }).expect(404)
+    expect(res.body.code).not.toBe(0)
+  })
+
+  it('[ERR] POST /strategies/delete → service 抛 ForbiddenException → 403', async () => {
+    mockStrategyService.delete.mockRejectedValueOnce(new ForbiddenException('无权操作他人策略'))
+    const res = await request(app.getHttpServer())
+      .post('/strategies/delete')
+      .send({ id: 'other-user-strat' })
+      .expect(403)
+    expect(res.body.code).not.toBe(0)
+  })
+})
+
+// ── [AUTH] 权限边界 ────────────────────────────────────────────────────────────
+
+describe('StrategyController ([AUTH] 权限边界)', () => {
+  let app: INestApplication
+
+  beforeAll(async () => {
+    const module: TestingModule = await Test.createTestingModule({
+      controllers: [StrategyController],
+      providers: [{ provide: StrategyService, useValue: {} }],
+    })
+      .overrideGuard(JwtAuthGuard)
+      .useValue({
+        canActivate: (_ctx: ExecutionContext) => {
+          throw new UnauthorizedException('用户未登录')
+        },
+      })
+      .compile()
+
+    app = module.createNestApplication()
+    app.useGlobalInterceptors(new TransformInterceptor())
+    app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }))
+    await app.init()
+  })
+
+  afterAll(() => app.close())
+
+  it('[AUTH] 未登录访问 /strategies/create → 401', async () => {
+    await request(app.getHttpServer())
+      .post('/strategies/create')
+      .send({ name: 'Test', strategyType: 'MA_CROSS_SINGLE', strategyConfig: {} })
+      .expect(401)
   })
 })

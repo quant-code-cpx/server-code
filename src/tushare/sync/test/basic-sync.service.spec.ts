@@ -48,6 +48,7 @@ function buildMockHelper(prismaMock = buildPrismaMock()) {
         add: jest.fn(() => ({ format: jest.fn(() => '20271231') })),
       })),
       toPrismaExchange: jest.fn((ex: string) => ex),
+      toDate: jest.fn((d: string) => new Date(d)),
       flushValidationLogs: jest.fn(async () => undefined),
     },
     { prisma: prismaMock },
@@ -247,6 +248,36 @@ describe('BasicSyncService', () => {
       await service.syncThsMember()
 
       expect(prismaMock.thsMember.deleteMany).toHaveBeenCalled()
+    })
+  })
+
+  // ── syncTradeCalendar() — 额外校验 ─────────────────────────────────────────
+
+  describe('syncTradeCalendar()', () => {
+    it('API 返回空数据时不抛错，写同步日志', async () => {
+      const api = buildMockApi()
+      api.getTradeCalendar.mockResolvedValue([])
+      const helper = buildMockHelper()
+      const service = createService(api, helper)
+
+      await expect(service.syncTradeCal('full')).resolves.toBeUndefined()
+
+      expect(helper.writeSyncLog).toHaveBeenCalled()
+    })
+  })
+
+  // ── syncStockCompany() — 额外校验 ──────────────────────────────────────────
+
+  describe('syncStockCompany()', () => {
+    it('full 模式调用 API 写入公司信息', async () => {
+      const api = buildMockApi()
+      api.getStockCompany.mockResolvedValue([])
+      const helper = buildMockHelper()
+      const service = createService(api, helper)
+
+      await service.syncStockCompany('full')
+
+      expect(api.getStockCompany).toHaveBeenCalled()
     })
   })
 })

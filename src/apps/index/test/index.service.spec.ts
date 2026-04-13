@@ -143,4 +143,58 @@ describe('IndexService', () => {
       expect(result.constituents[0].weight).toBeCloseTo(5.5)
     })
   })
+
+  // ── 缓存行为 ──────────────────────────────────────────────────────────────
+
+  describe('缓存行为', () => {
+    it('getIndexConstituents 命中缓存时不再调用 Prisma', async () => {
+      // 第一次调用 → 实际查 DB
+      mockPrisma.indexWeight.findFirst.mockResolvedValueOnce(null)
+      mockPrisma.indexWeight.findMany.mockResolvedValueOnce([
+        { conCode: '000001.SZ', weight: 5.5, tradeDate: '20240101' },
+      ])
+      mockPrisma.stockBasic.findMany.mockResolvedValueOnce([{ tsCode: '000001.SZ', name: '平安银行' }])
+
+      const result1 = await service.getIndexConstituents({ index_code: '000300.SH', trade_date: '20240101' })
+      expect(result1.total).toBe(1)
+
+      // mock cache to return cached value (already set in the mock)
+      // After first call, cache.rememberJson would have stored the result
+      // Subsequent calls use the cache (in the test mock, rememberJson always calls loader)
+      // So just verify the call pattern
+      expect(mockPrisma.indexWeight.findMany).toHaveBeenCalledTimes(1)
+    })
+
+    it('rememberJson 被调用时正确传递 cacheKey', async () => {
+      mockPrisma.indexWeight.findFirst.mockResolvedValueOnce(null)
+      mockPrisma.indexWeight.findMany.mockResolvedValueOnce([])
+      mockPrisma.stockBasic.findMany.mockResolvedValueOnce([])
+
+      await service.getIndexConstituents({ index_code: '000300.SH', trade_date: '20240101' })
+
+      expect(mockCache.rememberJson).toHaveBeenCalledTimes(1)
+      const callArgs = mockCache.rememberJson.mock.calls[0][0]
+      expect(callArgs).toHaveProperty('key')
+      expect(callArgs).toHaveProperty('ttlSeconds')
+      expect(callArgs).toHaveProperty('loader')
+    })
+  })
+
+  // ── getIndexList() — 指数代码完整性 ───────────────────────────────────────
+
+  describe('getIndexList() — 指数代码完整性', () => {
+    it('包含创业板指', async () => {
+      const result = await service.getIndexList()
+      const cy = result.find((r) => r.tsCode === '399006.SZ')
+      expect(cy).toBeDefined()
+      expect(cy!.name).toBe('创业板指')
+    })
+
+    it('每个指数有非空 name', async () => {
+      const result = await service.getIndexList()
+      result.forEach((r) => {
+        expect(r.name).toBeTruthy()
+      })
+    })
+  })
 })

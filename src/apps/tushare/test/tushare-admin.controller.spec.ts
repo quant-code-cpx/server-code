@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing'
-import { INestApplication, ValidationPipe, ExecutionContext } from '@nestjs/common'
+import { INestApplication, ValidationPipe, ExecutionContext, UnauthorizedException } from '@nestjs/common'
 import request from 'supertest'
 import { UserRole } from '@prisma/client'
 import { TransformInterceptor } from 'src/lifecycle/interceptors/transform.interceptor'
@@ -153,5 +153,21 @@ describe('TushareAdminController', () => {
         expect(res.body.code).toBe(SUCCESS_CODE)
         expect(res.body.data).toBeDefined()
       })
+  })
+
+  // Controller has class-level @UseGuards(RolesGuard) @Roles(SUPER_ADMIN)
+  // mockRolesGuard returning false → NestJS throws ForbiddenException → 403
+  it('[AUTH] 非 SUPER_ADMIN 访问 → 403', async () => {
+    mockRolesGuard.canActivate.mockImplementationOnce(() => false)
+    await request(app.getHttpServer()).post('/tushare/admin/plans').send({}).expect(403)
+    expect(mockTushareSyncService.getAvailableSyncPlans).not.toHaveBeenCalled()
+  })
+
+  it('[AUTH] 未认证请求 → 401', async () => {
+    mockRolesGuard.canActivate.mockImplementationOnce(() => {
+      throw new UnauthorizedException()
+    })
+    await request(app.getHttpServer()).post('/tushare/admin/plans').send({}).expect(401)
+    expect(mockTushareSyncService.getAvailableSyncPlans).not.toHaveBeenCalled()
   })
 })

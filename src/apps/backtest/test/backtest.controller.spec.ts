@@ -1,5 +1,11 @@
 import { Test, TestingModule } from '@nestjs/testing'
-import { INestApplication, ValidationPipe, ExecutionContext } from '@nestjs/common'
+import {
+  INestApplication,
+  ValidationPipe,
+  ExecutionContext,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common'
 import request from 'supertest'
 import { UserRole } from '@prisma/client'
 import { TransformInterceptor } from 'src/lifecycle/interceptors/transform.interceptor'
@@ -170,5 +176,120 @@ describe('BacktestController', () => {
         expect(res.body.code).toBe(SUCCESS_CODE)
         expect(res.body.data).toBeDefined()
       })
+  })
+
+  // ── [VAL] DTO 校验 ──────────────────────────────────────────────────────────
+
+  it('[VAL] POST /backtests/runs 缺 strategyType → 400', async () => {
+    await request(app.getHttpServer())
+      .post('/backtests/runs')
+      .send({ strategyConfig: {}, startDate: '20230101', endDate: '20231231', initialCapital: 100000 })
+      .expect(400)
+  })
+
+  it('[VAL] POST /backtests/runs 缺 startDate → 400', async () => {
+    await request(app.getHttpServer())
+      .post('/backtests/runs')
+      .send({ strategyType: 'MA_CROSS_SINGLE', strategyConfig: {}, endDate: '20231231', initialCapital: 100000 })
+      .expect(400)
+  })
+
+  it("[VAL] POST /backtests/runs startDate='2024-01-01' (含横线格式) → 400 (@Matches /^\\d{8}$/)", async () => {
+    await request(app.getHttpServer())
+      .post('/backtests/runs')
+      .send({
+        strategyType: 'MA_CROSS_SINGLE',
+        strategyConfig: {},
+        startDate: '2024-01-01',
+        endDate: '20231231',
+        initialCapital: 100000,
+      })
+      .expect(400)
+  })
+
+  it('[VAL] POST /backtests/runs initialCapital=500 (低于最小值 1000) → 400 (@Min(1000))', async () => {
+    await request(app.getHttpServer())
+      .post('/backtests/runs')
+      .send({
+        strategyType: 'MA_CROSS_SINGLE',
+        strategyConfig: {},
+        startDate: '20230101',
+        endDate: '20231231',
+        initialCapital: 500,
+      })
+      .expect(400)
+  })
+
+  it("[VAL] POST /backtests/runs strategyType='INVALID' → 400 (@IsEnum)", async () => {
+    await request(app.getHttpServer())
+      .post('/backtests/runs')
+      .send({
+        strategyType: 'INVALID',
+        strategyConfig: {},
+        startDate: '20230101',
+        endDate: '20231231',
+        initialCapital: 100000,
+      })
+      .expect(400)
+  })
+
+  // ── [ERR] 异常透传 ─────────────────────────────────────────────────────────
+
+  it('[ERR] POST /backtests/runs/detail → service 抛 NotFoundException → 404', async () => {
+    mockRunService.getRunDetail.mockRejectedValueOnce(new NotFoundException('RunId 不存在'))
+    const res = await request(app.getHttpServer())
+      .post('/backtests/runs/detail')
+      .send({ runId: 'nonexistent' })
+      .expect(404)
+    expect(res.body.code).not.toBe(0)
+  })
+})
+
+// ── [AUTH] 权限边界 ────────────────────────────────────────────────────────────
+
+describe('BacktestController ([AUTH] 权限边界)', () => {
+  let app: INestApplication
+
+  beforeAll(async () => {
+    const module: TestingModule = await Test.createTestingModule({
+      controllers: [BacktestController],
+      providers: [
+        { provide: BacktestRunService, useValue: {} },
+        { provide: BacktestStrategyRegistryService, useValue: {} },
+        { provide: BacktestWalkForwardService, useValue: {} },
+        { provide: BacktestComparisonService, useValue: {} },
+        { provide: BacktestMonteCarloService, useValue: {} },
+        { provide: BacktestAttributionService, useValue: {} },
+        { provide: BacktestCostSensitivityService, useValue: {} },
+        { provide: BacktestParamSensitivityService, useValue: {} },
+      ],
+    })
+      .overrideGuard(JwtAuthGuard)
+      .useValue({
+        canActivate: (_ctx: ExecutionContext) => {
+          throw new UnauthorizedException('用户未登录')
+        },
+      })
+      .compile()
+
+    app = module.createNestApplication()
+    app.useGlobalInterceptors(new TransformInterceptor())
+    app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }))
+    await app.init()
+  })
+
+  afterAll(() => app.close())
+
+  it('[AUTH] 未登录访问 /backtests/runs → 401', async () => {
+    await request(app.getHttpServer())
+      .post('/backtests/runs')
+      .send({
+        strategyType: 'MA_CROSS_SINGLE',
+        strategyConfig: {},
+        startDate: '20230101',
+        endDate: '20231231',
+        initialCapital: 100000,
+      })
+      .expect(401)
   })
 })

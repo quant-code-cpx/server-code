@@ -1,4 +1,4 @@
-import { INestApplication, UnauthorizedException, ValidationPipe } from '@nestjs/common'
+import { INestApplication, UnauthorizedException, NotFoundException, ValidationPipe } from '@nestjs/common'
 import { Test, TestingModule } from '@nestjs/testing'
 import { ExecutionContext } from '@nestjs/common'
 import { APP_GUARD } from '@nestjs/core'
@@ -106,10 +106,7 @@ describe('StockController (integration)', () => {
   })
 
   it('POST /stock/search → 201, data is array', async () => {
-    const res = await request(app.getHttpServer())
-      .post('/stock/search')
-      .send({ keyword: '平安' })
-      .expect(201)
+    const res = await request(app.getHttpServer()).post('/stock/search').send({ keyword: '平安' }).expect(201)
     expect(res.body.code).toBe(0)
     expect(Array.isArray(res.body.data)).toBe(true)
     expect(mockStockService.search).toHaveBeenCalledWith(expect.objectContaining({ keyword: '平安' }))
@@ -137,10 +134,7 @@ describe('StockController (integration)', () => {
 
   // @CurrentUser() reads req.user injected by the APP_GUARD mock
   it('POST /stock/screener/strategies/list → 201, calls getStrategies with user id', async () => {
-    const res = await request(app.getHttpServer())
-      .post('/stock/screener/strategies/list')
-      .send({})
-      .expect(201)
+    const res = await request(app.getHttpServer()).post('/stock/screener/strategies/list').send({}).expect(201)
     expect(res.body.code).toBe(0)
     expect(mockStockService.getStrategies).toHaveBeenCalledWith(testUser.id)
   })
@@ -152,6 +146,22 @@ describe('StockController (integration)', () => {
     })
     await request(app.getHttpServer()).post('/stock/screener/strategies/list').send({}).expect(401)
   })
+
+  // StockDetailDto requires code (@IsString @IsNotEmpty)
+  it('[VAL] POST /stock/detail 缺 code → 400', async () => {
+    await request(app.getHttpServer()).post('/stock/detail').send({}).expect(400)
+    expect(mockStockService.findOne).not.toHaveBeenCalled()
+  })
+
+  // StockDetailFinancialsDto requires tsCode (@IsString @IsNotEmpty)
+  it('[VAL] POST /stock/detail/financials 缺 tsCode → 400', async () => {
+    await request(app.getHttpServer()).post('/stock/detail/financials').send({}).expect(400)
+    expect(mockStockService.getDetailFinancials).not.toHaveBeenCalled()
+  })
+
+  it('[ERR] POST /stock/detail NotFoundException → 404', async () => {
+    mockStockService.findOne.mockRejectedValueOnce(new NotFoundException('stock not found'))
+    await request(app.getHttpServer()).post('/stock/detail').send({ code: '000001.SZ' }).expect(404)
+    expect(mockStockService.findOne).toHaveBeenCalledTimes(1)
+  })
 })
-
-

@@ -176,13 +176,31 @@ describe('StockScreenerService', () => {
     it('listDate 字段格式化为 YYYY-MM-DD 字符串', async () => {
       const prisma = buildPrismaMock()
       const rawItem = {
-        tsCode: '000001.SZ', name: '测试', industry: null,
-        listDate: new Date('2001-04-09'), latestFinDate: null,
-        peTtm: null, pb: null, dvTtm: null, totalMv: null, circMv: null,
-        turnoverRate: null, close: null, pctChg: null, amount: null,
-        revenueYoy: null, netprofitYoy: null, roe: null, grossMargin: null,
-        netMargin: null, debtToAssets: null, currentRatio: null, quickRatio: null,
-        ocfToNetprofit: null, mainNetInflow5d: null, mainNetInflow20d: null,
+        tsCode: '000001.SZ',
+        name: '测试',
+        industry: null,
+        listDate: new Date('2001-04-09'),
+        latestFinDate: null,
+        peTtm: null,
+        pb: null,
+        dvTtm: null,
+        totalMv: null,
+        circMv: null,
+        turnoverRate: null,
+        close: null,
+        pctChg: null,
+        amount: null,
+        revenueYoy: null,
+        netprofitYoy: null,
+        roe: null,
+        grossMargin: null,
+        netMargin: null,
+        debtToAssets: null,
+        currentRatio: null,
+        quickRatio: null,
+        ocfToNetprofit: null,
+        mainNetInflow5d: null,
+        mainNetInflow20d: null,
       }
       mockScreenerQueryRaw(prisma, [rawItem], 1)
       const service = createService(prisma)
@@ -235,10 +253,15 @@ describe('StockScreenerService', () => {
       const prisma = buildPrismaMock()
       prisma.screenerStrategy.findMany.mockResolvedValue([
         {
-          id: 1, userId: 1, name: '价值策略', description: '低估值',
+          id: 1,
+          userId: 1,
+          name: '价值策略',
+          description: '低估值',
           filters: { minPeTtm: 5, maxPeTtm: 15 },
-          sortBy: ScreenerSortBy.PE_TTM, sortOrder: 'asc',
-          createdAt: new Date('2025-01-01'), updatedAt: new Date('2025-01-02'),
+          sortBy: ScreenerSortBy.PE_TTM,
+          sortOrder: 'asc',
+          createdAt: new Date('2025-01-01'),
+          updatedAt: new Date('2025-01-02'),
         },
       ] as never)
 
@@ -263,9 +286,7 @@ describe('StockScreenerService', () => {
       prisma.screenerStrategy.count.mockResolvedValue(20 as never)
       const service = createService(prisma)
 
-      await expect(
-        service.createStrategy(1, { name: '新策略', filters: {} }),
-      ).rejects.toThrow(BadRequestException)
+      await expect(service.createStrategy(1, { name: '新策略', filters: {} })).rejects.toThrow(BadRequestException)
     })
 
     it('策略数量未达上限 → 创建并返回序列化策略', async () => {
@@ -282,9 +303,13 @@ describe('StockScreenerService', () => {
     it('重名策略（P2002 错误）→ 抛出 ConflictException', async () => {
       const prisma = buildPrismaMock()
       prisma.screenerStrategy.count.mockResolvedValue(0 as never)
-      const p2002Error = Object.assign(new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
-        code: 'P2002', clientVersion: '5.0.0', meta: {},
-      }))
+      const p2002Error = Object.assign(
+        new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+          code: 'P2002',
+          clientVersion: '5.0.0',
+          meta: {},
+        }),
+      )
       prisma.screenerStrategy.create.mockRejectedValue(p2002Error as never)
 
       const service = createService(prisma)
@@ -310,9 +335,7 @@ describe('StockScreenerService', () => {
       const service = createService(prisma)
 
       const result = await service.updateStrategy(1, 1, { name: '更新策略' })
-      expect(prisma.screenerStrategy.update).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { id: 1 } }),
-      )
+      expect(prisma.screenerStrategy.update).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 1 } }))
       expect(result).toHaveProperty('id')
     })
   })
@@ -336,6 +359,49 @@ describe('StockScreenerService', () => {
       const result = await service.deleteStrategy(1, 1)
       expect(prisma.screenerStrategy.delete).toHaveBeenCalledWith({ where: { id: 1 } })
       expect(result).toHaveProperty('message')
+    })
+  })
+
+  // ── screener() — 排序参数 ────────────────────────────────────────────────
+
+  describe('screener() — 排序与筛选参数', () => {
+    it('sortBy=PE_TTM 参数时 $queryRaw 仍被调用', async () => {
+      const prisma = buildPrismaMock()
+      mockScreenerQueryRaw(prisma, [], 0)
+      const service = createService(prisma)
+
+      await service.screener({ sortBy: ScreenerSortBy.PE_TTM, sortOrder: 'asc' } as StockScreenerQueryDto)
+
+      expect(prisma.$queryRaw).toHaveBeenCalledTimes(2)
+    })
+
+    it('sortBy=TOTAL_MV 参数时返回正确结构', async () => {
+      const prisma = buildPrismaMock()
+      mockScreenerQueryRaw(prisma, [], 5)
+      const service = createService(prisma)
+
+      const result = await service.screener({
+        sortBy: ScreenerSortBy.TOTAL_MV,
+        sortOrder: 'desc',
+      } as StockScreenerQueryDto)
+
+      expect(result).toHaveProperty('items')
+      expect(result.total).toBe(5)
+    })
+
+    it('带数值筛选条件时仅调用两次 $queryRaw（count + items）', async () => {
+      const prisma = buildPrismaMock()
+      mockScreenerQueryRaw(prisma, [], 0)
+      const service = createService(prisma)
+
+      await service.screener({
+        peTtmMin: 5,
+        peTtmMax: 20,
+        pbMin: 0.5,
+        pbMax: 3.0,
+      } as StockScreenerQueryDto)
+
+      expect(prisma.$queryRaw).toHaveBeenCalledTimes(2)
     })
   })
 })

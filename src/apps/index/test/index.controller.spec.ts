@@ -57,4 +57,19 @@ describe('IndexController (integration)', () => {
         expect(res.body.code).toBe(0)
         expect(mockIndexService.getIndexConstituents).toHaveBeenCalled()
       }))
+
+  // IndexDailyQueryDto.ts_code uses @IsString() (required, no @IsOptional)
+  it('[VAL] POST /index/daily 缺 ts_code → 400', () =>
+    request(app.getHttpServer()).post('/index/daily').send({}).expect(400))
+
+  // start_date uses @IsOptional() @Matches(/^\d{8}$/) — hyphen format fails even when optional
+  it('[VAL] POST /index/daily start_date 含横线格式 → 400', () =>
+    request(app.getHttpServer())
+      .post('/index/daily')
+      .send({ ts_code: '000300.SH', start_date: '2026-01-01' })
+      .expect(400))
+
+  // IndexConstituentsQueryDto.index_code uses @IsString() (required, no @IsOptional)
+  it('[VAL] POST /index/constituents 缺 index_code → 400', () =>
+    request(app.getHttpServer()).post('/index/constituents').send({}).expect(400))
 })

@@ -19,7 +19,7 @@ import {
 } from '@nestjs/common'
 import { Test, TestingModule } from '@nestjs/testing'
 import { Reflector } from '@nestjs/core'
-import * as request from 'supertest'
+import request from 'supertest'
 import { TransformInterceptor } from 'src/lifecycle/interceptors/transform.interceptor'
 import { GlobalExceptionsFilter } from 'src/lifecycle/filters/global.exception'
 import { RolesGuard } from 'src/lifecycle/guard/roles.guard'

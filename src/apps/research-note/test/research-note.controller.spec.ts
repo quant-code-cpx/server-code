@@ -1,4 +1,4 @@
-import { INestApplication, ExecutionContext, ValidationPipe } from '@nestjs/common'
+import { INestApplication, ExecutionContext, ValidationPipe, NotFoundException, UnauthorizedException } from '@nestjs/common'
 import { Test, TestingModule } from '@nestjs/testing'
 import request from 'supertest'
 import { JwtAuthGuard } from 'src/lifecycle/guard/jwt-auth.guard'
@@ -112,4 +112,30 @@ describe('ResearchNoteController (integration)', () => {
       .expect((res) => {
         expect(res.body.data.message).toBe('删除成功')
       }))
+
+  // CreateResearchNoteDto: title required (@IsString @MinLength(1) @MaxLength(100))
+  it('[VAL] POST /research-note/create 缺 title → 400', () =>
+    request(app.getHttpServer())
+      .post('/research-note/create')
+      .send({ content: '内容' })
+      .expect(400))
+
+  // CreateResearchNoteDto: content required (@IsString @MinLength(1) @MaxLength(10000))
+  it('[VAL] POST /research-note/create 缺 content → 400', () =>
+    request(app.getHttpServer())
+      .post('/research-note/create')
+      .send({ title: '标题' })
+      .expect(400))
+
+  it('[ERR] POST /research-note/detail NotFoundException → 404', async () => {
+    mockService.findOne.mockRejectedValueOnce(new NotFoundException('note not found'))
+    await request(app.getHttpServer()).post('/research-note/detail').send({ id: 999 }).expect(404)
+  })
+
+  it('[AUTH] 未认证请求 → 401', async () => {
+    mockJwtGuard.canActivate.mockImplementationOnce(() => {
+      throw new UnauthorizedException()
+    })
+    await request(app.getHttpServer()).post('/research-note/list').send({}).expect(401)
+  })
 })

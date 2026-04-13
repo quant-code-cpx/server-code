@@ -131,4 +131,33 @@ describe('HeatmapService', () => {
       expect(item).toHaveProperty('amount')
     })
   })
+
+  // ── resolveTradeDate() — 时区说明 ────────────────────────────────────────
+
+  describe('resolveTradeDate() — 本地时区解析细节', () => {
+    it('YYYYMMDD 解析使用本地时区 new Date(y, m, d)', async () => {
+      const result = await service.resolveTradeDate('20240229') // 2024 是闰年
+
+      expect(result).toBeInstanceOf(Date)
+      expect(result.getFullYear()).toBe(2024)
+      expect(result.getMonth()).toBe(1) // February（0-indexed）
+      expect(result.getDate()).toBe(29)
+    })
+
+    it('解析不同月份边界：月末最后一天', async () => {
+      const result = await service.resolveTradeDate('20241231')
+
+      expect(result.getFullYear()).toBe(2024)
+      expect(result.getMonth()).toBe(11) // December
+      expect(result.getDate()).toBe(31)
+    })
+
+    it('解析一月一日', async () => {
+      const result = await service.resolveTradeDate('20240101')
+
+      expect(result.getFullYear()).toBe(2024)
+      expect(result.getMonth()).toBe(0) // January
+      expect(result.getDate()).toBe(1)
+    })
+  })
 })

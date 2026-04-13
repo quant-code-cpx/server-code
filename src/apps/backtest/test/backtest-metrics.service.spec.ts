@@ -340,4 +340,72 @@ describe('BacktestMetricsService', () => {
       expect(result.calmarRatio).toBeGreaterThan(0)
     })
   })
+
+  // ── maxDrawdown: 先涨后跌的精确值验证 ──────────────────────────────────────
+
+  describe('[BIZ] maxDrawdown 精确值', () => {
+    it('[BIZ] 先涨至 1.2 再跌至 0.9 → maxDrawdown ≈ -0.25', () => {
+      // NAV: 1.0 → 1.2 → 0.9; peak=1.2; drawdown at 0.9 = 0.9/1.2 - 1 = -0.25
+      const navs: DailyNavRecord[] = [
+        buildNav({ nav: 1.0, dailyReturn: 0, drawdown: 0 }),
+        buildNav({ nav: 1.2, dailyReturn: 0.2, drawdown: 0 }),
+        buildNav({ nav: 0.9, dailyReturn: -0.25, drawdown: 0.9 / 1.2 - 1 }),
+      ]
+      const result = service.computeMetrics(navs, [], baseConfig)
+      expect(result.maxDrawdown).toBeCloseTo(-0.25, 4)
+    })
+
+    it('[BIZ] 先跌后涨（从未超过起始值）→ maxDrawdown 等于第一跌的幅度', () => {
+      // NAV: 1.0 → 0.8 → 0.9; peak=1.0; drawdown at 0.8 = 0.8/1.0 - 1 = -0.2
+      const navs: DailyNavRecord[] = [
+        buildNav({ nav: 1.0, dailyReturn: 0, drawdown: 0 }),
+        buildNav({ nav: 0.8, dailyReturn: -0.2, drawdown: -0.2 }),
+        buildNav({ nav: 0.9, dailyReturn: 0.125, drawdown: -0.1 }),
+      ]
+      const result = service.computeMetrics(navs, [], baseConfig)
+      expect(result.maxDrawdown).toBeCloseTo(-0.2, 4)
+    })
+  })
+
+  // ── 总收益率精确值 ──────────────────────────────────────────────────────────
+
+  describe('[BIZ] totalReturn 精确值', () => {
+    it('[BIZ] 简单两日序列：1.0 → 1.1 → totalReturn = 0.1', () => {
+      const navs: DailyNavRecord[] = [
+        buildNav({ nav: 1.0, benchmarkNav: 1.0, dailyReturn: 0, benchmarkReturn: 0 }),
+        buildNav({ nav: 1.1, benchmarkNav: 1.05, dailyReturn: 0.1, benchmarkReturn: 0.05 }),
+      ]
+      const result = service.computeMetrics(navs, [], baseConfig)
+      expect(result.totalReturn).toBeCloseTo(0.1, 6)
+      expect(result.benchmarkReturn).toBeCloseTo(0.05, 6)
+      expect(result.excessReturn).toBeCloseTo(0.05, 6)
+    })
+
+    it('[BIZ] NAV 下跌：1.0 → 0.8 → totalReturn = -0.2', () => {
+      const navs: DailyNavRecord[] = [
+        buildNav({ nav: 1.0, benchmarkNav: 1.0, dailyReturn: 0, benchmarkReturn: 0 }),
+        buildNav({ nav: 0.8, benchmarkNav: 1.0, dailyReturn: -0.2, benchmarkReturn: 0 }),
+      ]
+      const result = service.computeMetrics(navs, [], baseConfig)
+      expect(result.totalReturn).toBeCloseTo(-0.2, 6)
+    })
+  })
+
+  // ── 信息比率 ──────────────────────────────────────────────────────────────
+
+  describe('[BIZ] informationRatio', () => {
+    it('[BIZ] 策略与基准完全一致 → informationRatio = 0（超额无波动）', () => {
+      const r = 0.001
+      const navs = buildNavSequence(r, r, 252)
+      const result = service.computeMetrics(navs, [], baseConfig)
+      // excessSeries 全为 0，excessStd=0 → IR=0
+      expect(result.informationRatio).toBe(0)
+    })
+
+    it('[BIZ] 策略持续跑赢基准 → informationRatio > 0', () => {
+      const navs = buildNavSequence(0.002, 0.001, 252)
+      const result = service.computeMetrics(navs, [], baseConfig)
+      expect(result.informationRatio).toBeGreaterThan(0)
+    })
+  })
 })

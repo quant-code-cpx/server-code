@@ -1,6 +1,6 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common'
 import { Test, TestingModule } from '@nestjs/testing'
-import * as request from 'supertest'
+import request from 'supertest'
 import { AuthController } from '../auth.controller'
 import { AuthService } from '../auth.service'
 import { JwtAuthGuard } from 'src/lifecycle/guard/jwt-auth.guard'

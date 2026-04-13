@@ -6,27 +6,36 @@
  * - login(): 验证码错误 → INVALID_CAPTCHA；账号锁定 → INVALID_USERNAME_PASSWORD；
  *   用户不存在 / 密码错误 → INVALID_USERNAME_PASSWORD；账号禁用 → USER_DISABLED；
  *   登录成功 → 返回 token 对象，且清空失败计数（调用 redis.del）
+ *   [BIZ] 连续失败 LOGIN_MAX_FAIL 次触发账号锁定；低于上限不触发
+ *   [BIZ] 验证码大小写不敏感；账号/密码为纯空格等同于未传
  * - refreshToken(): 无效 token → INVALID_REFRESH_TOKEN；用户禁用 → USER_DISABLED；
- *   宽限期 → 只返回新 accessToken；正常轮换 → 返回完整 token 对
+ *   宽限期 → 只返回新 accessToken；正常轮换 → 返回完整 token 对；
+ *   [BIZ] 用户不存在 / 被禁用 → USER_DISABLED（即使在宽限期内）
  * - logout(): 将 accessToken 加入黑名单；如有 refreshToken 则同步撤销
  */
 
 import * as svgCaptcha from 'svg-captcha'
-import * as bcrypt from 'bcrypt'
 import { UserStatus } from '@prisma/client'
 import { AuthService } from '../auth.service'
 import { PrismaService } from 'src/shared/prisma.service'
 import { TokenService } from 'src/shared/token.service'
 import { BusinessException } from 'src/common/exceptions/business.exception'
-import { ErrorEnum } from 'src/constant/response-code.constant'
+import { LOGIN_MAX_FAIL } from 'src/constant/auth.constant'
 
-// ── 模块级 mock（必须在 import 之前声明，但 jest.mock 会被提升）─────────────────
+// ── 模块级 mock（必须在 import 之前声明，jest.mock 会被提升）─────────────────
 jest.mock('svg-captcha', () => ({
   create: jest.fn(() => ({ text: 'abcd', data: '<svg>mock</svg>' })),
 }))
 
 jest.mock('nanoid', () => ({
   nanoid: jest.fn(() => 'mock-captcha-id'),
+}))
+
+// bcrypt 使用模块级 mock 避免 Node.js 24 的 defineProperty 限制
+jest.mock('bcrypt', () => ({
+  compare: jest.fn(),
+  hash: jest.fn(),
+  genSalt: jest.fn(),
 }))
 
 // ── mock 工厂 ─────────────────────────────────────────────────────────────────
@@ -88,21 +97,19 @@ function buildLoginDto(overrides: Record<string, string> = {}) {
   }
 }
 
+// bcrypt mock accessor（与模块级 jest.mock 配合使用）
+import * as bcryptMocked from 'bcrypt'
+const bcryptCompare = bcryptMocked.compare as jest.Mock
+
 // ══════════════════════════════════════════════════════════════════════════════
 // 测试套件
 // ══════════════════════════════════════════════════════════════════════════════
 
 describe('AuthService', () => {
-  let bcryptCompareSpy: jest.SpyInstance
-
   beforeEach(() => {
     jest.clearAllMocks()
     // 默认：密码校验通过
-    bcryptCompareSpy = jest.spyOn(bcrypt, 'compare').mockResolvedValue(true as never)
-  })
-
-  afterEach(() => {
-    bcryptCompareSpy.mockRestore()
+    bcryptCompare.mockResolvedValue(true)
   })
 
   // ── generateCaptcha ────────────────────────────────────────────────────────
@@ -211,7 +218,7 @@ describe('AuthService', () => {
         lastLoginAt: null,
       } as never)
 
-      bcryptCompareSpy.mockResolvedValue(false as never) // 密码不匹配
+      bcryptCompare.mockResolvedValue(false) // 密码不匹配
 
       const service = createService(prisma, undefined, redis)
       await expect(service.login(buildLoginDto())).rejects.toThrow(BusinessException)
@@ -235,7 +242,7 @@ describe('AuthService', () => {
         lastLoginAt: null,
       } as never)
 
-      bcryptCompareSpy.mockResolvedValue(true as never)
+      bcryptCompare.mockResolvedValue(true)
 
       const service = createService(prisma, undefined, redis)
 
@@ -271,7 +278,7 @@ describe('AuthService', () => {
 
       const prisma = buildPrismaMock()
       prisma.user.findUnique.mockResolvedValue(buildActiveUser() as never)
-      bcryptCompareSpy.mockResolvedValue(true as never)
+      bcryptCompare.mockResolvedValue(true)
 
       const service = createService(prisma, undefined, redis)
       const result = await service.login(buildLoginDto())
@@ -291,7 +298,7 @@ describe('AuthService', () => {
 
       const prisma = buildPrismaMock()
       prisma.user.findUnique.mockResolvedValue(buildActiveUser() as never)
-      bcryptCompareSpy.mockResolvedValue(true as never)
+      bcryptCompare.mockResolvedValue(true)
 
       const service = createService(prisma, undefined, redis)
       await service.login(buildLoginDto())
@@ -307,7 +314,7 @@ describe('AuthService', () => {
 
       const prisma = buildPrismaMock()
       prisma.user.findUnique.mockResolvedValue(buildActiveUser() as never)
-      bcryptCompareSpy.mockResolvedValue(true as never)
+      bcryptCompare.mockResolvedValue(true)
 
       const service = createService(prisma, undefined, redis)
       await service.login(buildLoginDto())
@@ -409,6 +416,202 @@ describe('AuthService', () => {
       await expect(service.logout('access-token', 'expired-refresh-token')).resolves.toBeUndefined()
       expect(tokenService.blacklistAccessToken).toHaveBeenCalled()
       expect(tokenService.deleteRefreshToken).not.toHaveBeenCalled()
+    })
+  })
+
+  // ── login: 账号锁定机制（边界）──────────────────────────────────────────────
+
+  describe('[BIZ] login() 连续失败锁定机制', () => {
+    /** 构建验证码正确、账号存在、密码错误的场景 */
+    function buildWrongPasswordScenario() {
+      const redis = buildRedisMock()
+      redis.getDel.mockResolvedValue('abcd')
+      redis.exists.mockResolvedValue(0)
+      const prisma = buildPrismaMock()
+      prisma.user.findUnique.mockResolvedValue({
+        id: 1,
+        account: 'admin',
+        password: '$2b$10$hashedpassword',
+        status: UserStatus.ACTIVE,
+        nickname: 'Admin',
+        role: 'ADMIN',
+        lastLoginAt: null,
+      } as never)
+      bcryptCompare.mockResolvedValue(false)
+      return { redis, prisma }
+    }
+
+    it('[BIZ] 连续失败次数低于上限（LOGIN_MAX_FAIL-1）时不触发锁定', async () => {
+      const { redis, prisma } = buildWrongPasswordScenario()
+      redis.incr.mockResolvedValue(LOGIN_MAX_FAIL - 1)
+      const service = createService(prisma, undefined, redis)
+
+      await expect(service.login(buildLoginDto())).rejects.toThrow(BusinessException)
+      // incr 应被调用
+      expect(redis.incr).toHaveBeenCalled()
+      // 未达到上限，不应设置锁定 key
+      const setCallArgs = (redis.set as jest.Mock).mock.calls.map((c) => c[0] as string)
+      expect(setCallArgs.every((k) => !k.includes('lock'))).toBe(true)
+    })
+
+    it('[BIZ] 连续失败次数达到 LOGIN_MAX_FAIL 时触发账号锁定（设置 lock key）', async () => {
+      const { redis, prisma } = buildWrongPasswordScenario()
+      redis.incr.mockResolvedValue(LOGIN_MAX_FAIL)
+      const service = createService(prisma, undefined, redis)
+
+      await expect(service.login(buildLoginDto())).rejects.toThrow(BusinessException)
+      // 应设置锁定 key
+      const setCallArgs = (redis.set as jest.Mock).mock.calls.map((c) => c[0] as string)
+      expect(setCallArgs.some((k) => k.includes('lock'))).toBe(true)
+    })
+
+    it('[BIZ] 锁定后同时删除失败计数 key', async () => {
+      const { redis, prisma } = buildWrongPasswordScenario()
+      redis.incr.mockResolvedValue(LOGIN_MAX_FAIL)
+      const service = createService(prisma, undefined, redis)
+
+      await expect(service.login(buildLoginDto())).rejects.toThrow(BusinessException)
+      // lock 触发后应删除 fail key
+      const delCallArgs = (redis.del as jest.Mock).mock.calls.map((c) => c[0] as string)
+      expect(delCallArgs.some((k) => k.includes('fail'))).toBe(true)
+    })
+
+    it('[BIZ] 首次失败时为 fail key 设置过期时间（expire）', async () => {
+      const { redis, prisma } = buildWrongPasswordScenario()
+      redis.incr.mockResolvedValue(1) // 第一次失败
+      const service = createService(prisma, undefined, redis)
+
+      await expect(service.login(buildLoginDto())).rejects.toThrow(BusinessException)
+      expect(redis.expire).toHaveBeenCalled()
+    })
+
+    it('[BIZ] 非首次失败（count>1）时不重复设置 expire', async () => {
+      const { redis, prisma } = buildWrongPasswordScenario()
+      redis.incr.mockResolvedValue(3) // 第三次失败
+      const service = createService(prisma, undefined, redis)
+
+      await expect(service.login(buildLoginDto())).rejects.toThrow(BusinessException)
+      expect(redis.expire).not.toHaveBeenCalled()
+    })
+  })
+
+  // ── login: 输入规范化边界 ───────────────────────────────────────────────────
+
+  describe('[EDGE] login() 输入规范化', () => {
+    it('[EDGE] 账号为纯空格时等同于未传账号 → 抛出 BusinessException', async () => {
+      const redis = buildRedisMock()
+      redis.getDel.mockResolvedValue('abcd')
+      redis.exists.mockResolvedValue(0)
+      const service = createService(undefined, undefined, redis)
+
+      await expect(service.login(buildLoginDto({ account: '   ' }))).rejects.toThrow(BusinessException)
+    })
+
+    it('[EDGE] 密码为空字符串时 → 抛出 BusinessException', async () => {
+      const redis = buildRedisMock()
+      redis.getDel.mockResolvedValue('abcd')
+      redis.exists.mockResolvedValue(0)
+      const service = createService(undefined, undefined, redis)
+
+      await expect(service.login(buildLoginDto({ password: '' }))).rejects.toThrow(BusinessException)
+    })
+
+    it('[BIZ] 验证码大小写不敏感：提交大写仍通过（Redis 存小写）', async () => {
+      const redis = buildRedisMock()
+      // Redis 存储的是小写 'abcd'
+      redis.getDel.mockResolvedValue('abcd')
+      redis.exists.mockResolvedValue(0)
+
+      const prisma = buildPrismaMock()
+      prisma.user.findUnique.mockResolvedValue({
+        id: 1,
+        account: 'admin',
+        password: '$2b$10$hashedpassword',
+        status: UserStatus.ACTIVE,
+        nickname: 'Admin',
+        role: 'ADMIN',
+        lastLoginAt: null,
+      } as never)
+      bcryptCompare.mockResolvedValue(true)
+
+      const service = createService(prisma, undefined, redis)
+      // 提交大写 'ABCD'，应与存储的 'abcd' 匹配
+      const result = await service.login(buildLoginDto({ captchaCode: 'ABCD' }))
+      expect(result).toHaveProperty('accessToken')
+    })
+
+    it('[EDGE] captchaId 含前后空格时被 trim 处理', async () => {
+      const redis = buildRedisMock()
+      // 模拟 getDel 对 trimmed key 返回值
+      redis.getDel.mockResolvedValue('abcd')
+      redis.exists.mockResolvedValue(0)
+
+      const prisma = buildPrismaMock()
+      prisma.user.findUnique.mockResolvedValue({
+        id: 1,
+        account: 'admin',
+        password: '$2b$10$hashedpassword',
+        status: UserStatus.ACTIVE,
+        nickname: 'Admin',
+        role: 'ADMIN',
+        lastLoginAt: null,
+      } as never)
+      bcryptCompare.mockResolvedValue(true)
+
+      const service = createService(prisma, undefined, redis)
+      // captchaId 有前后空格
+      const result = await service.login(buildLoginDto({ captchaId: '  mock-captcha-id  ' }))
+      expect(result).toHaveProperty('accessToken')
+    })
+  })
+
+  // ── refreshToken: 用户状态边界 ──────────────────────────────────────────────
+
+  describe('[BIZ] refreshToken() 用户状态边界', () => {
+    it('[BIZ] 用户已从数据库删除（findUnique 返回 null）→ 抛出 USER_DISABLED', async () => {
+      const prisma = buildPrismaMock()
+      prisma.user.findUnique.mockResolvedValue(null)
+
+      const tokenService = buildTokenServiceMock()
+      tokenService.verifyRefreshToken.mockResolvedValue({ id: 1, account: 'admin', jti: 'jti1' } as never)
+      tokenService.isRefreshTokenValid.mockResolvedValue('valid' as never)
+
+      const service = createService(prisma, tokenService)
+      await expect(service.refreshToken('valid-token')).rejects.toThrow(BusinessException)
+    })
+
+    it('[BIZ] 宽限期内用户账号被禁用 → 也应抛出 BusinessException（不允许续签）', async () => {
+      const prisma = buildPrismaMock()
+      prisma.user.findUnique.mockResolvedValue({
+        id: 1,
+        account: 'admin',
+        status: UserStatus.DEACTIVATED,
+        nickname: 'Admin',
+        role: 'ADMIN',
+      } as never)
+
+      const tokenService = buildTokenServiceMock()
+      tokenService.verifyRefreshToken.mockResolvedValue({ id: 1, account: 'admin', jti: 'jti1' } as never)
+      tokenService.isRefreshTokenValid.mockResolvedValue('grace' as never)
+
+      const service = createService(prisma, tokenService)
+      // 宽限期内但用户已被禁用，不得返回新 token
+      await expect(service.refreshToken('grace-token')).rejects.toThrow(BusinessException)
+    })
+  })
+
+  // ── logout: 边界场景 ────────────────────────────────────────────────────────
+
+  describe('[EDGE] logout() 边界场景', () => {
+    it('[EDGE] 仅传入 accessToken（无 refreshToken）→ 只调用 blacklistAccessToken，不尝试撤销 RT', async () => {
+      const tokenService = buildTokenServiceMock()
+      const service = createService(undefined, tokenService)
+
+      await service.logout('only-access-token')
+
+      expect(tokenService.blacklistAccessToken).toHaveBeenCalledWith('only-access-token')
+      expect(tokenService.deleteRefreshToken).not.toHaveBeenCalled()
+      expect(tokenService.verifyRefreshToken).not.toHaveBeenCalled()
     })
   })
 })

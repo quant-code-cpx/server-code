@@ -1,6 +1,6 @@
 import { INestApplication, ExecutionContext, ValidationPipe, ForbiddenException, UnauthorizedException } from '@nestjs/common'
 import { Test, TestingModule } from '@nestjs/testing'
-import * as request from 'supertest'
+import request from 'supertest'
 import { Reflector } from '@nestjs/core'
 import { UserRole } from '@prisma/client'
 import { TransformInterceptor } from 'src/lifecycle/interceptors/transform.interceptor'

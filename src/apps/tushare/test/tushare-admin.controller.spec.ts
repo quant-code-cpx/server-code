@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing'
 import { INestApplication, ValidationPipe, ExecutionContext } from '@nestjs/common'
-import * as request from 'supertest'
+import request from 'supertest'
 import { UserRole } from '@prisma/client'
 import { TransformInterceptor } from 'src/lifecycle/interceptors/transform.interceptor'
 import { JwtAuthGuard } from 'src/lifecycle/guard/jwt-auth.guard'
@@ -11,6 +11,7 @@ import { DataQualityService } from 'src/tushare/sync/quality/data-quality.servic
 import { CrossTableCheckService } from 'src/tushare/sync/quality/cross-table-check.service'
 import { AutoRepairService } from 'src/tushare/sync/quality/auto-repair.service'
 import { SyncLogService } from 'src/tushare/sync/sync-log.service'
+import { SyncStatusOverviewService } from 'src/tushare/sync/sync-status-overview.service'
 import { PrismaService } from 'src/shared/prisma.service'
 
 const superAdminUser = { id: 1, account: 'admin', nickname: 'Admin', role: UserRole.SUPER_ADMIN, jti: 'jti-1' }
@@ -54,6 +55,10 @@ const mockSyncLogService = {
   summarizeLogs: jest.fn(),
 }
 
+const mockSyncStatusOverviewService = {
+  getOverview: jest.fn(),
+}
+
 const mockPrismaService = {
   tushareSyncRetryQueue: {
     count: jest.fn(),
@@ -79,6 +84,7 @@ describe('TushareAdminController', () => {
         { provide: CrossTableCheckService, useValue: mockCrossTableCheckService },
         { provide: AutoRepairService, useValue: mockAutoRepairService },
         { provide: SyncLogService, useValue: mockSyncLogService },
+        { provide: SyncStatusOverviewService, useValue: mockSyncStatusOverviewService },
         { provide: PrismaService, useValue: mockPrismaService },
       ],
     })

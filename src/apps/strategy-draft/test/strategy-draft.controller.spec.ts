@@ -1,6 +1,6 @@
 import { INestApplication, ExecutionContext, ValidationPipe } from '@nestjs/common'
 import { Test, TestingModule } from '@nestjs/testing'
-import * as request from 'supertest'
+import request from 'supertest'
 import { JwtAuthGuard } from 'src/lifecycle/guard/jwt-auth.guard'
 import { TransformInterceptor } from 'src/lifecycle/interceptors/transform.interceptor'
 import { UserRole } from '@prisma/client'

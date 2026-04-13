@@ -246,5 +246,111 @@ describe('PortfolioService', () => {
       expect(result.todayPnl).toBe(0)
       expect(result.byHolding).toHaveLength(0)
     })
+
+    it('[BIZ] 无最新交易日（tradeCal 无数据）→ 返回 tradeDate: null, todayPnl: 0', async () => {
+      const prisma = buildPrismaMock()
+      const cache = buildCacheMock()
+      prisma.portfolio.findUnique.mockResolvedValue(buildPortfolio({ userId: 10 }))
+      prisma.tradeCal.findFirst.mockResolvedValue(null) // 无交易日历
+
+      const svc = createService(prisma, cache)
+      const result = await svc.getPnlToday('portfolio-001', 10)
+
+      expect(result.tradeDate).toBeNull()
+      expect(result.todayPnl).toBe(0)
+      expect(result.byHolding).toHaveLength(0)
+    })
+
+    it('[BIZ] 持仓全部停牌（无行情）→ todayPnl=0, byHolding 中 pctChg 和 todayPnl 为 null', async () => {
+      const prisma = buildPrismaMock()
+      const cache = buildCacheMock()
+      const tradeDate = new Date()
+      prisma.portfolio.findUnique.mockResolvedValue(buildPortfolio({ userId: 10 }))
+      prisma.tradeCal.findFirst.mockResolvedValue({ calDate: tradeDate })
+      prisma.portfolioHolding.findMany.mockResolvedValue([buildHolding()])
+      // 无行情（停牌）
+      prisma.daily.findMany.mockResolvedValue([])
+
+      const svc = createService(prisma, cache)
+      const result = await svc.getPnlToday('portfolio-001', 10)
+
+      expect(result.todayPnl).toBe(0)
+      expect(result.byHolding).toHaveLength(1)
+      expect(result.byHolding[0].pctChg).toBeNull()
+      expect(result.byHolding[0].todayPnl).toBeNull()
+    })
+
+    it('[BIZ] 持仓有行情 → todayPnl 为正确计算值', async () => {
+      const prisma = buildPrismaMock()
+      const cache = buildCacheMock()
+      const tradeDate = new Date()
+      prisma.portfolio.findUnique.mockResolvedValue(buildPortfolio({ userId: 10 }))
+      prisma.tradeCal.findFirst.mockResolvedValue({ calDate: tradeDate })
+      prisma.portfolioHolding.findMany.mockResolvedValue([buildHolding({ quantity: 100, tsCode: '000001.SZ' })])
+      // 收盘价 10 元，涨幅 2%
+      prisma.daily.findMany.mockResolvedValue([
+        { tsCode: '000001.SZ', close: new Decimal('10.00'), pctChg: new Decimal('2.00') },
+      ])
+
+      const svc = createService(prisma, cache)
+      const result = await svc.getPnlToday('portfolio-001', 10)
+
+      // todayPnl = 1000 * (2/100) = 20
+      expect(result.todayPnl).toBeCloseTo(20, 5)
+      expect(result.byHolding[0].pctChg).toBeCloseTo(2, 5)
+    })
+  })
+
+  // ─── addHolding: 加权平均成本精确值 ───────────────────────────────────────────
+
+  describe('[BIZ] addHolding() 加权平均成本精确值', () => {
+    it('[BIZ] 100股@10 + 200股@15 → 加权平均成本 = (1000+3000)/300 ≈ 13.333', async () => {
+      const prisma = buildPrismaMock()
+      prisma.portfolio.findUnique.mockResolvedValue(buildPortfolio({ userId: 10 }))
+      prisma.stockBasic.findFirst.mockResolvedValue({ name: '测试股票' })
+      prisma.portfolioHolding.findUnique.mockResolvedValue(
+        buildHolding({ quantity: 100, avgCost: new Decimal('10.00') }),
+      )
+      const updatedHolding = buildHolding({ quantity: 300, avgCost: new Decimal('13.333333') })
+      prisma.portfolioHolding.update.mockResolvedValue(updatedHolding)
+
+      const svc = createService(prisma)
+      await svc.addHolding({ portfolioId: 'portfolio-001', tsCode: '000001.SZ', quantity: 200, avgCost: 15.0 }, 10)
+
+      const updateCall = prisma.portfolioHolding.update.mock.calls[0][0]
+      expect(updateCall.data.quantity).toBe(300)
+      // 加权平均 = (100*10 + 200*15)/300 = 13.333...
+      expect(Number(updateCall.data.avgCost)).toBeCloseTo(13.333, 3)
+    })
+
+    it('[BIZ] 100股@10 + 100股@20 → 加权平均成本精确为 15.00', async () => {
+      const prisma = buildPrismaMock()
+      prisma.portfolio.findUnique.mockResolvedValue(buildPortfolio({ userId: 10 }))
+      prisma.stockBasic.findFirst.mockResolvedValue({ name: '测试股票' })
+      prisma.portfolioHolding.findUnique.mockResolvedValue(
+        buildHolding({ quantity: 100, avgCost: new Decimal('10.00') }),
+      )
+      prisma.portfolioHolding.update.mockResolvedValue(buildHolding({ quantity: 200 }))
+
+      const svc = createService(prisma)
+      await svc.addHolding({ portfolioId: 'portfolio-001', tsCode: '000001.SZ', quantity: 100, avgCost: 20.0 }, 10)
+
+      const updateCall = prisma.portfolioHolding.update.mock.calls[0][0]
+      expect(updateCall.data.quantity).toBe(200)
+      expect(Number(updateCall.data.avgCost)).toBeCloseTo(15.0, 5)
+    })
+  })
+
+  // ─── assertOwner: 权限边界 ─────────────────────────────────────────────────────
+
+  describe('[SEC] assertOwner() 权限边界', () => {
+    it('[SEC] userId 与 portfolio.userId 差 1 时也应抛出 ForbiddenException', async () => {
+      const prisma = buildPrismaMock()
+      prisma.portfolio.findUnique.mockResolvedValue(buildPortfolio({ userId: 11 }))
+
+      const svc = createService(prisma)
+      // 请求方是 userId=10，但 portfolio 属于 userId=11
+      await expect(svc.assertOwner('portfolio-001', 10)).rejects.toThrow(ForbiddenException)
+    })
   })
 })

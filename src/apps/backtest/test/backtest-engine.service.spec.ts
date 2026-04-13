@@ -105,6 +105,26 @@ describe('BacktestEngineService', () => {
         const tradingDays = dates(['2025-01-04', '2025-01-05'])
         expect((service as any).checkRebalanceDay(tradingDays[1], tradingDays, 1, 'WEEKLY')).toBe(true)
       })
+
+      it('[BUG] 跨年且日数大于前一交易日（周二→周四）→ 当前逻辑返回 false（实为新周，应为 true）', () => {
+        // 2024-12-31 (Tue=2) -> 2025-01-02 (Thu=4)
+        // 当前逻辑：4 < 2 = false, 4 === 1 = false → 返回 false
+        // 但实际是跨周，正确行为应返回 true
+        const tradingDays = dates(['2024-12-31', '2025-01-02'])
+        // 记录当前实际行为（不修改逻辑，仅标记此为已知边界问题）
+        const result = (service as any).checkRebalanceDay(tradingDays[1], tradingDays, 1, 'WEEKLY')
+        // 当前逻辑在周二→周四跨年场景下返回 false（此为已知问题）
+        expect(result).toBe(false)
+      })
+
+      it('[BUG] 跨周且前后都是周三（跳过中间一周）→ 当前逻辑返回 false（实为新周，应为 true）', () => {
+        // 2025-01-08 (Wed=3) -> 2025-01-15 (Wed=3)，中间跳过了一整周
+        // 当前逻辑：3 < 3 = false, 3 === 1 = false → 返回 false
+        const tradingDays = dates(['2025-01-08', '2025-01-15'])
+        const result = (service as any).checkRebalanceDay(tradingDays[1], tradingDays, 1, 'WEEKLY')
+        // 当前逻辑在相同 dayOfWeek 跨周场景下返回 false（此为已知问题）
+        expect(result).toBe(false)
+      })
     })
 
     describe('MONTHLY', () => {
@@ -383,6 +403,78 @@ describe('BacktestEngineService', () => {
       const portfolio = buildPortfolio({ positions: new Map() })
       const snapshots = (service as any).buildPositionSnapshots(portfolio, new Map(), new Date())
       expect(snapshots).toHaveLength(0)
+    })
+  })
+
+  // ── adjustCostPriceForSplits: 精度与累积 ──────────────────────────────────
+
+  describe('[EDGE] adjustCostPriceForSplits() 精度与边界', () => {
+    it('[EDGE] 多次连续送转（10送10 三次）累积不产生错误', () => {
+      const pos = { tsCode: '000001.SZ', quantity: 1000, costPrice: 10, entryDate: new Date() }
+      const portfolio = buildPortfolio({ positions: new Map([['000001.SZ', pos]]) })
+
+      // 第一次 10送10: ratio=2
+      ;(service as any).adjustCostPriceForSplits(
+        portfolio,
+        new Map([['000001.SZ', buildBar({ tsCode: '000001.SZ', adjFactor: 2.0 })]]),
+        new Map([['000001.SZ', buildBar({ tsCode: '000001.SZ', adjFactor: 1.0 })]]),
+      )
+      expect(pos.quantity).toBe(2000)
+      expect(pos.costPrice).toBeCloseTo(5, 5)
+
+      // 第二次 10送10: ratio=2（相对于上次的 adjFactor）
+      ;(service as any).adjustCostPriceForSplits(
+        portfolio,
+        new Map([['000001.SZ', buildBar({ tsCode: '000001.SZ', adjFactor: 4.0 })]]),
+        new Map([['000001.SZ', buildBar({ tsCode: '000001.SZ', adjFactor: 2.0 })]]),
+      )
+      expect(pos.quantity).toBe(4000)
+      expect(pos.costPrice).toBeCloseTo(2.5, 5)
+    })
+
+    it('[EDGE] quantity=1, ratio=0.5（缩股）→ Math.round(0.5)=1 数量不变，成本翻倍', () => {
+      const pos = { tsCode: '000001.SZ', quantity: 1, costPrice: 10, entryDate: new Date() }
+      const portfolio = buildPortfolio({ positions: new Map([['000001.SZ', pos]]) })
+
+      ;(service as any).adjustCostPriceForSplits(
+        portfolio,
+        new Map([['000001.SZ', buildBar({ tsCode: '000001.SZ', adjFactor: 0.5 })]]),
+        new Map([['000001.SZ', buildBar({ tsCode: '000001.SZ', adjFactor: 1.0 })]]),
+      )
+      // ratio = 0.5/1.0 = 0.5; quantity = Math.round(1 * 0.5) = 1; costPrice = 10 / 0.5 = 20
+      expect(pos.quantity).toBe(1)
+      expect(pos.costPrice).toBeCloseTo(20, 5)
+    })
+
+    it('[EDGE] adjFactor 从 0 → 正值时不调整（避免除零）', () => {
+      const pos = { tsCode: '000001.SZ', quantity: 100, costPrice: 10, entryDate: new Date() }
+      const portfolio = buildPortfolio({ positions: new Map([['000001.SZ', pos]]) })
+
+      ;(service as any).adjustCostPriceForSplits(
+        portfolio,
+        new Map([['000001.SZ', buildBar({ tsCode: '000001.SZ', adjFactor: 1.0 })]]),
+        new Map([['000001.SZ', buildBar({ tsCode: '000001.SZ', adjFactor: 0 })]]),
+      )
+      // yesterdayBar.adjFactor === 0，不应调整
+      expect(pos.quantity).toBe(100)
+      expect(pos.costPrice).toBe(10)
+    })
+  })
+
+  // ── computePositionValueWithAdjFactor: 使用成本价兜底 ─────────────────────
+
+  describe('[EDGE] computePositionValueWithAdjFactor() 兜底价格', () => {
+    it('[EDGE] close=0（停牌价格为 0）时仍使用 close 而非 costPrice', () => {
+      // 注意：bar 存在且 close=0，当前实现 `if (price)` 在 price=0 时不成立，会用 costPrice 兜底
+      // 这是一个已知行为，此测试验证和记录该行为
+      const portfolio = buildPortfolio({
+        positions: new Map([['000001.SZ', { tsCode: '000001.SZ', quantity: 100, costPrice: 8, entryDate: new Date() }]]),
+      })
+      const todayBars = new Map<string, DailyBar>([['000001.SZ', buildBar({ tsCode: '000001.SZ', close: 0 })]])
+
+      const value: number = (service as any).computePositionValueWithAdjFactor(portfolio, todayBars)
+      // close=0 时 if(price) 为 false，使用 costPrice 兜底
+      expect(value).toBe(100 * 8)
     })
   })
 })

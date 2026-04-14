@@ -476,22 +476,41 @@ describe('AuthService', () => {
       expect(delCallArgs.some((k) => k.includes('fail'))).toBe(true)
     })
 
-    it('[BIZ] 首次失败时为 fail key 设置过期时间（expire）', async () => {
+    it('[BIZ] 每次失败都调用 expire（NX 选项保证幂等）', async () => {
       const { redis, prisma } = buildWrongPasswordScenario()
       redis.incr.mockResolvedValue(1) // 第一次失败
       const service = createService(prisma, undefined, redis)
 
       await expect(service.login(buildLoginDto())).rejects.toThrow(BusinessException)
+      // 修复后：expire 在每次 INCR 后都调用（NX 选项保证只有无 TTL 时才实际设置）
       expect(redis.expire).toHaveBeenCalled()
     })
 
-    it('[BIZ] 非首次失败（count>1）时不重复设置 expire', async () => {
+    it('[BIZ] 非首次失败（count>1）时 expire 仍被调用（NX 防止重置窗口）', async () => {
       const { redis, prisma } = buildWrongPasswordScenario()
       redis.incr.mockResolvedValue(3) // 第三次失败
       const service = createService(prisma, undefined, redis)
 
       await expect(service.login(buildLoginDto())).rejects.toThrow(BusinessException)
-      expect(redis.expire).not.toHaveBeenCalled()
+      // 修复后：expire 总被调用，但因 NX 选项在 TTL 已存在时是 no-op
+      expect(redis.expire).toHaveBeenCalled()
+    })
+
+    it('[P1-B1 已修复] expire(NX) 失败时异常仍会冒泡（Redis 网络中断场景）', async () => {
+      // 修复说明：expire 现在对每次 INCR 都调用，并携带 NX 选项。
+      // NX 保证：若 TTL 已存在不会重置；若无 TTL（进程崩溃恢复场景）则补设。
+      // 但若 expire 本身因网络中断抛错，仍然冒泡——这属于正常的 Redis 连接故障，
+      // 不应静默吞掉，让调用方知道 Redis 不可用。
+      const { redis, prisma } = buildWrongPasswordScenario()
+      redis.incr.mockResolvedValue(1)
+      redis.expire.mockRejectedValue(new Error('Redis EXPIRE timeout'))
+
+      const service = createService(prisma, undefined, redis)
+
+      // expire 失败时异常冒泡（Redis 连接故障场景）
+      await expect(service.login(buildLoginDto())).rejects.toThrow('Redis EXPIRE timeout')
+      expect(redis.incr).toHaveBeenCalled()
+      expect(redis.expire).toHaveBeenCalled()
     })
   })
 

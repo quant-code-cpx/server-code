@@ -9,6 +9,7 @@ import {
 } from '../dto/portfolio-performance.dto'
 
 const TRADING_DAYS_PER_YEAR = 252
+const RISK_FREE_RATE = 0.02 // 2% 年化无风险利率，与 BacktestMetrics 保持一致
 
 @Injectable()
 export class PortfolioPerformanceService {
@@ -83,11 +84,9 @@ export class PortfolioPerformanceService {
     const benchmarkBase = benchmarkRows[0].close ? Number(benchmarkRows[0].close) : 1
     let cumulativeExcess = 0
 
-    // 上一个已知收盘价（用于持仓无数据时的 fallback）
+    // 上一个已知收盘价（用于持仓无当日数据时的 fallback）
+    // 注意：不以 avgCost 初始化，避免首日无行情时使用买入成本替代市场价
     const lastKnownPrice = new Map<string, number>()
-    for (const h of holdings) {
-      lastKnownPrice.set(h.tsCode, Number(h.avgCost))
-    }
 
     const dailySeries: PerformanceDailyItemDto[] = []
     let prevPortfolioNav = 1
@@ -173,7 +172,7 @@ export class PortfolioPerformanceService {
 
     const avgExcess = mean(excessReturns)
     const informationRatio = trackingError > 0 ? (avgExcess * TRADING_DAYS_PER_YEAR) / trackingError : 0
-    const sharpeRatio = annualizedVolatility > 0 ? annualizedReturn / annualizedVolatility : 0
+    const sharpeRatio = annualizedVolatility > 0 ? (annualizedReturn - RISK_FREE_RATE) / annualizedVolatility : 0
 
     // 最大回撤
     let maxDrawdown = 0

@@ -446,4 +446,91 @@ describe('BacktestMetricsService', () => {
       expect(result.informationRatio).toBeGreaterThan(0)
     })
   })
+
+  // ── 方差计算方式（总体 vs 样本）─────────────────────────────────────────────
+
+  describe('[P1-B5 已修复] Sharpe/Volatility 改用样本方差（÷n-1）', () => {
+    it('[P1-B5 已修复] n=5 时 volatility 使用样本方差，Sharpe 较总体方差更保守', () => {
+      // 对称日收益序列：[-0.02, -0.01, 0, 0.01, 0.02]
+      // mean = 0, SS = 2*(0.02)^2 + 2*(0.01)^2 = 0.001
+      // 总体 std = sqrt(0.001/5) = sqrt(0.0002) ≈ 0.01414
+      // 样本 std = sqrt(0.001/4) = sqrt(0.00025) ≈ 0.01581（修复后应使用此值）
+      const dailyReturns = [-0.02, -0.01, 0, 0.01, 0.02]
+      let nav = 1.0
+      let peak = 1.0
+      const records: DailyNavRecord[] = []
+      for (const r of dailyReturns) {
+        nav = nav * (1 + r)
+        peak = Math.max(peak, nav)
+        records.push(buildNav({ nav, benchmarkNav: 1, dailyReturn: r, benchmarkReturn: 0, drawdown: nav / peak - 1 }))
+      }
+
+      const result = service.computeMetrics(records, [], baseConfig)
+
+      const rfDaily = 0.02 / 252
+      const excessReturns = dailyReturns.map((r) => r - rfDaily)
+      const excessMean = excessReturns.reduce((a, b) => a + b, 0) / excessReturns.length
+      const ss = excessReturns.reduce((a, r) => a + (r - excessMean) ** 2, 0)
+      const n = excessReturns.length
+
+      const populationAnnStd = Math.sqrt(ss / n) * Math.sqrt(252)
+      const sampleAnnStd = Math.sqrt(ss / (n - 1)) * Math.sqrt(252)
+
+      // 修复后：volatility 使用样本方差（÷n-1）
+      expect(result.volatility).toBeCloseTo(sampleAnnStd, 4)
+      // 样本 std > 总体 std
+      expect(result.volatility).toBeGreaterThan(populationAnnStd)
+
+      // 修复后 Sharpe 使用样本 std（更大），因此比总体 Sharpe 更保守（更小的绝对值）
+      const firstNav = records[0].nav
+      const lastNav = records[n - 1].nav
+      const totalReturn = lastNav / firstNav - 1
+      const years = n / 252
+      const annReturn = Math.pow(1 + totalReturn, 1 / years) - 1
+      if (sampleAnnStd > 1e-8) {
+        const expectedSampleSharpe = (annReturn - 0.02) / sampleAnnStd
+        expect(result.sharpeRatio).toBeCloseTo(expectedSampleSharpe, 3)
+      }
+    })
+
+    it('[P1-B5 已修复] IR 使用样本方差，n=4 时比总体方差版本更保守（小 sqrt(4/3) 倍）', () => {
+      // excessReturn = [0.001, -0.001, 0.001, -0.001]，mean=0，SS=0.000004
+      // 样本 std = sqrt(0.000004/3) ≈ 0.001155（修复后）
+      // 总体 std = sqrt(0.000004/4) = 0.001（修复前）
+      const benchmarkReturn = 0.002
+      const dailyReturns = [0.003, 0.001, 0.003, 0.001]
+      let nav = 1.0
+      let benchNav = 1.0
+      let peak = 1.0
+      const records: DailyNavRecord[] = []
+      for (let i = 0; i < dailyReturns.length; i++) {
+        nav = nav * (1 + dailyReturns[i])
+        benchNav = benchNav * (1 + benchmarkReturn)
+        peak = Math.max(peak, nav)
+        records.push(
+          buildNav({
+            nav,
+            benchmarkNav: benchNav,
+            dailyReturn: dailyReturns[i],
+            benchmarkReturn,
+            drawdown: nav / peak - 1,
+          }),
+        )
+      }
+
+      const result = service.computeMetrics(records, [], baseConfig)
+
+      const n = dailyReturns.length
+      const excessSeries = dailyReturns.map((r) => r - benchmarkReturn)
+      const ss = excessSeries.reduce((a, r) => a + r ** 2, 0) // excessMean=0
+      const sampleAnnExcessStd = Math.sqrt(ss / (n - 1)) * Math.sqrt(252)
+
+      // 修复后：IR 分母使用样本 std
+      const annExcessReturn = (excessSeries.reduce((a, b) => a + b, 0) / n) * 252
+      const expectedIR = sampleAnnExcessStd > 0 ? annExcessReturn / sampleAnnExcessStd : 0
+      if (isFinite(result.informationRatio)) {
+        expect(result.informationRatio).toBeCloseTo(expectedIR, 3)
+      }
+    })
+  })
 })

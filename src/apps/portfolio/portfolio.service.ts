@@ -93,12 +93,15 @@ export class PortfolioService {
 
     let holding: { id: string; tsCode: string; stockName: string; quantity: number; avgCost: Decimal; updatedAt: Date }
     if (existing) {
-      // 加仓：加权平均成本
+      // 加仓：加权平均成本（使用 Decimal 运算避免 IEEE 754 精度丢失）
       const newQty = existing.quantity + dto.quantity
-      const newAvgCost = (existing.quantity * Number(existing.avgCost) + dto.quantity * dto.avgCost) / newQty
+      const newAvgCost = existing.avgCost
+        .mul(existing.quantity)
+        .plus(new Decimal(dto.avgCost).mul(dto.quantity))
+        .div(newQty)
       holding = await this.prisma.portfolioHolding.update({
         where: { id: existing.id },
-        data: { quantity: newQty, avgCost: new Decimal(newAvgCost) },
+        data: { quantity: newQty, avgCost: newAvgCost },
       })
     } else {
       holding = await this.prisma.portfolioHolding.create({
@@ -336,16 +339,26 @@ export class PortfolioService {
       const pctChg = p?.pctChg ? Number(p.pctChg) : null
       const mv = close != null ? close * h.quantity : null
       // 今日盈亏 = 昨日市值 × 涨幅 = 今日市值 / (1 + pctChg/100) × pctChg/100
-      const todayPnl = mv != null && pctChg != null ? (mv / (1 + pctChg / 100)) * (pctChg / 100) : null
+      // 保护除零：pctChg=-100 时分母为 0（退市当天）→ 返回 0
+      let todayPnl: number | null = null
+      if (mv != null && pctChg != null) {
+        const denominator = 1 + pctChg / 100
+        todayPnl = Math.abs(denominator) > 1e-8 ? (mv / denominator) * (pctChg / 100) : 0
+      }
       if (mv != null) totalMv += mv
       if (todayPnl != null) totalPnl += todayPnl
       return { tsCode: h.tsCode, stockName: h.stockName, pctChg, todayPnl }
     })
 
+    // 昨日总市值 = 今日总市值 - 今日总盈亏（todayPnl = yesterdayMV × rate）
+    // 保护：如分母趋近零（接近 100% 单日涨幅，极罕见），返回 0
+    const yesterdayTotalMv = totalMv - totalPnl
+    const todayPnlPct = totalMv > 0 && Math.abs(yesterdayTotalMv) > 1e-8 ? totalPnl / yesterdayTotalMv : 0
+
     return {
       tradeDate: latestDate,
       todayPnl: totalPnl,
-      todayPnlPct: totalMv > 0 ? totalPnl / (totalMv - totalPnl) : 0,
+      todayPnlPct,
       byHolding,
     }
   }

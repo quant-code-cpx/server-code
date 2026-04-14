@@ -104,44 +104,50 @@ export class StrategyService {
   }
 
   async update(userId: number, dto: UpdateStrategyDto) {
-    const strategy = await this.prisma.strategy.findFirst({ where: { id: dto.id, userId } })
-    if (!strategy) throw new BusinessException(ErrorEnum.STRATEGY_NOT_FOUND)
-
     if (dto.tags && dto.tags.length > MAX_TAGS_PER_STRATEGY) {
       throw new BusinessException(`标签最多 ${MAX_TAGS_PER_STRATEGY} 个`)
     }
 
-    let validatedConfig: Record<string, unknown> | undefined
-    let versionIncrement = 0
-
-    if (dto.strategyConfig !== undefined) {
-      // 策略参数变更时重新校验，并递增版本号
-      validatedConfig = this.schemaValidator.validate(strategy.strategyType, dto.strategyConfig)
-      versionIncrement = 1
-      // 快照当前版本到 StrategyVersion
-      await this.prisma.strategyVersion.create({
-        data: {
-          strategyId: strategy.id,
-          version: strategy.version,
-          strategyConfig: strategy.strategyConfig as Prisma.InputJsonValue,
-          backtestDefaults: strategy.backtestDefaults ? (strategy.backtestDefaults as Prisma.InputJsonValue) : undefined,
-        },
-      })
-    }
+    const configChanged = dto.strategyConfig !== undefined
+    const defaultsChanged = dto.backtestDefaults !== undefined
+    const versionIncrement = configChanged || defaultsChanged ? 1 : 0
 
     try {
-      return await this.prisma.strategy.update({
-        where: { id: dto.id },
-        data: {
-          ...(dto.name !== undefined && { name: dto.name }),
-          ...(dto.description !== undefined && { description: dto.description }),
-          ...(validatedConfig !== undefined && { strategyConfig: validatedConfig as Prisma.InputJsonValue }),
-          ...(dto.backtestDefaults !== undefined && {
-            backtestDefaults: dto.backtestDefaults as Prisma.InputJsonValue,
-          }),
-          ...(dto.tags !== undefined && { tags: dto.tags }),
-          ...(versionIncrement > 0 && { version: { increment: versionIncrement } }),
-        },
+      return await this.prisma.$transaction(async (tx) => {
+        // 在事务内重新读取策略，确保 version 一致性（避免并发版本快照冲突）
+        const strategy = await tx.strategy.findFirst({ where: { id: dto.id, userId } })
+        if (!strategy) throw new BusinessException(ErrorEnum.STRATEGY_NOT_FOUND)
+
+        let validatedConfig: Record<string, unknown> | undefined
+        if (configChanged) {
+          validatedConfig = this.schemaValidator.validate(strategy.strategyType, dto.strategyConfig)
+        }
+
+        if (versionIncrement > 0) {
+          // 快照当前版本到 StrategyVersion
+          await tx.strategyVersion.create({
+            data: {
+              strategyId: strategy.id,
+              version: strategy.version,
+              strategyConfig: strategy.strategyConfig as Prisma.InputJsonValue,
+              backtestDefaults: strategy.backtestDefaults ? (strategy.backtestDefaults as Prisma.InputJsonValue) : undefined,
+            },
+          })
+        }
+
+        return tx.strategy.update({
+          where: { id: dto.id },
+          data: {
+            ...(dto.name !== undefined && { name: dto.name }),
+            ...(dto.description !== undefined && { description: dto.description }),
+            ...(validatedConfig !== undefined && { strategyConfig: validatedConfig as Prisma.InputJsonValue }),
+            ...(dto.backtestDefaults !== undefined && {
+              backtestDefaults: dto.backtestDefaults as Prisma.InputJsonValue,
+            }),
+            ...(dto.tags !== undefined && { tags: dto.tags }),
+            ...(versionIncrement > 0 && { version: { increment: versionIncrement } }),
+          },
+        })
       })
     } catch (e: unknown) {
       if ((e as Prisma.PrismaClientKnownRequestError).code === 'P2002') {

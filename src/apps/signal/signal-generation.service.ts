@@ -1,9 +1,15 @@
 import { Injectable, Logger } from '@nestjs/common'
+import dayjs from 'dayjs'
+import timezone from 'dayjs/plugin/timezone'
+import utc from 'dayjs/plugin/utc'
 import { PrismaService } from 'src/shared/prisma.service'
 import { BacktestStrategyRegistryService } from 'src/apps/backtest/services/backtest-strategy-registry.service'
 import { BacktestDataService } from 'src/apps/backtest/services/backtest-data.service'
 import { EventsGateway } from 'src/websocket/events.gateway'
 import { BacktestConfig, BacktestStrategyType, DailyBar, UNIVERSE_INDEX_CODE } from 'src/apps/backtest/types/backtest-engine.types'
+
+dayjs.extend(utc)
+dayjs.extend(timezone)
 
 @Injectable()
 export class SignalGenerationService {
@@ -185,8 +191,7 @@ export class SignalGenerationService {
 
   private async resolveTradeDate(targetTradeDateStr?: string): Promise<Date | null> {
     if (targetTradeDateStr) {
-      const s = targetTradeDateStr
-      return new Date(`${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`)
+      return dayjs.tz(targetTradeDateStr, 'YYYYMMDD', 'Asia/Shanghai').toDate()
     }
     const today = new Date()
     today.setHours(23, 59, 59, 0)
@@ -225,22 +230,31 @@ export class SignalGenerationService {
     hasPortfolio: boolean,
   ): { tsCode: string; action: string; targetWeight: number }[] {
     if (!hasPortfolio) {
-      // 无组合上下文，所有 targets 为 BUY
-      return [...newTargets.entries()].map(([tsCode, weight]) => ({
-        tsCode,
-        action: 'BUY',
-        targetWeight: weight,
-      }))
+      // 无组合上下文：weight=0 跳过（无意义的 BUY），其余全部 BUY
+      return [...newTargets.entries()]
+        .filter(([, weight]) => weight > 0)
+        .map(([tsCode, weight]) => ({
+          tsCode,
+          action: 'BUY',
+          targetWeight: weight,
+        }))
     }
 
     const result: { tsCode: string; action: string; targetWeight: number }[] = []
 
     for (const [tsCode, weight] of newTargets) {
-      result.push({
-        tsCode,
-        action: currentHoldings.has(tsCode) ? 'HOLD' : 'BUY',
-        targetWeight: weight,
-      })
+      if (weight === 0) {
+        // weight=0 表示退出该仓位：已持仓则 SELL，未持仓则跳过
+        if (currentHoldings.has(tsCode)) {
+          result.push({ tsCode, action: 'SELL', targetWeight: 0 })
+        }
+      } else {
+        result.push({
+          tsCode,
+          action: currentHoldings.has(tsCode) ? 'HOLD' : 'BUY',
+          targetWeight: weight,
+        })
+      }
     }
 
     for (const tsCode of currentHoldings) {
@@ -268,7 +282,7 @@ export class SignalGenerationService {
     const result = new Map<string, DailyBar[]>()
     for (const [tsCode, dateMap] of allBarsMap) {
       const bars = [...dateMap.entries()]
-        .filter(([d]) => d <= upToDateStr)
+        .filter(([d]) => d < upToDateStr)
         .sort(([a], [b]) => a.localeCompare(b))
         .map(([, bar]) => bar)
       if (bars.length > 0) result.set(tsCode, bars)

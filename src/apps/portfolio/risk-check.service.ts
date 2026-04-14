@@ -1,10 +1,16 @@
 import { Injectable } from '@nestjs/common'
 import { PortfolioRiskRuleType } from '@prisma/client'
+import dayjs from 'dayjs'
+import timezone from 'dayjs/plugin/timezone'
+import utc from 'dayjs/plugin/utc'
 import { PrismaService } from 'src/shared/prisma.service'
 import { CreateRiskRuleDto, UpdateRiskRuleDto } from './dto/risk-rule.dto'
 import { PortfolioService } from './portfolio.service'
 import { PortfolioRiskService } from './portfolio-risk.service'
 import { EventsGateway } from 'src/websocket/events.gateway'
+
+dayjs.extend(utc)
+dayjs.extend(timezone)
 
 @Injectable()
 export class RiskCheckService {
@@ -257,9 +263,8 @@ export class RiskCheckService {
     const latestDate = await this.portfolioService.getLatestTradeDate()
     if (!latestDate) return null
 
-    // 向前推 ~365 天作为起始
-    const start = new Date(latestDate)
-    start.setFullYear(start.getFullYear() - 1)
+    // 向前推 ~365 天作为起始（使用 dayjs 安全处理闰年）
+    const start = dayjs(latestDate).subtract(1, 'year').toDate()
     const startDate = this.formatDate(start)
     const endDate = this.formatDate(latestDate)
 
@@ -286,9 +291,9 @@ export class RiskCheckService {
       return cb > 0 ? mv / cb : 1
     })
 
-    // 计算最大回撤
+    // 计算最大回撤（从初始 NAV=1.0 开始，避免低估）
     let maxDrawdown = 0
-    let peak = navs[0]
+    let peak = 1.0
     for (const nav of navs) {
       if (nav > peak) peak = nav
       const dd = peak > 0 ? (peak - nav) / peak : 0
@@ -308,9 +313,6 @@ export class RiskCheckService {
   }
 
   private formatDate(date: Date): string {
-    const y = date.getFullYear()
-    const m = String(date.getMonth() + 1).padStart(2, '0')
-    const d = String(date.getDate()).padStart(2, '0')
-    return `${y}${m}${d}`
+    return dayjs(date).tz('Asia/Shanghai').format('YYYYMMDD')
   }
 }

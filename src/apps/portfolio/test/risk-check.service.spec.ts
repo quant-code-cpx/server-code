@@ -680,4 +680,64 @@ describe('RiskCheckService', () => {
       expect(createManyCall.data[0].ruleId).toBe('rule-pos')
     })
   })
+
+  // ── Phase 2：positions[0] 为空时的 detail 字段 ────────────────────────────
+
+  describe('[P1-B12 已修复] checkSinglePosition — positions 为空时提供备用文案', () => {
+    it('[P1-B12 已修复] positions=[] 时 detail 包含"（持仓未知）"而非空字符串', async () => {
+      // 修复：topPos 不存在时 stockName = '（持仓未知）'，detail 有可读信息
+      const prisma = buildPrismaMock()
+      const rule = buildRule({ threshold: 0.3 })
+      prisma.portfolioRiskRule.findMany.mockResolvedValue([rule])
+      prisma.riskViolationLog.createMany.mockResolvedValue({ count: 1 })
+      const riskSvc = buildRiskServiceMock()
+      riskSvc.getPositionConcentration.mockResolvedValue({
+        concentration: { top1Weight: 0.45 },
+        positions: [],
+      })
+      const eventsGateway = buildEventsGatewayMock()
+      const svc = createService(prisma, undefined, riskSvc, eventsGateway)
+
+      const result = await svc.runCheck('portfolio-001', 10)
+
+      expect(result.violations).toHaveLength(1)
+      expect(result.violations[0].actualValue).toBeCloseTo(0.45, 3)
+
+      const detail = result.violations[0].detail
+      expect(detail).not.toMatch(/undefined|null/)
+      expect(detail).toMatch(/\d+\.?\d*%/)
+      // 修复后：positions 为空时提供备用文案
+      expect(detail).toContain('（持仓未知）')
+    })
+  })
+
+  // ── Phase 2：emitToUser 包裹 try-catch ─────────────────────────────────────
+
+  describe('[P1-B14 已修复] emitToUser 同步抛出时 runCheck 不受影响', () => {
+    it('[P1-B14 已修复] WS 连接断开时 emitToUser 抛出，runCheck 返回正常结果', async () => {
+      // 修复：try-catch 包裹 emitToUser，WS 故障仅记录警告，不阻断主流程
+      const prisma = buildPrismaMock()
+      const rule = buildRule({ threshold: 0.1 })
+      prisma.portfolioRiskRule.findMany.mockResolvedValue([rule])
+      prisma.riskViolationLog.createMany.mockResolvedValue({ count: 1 })
+      const riskSvc = buildRiskServiceMock()
+      riskSvc.getPositionConcentration.mockResolvedValue({
+        concentration: { top1Weight: 0.5 },
+        positions: [{ stockName: '平安银行', tsCode: '000001.SZ' }],
+      })
+      const eventsGateway = buildEventsGatewayMock()
+      eventsGateway.emitToUser.mockImplementation(() => {
+        throw new Error('WebSocket connection closed')
+      })
+      const svc = createService(prisma, undefined, riskSvc, eventsGateway)
+
+      // 修复后：WS 错误被吞，runCheck 正常返回
+      const result = await svc.runCheck('portfolio-001', 10)
+      expect(result.violations).toHaveLength(1)
+      expect(result.violations[0].actualValue).toBeCloseTo(0.5, 3)
+
+      // 违规已写入 DB
+      expect(prisma.riskViolationLog.createMany).toHaveBeenCalled()
+    })
+  })
 })

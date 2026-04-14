@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common'
+import { Injectable, Logger } from '@nestjs/common'
 import { PortfolioRiskRuleType } from '@prisma/client'
 import { PrismaService } from 'src/shared/prisma.service'
 import { CreateRiskRuleDto, UpdateRiskRuleDto } from './dto/risk-rule.dto'
@@ -8,6 +8,7 @@ import { EventsGateway } from 'src/websocket/events.gateway'
 
 @Injectable()
 export class RiskCheckService {
+  private readonly logger = new Logger(RiskCheckService.name)
   constructor(
     private readonly prisma: PrismaService,
     private readonly portfolioService: PortfolioService,
@@ -107,17 +108,21 @@ export class RiskCheckService {
           detail: v.detail,
         })),
       })
-      // 推送风控告警给组合所属用户
-      this.eventsGateway.emitToUser(userId, 'risk_violation', {
-        portfolioId,
-        violations: violations.map((v) => ({
-          ruleType: v.ruleType,
-          actualValue: v.actualValue,
-          threshold: v.threshold,
-          detail: v.detail,
-        })),
-        checkedAt: new Date(),
-      })
+      // 推送风控告警给组合所属用户（WS 故障不应阻断主流程）
+      try {
+        this.eventsGateway.emitToUser(userId, 'risk_violation', {
+          portfolioId,
+          violations: violations.map((v) => ({
+            ruleType: v.ruleType,
+            actualValue: v.actualValue,
+            threshold: v.threshold,
+            detail: v.detail,
+          })),
+          checkedAt: new Date(),
+        })
+      } catch (e) {
+        this.logger.warn(`WS emitToUser 失败（userId=${userId}）：${(e as Error).message}`)
+      }
     }
 
     return {
@@ -174,17 +179,21 @@ export class RiskCheckService {
           detail: v.detail,
         })),
       })
-      // 推送风控告警给组合所属用户
-      this.eventsGateway.emitToUser(userId, 'risk_violation', {
-        portfolioId,
-        violations: violations.map((v) => ({
-          ruleType: v.ruleType,
-          actualValue: v.actualValue,
-          threshold: v.threshold,
-          detail: v.detail,
-        })),
-        checkedAt: new Date(),
-      })
+      // 推送风控告警给组合所属用户（WS 故障不应阻断主流程）
+      try {
+        this.eventsGateway.emitToUser(userId, 'risk_violation', {
+          portfolioId,
+          violations: violations.map((v) => ({
+            ruleType: v.ruleType,
+            actualValue: v.actualValue,
+            threshold: v.threshold,
+            detail: v.detail,
+          })),
+          checkedAt: new Date(),
+        })
+      } catch (e) {
+        this.logger.warn(`WS emitToUser 失败（userId=${userId}）：${(e as Error).message}`)
+      }
     }
   }
 
@@ -216,12 +225,13 @@ export class RiskCheckService {
     const maxWeight = result.concentration.top1Weight
     if (maxWeight > rule.threshold) {
       const topPos = result.positions[0]
+      const stockName = topPos?.stockName ? `${topPos.stockName} ` : '（持仓未知）'
       return {
         ruleId: rule.id,
         ruleType: rule.ruleType,
         actualValue: maxWeight,
         threshold: rule.threshold,
-        detail: `最大单一仓位 ${topPos?.stockName ?? ''} 占比 ${(maxWeight * 100).toFixed(2)}%，超过阈值 ${(rule.threshold * 100).toFixed(2)}%`,
+        detail: `最大单一仓位 ${stockName}占比 ${(maxWeight * 100).toFixed(2)}%，超过阈值 ${(rule.threshold * 100).toFixed(2)}%`,
       }
     }
     return null
@@ -235,17 +245,16 @@ export class RiskCheckService {
     const result = await this.riskService.getIndustryDistribution(portfolioId, userId)
     const maxIndustry = [...result.industries].sort((a, b) => (b.weight ?? 0) - (a.weight ?? 0))[0]
     if (!maxIndustry) return null
-    const maxWeight = maxIndustry.weight ?? 0
-    if (maxWeight > rule.threshold) {
-      return {
-        ruleId: rule.id,
-        ruleType: rule.ruleType,
-        actualValue: maxWeight,
-        threshold: rule.threshold,
-        detail: `行业 ${maxIndustry.industry} 占比 ${(maxWeight * 100).toFixed(2)}%，超过阈值 ${(rule.threshold * 100).toFixed(2)}%`,
-      }
+    const maxWeight = maxIndustry.weight
+    // weight 为 null 时无法判断是否违规，跳过
+    if (maxWeight == null || maxWeight <= rule.threshold) return null
+    return {
+      ruleId: rule.id,
+      ruleType: rule.ruleType,
+      actualValue: maxWeight,
+      threshold: rule.threshold,
+      detail: `行业 ${maxIndustry.industry} 占比 ${(maxWeight * 100).toFixed(2)}%，超过阈值 ${(rule.threshold * 100).toFixed(2)}%`,
     }
-    return null
   }
 
   private async checkMaxDrawdown(
@@ -257,9 +266,15 @@ export class RiskCheckService {
     const latestDate = await this.portfolioService.getLatestTradeDate()
     if (!latestDate) return null
 
-    // 向前推 ~365 天作为起始
+    // 向前推 ~365 天作为起始（安全日期减法，避免闰年 Feb 29 溢出）
     const start = new Date(latestDate)
-    start.setFullYear(start.getFullYear() - 1)
+    const prevYear = start.getFullYear() - 1
+    const prevMonth = start.getMonth()
+    start.setFullYear(prevYear)
+    // 若月份发生变化（例如 2024-02-29 回退一年 → 2023-03-01），回退到上月末（2023-02-28）
+    if (start.getMonth() !== prevMonth) {
+      start.setDate(0)
+    }
     const startDate = this.formatDate(start)
     const endDate = this.formatDate(latestDate)
 
@@ -280,10 +295,14 @@ export class RiskCheckService {
 
     if (rows.length < 2) return null
 
-    const navs = rows.map((r) => {
+    // costBasis=0 的行代表持仓尚未建立或数据缺失，不能计算有意义的 NAV，过滤掉
+    const validRows = rows.filter((r) => Number(r.cost_basis) > 0)
+    if (validRows.length < 2) return null
+
+    const navs = validRows.map((r) => {
       const mv = Number(r.market_value)
       const cb = Number(r.cost_basis)
-      return cb > 0 ? mv / cb : 1
+      return mv / cb
     })
 
     // 计算最大回撤

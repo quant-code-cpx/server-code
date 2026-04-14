@@ -683,74 +683,61 @@ describe('RiskCheckService', () => {
 
   // ── Phase 2：positions[0] 为空时的 detail 字段 ────────────────────────────
 
-  describe('[BUG P1-B12] checkSinglePosition — positions 为空数组时 violation.detail 无股票名', () => {
-    it('[BUG P1-B12] positions=[] 但 top1Weight 超阈值时，detail 股票名为空字符串', async () => {
-      // 业务场景：持仓数据与价格数据未对齐，getPositionConcentration 返回 positions=[]
-      // 代码：const topPos = result.positions[0]（= undefined）
-      //       topPos?.stockName ?? '' → 空字符串
-      // 用户看到"最大单一仓位  占比 45.00%"（无股票名称），无法判断是哪只股票
+  describe('[P1-B12 已修复] checkSinglePosition — positions 为空时提供备用文案', () => {
+    it('[P1-B12 已修复] positions=[] 时 detail 包含"（持仓未知）"而非空字符串', async () => {
+      // 修复：topPos 不存在时 stockName = '（持仓未知）'，detail 有可读信息
       const prisma = buildPrismaMock()
       const rule = buildRule({ threshold: 0.3 })
       prisma.portfolioRiskRule.findMany.mockResolvedValue([rule])
       prisma.riskViolationLog.createMany.mockResolvedValue({ count: 1 })
       const riskSvc = buildRiskServiceMock()
       riskSvc.getPositionConcentration.mockResolvedValue({
-        concentration: { top1Weight: 0.45 }, // 超过阈值 0.3
-        positions: [], // 空数组：positions[0] = undefined
+        concentration: { top1Weight: 0.45 },
+        positions: [],
       })
       const eventsGateway = buildEventsGatewayMock()
       const svc = createService(prisma, undefined, riskSvc, eventsGateway)
 
       const result = await svc.runCheck('portfolio-001', 10)
 
-      // 违规被检测到（top1Weight=0.45 > 0.3）
       expect(result.violations).toHaveLength(1)
       expect(result.violations[0].actualValue).toBeCloseTo(0.45, 3)
 
-      // [BUG P1-B12] detail 中股票名为空字符串（不应崩溃，但用户体验差）
-      expect(result.violations[0].detail).not.toContain('undefined') // 不应有 "undefined" 字符串
-
-      // 验证 detail 格式：包含百分比，但股票名称部分为空
-      // 使用 regex 匹配，避免依赖固定中文措辞
       const detail = result.violations[0].detail
-      expect(detail).toMatch(/\d+\.?\d*%/) // 包含百分比数字
-      expect(detail).not.toMatch(/undefined|null/) // 无 undefined/null 字面量
-
-      // 修复方案：positions 为空时提供备用文案，如"（持仓未知）"
+      expect(detail).not.toMatch(/undefined|null/)
+      expect(detail).toMatch(/\d+\.?\d*%/)
+      // 修复后：positions 为空时提供备用文案
+      expect(detail).toContain('（持仓未知）')
     })
   })
 
-  // ── Phase 2：emitToUser 同步抛出时的异常传播 ─────────────────────────────
+  // ── Phase 2：emitToUser 包裹 try-catch ─────────────────────────────────────
 
-  describe('[BUG P1-B14] emitToUser 同步抛出时 runCheck 整体失败', () => {
-    it('[BUG P1-B14] WS 连接断开时 emitToUser 同步抛出，导致 runCheck 失败（violations 已写 DB）', async () => {
-      // 业务场景：违规检测通过，violations 写入 DB 后，emitToUser 因 WS 连接断开而抛出
-      // 结果：createMany 已成功执行，但 runCheck 整个调用因 WS 错误而失败
-      // 调用方（Controller/Cron）收到 500 错误，用户不知道有违规（虽然 DB 已记录）
+  describe('[P1-B14 已修复] emitToUser 同步抛出时 runCheck 不受影响', () => {
+    it('[P1-B14 已修复] WS 连接断开时 emitToUser 抛出，runCheck 返回正常结果', async () => {
+      // 修复：try-catch 包裹 emitToUser，WS 故障仅记录警告，不阻断主流程
       const prisma = buildPrismaMock()
       const rule = buildRule({ threshold: 0.1 })
       prisma.portfolioRiskRule.findMany.mockResolvedValue([rule])
       prisma.riskViolationLog.createMany.mockResolvedValue({ count: 1 })
       const riskSvc = buildRiskServiceMock()
       riskSvc.getPositionConcentration.mockResolvedValue({
-        concentration: { top1Weight: 0.5 }, // 超阈值 0.1
+        concentration: { top1Weight: 0.5 },
         positions: [{ stockName: '平安银行', tsCode: '000001.SZ' }],
       })
       const eventsGateway = buildEventsGatewayMock()
-      // [BUG] emitToUser 同步抛出（WS 连接异常）
       eventsGateway.emitToUser.mockImplementation(() => {
         throw new Error('WebSocket connection closed')
       })
       const svc = createService(prisma, undefined, riskSvc, eventsGateway)
 
-      // [BUG P1-B14] WS 错误传播，整个 runCheck 调用失败
-      await expect(svc.runCheck('portfolio-001', 10)).rejects.toThrow('WebSocket connection closed')
+      // 修复后：WS 错误被吞，runCheck 正常返回
+      const result = await svc.runCheck('portfolio-001', 10)
+      expect(result.violations).toHaveLength(1)
+      expect(result.violations[0].actualValue).toBeCloseTo(0.5, 3)
 
-      // 违规已写入 DB（createMany 在 emitToUser 之前执行）
+      // 违规已写入 DB
       expect(prisma.riskViolationLog.createMany).toHaveBeenCalled()
-
-      // 修复方案：用 try-catch 包裹 emitToUser，WS 失败不影响主流程
-      // try { this.eventsGateway.emitToUser(...) } catch (e) { this.logger.warn('WS emit failed', e) }
     })
   })
 })

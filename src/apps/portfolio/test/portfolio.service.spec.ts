@@ -469,16 +469,13 @@ describe('PortfolioService', () => {
 
   // ─── addHolding: Number(Decimal) 精度丢失 ────────────────────────────────────
 
-  describe('[BUG P1-B8] addHolding() — Number(Decimal) 精度丢失', () => {
-    it('[BUG P1-B8] 成本价含高精度小数时 Number(Decimal) 引入 IEEE 754 舍入误差', async () => {
-      // 业务场景：avgCost 为循环小数（如 1/3 = 0.333...），Decimal 可精确表示
-      // 但代码使用 Number(existing.avgCost) 将 Decimal 转为 JS float（IEEE 754 双精度）
-      // 双精度只有 15-16 位有效数字，超出部分被截断
+  describe('[P1-B8 已修复] addHolding() — Decimal 运算代替 Number() 精度保护', () => {
+    it('[P1-B8 已修复] 成本价含高精度小数时使用 Decimal 运算，保持精度', async () => {
+      // 修复：newAvgCost = existing.avgCost.mul(existing.quantity).plus(Decimal(dto.avgCost).mul(dto.quantity)).div(newQty)
       const prisma = buildPrismaMock()
       prisma.portfolio.findUnique.mockResolvedValue(buildPortfolio({ userId: 10 }))
       prisma.stockBasic.findFirst.mockResolvedValue({ name: '精度测试股' })
 
-      // avgCost = 1/3（循环小数，用 Decimal 可精确保存到任意位数）
       const exactDecimalStr = '3.33333333333333333333' // 20 位小数
       prisma.portfolioHolding.findUnique.mockResolvedValue(
         buildHolding({ quantity: 3, avgCost: new Decimal(exactDecimalStr) }),
@@ -486,48 +483,31 @@ describe('PortfolioService', () => {
       prisma.portfolioHolding.update.mockResolvedValue(buildHolding({ quantity: 6 }))
 
       const svc = createService(prisma)
-      // 加仓：再买 3 股 @10 元 → newAvgCost = (3*exactDecimal + 3*10) / 6
       await svc.addHolding({ portfolioId: 'portfolio-001', tsCode: '000001.SZ', quantity: 3, avgCost: 10 }, 10)
 
       const updateCall = prisma.portfolioHolding.update.mock.calls[0][0]
-      const computedAvgCost = Number(updateCall.data.avgCost)
 
-      // 手算（精确 Decimal 运算）：
-      // newAvgCost = (3 * 3.33333333333333333333 + 3 * 10) / 6 = (9.99999... + 30) / 6 = 39.99999... / 6
+      // 修复后：传入的 avgCost 应为 Decimal 实例（而非 Number 转换后的 float）
+      expect(updateCall.data.avgCost).toBeInstanceOf(Decimal)
+
+      // 精确手算：newAvgCost = (3*3.33333333333333333333 + 3*10) / 6
       const exactResult = new Decimal(exactDecimalStr).mul(3).plus(new Decimal(10).mul(3)).div(6)
-
-      // 结果在 10 位精度内接近（单次误差在 ~1e-16 量级）
-      expect(computedAvgCost).toBeCloseTo(Number(exactResult), 10)
-
-      // 文档化：Number('3.33333333333333333333') ≠ 精确的 10/3
-      // IEEE 754 double 仅保留 15-16 位有效数字，超出部分被截断为最近可表示值
-      // 例：Number('3.33333333333333333333') = 3.3333333333333335（末位有舍入）
-      //   而 Decimal 运算中 3*3.33333333333333333333 = 9.99999999999999999999（精确）
-      const jsFloat = Number(new Decimal(exactDecimalStr))       // 3.3333333333333335 (截断)
-      const decimalStr = new Decimal(exactDecimalStr).toFixed(20) // '3.33333333333333333333'（精确）
-      // Number 转换会丢失超出 double 精度的位数
-      expect(jsFloat.toString().length).toBeLessThan(decimalStr.replace('.', '').length)
-      // 修复方案：使用 Decimal 运算代替 Number() 转换
-      // newAvgCost = existing.avgCost.mul(existing.quantity).plus(new Decimal(dto.avgCost).mul(dto.quantity)).div(newQty)
+      // Decimal 精度下计算结果完全一致（无 IEEE 754 截断）
+      expect(updateCall.data.avgCost.toString()).toBe(exactResult.toString())
     })
   })
 
   // ─── getPnlToday: NaN 与除零场景 ─────────────────────────────────────────────
 
-  describe('[BUG P1-B9] getPnlToday() — pctChg=-100% 时 todayPnl 为 NaN', () => {
-    it('[BUG P1-B9] 股票退市（close=0, pctChg=-100）时 todayPnl 为 NaN 污染汇总结果', async () => {
-      // 业务场景：A 股退市当天 close=0, pctChg=-100
-      // 代码计算：todayPnl = (mv / (1 + pctChg/100)) * (pctChg/100)
-      //         = (0 / (1 + (-100)/100)) * (-100/100)
-      //         = (0 / 0) * (-1) = NaN * (-1) = NaN
-      // 手算（正确）：退市当天应保护性返回 todayPnl=0 或昨日市值（不能为 NaN）
+  describe('[P1-B9 已修复] getPnlToday() — pctChg=-100% 时返回 0 而非 NaN', () => {
+    it('[P1-B9 已修复] 股票退市（close=0, pctChg=-100）时 todayPnl 为 0 而非 NaN', async () => {
+      // 修复：分母 (1 + pctChg/100) = 0 时，返回 todayPnl=0（退市当天保守处理）
       const prisma = buildPrismaMock()
       const cache = buildCacheMock()
       const tradeDate = new Date()
       prisma.portfolio.findUnique.mockResolvedValue(buildPortfolio({ userId: 10 }))
       prisma.tradeCal.findFirst.mockResolvedValue({ calDate: tradeDate })
       prisma.portfolioHolding.findMany.mockResolvedValue([buildHolding({ quantity: 100, tsCode: '000001.SZ' })])
-      // 退市：收盘价为 0，跌幅 -100%
       prisma.daily.findMany.mockResolvedValue([
         { tsCode: '000001.SZ', close: new Decimal('0'), pctChg: new Decimal('-100') },
       ])
@@ -535,15 +515,15 @@ describe('PortfolioService', () => {
       const svc = createService(prisma, cache)
       const result = await svc.getPnlToday('portfolio-001', 10)
 
-      // [BUG P1-B9] 0/0 = NaN，NaN != null → totalPnl += NaN → todayPnl = NaN
-      // 修复后应改为：expect(result.todayPnl).toBe(0) 或有限值
-      expect(isNaN(result.todayPnl)).toBe(true)
-      // byHolding 中该持仓的 todayPnl 也为 NaN
-      expect(isNaN(result.byHolding[0].todayPnl!)).toBe(true)
+      // 修复后：分母为零时返回 0，不返回 NaN
+      expect(isNaN(result.todayPnl)).toBe(false)
+      expect(result.todayPnl).toBe(0)
+      // byHolding 中该持仓的 todayPnl 也为 0（非 NaN）
+      expect(result.byHolding[0].todayPnl).toBe(0)
     })
 
-    it('[BUG P1-B9] 退市持仓与正常持仓混合时总 todayPnl 被 NaN 污染', async () => {
-      // 即使另一只股票正常，NaN 传播导致整个 todayPnl 为 NaN
+    it('[P1-B9 已修复] 退市持仓与正常持仓混合时总 todayPnl 为有限值', async () => {
+      // 修复后：退市持仓 pnl=0，正常持仓正常计算，汇总不会被 NaN 污染
       const prisma = buildPrismaMock()
       const cache = buildCacheMock()
       const tradeDate = new Date()
@@ -561,10 +541,10 @@ describe('PortfolioService', () => {
       const svc = createService(prisma, cache)
       const result = await svc.getPnlToday('portfolio-001', 10)
 
-      // [BUG] 000001 的 todayPnl=NaN，0+NaN+正常股pnl = NaN
-      // 正常股手算：mv=10*200=2000, pnl=(2000/1.05)*0.05 ≈ 95.24
-      expect(isNaN(result.todayPnl)).toBe(true) // NaN 污染整体汇总
-      // 修复方案：(mv / (1 + pctChg/100)) 分母为零时返回 0（退市当天 pnl=0 是合理默认值）
+      // 正常股手算：mv=10*200=2000, pnl=(2000/(1+0.05))*0.05 = (2000/1.05)*0.05 ≈ 95.238
+      const normalPnl = (2000 / 1.05) * 0.05
+      expect(isNaN(result.todayPnl)).toBe(false) // 无 NaN 污染
+      expect(result.todayPnl).toBeCloseTo(normalPnl, 2) // 仅正常股 pnl
     })
   })
 })

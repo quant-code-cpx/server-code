@@ -476,42 +476,41 @@ describe('AuthService', () => {
       expect(delCallArgs.some((k) => k.includes('fail'))).toBe(true)
     })
 
-    it('[BIZ] 首次失败时为 fail key 设置过期时间（expire）', async () => {
+    it('[BIZ] 每次失败都调用 expire（NX 选项保证幂等）', async () => {
       const { redis, prisma } = buildWrongPasswordScenario()
       redis.incr.mockResolvedValue(1) // 第一次失败
       const service = createService(prisma, undefined, redis)
 
       await expect(service.login(buildLoginDto())).rejects.toThrow(BusinessException)
+      // 修复后：expire 在每次 INCR 后都调用（NX 选项保证只有无 TTL 时才实际设置）
       expect(redis.expire).toHaveBeenCalled()
     })
 
-    it('[BIZ] 非首次失败（count>1）时不重复设置 expire', async () => {
+    it('[BIZ] 非首次失败（count>1）时 expire 仍被调用（NX 防止重置窗口）', async () => {
       const { redis, prisma } = buildWrongPasswordScenario()
       redis.incr.mockResolvedValue(3) // 第三次失败
       const service = createService(prisma, undefined, redis)
 
       await expect(service.login(buildLoginDto())).rejects.toThrow(BusinessException)
-      expect(redis.expire).not.toHaveBeenCalled()
+      // 修复后：expire 总被调用，但因 NX 选项在 TTL 已存在时是 no-op
+      expect(redis.expire).toHaveBeenCalled()
     })
 
-    it('[BUG P1-B1] INCR 成功但 EXPIRE 失败时异常冒泡，failKey 无 TTL 永久存在', async () => {
-      // BUG：INCR 与 EXPIRE 是两个独立 Redis 调用，非原子操作。
-      // 若 INCR 成功（count=1）后 EXPIRE 前进程超时/崩溃，fail key 将无 TTL 永久累积。
-      // 攻击者可利用此特性在 5 分钟窗口结束后仍触发锁定，无限延迟合法用户登录。
+    it('[P1-B1 已修复] expire(NX) 失败时异常仍会冒泡（Redis 网络中断场景）', async () => {
+      // 修复说明：expire 现在对每次 INCR 都调用，并携带 NX 选项。
+      // NX 保证：若 TTL 已存在不会重置；若无 TTL（进程崩溃恢复场景）则补设。
+      // 但若 expire 本身因网络中断抛错，仍然冒泡——这属于正常的 Redis 连接故障，
+      // 不应静默吞掉，让调用方知道 Redis 不可用。
       const { redis, prisma } = buildWrongPasswordScenario()
       redis.incr.mockResolvedValue(1)
-      redis.expire.mockRejectedValue(new Error('Redis EXPIRE timeout')) // EXPIRE 失败
+      redis.expire.mockRejectedValue(new Error('Redis EXPIRE timeout'))
 
       const service = createService(prisma, undefined, redis)
 
-      // [BUG] EXPIRE 失败时 Redis 超时异常冒泡至调用方（应返回 BusinessException，实际抛 Redis 错）
+      // expire 失败时异常冒泡（Redis 连接故障场景）
       await expect(service.login(buildLoginDto())).rejects.toThrow('Redis EXPIRE timeout')
-
-      // 记录非原子性证据：INCR 已执行成功，EXPIRE 失败 → failKey 无 TTL
       expect(redis.incr).toHaveBeenCalled()
       expect(redis.expire).toHaveBeenCalled()
-
-      // 修复方案：使用 SET failKey 1 NX EX TTL 的原子操作，或 Lua 脚本
     })
   })
 

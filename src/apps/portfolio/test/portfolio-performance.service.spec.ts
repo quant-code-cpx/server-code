@@ -161,14 +161,11 @@ describe('PortfolioPerformanceService', () => {
 
   // ── Sharpe 公式差异（P1-B15）────────────────────────────────────────────────
 
-  describe('[BUG P1-B15] PortfolioPerformance Sharpe 未减无风险利率', () => {
-    it('[BUG P1-B15] Sharpe = annReturn / annVol（无风险利率为 0），与 BacktestMetrics 不一致', async () => {
-      // BacktestMetrics Sharpe = (annReturn - RISK_FREE_RATE) / annStd（使用 2% 无风险利率）
-      // PortfolioPerformance Sharpe = annReturn / annVol（无风险利率为 0）
-      // 两个模块向同一用户展示不同 Sharpe 定义，造成困惑
+  describe('[P1-B15 已修复] PortfolioPerformance Sharpe 加入无风险利率', () => {
+    it('[P1-B15 已修复] Sharpe = (annReturn - 2%) / annVol，与 BacktestMetrics 定义一致', async () => {
+      // 修复：(annReturn - RISK_FREE_RATE) / annVol，与 BacktestMetrics 保持一致
       const { svc, mockPrisma } = createService()
       mockPrisma.portfolioHolding.findMany.mockResolvedValue([{ tsCode: '000001.SZ', quantity: 100000, avgCost: 10 }])
-      // 构造正收益波动序列：10→11→10→11（每日涨跌 10%）
       mockPrisma.daily.findMany.mockResolvedValue([
         { tsCode: '000001.SZ', tradeDate: new Date('2025-01-01'), close: 10 },
         { tsCode: '000001.SZ', tradeDate: new Date('2025-01-02'), close: 11 },
@@ -191,8 +188,7 @@ describe('PortfolioPerformanceService', () => {
         const dailyReturns = series.slice(1).map((s) => s.dailyReturn)
         const n = dailyReturns.length
         const m = dailyReturns.reduce((a, b) => a + b, 0) / n
-        // PortfolioPerformance.stdDev 使用样本方差（÷(n-1)）
-        const variance = dailyReturns.reduce((sum, v) => sum + (v - m) ** 2, 0) / (n - 1)
+        const variance = n > 1 ? dailyReturns.reduce((sum, v) => sum + (v - m) ** 2, 0) / (n - 1) : 0
         const annVol = Math.sqrt(variance) * Math.sqrt(252)
 
         const lastNav = series[series.length - 1].portfolioNav
@@ -200,64 +196,50 @@ describe('PortfolioPerformanceService', () => {
         const years = series.length / 252
         const annReturn = Math.pow(1 + totalReturn, 1 / years) - 1
 
-        // [BUG P1-B15] 当前 Sharpe = annReturn / annVol（rf=0，使用样本方差）
-        const sharpeWithoutRF = annVol > 0 ? annReturn / annVol : 0
-        // 修复后应为 (annReturn - 0.02) / annVol
         const sharpeWithRF = annVol > 0 ? (annReturn - 0.02) / annVol : 0
+        const sharpeWithoutRF = annVol > 0 ? annReturn / annVol : 0
 
         if (annVol > 1e-8) {
-          // 当前实现更接近 sharpeWithoutRF（不减 rf）
-          expect(Math.abs(result.metrics.sharpeRatio - sharpeWithoutRF)).toBeLessThan(
-            Math.abs(result.metrics.sharpeRatio - sharpeWithRF),
+          // 修复后：Sharpe 更接近 sharpeWithRF（减去 rf=2%）
+          expect(Math.abs(result.metrics.sharpeRatio - sharpeWithRF)).toBeLessThan(
+            Math.abs(result.metrics.sharpeRatio - sharpeWithoutRF),
           )
-          // 记录：修复后 Sharpe 比当前低（rf=2% 使分子更小）
-          expect(sharpeWithoutRF).toBeGreaterThan(sharpeWithRF)
+          // sharpeWithRF < sharpeWithoutRF（rf 使分子减小）
+          expect(sharpeWithRF).toBeLessThan(sharpeWithoutRF)
         }
       }
     })
   })
 
-  // ── lastKnownPrice 初始化为 avgCost（P1-B16）────────────────────────────────
+  // ── lastKnownPrice 修复（P1-B16）────────────────────────────────────────────
 
-  describe('[BUG P1-B16] 首日无行情时使用 avgCost 作为价格', () => {
-    it('[BUG P1-B16] 首日无股价时 lastKnownPrice=avgCost，导致首日 NAV 使用成本价而非市价', async () => {
-      // 业务场景：持仓 100000股 avgCost=5，基准从第1天起有数据，但该股第1天无收盘价
-      // cashBalance = initialCash - totalCost = 1_000_000 - 100_000*5 = 500_000
-      //
-      // [BUG] 代码：lastKnownPrice.set(h.tsCode, Number(h.avgCost)) → 第1天未更新，沿用 avgCost=5
-      // 结果：NAV_day1 = (500_000 + 100_000*5) / 1_000_000 = 1_000_000 / 1_000_000 = 1.0
-      //
-      // 正确行为：第1天无价格 → 该持仓不应参与 NAV 计算，或使用 0
-      // 正确 NAV_day1 = (500_000 + 0) / 1_000_000 = 0.5（或等待有价格的第一天才开始计算）
+  describe('[P1-B16 已修复] 首日无行情时不使用 avgCost 作为价格', () => {
+    it('[P1-B16 已修复] 首日无股价时 NAV = cashBalance/initialCash = 0.5（而非 1.0）', async () => {
+      // 修复：移除 lastKnownPrice 的 avgCost 初始化，无数据时该持仓贡献 0 市值
+      // 持仓 100000股 avgCost=5，cashBalance=500_000，initialCash=1_000_000
+      // 第1天无收盘价 → portfolioMV = cashBalance + 0 = 500_000 → NAV = 0.5
       const { svc, mockPrisma } = createService()
 
       mockPrisma.portfolioHolding.findMany.mockResolvedValue([
-        { tsCode: '000001.SZ', quantity: 100000, avgCost: 5 }, // 成本=500_000，cashBalance=500_000
+        { tsCode: '000001.SZ', quantity: 100000, avgCost: 5 },
       ])
-      // 第1天（2025-01-01）无股价数据，第2天 close=8（远高于 avgCost=5）
       mockPrisma.daily.findMany.mockResolvedValue([
         { tsCode: '000001.SZ', tradeDate: new Date('2025-01-02'), close: 8 },
         { tsCode: '000001.SZ', tradeDate: new Date('2025-01-03'), close: 8 },
       ])
       mockPrisma.indexDaily.findMany.mockResolvedValue([
-        { tradeDate: new Date('2025-01-01'), close: 1000 }, // 基准第1天有数据，但持仓无价格
+        { tradeDate: new Date('2025-01-01'), close: 1000 },
         { tradeDate: new Date('2025-01-02'), close: 1000 },
         { tradeDate: new Date('2025-01-03'), close: 1000 },
       ])
 
       const result = await svc.getPerformance({ portfolioId: 'p-1' }, 1)
 
-      // 手算（BUG 行为）：第1天 lastKnownPrice=avgCost=5
-      // NAV_day1 = (500_000 + 100_000*5) / 1_000_000 = 1.0
-      expect(result.dailySeries[0].portfolioNav).toBeCloseTo(1.0, 4) // [BUG] 使用成本价导致 NAV=1.0
+      // 修复后：第1天无价格 → 持仓市值=0 → NAV = 500_000/1_000_000 = 0.5
+      expect(result.dailySeries[0].portfolioNav).toBeCloseTo(0.5, 4)
 
-      // 第2天 close=8 → NAV_day2 = (500_000 + 100_000*8) / 1_000_000 = 1.3
-      // dailyReturn_day2 = 1.3/1.0 - 1 = 30%（实际上是从 avgCost=5 到 close=8 的价差被错误地计入第2天）
+      // 第2天 close=8 → NAV = (500_000 + 100_000*8) / 1_000_000 = 1.3
       expect(result.dailySeries[1].portfolioNav).toBeCloseTo(1.3, 3)
-      expect(result.dailySeries[1].dailyReturn).toBeCloseTo(0.3, 3) // [BUG] 第2天显示 30% 涨幅
-
-      // 正确行为：第1天无价格时 NAV 应反映真实市场价（或不包含该持仓），
-      // 不应使用 avgCost 作为当前市价。修复方案：删除 lastKnownPrice 的 avgCost 初始化。
     })
   })
 })

@@ -232,17 +232,18 @@ describe('BacktestExecutionService', () => {
     it('[BIZ] 已有持仓再买入时 costPrice 使用加权平均', () => {
       const config = buildConfig({ slippageBps: 0 }) // 去掉滑点简化计算
       const portfolio = buildPortfolio({
-        cash: 50000,
+        cash: 50200, // 足够覆盖 5000股成交额(50000) + 最小佣金(15)，避免触发减量逻辑
         positions: new Map([
           ['000001.SZ', { tsCode: '000001.SZ', quantity: 100, costPrice: 8, entryDate: new Date() }],
         ]),
       })
       // 已有 100股@8, 目标权重 100%
-      // nav = 50000 + 100*10 = 51000
-      // targetValue = 51000
-      // currentValue = 100*10 = 1000
-      // diffValue = 50000
-      // rawQty = floor(50000/10/100)*100 = 5000
+      // nav = 50200 + 100*10 = 51200
+      // targetValue = 51200, currentValue = 1000, diffValue = 50200
+      // availableValue = min(50200, 50200) = 50200
+      // rawQty = floor(50200/10/100)*100 = floor(50.2)*100 = 50*100 = 5000
+      // amount=50000, commission=max(15,5)=15, slippage=0 → total=50015 < 50200 ✓
+
       const signal: SignalOutput = { targets: [{ tsCode: '000001.SZ', weight: 1.0 }] }
       const bars = new Map([['000001.SZ', buildBar({ tsCode: '000001.SZ', open: 10, close: 10 })]])
 
@@ -541,11 +542,9 @@ describe('BacktestExecutionService', () => {
 
   // ── 资金检查 bug ───────────────────────────────────────────────────────────
 
-  describe('[BUG P1-B6] 资金检查仅比较 amount，未含佣金和滑点', () => {
-    it('[BUG P1-B6] 现金恰好等于成交额时扣除最小佣金和滑点后现金变负', () => {
-      // cash=1000，买 100股@10 → amount=1000（cash >= amount 通过检查）
-      // 但实际扣除：amount(1000) + minCommission(5) + slippage(0.5) = 1005.5
-      // → cash = 1000 - 1005.5 = -5.5（负数，资金数据损坏）
+  describe('[P1-B6 已修复] 资金检查含佣金和滑点', () => {
+    it('[P1-B6 已修复] 单手持仓现金恰好等于成交额时买入被拒绝', () => {
+      // cash=1000，rawQty=100（1手），减1手=0 → 无法成交
       const config = buildConfig({ slippageBps: 5, commissionRate: 0.0003, minCommission: 5 })
       const portfolio = buildPortfolio({ cash: 1000 })
       const signal: SignalOutput = { targets: [{ tsCode: '000001.SZ', weight: 1.0 }] }
@@ -560,21 +559,15 @@ describe('BacktestExecutionService', () => {
         new Date('2025-01-02'),
       )
 
-      // [BUG] 资金检查漏洞：`portfolio.cash < amount` 通过，但扣除佣金+滑点后现金为负
-      // amount = floor(1000/10/100)*100 * 10 = 100 * 10 = 1000
-      // commission = max(1000*0.0003, 5) = 5, slippageCost = 1000*5/10000 = 0.5
-      // cash = 1000 - 1000 - 5 - 0.5 = -5.5
-      expect(trades).toHaveLength(1) // [BUG] 买入成功了
-      expect(portfolio.cash).toBeLessThan(0) // [BUG] 现金为负
-
-      // 修复方案：检查条件改为 `portfolio.cash < amount + commission + slippageCost`
+      // amount=1000, commission=5, slippage=0.5 → total=1005.5 > cash=1000
+      // 减1手后 rawQty=0 → 无法成交，cash 不变
+      expect(trades).toHaveLength(0) // 买入被拒绝
+      expect(portfolio.cash).toBe(1000) // 现金未改变
     })
 
-    it('[BUG P1-B6] 佣金超过最小佣金时同样可能出现现金不足', () => {
-      // cash = 200000，买 20000股@10 → amount=200000（通过检查）
-      // commission = max(200000*0.0003, 5) = max(60, 5) = 60
-      // slippage = 200000*5/10000 = 100
-      // cash = 200000 - 200000 - 60 - 100 = -160（负数）
+    it('[P1-B6 已修复] 多手持仓减量后成交，现金仍非负', () => {
+      // cash=200000，rawQty=20000（200手）减1手=19900 → 总成本 199159.2 < 200000
+      // 修复：迭代减量确保现金不为负
       const config = buildConfig({ slippageBps: 5, commissionRate: 0.0003, minCommission: 5 })
       const portfolio = buildPortfolio({ cash: 200000 })
       const signal: SignalOutput = { targets: [{ tsCode: '000001.SZ', weight: 1.0 }] }
@@ -589,13 +582,32 @@ describe('BacktestExecutionService', () => {
         new Date('2025-01-02'),
       )
 
-      // rawQty = floor(200000/10/100) * 100 = floor(200) * 100 = 20000 股
-      // amount = 20000 * 10 = 200000（等于 cash，通过 cash < amount 检查）
-      // commission = max(200000*0.0003, 5) = max(60, 5) = 60
-      // slippageCost = 200000*5/10000 = 100
-      // cash = 200000 - 200000 - 60 - 100 = -160（负数）
-      expect(trades).toHaveLength(1) // [BUG] 买入成功了
-      expect(portfolio.cash).toBeLessThan(0) // [BUG] 现金为负
+      // 修复后：买入 19900 股（减 1 手），现金始终非负
+      // amount=199000, commission≈59.7, slippage=99.5 → total≈199159.2 < 200000
+      expect(trades).toHaveLength(1)
+      expect(trades[0].quantity).toBe(19900) // 减 1 手
+      expect(portfolio.cash).toBeGreaterThanOrEqual(0) // 现金非负
+    })
+
+    it('[P1-B6 已修复] 现金充足（含佣金+滑点）时买入正常成交', () => {
+      // cash=50000 可以买 4000股@10 → amount=40000，commission=12，slippage=20 → 总成本=40032 < 50000
+      const config = buildConfig({ slippageBps: 5, commissionRate: 0.0003, minCommission: 5 })
+      const portfolio = buildPortfolio({ cash: 50000 })
+      const signal: SignalOutput = { targets: [{ tsCode: '000001.SZ', weight: 0.8 }] }
+      const bars = new Map([['000001.SZ', buildBar({ tsCode: '000001.SZ', open: 10, close: 10 })]])
+
+      const { trades } = service.executeTrades(
+        portfolio,
+        signal,
+        bars,
+        config,
+        new Date('2025-01-01'),
+        new Date('2025-01-02'),
+      )
+
+      // 有足够资金时应当成交
+      expect(trades).toHaveLength(1)
+      expect(portfolio.cash).toBeGreaterThanOrEqual(0) // 现金非负
     })
   })
 })

@@ -129,10 +129,10 @@ export class AuthService {
   private async handleLoginFail(account: string): Promise<void> {
     const failKey = REDIS_KEY.LOGIN_FAIL(account)
     const count = await this.redis.incr(failKey)
-    if (count === 1) {
-      // 首次失败时设置窗口过期
-      await this.redis.expire(failKey, LOGIN_FAIL_WINDOW)
-    }
+    // 使用 NX 选项确保只在无过期时设置 TTL——这是原子化的崩溃恢复方案：
+    // 若进程在 INCR 之后、EXPIRE 之前崩溃，failKey 无 TTL；下次调用时
+    // expire(NX) 会补上 TTL，避免永不过期的锁定计数器。
+    await this.redis.expire(failKey, LOGIN_FAIL_WINDOW, 'NX')
     if (count >= LOGIN_MAX_FAIL) {
       await this.redis.set(REDIS_KEY.LOGIN_LOCK(account), '1', { EX: LOGIN_LOCK_DURATION })
       await this.redis.del(failKey)

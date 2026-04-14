@@ -81,6 +81,7 @@ docs/
 | [测试重构Phase1-设计方案](design/测试重构Phase1-设计方案.md)                       | Phase 1 测试设计（Auth / Backtest Engine / Portfolio，17 个 Bug，~66 新增用例）                                   | 📋 需求稿 |
 | [测试重构Phase2-设计方案](design/测试重构Phase2-设计方案.md)                       | Phase 2 测试设计（Factor Compute / Strategy / Signal / Risk Check / Backtest Run，12 个 Bug，~133 用例）          | 📋 需求稿 |
 | [测试重构Phase3-设计方案](design/测试重构Phase3-设计方案.md)                       | Phase 3 测试设计（Event Study / Pattern / Stock / Market / Heatmap / Index / Tushare Sync，19 个 Bug，~147 用例） | 📋 需求稿 |
+| [测试重构Phase6-E2E测试详细设计](design/测试重构Phase6-E2E测试详细设计.md)         | Phase 6 E2E 测试详细设计（6 条核心业务链路 / E2E 基础设施 / 6 个跨模块 Bug / CI 集成方案，~30 用例）             | 📋 需求稿 |
 | [Phase5-Lifecycle测试重构-详细设计](design/Phase5-Lifecycle测试重构-详细设计.md)   | Phase 5 Lifecycle 基础设施测试详细设计（Guard / Interceptor / Filter / Gateway / Processor / Health，16 个 Bug，~75 新增用例） | 📋 需求稿 |
 | [Phase4-Controller测试重构-详细设计](design/Phase4-Controller测试重构-详细设计.md) | Phase 4 Controller 层测试详细设计（DTO 校验 / 异常透传 / 权限边界，21 个 Controller ~120 新增用例）               | 📋 需求稿 |
 | [后端功能盘点](后端功能盘点.md)                                                    | 全部 147 个 API 端点 · 14 个模块 · 异步任务 · WebSocket · Tushare 同步清单                                        | 按需更新  |

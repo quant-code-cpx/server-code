@@ -108,7 +108,8 @@ export class TokenService {
     try {
       const payload = await this.verifyAccessToken(token)
       const now = Math.floor(Date.now() / 1000)
-      const remainingTTL = (payload.exp ?? now) - now
+      // 若 payload 缺少 exp（理论上不应发生，但防御性兜底），使用 accessTokenTTL 作为黑名单存活时间
+      const remainingTTL = payload.exp != null ? payload.exp - now : this.accessTokenTTL
       if (remainingTTL > 0) {
         await this.redis.set(REDIS_KEY.TOKEN_BLACKLIST(payload.jti), '1', { EX: remainingTTL })
       }

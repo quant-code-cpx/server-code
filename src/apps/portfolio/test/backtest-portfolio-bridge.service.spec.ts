@@ -252,4 +252,65 @@ describe('BacktestPortfolioBridgeService', () => {
       ForbiddenException,
     )
   })
+
+  // ── E2E-B5 事务原子性验证 ──────────────────────────────────────────────────
+
+  describe('[E2E-B5] REPLACE 模式事务原子性', () => {
+    it('[BIZ] $transaction 成功 → 返回含正确 totalHoldings 的 summary（E2E-B5 不存在：代码已用事务）', async () => {
+      // 设计文档 E2E-B5 担心「REPLACE 模式缺少事务保护」
+      // 实际代码：await this.prisma.$transaction([deleteMany, createMany])
+      // → E2E-B5 不存在，代码已正确包裹事务
+      prisma.backtestRun.findUnique.mockResolvedValue(makeRun())
+      prisma.backtestPositionSnapshot.findFirst.mockResolvedValue({ tradeDate: SNAPSHOT_DATE })
+      prisma.backtestPositionSnapshot.findMany.mockResolvedValue([makeSnapshot('000001.SZ', 100, 10)])
+      prisma.portfolio.findUnique.mockResolvedValue({ id: 'p-1', userId: 1, name: '组合' })
+      prisma.portfolioHolding.findMany.mockResolvedValue([makeHolding('h-1', '000001.SZ', 50, 10)])
+      prisma.stockBasic.findMany.mockResolvedValue([])
+      prisma.$transaction.mockResolvedValue([undefined, { count: 1 }])
+
+      const result = await svc.applyBacktest({ backtestRunId: 'run-1', portfolioId: 'p-1', mode: ApplyMode.REPLACE }, 1)
+
+      expect(result.summary.totalHoldings).toBe(1)
+    })
+
+    it('[BIZ] REPLACE 模式：$transaction 内含 deleteMany + createMany（原子替换，不会出现半替换状态）', async () => {
+      // 验证 $transaction 被以数组形式调用，确保操作原子性
+      prisma.backtestRun.findUnique.mockResolvedValue(makeRun())
+      prisma.backtestPositionSnapshot.findFirst.mockResolvedValue({ tradeDate: SNAPSHOT_DATE })
+      prisma.backtestPositionSnapshot.findMany.mockResolvedValue([makeSnapshot('000002.SZ', 200, 15)])
+      prisma.portfolio.findUnique.mockResolvedValue({ id: 'p-1', userId: 1, name: '组合' })
+      prisma.portfolioHolding.findMany.mockResolvedValue([makeHolding('h-1', '000001.SZ', 100, 10)])
+      prisma.stockBasic.findMany.mockResolvedValue([])
+
+      let capturedOps: unknown = undefined
+      prisma.$transaction.mockImplementation(async (ops: unknown) => {
+        capturedOps = ops
+        return [undefined, { count: 1 }]
+      })
+
+      await svc.applyBacktest({ backtestRunId: 'run-1', portfolioId: 'p-1', mode: ApplyMode.REPLACE }, 1)
+
+      // $transaction 应以数组方式调用（而非回调方式），确保原子批处理
+      expect(Array.isArray(capturedOps)).toBe(true)
+      expect(prisma.portfolioHolding.deleteMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { portfolioId: 'p-1' } }),
+      )
+      expect(prisma.portfolioHolding.createMany).toHaveBeenCalled()
+    })
+
+    it('[BIZ] $transaction 抛出错误 → applyBacktest 向上传播异常（现有持仓由数据库回滚保护）', async () => {
+      // 事务失败时整个操作应回滚；applyBacktest 应将错误传播给调用方
+      prisma.backtestRun.findUnique.mockResolvedValue(makeRun())
+      prisma.backtestPositionSnapshot.findFirst.mockResolvedValue({ tradeDate: SNAPSHOT_DATE })
+      prisma.backtestPositionSnapshot.findMany.mockResolvedValue([makeSnapshot('000001.SZ', 100, 10)])
+      prisma.portfolio.findUnique.mockResolvedValue({ id: 'p-1', userId: 1, name: '组合' })
+      prisma.portfolioHolding.findMany.mockResolvedValue([makeHolding('h-1', '000001.SZ', 50, 10)])
+      prisma.stockBasic.findMany.mockResolvedValue([])
+      prisma.$transaction.mockRejectedValue(new Error('数据库约束违反'))
+
+      await expect(
+        svc.applyBacktest({ backtestRunId: 'run-1', portfolioId: 'p-1', mode: ApplyMode.REPLACE }, 1),
+      ).rejects.toThrow('数据库约束违反')
+    })
+  })
 })

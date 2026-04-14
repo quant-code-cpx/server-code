@@ -2,7 +2,7 @@
 
 > **范围**：测试重构总纲 §三（P0 优先级模块）：Auth 认证、Backtest Engine 回测引擎、Portfolio 组合管理
 > **原则**：SKILL.md §15 — 期望值从业务规则独立推导，代码视为可疑对象，用 `[BUG]` 标签标记当前行为偏差
-> **目标**：~50 个新增/重写用例，至少发现 3 个现有代码 Bug
+> **目标**：~66 个新增/重写用例（超出总纲初始估算 ~50 个，因审计发现更多边界场景），至少发现 3 个现有代码 Bug
 > **前置**：无（Phase 1 为首个阶段）
 
 ---
@@ -24,11 +24,11 @@
 | **P1-B1** |   S1   | Auth            | `handleLoginFail()` INCR + EXPIRE       | `INCR` 与 `EXPIRE` 之间不是原子操作。首次失败后若 `EXPIRE` 前进程崩溃/超时，fail key 将无 TTL，永远不过期。攻击者可利用此特性使计数器在 5 分钟窗口过期后仍然存在，无限延迟锁定触发。 |
 | **P1-B2** |   S2   | Auth            | `login()` 不存在用户无 bcrypt 调用      | 不存在账户直接返回 `false`（~0ms），存在账户需 bcrypt.compare（~10ms）。虽然 bcrypt 本身抗时间攻击，但存在/不存在账户的响应时间差可用于账户枚举。当前为已知设计权衡。 |
 | **P1-B3** |   S2   | Auth            | `refreshToken()` 宽限期多设备竞态       | 客户端 A 刷新 → RT 标记为 `'used'`。10 秒内客户端 B 用旧 RT 刷新 → 看到 `'grace'` 状态 → 获得新 AT（不含新 RT）。攻击者截获旧 RT 后可在宽限期内获取新 AT。 |
-| **P1-B4** |   S2   | Backtest Engine | `computePositionValueWithAdjFactor()`   | 当某股票无当日行情（停牌/退市/数据缺失）时，回退使用 `costPrice` 代替市场价。NAV 被人为拉高，计算出的收益率、夏普、最大回撤均不准确。 |
+| **P1-B4** |   S2   | Backtest Engine | `computePositionValueWithAdjFactor()`   | 当某股票无当日行情（停牌/退市/数据缺失）时，回退使用 `costPrice` 代替市场价。若 costPrice < 上一日收盘价则 NAV 偏低，反之偏高。计算出的收益率、夏普、最大回撤均不准确。 |
 | **P1-B5** |   S2   | Backtest Metrics| Sharpe/Sortino/Beta/IR 方差计算         | 所有方差/标准差计算均使用**总体方差**（除以 n）而非**样本方差**（除以 n-1）。对 n 较小的回测（如 20 个交易日），Sharpe 被系统性高估约 2.5%。 |
-| **P1-B6** |   S2   | Backtest Exec   | `executeBuySignals()` 资金检查          | `portfolio.cash < amount` 仅检查股价×数量，未计入佣金和滑点。当现金刚好等于股票成交额时，扣除佣金后现金变负。 |
+| **P1-B6** |   S1   | Backtest Exec   | `executeBuySignals()` 资金检查          | `portfolio.cash < amount` 仅检查股价×数量，未计入佣金和滑点。当现金刚好等于股票成交额时，扣除佣金后现金变负，属于资金数据损坏。 |
 | **P1-B7** |   S2   | Backtest Engine | `annualizedReturn` 极端亏损             | `Math.pow(1 + totalReturn, 1 / years)`：当 `totalReturn < -1`（理论上不应出现但无保护）时，底数为负，奇数幂根返回 NaN，污染所有下游指标。 |
-| **P1-B8** |   S2   | Portfolio       | `addHolding()` 加权平均成本精度丢失     | `Number(existing.avgCost)` 将 Prisma `Decimal` 转为 JS `Number`（IEEE 754 双精度），对高精度金额存在精度丢失。多次加仓后累积误差可达分级别。 |
+| **P1-B8** |   S2   | Portfolio       | `addHolding()` 加权平均成本精度丢失     | `Number(existing.avgCost)` 将 Prisma `Decimal` 转为 JS `Number`（IEEE 754 双精度），对高精度金额存在精度丢失。多次加仓后累积误差可达 ±0.01 元（分级别）。 |
 | **P1-B9** |   S2   | Portfolio       | `calcPnlToday()` 除零风险              | `totalPnl / (totalMv - totalPnl)`：若 `totalPnl ≈ totalMv`（当日涨幅接近 100%），分母趋近零，返回 Infinity 或极大值。 |
 | **P1-B10**|   S3   | Risk Check      | `checkMaxDrawdown()` 闰年日期偏移       | `start.setFullYear(year - 1)`：若 latestDate 为 2月29日（闰年），前推一年得到 2月28日→自动偏移为 3月1日，日期范围差 1-2 天。 |
 | **P1-B11**|   S3   | Risk Check      | `checkMaxDrawdown()` NAV 默认值         | `costBasis > 0 ? mv / cb : 1`：成本为零时 NAV 默认为 1（完全错误），新建空组合不应有 NAV=1。 |
@@ -37,7 +37,7 @@
 | **P1-B14**|   S3   | Risk Check      | WebSocket 发送无 try-catch              | `eventsGateway.emitToUser()` 未包裹异常处理，若 WS 连接断开，整个 `runCheck()` 调用失败，违规记录虽已写入 DB 但用户不知。 |
 | **P1-B15**|   S2   | Portfolio Perf  | Sharpe 缺少无风险利率                   | `annualizedReturn / annualizedVolatility` 未减去无风险利率，与 BacktestMetrics 的 Sharpe 定义不一致（后者使用 2% 无风险利率）。同一用户看到两个不同的 Sharpe。 |
 | **P1-B16**|   S3   | Portfolio Perf  | `lastKnownPrice` 初始化为 avgCost       | 首日无行情时使用 `avgCost` 作为市价，若买入价与首日收盘价差距大，首日 NAV 偏差明显。 |
-| **P1-B17**|   S3   | Backtest Metrics| `maxDrawdown` 空序列                    | `Math.min(...navRecords.map(r => r.drawdown), 0)`：空数组时 `Math.min(0) = 0`（安全），但 `navRecords.map(r => r.drawdown)` 返回空数组，`Math.min(...[], 0) = 0`（正确）。**非 Bug，但需测试确认行为。** |
+| **P1-B17**|   —    | Backtest Metrics| `maxDrawdown` 空序列                    | ⚠️ **非 Bug，需验证行为**：`Math.min(...navRecords.map(r => r.drawdown), 0)`：空数组时 `Math.min(0) = 0`（安全），但 `navRecords.map(r => r.drawdown)` 返回空数组，`Math.min(...[], 0) = 0`（正确）。 |
 
 ---
 
@@ -189,6 +189,17 @@ describe('handleLoginFail() — 账户锁定')
     // 当前行为正确，但不是原子操作
     // [BUG] 若 INCR 后 EXPIRE 前服务崩溃，failKey 将永不过期
     // 修复方案：使用 Lua 脚本实现原子 INCR + EXPIRE
+
+  it('[BUG P1-B1 补充] EXPIRE 调用失败时 failKey 无 TTL — 锁定机制被绕过')
+    // 模拟 redis.incr 返回 1（首次失败）
+    // 模拟 redis.expire 抛出异常（网络超时）
+    mock: redis.incr → 1
+    mock: redis.expire → throw Error('connection timeout')
+    // 当前代码：EXPIRE 失败是否被 catch？
+    // 如果无 catch → handleLoginFail 抛异常，但 fail key 已存在且无 TTL
+    // 结果：fail key 永不过期，后续 INCR 累加但永远基于旧 key
+    expect: 验证当前异常传播行为
+    // [BUG] 修复方案同上：Lua 脚本或 SET NX EX 替代 INCR + EXPIRE
 
   it('[EDGE] 失败计数恰好为 LOGIN_MAX_FAIL - 1 时不触发锁定')
     mock: redis.incr → 4 (LOGIN_MAX_FAIL - 1)
@@ -362,11 +373,12 @@ describe('NAV 计算 — 端到端验证')
     expect: Day 1 NAV ≈ 1,004,930
     expect: Day 1 dailyReturn ≈ 0.005002
 
-  it('[BUG P1-B4] 停牌日无行情时回退到 costPrice — NAV 被人为拉高')
+  it('[BUG P1-B4] 停牌日无行情时回退到 costPrice — NAV 计算错误')
     // 股票 A：买入 100 股 @50 = 5,000（costPrice = 50）
     // Day 1: 股价涨到 60 → posValue = 6,000
     // Day 2: 停牌，无行情 → 当前代码回退到 costPrice = 50
     //         posValue = 100 × 50 = 5,000（而非上一日的 6,000）
+    //         NAV 偏低 1,000（costPrice < 上一日收盘价时偏低，反之偏高）
     // 正确行为：应使用上一交易日收盘价 60，即 posValue = 6,000
     mock: Day 2 bars 不含该股票
     expect（当前行为）: posValue = 5,000（使用 costPrice）
@@ -622,7 +634,8 @@ describe('addHolding() — 加权平均成本计算')
     //            精确 avgCost = 10004.5 / 1000 = 10.0045
     // 使用 FinancialCalc.weightedAvgCost 逐步计算参考值
     // 验证 JS Number 精度误差是否在可接受范围内
-    expect: avgCost 与精确值偏差 < 0.01
+    // 业务容忍度：±0.01 元（1 分钱），对应股价精度为小数点后两位
+    expect: avgCost 与精确值偏差 < 0.01（即 ±1 分钱以内）
 
   it('[EDGE] dto.quantity = 0 → 不应除零')
     // newQty = existing.quantity + 0 = existing.quantity
@@ -689,11 +702,14 @@ describe('assertOwner() — 越权防护')
     call: assertOwner(portfolioId, 1)  // userId=1 ≠ 999
     expect: throw ForbiddenException('无权访问该组合')
 
-  it('[SEC] 404 和 403 不可混淆：不同 portfolioId 返回不同异常类型')
-    // 确保攻击者无法通过异常类型推断组合是否存在
-    // 不存在 → 404；存在但越权 → 403
-    // 当前实现确实区分了，但这可被利用做枚举攻击
-    expect: 分别返回 NotFoundException 和 ForbiddenException
+  it('[SEC] 404 和 403 的区分可能泄露组合存在性（已知权衡）')
+    // 不存在 → NotFoundException(404)
+    // 存在但越权 → ForbiddenException(403)
+    // ⚠️ 攻击者可通过 404 vs 403 推断组合是否存在
+    // 当前为已知设计权衡：若统一返回 403/404 会降低可调试性
+    // 记录当前行为供安全评审参考
+    expect: 不存在 → 404
+    expect: 越权 → 403
 ```
 
 #### 5.1.4 缓存一致性测试
@@ -936,10 +952,11 @@ Step 8: Portfolio Performance 补充（5 用例）
 
 | 严重度 | 数量 | 涉及模块 | 典型影响 |
 | :----: | :--: | -------- | -------- |
-| **S1** | 1 | Auth（P1-B1） | 锁定机制可被绕过 |
-| **S2** | 9 | Auth（2）、Backtest（4）、Portfolio（3） | 计算偏差、资金错误、指标不一致 |
-| **S3** | 7 | Risk（5）、Backtest（1）、Portfolio（1） | 边界条件异常、语义歧义 |
-| **总计** | **17** | | |
+| **S1** | 2 | Auth（P1-B1）、Backtest（P1-B6） | 锁定机制可被绕过、资金计算变负 |
+| **S2** | 8 | Auth（2）、Backtest（3）、Portfolio（3） | 计算偏差、指标不一致 |
+| **S3** | 6 | Risk（5）、Portfolio（1） | 边界条件异常、语义歧义 |
+| **需验证** | 1 | Backtest（P1-B17） | 行为确认，非 Bug |
+| **总计** | **17** | | 含 1 个需验证项 |
 
 ## 附录 B：与 Phase 3 / Phase 4 的接口约定
 

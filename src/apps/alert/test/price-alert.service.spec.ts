@@ -260,4 +260,120 @@ describe('PriceAlertService (OPT-4.3)', () => {
       expect(gateway.emitToUser).toHaveBeenCalledTimes(2)
     })
   })
+
+  // ── E2E-B6 日期格式验证 ─────────────────────────────────────────────────────
+
+  describe('[E2E-B6] runScan() 日期格式：Prisma Date → dayjs → YYYYMMDD', () => {
+    function makeActiveRule(
+      id: number,
+      overrides: Partial<{
+        tsCode: string | null
+        ruleType: PriceAlertRuleType
+        threshold: number
+        watchlistId: number | null
+      }> = {},
+    ) {
+      return {
+        id,
+        userId: 1,
+        tsCode: '000001.SZ',
+        stockName: '平安银行',
+        ruleType: PriceAlertRuleType.PRICE_ABOVE,
+        threshold: 10,
+        status: PriceAlertRuleStatus.ACTIVE,
+        memo: null,
+        watchlistId: null,
+        portfolioId: null,
+        sourceName: null,
+        lastTriggeredAt: null,
+        triggerCount: 0,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        ...overrides,
+      }
+    }
+
+    it('[BIZ] Prisma 返回 UTC 零点 Date → tradeDateStr 应为正确的 YYYYMMDD 字符串（E2E-B6 不存在）', async () => {
+      // Prisma @db.Date 在 UTC 容器中返回 UTC 零点 Date
+      // 例：trade_date = 2024-06-30 → new Date('2024-06-30T00:00:00.000Z')
+      // dayjs(new Date('2024-06-30T00:00:00.000Z')).format('YYYYMMDD') = '20240630'（UTC 环境正确）
+      // → E2E-B6 描述的「new Date().toISOString()」问题在本代码中不存在，
+      //   代码使用数据库中的 latestTradeDate，而非 new Date()
+      const prisma = buildPrismaMock()
+      const utcMidnightDate = new Date('2024-06-30T00:00:00.000Z')
+
+      prisma.priceAlertRule.findMany.mockResolvedValue([makeActiveRule(1)])
+      prisma.daily.findFirst.mockResolvedValue({ tradeDate: utcMidnightDate })
+      prisma.daily.findMany.mockResolvedValue([{ tsCode: '000001.SZ', close: 15, pctChg: 1.5 }])
+
+      const gateway = buildGatewayMock()
+      const svc = createService(prisma, gateway)
+      await svc.runScan()
+
+      // 验证 emitToUser payload 中的 tradeDate 字段格式正确为 '20240630'
+      expect(gateway.emitToUser).toHaveBeenCalledWith(
+        1,
+        'price-alert',
+        expect.objectContaining({ tradeDate: '20240630' }),
+      )
+    })
+
+    it('[BIZ] PRICE_ABOVE: close = threshold（等于边界）→ 触发（close >= threshold）', async () => {
+      // 业务规则：close >= threshold 触发，等于阈值也应触发
+      const prisma = buildPrismaMock()
+      prisma.priceAlertRule.findMany.mockResolvedValue([makeActiveRule(2, { threshold: 10 })])
+      prisma.daily.findFirst.mockResolvedValue({ tradeDate: new Date('2024-06-30') })
+      prisma.daily.findMany.mockResolvedValue([{ tsCode: '000001.SZ', close: 10, pctChg: 0 }])
+
+      const svc = createService(prisma)
+      const result = await svc.runScan()
+
+      expect(result.triggered).toBe(1)
+    })
+
+    it('[BIZ] PRICE_BELOW: close = threshold（等于边界）→ 触发（close <= threshold）', async () => {
+      // 业务规则：close <= threshold 触发，等于阈值也应触发
+      const prisma = buildPrismaMock()
+      prisma.priceAlertRule.findMany.mockResolvedValue([
+        makeActiveRule(3, { ruleType: PriceAlertRuleType.PRICE_BELOW, threshold: 10 }),
+      ])
+      prisma.daily.findFirst.mockResolvedValue({ tradeDate: new Date('2024-06-30') })
+      prisma.daily.findMany.mockResolvedValue([{ tsCode: '000001.SZ', close: 10, pctChg: 0 }])
+
+      const svc = createService(prisma)
+      const result = await svc.runScan()
+
+      expect(result.triggered).toBe(1)
+    })
+
+    it('[BIZ] PCT_CHANGE_DOWN: pctChg = -threshold（绝对值等于边界）→ 触发', async () => {
+      // 业务规则：pctChg <= -threshold 触发；pctChg=-5, threshold=5 → -5 <= -5 → 触发
+      const prisma = buildPrismaMock()
+      prisma.priceAlertRule.findMany.mockResolvedValue([
+        makeActiveRule(4, { ruleType: PriceAlertRuleType.PCT_CHANGE_DOWN, threshold: 5 }),
+      ])
+      prisma.daily.findFirst.mockResolvedValue({ tradeDate: new Date('2024-06-30') })
+      prisma.daily.findMany.mockResolvedValue([{ tsCode: '000001.SZ', close: 9.5, pctChg: -5 }])
+
+      const svc = createService(prisma)
+      const result = await svc.runScan()
+
+      expect(result.triggered).toBe(1)
+    })
+
+    it('[EDGE] PCT_CHANGE_DOWN: pctChg = -threshold + 0.01（略高于阈值）→ 不触发', async () => {
+      // pctChg = -4.99，threshold = 5 → -4.99 > -5 → 不触发
+      const prisma = buildPrismaMock()
+      prisma.priceAlertRule.findMany.mockResolvedValue([
+        makeActiveRule(5, { ruleType: PriceAlertRuleType.PCT_CHANGE_DOWN, threshold: 5 }),
+      ])
+      prisma.daily.findFirst.mockResolvedValue({ tradeDate: new Date('2024-06-30') })
+      prisma.daily.findMany.mockResolvedValue([{ tsCode: '000001.SZ', close: 9.5, pctChg: -4.99 }])
+
+      const svc = createService(prisma)
+      const result = await svc.runScan()
+
+      expect(result.triggered).toBe(0)
+    })
+  })
 })

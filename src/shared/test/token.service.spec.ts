@@ -5,7 +5,7 @@
  * - blacklistAccessToken: 有效 Token TTL > 0 → 写入 Redis 黑名单（含正确 TTL）
  * - blacklistAccessToken: 已过期 Token → verifyAccessToken 抛出 → catch → 不写黑名单，不报错
  * - [E2E-B3 验证] remainingTTL = 0（exp = now）→ redis.set 不被调用（代码已正确处理）
- * - [BUG Real-B1] Token 缺少 exp 字段 → remainingTTL = 0 → 无法加黑名单（安全隐患）
+ * - [BUG Real-B1 已修复] Token 缺少 exp 字段 → 使用 accessTokenTTL 兜底写入黑名单
  * - isAccessTokenBlacklisted: redis 返回 '1' → true；返回 null → false
  */
 
@@ -81,25 +81,23 @@ describe('TokenService', () => {
       expect(redisMock.set).not.toHaveBeenCalled()
     })
 
-    it('[BUG Real-B1] Token 缺少 exp 字段 → remainingTTL = 0 → redis.set 不被调用（永不过期 Token 无法加黑名单）', async () => {
-      // 安全隐患分析：
-      //   payload.exp 为 undefined 时
-      //   remainingTTL = (undefined ?? now) - now = now - now = 0
-      //   if (remainingTTL > 0) 条件不满足 → 不写 Redis
-      // 结果：没有 exp 字段的 Token（永不过期）即使调用 logout 也不会被加入黑名单，
-      //       随时可以继续访问受保护接口。
-      // 修复建议：
-      //   方案A：对缺少 exp 的 token 写入 this.accessTokenTTL 作为 TTL（保守保护）
-      //   方案B：在 verifyAccessToken 层面拒绝缺少 exp 的 payload
+    it('[BUG Real-B1 已修复] Token 缺少 exp 字段 → 使用 accessTokenTTL(1800) 兜底写入黑名单', async () => {
+      // 修复前：payload.exp 为 undefined 时
+      //   remainingTTL = (undefined ?? now) - now = 0 → 不写 Redis → 安全漏洞
+      // 修复后：exp 缺失时使用 this.accessTokenTTL 作为 TTL 兜底
+      //   remainingTTL = 1800 → 正常写入黑名单
       const { service, jwtMock, redisMock } = buildService()
       // 返回没有 exp 字段的 payload（模拟手工签发的无过期 Token）
       jwtMock.verifyAsync.mockResolvedValue({ jti: 'test-jti' /* no exp */ })
 
       await service.blacklistAccessToken('no-exp.token')
 
-      // 当前（有 bug 的）行为：不写黑名单
-      // 修复后此断言应反转为：expect(redisMock.set).toHaveBeenCalled()
-      expect(redisMock.set).not.toHaveBeenCalled()
+      // 修复后行为：以 accessTokenTTL(1800) 为 TTL 写入黑名单
+      expect(redisMock.set).toHaveBeenCalledWith(
+        REDIS_KEY.TOKEN_BLACKLIST('test-jti'),
+        '1',
+        expect.objectContaining({ EX: 1800 }),
+      )
     })
   })
 

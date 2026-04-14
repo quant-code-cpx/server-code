@@ -538,4 +538,63 @@ describe('BacktestExecutionService', () => {
       expect(rebalanceLog.skippedSuspendCount).toBe(0)
     })
   })
+
+  // ── 资金检查 bug ───────────────────────────────────────────────────────────
+
+  describe('[BUG P1-B6] 资金检查仅比较 amount，未含佣金和滑点', () => {
+    it('[BUG P1-B6] 现金恰好等于成交额时扣除最小佣金和滑点后现金变负', () => {
+      // cash=1000，买 100股@10 → amount=1000（cash >= amount 通过检查）
+      // 但实际扣除：amount(1000) + minCommission(5) + slippage(0.5) = 1005.5
+      // → cash = 1000 - 1005.5 = -5.5（负数，资金数据损坏）
+      const config = buildConfig({ slippageBps: 5, commissionRate: 0.0003, minCommission: 5 })
+      const portfolio = buildPortfolio({ cash: 1000 })
+      const signal: SignalOutput = { targets: [{ tsCode: '000001.SZ', weight: 1.0 }] }
+      const bars = new Map([['000001.SZ', buildBar({ tsCode: '000001.SZ', open: 10, close: 10 })]])
+
+      const { trades } = service.executeTrades(
+        portfolio,
+        signal,
+        bars,
+        config,
+        new Date('2025-01-01'),
+        new Date('2025-01-02'),
+      )
+
+      // [BUG] 资金检查漏洞：`portfolio.cash < amount` 通过，但扣除佣金+滑点后现金为负
+      // amount = floor(1000/10/100)*100 * 10 = 100 * 10 = 1000
+      // commission = max(1000*0.0003, 5) = 5, slippageCost = 1000*5/10000 = 0.5
+      // cash = 1000 - 1000 - 5 - 0.5 = -5.5
+      expect(trades).toHaveLength(1) // [BUG] 买入成功了
+      expect(portfolio.cash).toBeLessThan(0) // [BUG] 现金为负
+
+      // 修复方案：检查条件改为 `portfolio.cash < amount + commission + slippageCost`
+    })
+
+    it('[BUG P1-B6] 佣金超过最小佣金时同样可能出现现金不足', () => {
+      // cash = 200000，买 20000股@10 → amount=200000（通过检查）
+      // commission = max(200000*0.0003, 5) = max(60, 5) = 60
+      // slippage = 200000*5/10000 = 100
+      // cash = 200000 - 200000 - 60 - 100 = -160（负数）
+      const config = buildConfig({ slippageBps: 5, commissionRate: 0.0003, minCommission: 5 })
+      const portfolio = buildPortfolio({ cash: 200000 })
+      const signal: SignalOutput = { targets: [{ tsCode: '000001.SZ', weight: 1.0 }] }
+      const bars = new Map([['000001.SZ', buildBar({ tsCode: '000001.SZ', open: 10, close: 10 })]])
+
+      const { trades } = service.executeTrades(
+        portfolio,
+        signal,
+        bars,
+        config,
+        new Date('2025-01-01'),
+        new Date('2025-01-02'),
+      )
+
+      // floor(200000/10/100)*100 = 2000*100/100 wait:
+      // floor(200000/10/100)*100 = floor(200)*100 = 200*100 = 20000? 20000 shares?
+      // No: floor(200000/10/100) = floor(200) = 200, * 100 = 20000 shares
+      // amount = 20000 * 10 = 200000
+      expect(trades).toHaveLength(1) // [BUG] 买入成功了
+      expect(portfolio.cash).toBeLessThan(0) // [BUG] 现金为负
+    })
+  })
 })

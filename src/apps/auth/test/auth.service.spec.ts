@@ -493,6 +493,26 @@ describe('AuthService', () => {
       await expect(service.login(buildLoginDto())).rejects.toThrow(BusinessException)
       expect(redis.expire).not.toHaveBeenCalled()
     })
+
+    it('[BUG P1-B1] INCR 成功但 EXPIRE 失败时异常冒泡，failKey 无 TTL 永久存在', async () => {
+      // BUG：INCR 与 EXPIRE 是两个独立 Redis 调用，非原子操作。
+      // 若 INCR 成功（count=1）后 EXPIRE 前进程超时/崩溃，fail key 将无 TTL 永久累积。
+      // 攻击者可利用此特性在 5 分钟窗口结束后仍触发锁定，无限延迟合法用户登录。
+      const { redis, prisma } = buildWrongPasswordScenario()
+      redis.incr.mockResolvedValue(1)
+      redis.expire.mockRejectedValue(new Error('Redis EXPIRE timeout')) // EXPIRE 失败
+
+      const service = createService(prisma, undefined, redis)
+
+      // [BUG] EXPIRE 失败时 Redis 超时异常冒泡至调用方（应返回 BusinessException，实际抛 Redis 错）
+      await expect(service.login(buildLoginDto())).rejects.toThrow('Redis EXPIRE timeout')
+
+      // 记录非原子性证据：INCR 已执行成功，EXPIRE 失败 → failKey 无 TTL
+      expect(redis.incr).toHaveBeenCalled()
+      expect(redis.expire).toHaveBeenCalled()
+
+      // 修复方案：使用 SET failKey 1 NX EX TTL 的原子操作，或 Lua 脚本
+    })
   })
 
   // ── login: 输入规范化边界 ───────────────────────────────────────────────────

@@ -446,4 +446,105 @@ describe('BacktestMetricsService', () => {
       expect(result.informationRatio).toBeGreaterThan(0)
     })
   })
+
+  // ── 方差计算方式（总体 vs 样本）─────────────────────────────────────────────
+
+  describe('[BUG P1-B5] Sharpe/Volatility 使用总体方差（÷n）而非样本方差（÷n-1）', () => {
+    it('[BUG P1-B5] n=5 时总体 volatility 比样本 volatility 小 sqrt(5/4) 倍（高估 Sharpe 约 11.8%）', () => {
+      // 对称日收益序列，便于手算：[-0.02, -0.01, 0, 0.01, 0.02]
+      // mean = 0, SS = 2*(0.02)^2 + 2*(0.01)^2 = 2*0.0004 + 2*0.0001 = 0.001
+      // 总体 std = sqrt(0.001/5) = sqrt(0.0002) ≈ 0.01414
+      // 样本 std = sqrt(0.001/4) = sqrt(0.00025) ≈ 0.01581
+      // 两者之比 = sqrt(5/4) ≈ 1.118（样本 std 更大 → 样本 Sharpe 更保守）
+      const dailyReturns = [-0.02, -0.01, 0, 0.01, 0.02]
+      let nav = 1.0
+      let peak = 1.0
+      const records: DailyNavRecord[] = []
+      for (const r of dailyReturns) {
+        nav = nav * (1 + r)
+        peak = Math.max(peak, nav)
+        records.push(buildNav({ nav, benchmarkNav: 1, dailyReturn: r, benchmarkReturn: 0, drawdown: nav / peak - 1 }))
+      }
+
+      const result = service.computeMetrics(records, [], baseConfig)
+
+      const rfDaily = 0.02 / 252
+      const excessReturns = dailyReturns.map((r) => r - rfDaily)
+      const excessMean = excessReturns.reduce((a, b) => a + b, 0) / excessReturns.length
+      const ss = excessReturns.reduce((a, r) => a + (r - excessMean) ** 2, 0)
+      const n = excessReturns.length
+
+      const populationAnnStd = Math.sqrt(ss / n) * Math.sqrt(252)
+      const sampleAnnStd = Math.sqrt(ss / (n - 1)) * Math.sqrt(252)
+
+      // [BUG] 当前代码使用总体方差（÷n） → volatility 偏小，Sharpe 偏大
+      expect(result.volatility).toBeCloseTo(populationAnnStd, 4)
+
+      // 样本 std 更大，因此 result.volatility / sampleAnnStd = sqrt(n-1)/sqrt(n) = sqrt(4/5) < 1
+      expect(result.volatility / sampleAnnStd).toBeCloseTo(Math.sqrt((n - 1) / n), 4)
+
+      // 总体 Sharpe 与样本 Sharpe 之比 = sampleStd / populationStd = sqrt(n/(n-1)) ≈ 1.118
+      // 即：当前 Sharpe 比修复后的 Sharpe 高估约 11.8%（n=5 时）
+      const firstNav = records[0].nav
+      const lastNav = records[n - 1].nav
+      const totalReturn = lastNav / firstNav - 1
+      const years = n / 252
+      const annReturn = Math.pow(1 + totalReturn, 1 / years) - 1
+      if (populationAnnStd > 1e-8) {
+        const expectedPopSharpe = (annReturn - 0.02) / populationAnnStd
+        expect(result.sharpeRatio).toBeCloseTo(expectedPopSharpe, 3)
+      }
+    })
+
+    it('[BUG P1-B5] IR 同样使用总体方差，n 越小高估越明显', () => {
+      // 使用 n=4 的超额收益序列：excessReturn = [0.001, -0.001, 0.001, -0.001]
+      // SS = 4*(0.001)^2 = 0.000004
+      // 总体 std = sqrt(0.000004/4) = 0.001 → annualized = 0.001*sqrt(252) ≈ 0.01587
+      // 样本 std = sqrt(0.000004/3) ≈ 0.001155 → annualized ≈ 0.01834
+      // IR(总体) / IR(样本) = sampleStd / populationStd = sqrt(4/3) ≈ 1.155（高估 15.5%）
+      const benchmarkReturn = 0.002
+      const dailyReturns = [0.003, 0.001, 0.003, 0.001] // excess = [0.001, -0.001, 0.001, -0.001]
+      let nav = 1.0
+      let benchNav = 1.0
+      let peak = 1.0
+      const records: DailyNavRecord[] = []
+      for (let i = 0; i < dailyReturns.length; i++) {
+        nav = nav * (1 + dailyReturns[i])
+        benchNav = benchNav * (1 + benchmarkReturn)
+        peak = Math.max(peak, nav)
+        records.push(
+          buildNav({
+            nav,
+            benchmarkNav: benchNav,
+            dailyReturn: dailyReturns[i],
+            benchmarkReturn,
+            drawdown: nav / peak - 1,
+          }),
+        )
+      }
+
+      const result = service.computeMetrics(records, [], baseConfig)
+
+      // excessSeries = [0.001, -0.001, 0.001, -0.001]，mean=0，SS=0.000004
+      const n = dailyReturns.length
+      const excessSeries = dailyReturns.map((r) => r - benchmarkReturn)
+      const excessMean = 0 // 对称分布
+      const ss = excessSeries.reduce((a, r) => a + (r - excessMean) ** 2, 0)
+
+      const populationAnnExcessStd = Math.sqrt(ss / n) * Math.sqrt(252)
+      const sampleAnnExcessStd = Math.sqrt(ss / (n - 1)) * Math.sqrt(252)
+
+      // IR = annExcessReturn / annExcessStd
+      // 总体版本（当前代码）高估 sqrt(n/(n-1)) = sqrt(4/3) ≈ 1.155 倍
+      const ratio = sampleAnnExcessStd / populationAnnExcessStd
+      expect(ratio).toBeCloseTo(Math.sqrt(n / (n - 1)), 4)
+
+      // 若 IR 非零，当前 IR 比修复版高估 sqrt(n/(n-1)) 倍
+      if (result.informationRatio !== 0 && isFinite(result.informationRatio)) {
+        expect(Math.abs(result.informationRatio) * (sampleAnnExcessStd / populationAnnExcessStd)).toBeGreaterThan(
+          Math.abs(result.informationRatio),
+        )
+      }
+    })
+  })
 })

@@ -466,4 +466,103 @@ describe('PortfolioService', () => {
       expect(result.summary.totalUnrealizedPnl).toBeCloseTo(200, 5)
     })
   })
+
+  // ─── addHolding: Number(Decimal) 精度丢失 ────────────────────────────────────
+
+  describe('[BUG P1-B8] addHolding() — Number(Decimal) 精度丢失', () => {
+    it('[BUG P1-B8] 成本价含高精度小数时 Number(Decimal) 引入 IEEE 754 舍入误差', async () => {
+      // 业务场景：avgCost 为循环小数（如 1/3 = 0.333...），Decimal 可精确表示
+      // 但代码使用 Number(existing.avgCost) 将 Decimal 转为 JS float（IEEE 754 双精度）
+      // 双精度只有 15-16 位有效数字，超出部分被截断
+      const prisma = buildPrismaMock()
+      prisma.portfolio.findUnique.mockResolvedValue(buildPortfolio({ userId: 10 }))
+      prisma.stockBasic.findFirst.mockResolvedValue({ name: '精度测试股' })
+
+      // avgCost = 1/3（循环小数，用 Decimal 可精确保存到任意位数）
+      const exactDecimalStr = '3.33333333333333333333' // 20 位小数
+      prisma.portfolioHolding.findUnique.mockResolvedValue(
+        buildHolding({ quantity: 3, avgCost: new Decimal(exactDecimalStr) }),
+      )
+      prisma.portfolioHolding.update.mockResolvedValue(buildHolding({ quantity: 6 }))
+
+      const svc = createService(prisma)
+      // 加仓：再买 3 股 @10 元 → newAvgCost = (3*exactDecimal + 3*10) / 6
+      await svc.addHolding({ portfolioId: 'portfolio-001', tsCode: '000001.SZ', quantity: 3, avgCost: 10 }, 10)
+
+      const updateCall = prisma.portfolioHolding.update.mock.calls[0][0]
+      const computedAvgCost = Number(updateCall.data.avgCost)
+
+      // 手算（精确 Decimal 运算）：
+      // newAvgCost = (3 * 3.33333333333333333333 + 3 * 10) / 6 = (9.99999... + 30) / 6 = 39.99999... / 6
+      const exactResult = new Decimal(exactDecimalStr).mul(3).plus(new Decimal(10).mul(3)).div(6)
+
+      // [BUG] Number(Decimal) 把 3.33333333333333333333 截断为 3.3333333333333335（IEEE 754）
+      // 导致结果有 ~1e-16 量级误差（单次可忽略，多次加仓后累积误差可达分级别）
+      expect(computedAvgCost).toBeCloseTo(Number(exactResult), 10)
+
+      // 文档化：Decimal 精确值 vs Number 转换后的值存在差异
+      const jsFloat = Number(new Decimal(exactDecimalStr))
+      const trueThird = 1 / 3
+      // JS double 不能精确表示 1/3：Number('3.333...20位') = 3.3333333333333335（非 3.333...）
+      expect(jsFloat).not.toBe(trueThird * 10) // 精度已有差异
+      // 修复方案：使用 Decimal 运算代替 Number() 转换
+      // newAvgCost = existing.avgCost.mul(existing.quantity).plus(new Decimal(dto.avgCost).mul(dto.quantity)).div(newQty)
+    })
+  })
+
+  // ─── getPnlToday: NaN 与除零场景 ─────────────────────────────────────────────
+
+  describe('[BUG P1-B9] getPnlToday() — pctChg=-100% 时 todayPnl 为 NaN', () => {
+    it('[BUG P1-B9] 股票退市（close=0, pctChg=-100）时 todayPnl 为 NaN 污染汇总结果', async () => {
+      // 业务场景：A 股退市当天 close=0, pctChg=-100
+      // 代码计算：todayPnl = (mv / (1 + pctChg/100)) * (pctChg/100)
+      //         = (0 / (1 + (-100)/100)) * (-100/100)
+      //         = (0 / 0) * (-1) = NaN * (-1) = NaN
+      // 手算（正确）：退市当天应保护性返回 todayPnl=0 或昨日市值（不能为 NaN）
+      const prisma = buildPrismaMock()
+      const cache = buildCacheMock()
+      const tradeDate = new Date()
+      prisma.portfolio.findUnique.mockResolvedValue(buildPortfolio({ userId: 10 }))
+      prisma.tradeCal.findFirst.mockResolvedValue({ calDate: tradeDate })
+      prisma.portfolioHolding.findMany.mockResolvedValue([buildHolding({ quantity: 100, tsCode: '000001.SZ' })])
+      // 退市：收盘价为 0，跌幅 -100%
+      prisma.daily.findMany.mockResolvedValue([
+        { tsCode: '000001.SZ', close: new Decimal('0'), pctChg: new Decimal('-100') },
+      ])
+
+      const svc = createService(prisma, cache)
+      const result = await svc.getPnlToday('portfolio-001', 10)
+
+      // [BUG P1-B9] 0/0 = NaN，NaN != null → totalPnl += NaN → todayPnl = NaN
+      // 修复后应改为：expect(result.todayPnl).toBe(0) 或有限值
+      expect(isNaN(result.todayPnl)).toBe(true)
+      // byHolding 中该持仓的 todayPnl 也为 NaN
+      expect(isNaN(result.byHolding[0].todayPnl!)).toBe(true)
+    })
+
+    it('[BUG P1-B9] 退市持仓与正常持仓混合时总 todayPnl 被 NaN 污染', async () => {
+      // 即使另一只股票正常，NaN 传播导致整个 todayPnl 为 NaN
+      const prisma = buildPrismaMock()
+      const cache = buildCacheMock()
+      const tradeDate = new Date()
+      prisma.portfolio.findUnique.mockResolvedValue(buildPortfolio({ userId: 10 }))
+      prisma.tradeCal.findFirst.mockResolvedValue({ calDate: tradeDate })
+      prisma.portfolioHolding.findMany.mockResolvedValue([
+        buildHolding({ quantity: 100, tsCode: '000001.SZ' }),
+        buildHolding({ id: 'h2', quantity: 200, tsCode: '000002.SZ', stockName: '正常股' }),
+      ])
+      prisma.daily.findMany.mockResolvedValue([
+        { tsCode: '000001.SZ', close: new Decimal('0'), pctChg: new Decimal('-100') }, // 退市
+        { tsCode: '000002.SZ', close: new Decimal('10'), pctChg: new Decimal('5') }, // 正常 +5%
+      ])
+
+      const svc = createService(prisma, cache)
+      const result = await svc.getPnlToday('portfolio-001', 10)
+
+      // [BUG] 000001 的 todayPnl=NaN，0+NaN+正常股pnl = NaN
+      // 正常股手算：mv=10*200=2000, pnl=(2000/1.05)*0.05 ≈ 95.24
+      expect(isNaN(result.todayPnl)).toBe(true) // NaN 污染整体汇总
+      // 修复方案：(mv / (1 + pctChg/100)) 分母为零时返回 0（退市当天 pnl=0 是合理默认值）
+    })
+  })
 })

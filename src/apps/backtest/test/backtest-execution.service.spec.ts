@@ -589,10 +589,11 @@ describe('BacktestExecutionService', () => {
         new Date('2025-01-02'),
       )
 
-      // floor(200000/10/100)*100 = 2000*100/100 wait:
-      // floor(200000/10/100)*100 = floor(200)*100 = 200*100 = 20000? 20000 shares?
-      // No: floor(200000/10/100) = floor(200) = 200, * 100 = 20000 shares
-      // amount = 20000 * 10 = 200000
+      // rawQty = floor(200000/10/100) * 100 = floor(200) * 100 = 20000 股
+      // amount = 20000 * 10 = 200000（等于 cash，通过 cash < amount 检查）
+      // commission = max(200000*0.0003, 5) = max(60, 5) = 60
+      // slippageCost = 200000*5/10000 = 100
+      // cash = 200000 - 200000 - 60 - 100 = -160（负数）
       expect(trades).toHaveLength(1) // [BUG] 买入成功了
       expect(portfolio.cash).toBeLessThan(0) // [BUG] 现金为负
     })

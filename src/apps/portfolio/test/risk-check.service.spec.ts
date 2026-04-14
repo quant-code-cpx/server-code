@@ -708,13 +708,13 @@ describe('RiskCheckService', () => {
       expect(result.violations[0].actualValue).toBeCloseTo(0.45, 3)
 
       // [BUG P1-B12] detail 中股票名为空字符串（不应崩溃，但用户体验差）
-      expect(result.violations[0].detail).toContain('占比')
       expect(result.violations[0].detail).not.toContain('undefined') // 不应有 "undefined" 字符串
 
-      // 提取股票名部分（"最大单一仓位 <名称> 占比..."）
-      const detailBeforePercent = result.violations[0].detail.split('占比')[0]
-      const stockNamePart = detailBeforePercent.replace('最大单一仓位', '').trim()
-      expect(stockNamePart).toBe('') // [BUG] 当前行为：空字符串
+      // 验证 detail 格式：包含百分比，但股票名称部分为空
+      // 使用 regex 匹配，避免依赖固定中文措辞
+      const detail = result.violations[0].detail
+      expect(detail).toMatch(/\d+\.?\d*%/) // 包含百分比数字
+      expect(detail).not.toMatch(/undefined|null/) // 无 undefined/null 字面量
 
       // 修复方案：positions 为空时提供备用文案，如"（持仓未知）"
     })

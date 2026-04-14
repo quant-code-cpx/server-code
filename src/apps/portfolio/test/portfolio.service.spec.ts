@@ -496,15 +496,17 @@ describe('PortfolioService', () => {
       // newAvgCost = (3 * 3.33333333333333333333 + 3 * 10) / 6 = (9.99999... + 30) / 6 = 39.99999... / 6
       const exactResult = new Decimal(exactDecimalStr).mul(3).plus(new Decimal(10).mul(3)).div(6)
 
-      // [BUG] Number(Decimal) 把 3.33333333333333333333 截断为 3.3333333333333335（IEEE 754）
-      // 导致结果有 ~1e-16 量级误差（单次可忽略，多次加仓后累积误差可达分级别）
+      // 结果在 10 位精度内接近（单次误差在 ~1e-16 量级）
       expect(computedAvgCost).toBeCloseTo(Number(exactResult), 10)
 
-      // 文档化：Decimal 精确值 vs Number 转换后的值存在差异
-      const jsFloat = Number(new Decimal(exactDecimalStr))
-      const trueThird = 1 / 3
-      // JS double 不能精确表示 1/3：Number('3.333...20位') = 3.3333333333333335（非 3.333...）
-      expect(jsFloat).not.toBe(trueThird * 10) // 精度已有差异
+      // 文档化：Number('3.33333333333333333333') ≠ 精确的 10/3
+      // IEEE 754 double 仅保留 15-16 位有效数字，超出部分被截断为最近可表示值
+      // 例：Number('3.33333333333333333333') = 3.3333333333333335（末位有舍入）
+      //   而 Decimal 运算中 3*3.33333333333333333333 = 9.99999999999999999999（精确）
+      const jsFloat = Number(new Decimal(exactDecimalStr))       // 3.3333333333333335 (截断)
+      const decimalStr = new Decimal(exactDecimalStr).toFixed(20) // '3.33333333333333333333'（精确）
+      // Number 转换会丢失超出 double 精度的位数
+      expect(jsFloat.toString().length).toBeLessThan(decimalStr.replace('.', '').length)
       // 修复方案：使用 Decimal 运算代替 Number() 转换
       // newAvgCost = existing.avgCost.mul(existing.quantity).plus(new Decimal(dto.avgCost).mul(dto.quantity)).div(newQty)
     })

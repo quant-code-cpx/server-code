@@ -231,10 +231,10 @@ export class FactorComputeService {
     const sql = this.expressionSvc.buildRawQuery(compiled, tradeDate, universeJoinStr)
 
     const rows = await this.prisma.$queryRawUnsafe<RawRow[]>(sql)
-    return rows.map((r) => ({
-      tsCode: r.ts_code,
-      factorValue: r.factor_value != null && Number.isFinite(Number(r.factor_value)) ? Number(r.factor_value) : null,
-    }))
+    return rows.map((r) => {
+      const num = r.factor_value != null ? Number(r.factor_value) : null
+      return { tsCode: r.ts_code, factorValue: num != null && Number.isFinite(num) ? num : null }
+    })
   }
 
   /**

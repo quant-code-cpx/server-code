@@ -230,7 +230,7 @@ export class SignalGenerationService {
     hasPortfolio: boolean,
   ): { tsCode: string; action: string; targetWeight: number }[] {
     if (!hasPortfolio) {
-      // 无组合上下文：weight=0 跳过（无意义的 BUY），其余全部 BUY
+      // 无组合上下文：weight=0 跳过（语义为"不持有"，无法发出 BUY），其余全部 BUY
       return [...newTargets.entries()]
         .filter(([, weight]) => weight > 0)
         .map(([tsCode, weight]) => ({

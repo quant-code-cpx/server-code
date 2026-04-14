@@ -291,9 +291,9 @@ export class RiskCheckService {
       return cb > 0 ? mv / cb : 1
     })
 
-    // 计算最大回撤（从初始 NAV=1.0 开始，避免低估）
+    // 计算最大回撤（从初始 NAV=1.0 开始，表示投资起始基准，避免低估回撤）
     let maxDrawdown = 0
-    let peak = 1.0
+    let peak = 1.0 // 初始高水位 = 投资起始净值（相对收益 1.0）
     for (const nav of navs) {
       if (nav > peak) peak = nav
       const dd = peak > 0 ? (peak - nav) / peak : 0

@@ -265,19 +265,16 @@ describe('SignalGenerationService', () => {
       expect(sell.targetWeight).toBe(0)
     })
 
-    it('[EDGE] weight=0 的目标仍产生 BUY 信号（不被过滤）— 记录已知行为', () => {
-      // 当前 deriveActions 实现：weight=0 仍作为有效 target 处理
-      // 设计上 weight=0 语义等同 SELL，但当前代码不过滤，此测试记录现有行为
+    it('weight=0 且未持仓（hasPortfolio=true）→ 跳过，不产生 BUY', () => {
+      // 修复后：weight=0 且未持仓时，跳过（无需操作）
       const { svc } = createService()
       const holdings = new Set<string>()
-      const targets = new Map([['000001.SZ', 0]]) // weight=0 但是新目标
+      const targets = new Map([['000001.SZ', 0]]) // weight=0 且未持仓
 
       const result = (svc as any).deriveActions(holdings, targets, true)
 
-      // 当前行为：weight=0 的新目标生成 BUY（无组合上下文时）
-      expect(result[0].tsCode).toBe('000001.SZ')
-      expect(result[0].action).toBe('BUY')
-      expect(result[0].targetWeight).toBe(0)
+      // 修复后：weight=0 且未持仓 → 空结果
+      expect(result).toHaveLength(0)
     })
   })
 
@@ -318,62 +315,63 @@ describe('SignalGenerationService', () => {
     })
   })
 
-  // ── Phase 2：weight=0 的语义 bug ──────────────────────────────────────────
+  // ── weight=0 语义修复（B6 已修复）────────────────────────────────────────
 
-  // 业务规则：weight=0 语义 = "不持有"，等价于 SELL 指令
-  // B6 bug：nullish coalescing `?? 1/N` 正确跳过 0（不赋等权），但 deriveActions 不区分 weight=0
-
-  describe('[BUG-B6] weight=0 持仓语义 — deriveActions 未正确处理', () => {
-    it('[BUG] 无组合上下文时 weight=0 目标仍产生 BUY+targetWeight=0（语义矛盾）', () => {
-      // 业务推导：无组合路径全部发 BUY，weight=0 的 BUY 意义不明
-      // 正确行为应为：weight=0 目标应被过滤或产生 SKIP 信号
+  describe('[B6] weight=0 持仓语义 — deriveActions 正确处理（已修复）', () => {
+    it('无组合上下文时 weight=0 目标被过滤（不产生 BUY）', () => {
+      // 修复后：无组合路径中 weight=0 跳过，不产生无意义的 BUY
       const { svc } = createService()
-      const holdings = new Set<string>() // 无持仓
-      const targets = new Map([['000001.SZ', 0]]) // weight=0
+      const holdings = new Set<string>()
+      const targets = new Map([['000001.SZ', 0]])
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const result = (svc as any).deriveActions(holdings, targets, false) // hasPortfolio=false
+      const result = (svc as any).deriveActions(holdings, targets, false)
 
-      // 当前行为（BUG）：BUY 信号但 targetWeight=0
-      expect(result[0].action).toBe('BUY')
-      expect(result[0].targetWeight).toBe(0)
-      // 正确行为：weight=0 目标不应产生 BUY，或 targetWeight 至少应 > 0
+      // 修复后：weight=0 被过滤，返回空数组
+      expect(result).toHaveLength(0)
     })
 
-    it('[BUG] 有组合 + 已持仓 + weight=0 → 产生 HOLD 而非 SELL（语义错误）', () => {
-      // 业务推导：我已经持有该股，但策略给出 weight=0，说明策略认为不应继续持有
-      // 正确行为：应产生 SELL 信号；当前实现：因为 tsCode 在 currentHoldings → HOLD
+    it('有组合 + 已持仓 + weight=0 → 产生 SELL（语义正确）', () => {
+      // 修复后：weight=0 表示退出仓位，已持仓应产生 SELL
       const { svc } = createService()
-      const holdings = new Set(['000001.SZ']) // 已持仓
-      const targets = new Map([['000001.SZ', 0]]) // weight=0 = "不持有"
+      const holdings = new Set(['000001.SZ'])
+      const targets = new Map([['000001.SZ', 0]])
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const result = (svc as any).deriveActions(holdings, targets, true) // hasPortfolio=true
+      const result = (svc as any).deriveActions(holdings, targets, true)
 
-      // 当前行为（BUG）：HOLD + targetWeight=0
-      expect(result[0].action).toBe('HOLD')
+      // 修复后：action=SELL，因为 weight=0 表示退出该仓位
+      expect(result).toHaveLength(1)
+      expect(result[0].action).toBe('SELL')
       expect(result[0].targetWeight).toBe(0)
-      // 正确行为：action 应为 'SELL'，因为 weight=0 表示退出该仓位
+    })
+
+    it('有组合 + 未持仓 + weight=0 → 跳过（不产生 BUY）', () => {
+      // weight=0 且未持仓 → 无需操作，跳过
+      const { svc } = createService()
+      const holdings = new Set<string>()
+      const targets = new Map([['000001.SZ', 0]])
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const result = (svc as any).deriveActions(holdings, targets, true)
+
+      expect(result).toHaveLength(0)
     })
   })
 
-  // ── Phase 2：resolveTradeDate 字符串路径时区 ──────────────────────────────
+  // ── resolveTradeDate 时区修复（B1 已修复）───────────────────────────────
 
-  // 业务规则：'20250301' 应被解析为上海时间 2025-03-01（而非 UTC 午夜）
-  // B2 bug：new Date('2025-03-01') 创建 UTC midnight，在 UTC+8 服务器会是前一天 16:00
-
-  describe('[BUG-B2] resolveTradeDate() — 字符串路径创建 UTC 午夜 Date', () => {
-    it('[BUG] 字符串 "20250301" 被解析为 UTC midnight（非上海时间）', async () => {
-      // 直接测试私有方法行为：是否使用 UTC 解析
+  describe('[B1] resolveTradeDate() — 使用上海时区解析字符串（已修复）', () => {
+    it('字符串 "20250301" 被解析为上海时间（2025-02-28T16:00:00.000Z）', async () => {
+      // 修复后：dayjs.tz('20250301', 'YYYYMMDD', 'Asia/Shanghai').toDate()
+      // 上海 2025-03-01 00:00:00 CST = UTC 2025-02-28 16:00:00
       const { svc } = createService()
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const result = await (svc as any).resolveTradeDate('20250301')
 
-      // 当前行为：new Date('2025-03-01') = UTC midnight = 2025-03-01T00:00:00.000Z
       expect(result).toBeInstanceOf(Date)
-      expect(result.toISOString()).toBe('2025-03-01T00:00:00.000Z')
-      // 正确行为（Shanghai）：如果服务在 UTC+8 运行，应为 2025-02-28T16:00:00.000Z 或使用本地时区解析
+      expect(result.toISOString()).toBe('2025-02-28T16:00:00.000Z')
     })
 
     it('[BIZ] resolveTradeDate 无参数时从 tradeCal 查询最晚交易日', async () => {
@@ -390,20 +388,17 @@ describe('SignalGenerationService', () => {
     })
   })
 
-  // ── Phase 2：buildHistoricalBars 包含当日 bar ─────────────────────────────
+  // ── buildHistoricalBars 排除当日 bar（B2 已修复）────────────────────────
 
-  // 业务规则："历史" K 线应该是截止日之前的数据，不包含当日
-  // B12 bug：d <= upToDateStr 使用 <=，导致当日 bar 包含在"历史"数据中
-
-  describe('[BUG-B12] buildHistoricalBars() — d <= upToDateStr 包含当日', () => {
-    it('[BUG] upToDate 当日的 bar 被包含在历史 K 线中', () => {
+  describe('[B2] buildHistoricalBars() — 严格小于 upToDateStr（已修复）', () => {
+    it('upToDate 当日的 bar 不包含在历史 K 线中', () => {
+      // 修复后：d < upToDateStr，当日 bar 被排除
       const { svc } = createService()
-      // 构造行情：含历史日 + 当日
       const allBarsMap = new Map([
         [
           '000001.SZ',
           new Map([
-            makeBar('000001.SZ', '2025-02-28'), // 前一日
+            makeBar('000001.SZ', '2025-02-28'),
             makeBar('000001.SZ', '2025-03-01'), // 当日
           ]),
         ],
@@ -412,10 +407,9 @@ describe('SignalGenerationService', () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const result = (svc as any).buildHistoricalBars(allBarsMap, '2025-03-01')
 
-      // 当前行为（BUG）：当日 bar 包含在历史中（应只含 2025-02-28）
+      // 修复后：只含 2025-02-28，当日被排除（避免 look-ahead bias）
       const bars: unknown[] = result.get('000001.SZ')
-      expect(bars).toHaveLength(2) // 包含了当日（BUG记录）
-      // 正确行为：bars.length 应为 1，只含 2025-02-28
+      expect(bars).toHaveLength(1)
     })
 
     it('[BIZ] upToDate 之前的所有 bar 按日期升序排列', () => {

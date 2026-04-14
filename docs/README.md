@@ -78,9 +78,10 @@ docs/
 | [待办清单](待办清单.md)                                                            | 统一 TODO List（功能 + 工程质量 + 产品痛点），按优先级 P0-P3 组织                                                 | 持续更新  |
 | [测试待办清单](测试待办清单.md)                                                    | 测试体系规划（P0-P6 分阶段，覆盖单元 / 集成 / E2E）                                                               | 持续更新  |
 | [测试重构总纲](测试重构总纲.md)                                                    | 测试用例重构计划（基于业务理解、以发现 Bug 为目的的测试重设计）                                                   | 📋 需求稿 |
-| [Phase4-Controller测试重构-详细设计](design/Phase4-Controller测试重构-详细设计.md) | Phase 4 Controller 层测试详细设计（DTO 校验 / 异常透传 / 权限边界，21 个 Controller ~120 新增用例）               | 📋 需求稿 |
 | [测试重构Phase1-设计方案](design/测试重构Phase1-设计方案.md)                       | Phase 1 测试设计（Auth / Backtest Engine / Portfolio，17 个 Bug，~66 新增用例）                                   | 📋 需求稿 |
+| [测试重构Phase2-设计方案](design/测试重构Phase2-设计方案.md)                       | Phase 2 测试设计（Factor Compute / Strategy / Signal / Risk Check / Backtest Run，12 个 Bug，~133 用例）          | 📋 需求稿 |
 | [测试重构Phase3-设计方案](design/测试重构Phase3-设计方案.md)                       | Phase 3 测试设计（Event Study / Pattern / Stock / Market / Heatmap / Index / Tushare Sync，19 个 Bug，~147 用例） | 📋 需求稿 |
+| [Phase4-Controller测试重构-详细设计](design/Phase4-Controller测试重构-详细设计.md) | Phase 4 Controller 层测试详细设计（DTO 校验 / 异常透传 / 权限边界，21 个 Controller ~120 新增用例）               | 📋 需求稿 |
 | [后端功能盘点](后端功能盘点.md)                                                    | 全部 147 个 API 端点 · 14 个模块 · 异步任务 · WebSocket · Tushare 同步清单                                        | 按需更新  |
 
 ---

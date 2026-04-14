@@ -31,7 +31,7 @@ function buildStrategy(overrides: Record<string, unknown> = {}) {
 }
 
 function buildPrismaMock() {
-  return {
+  const mock = {
     strategy: {
       create: jest.fn(),
       findMany: jest.fn(async () => []),
@@ -48,7 +48,9 @@ function buildPrismaMock() {
     backtestRun: {
       findFirst: jest.fn(async () => null),
     },
+    $transaction: jest.fn(async (fn: (tx: unknown) => unknown) => fn(mock)),
   }
+  return mock
 }
 
 function buildSchemaValidatorMock() {

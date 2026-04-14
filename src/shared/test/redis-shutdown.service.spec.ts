@@ -60,23 +60,22 @@ describe('RedisShutdownService', () => {
     )
   })
 
-  it('[BUG P5-B14] quit() 抛出字符串异常 → err?.message 为 undefined，日志记录 undefined', async () => {
-    // err = 'connection reset'（字符串，无 .message 属性）
-    // err?.message = undefined
-    // 当前行为：logger.error('Error closing Redis connection', undefined, 'RedisShutdownService')
+  it('quit() 抛出字符串异常 → 日志记录原始字符串（已修复 P5-B14）', async () => {
+    // 修复后：err instanceof Error ? err.message : String(err)
+    // 'connection reset' 不是 Error 实例 → String('connection reset') = 'connection reset'
+    // logger.error 收到完整错误信息而非 undefined
     const logger = makeLogger()
     const redis = makeRedis({ isOpen: true, quit: jest.fn().mockRejectedValue('connection reset') })
     const service = new RedisShutdownService(redis, logger)
 
     await expect(service.onApplicationShutdown('SIGTERM')).resolves.not.toThrow()
 
-    // 记录当前（有缺陷的）行为：第二个参数为 undefined 而非 'connection reset'
+    // 修复后行为：第二个参数为 'connection reset' 而非 undefined
     expect(logger.error).toHaveBeenCalledWith(
       'Error closing Redis connection',
-      undefined, // 'connection reset'?.message = undefined
+      'connection reset',
       'RedisShutdownService',
     )
-    // 修复后应改为：expect(logger.error).toHaveBeenCalledWith(..., 'connection reset', ...)
   })
 
   it('[BIZ] 日志包含信号名称', async () => {

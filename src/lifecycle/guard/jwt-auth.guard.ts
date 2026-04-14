@@ -21,7 +21,7 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
 
     // 基础设施路径白名单放行（Prometheus scraper 不携带 JWT）
     const request = context.switchToHttp().getRequest()
-    if (PUBLIC_PATHS.some((p) => request.url?.startsWith(p))) return true
+    if (PUBLIC_PATHS.some((p) => request.url === p || request.url?.startsWith(p + '/') || request.url?.startsWith(p + '?'))) return true
 
     try {
       const result = (await super.canActivate(context)) as boolean

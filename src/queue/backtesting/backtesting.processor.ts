@@ -58,7 +58,7 @@ export class BacktestingProcessor extends WorkerHost {
 
   private async runBacktest(job: Job<BacktestingJobData, BacktestingJobResult>): Promise<BacktestingJobResult> {
     const { runId } = job.data
-    const jobId = job.id!
+    const jobId = job.id ?? 'unknown'
 
     const emitProgress = async (pct: number, step: string) => {
       await job.updateProgress(pct)
@@ -95,7 +95,7 @@ export class BacktestingProcessor extends WorkerHost {
 
   private async runWalkForward(job: Job<WalkForwardJobData, BacktestingJobResult>): Promise<BacktestingJobResult> {
     const { wfRunId } = job.data
-    const jobId = job.id!
+    const jobId = job.id ?? 'unknown'
 
     const emitProgress = async (pct: number, step: string) => {
       await job.updateProgress(pct)
@@ -123,7 +123,7 @@ export class BacktestingProcessor extends WorkerHost {
 
   private async runComparison(job: Job<ComparisonJobData, BacktestingJobResult>): Promise<BacktestingJobResult> {
     const { groupId } = job.data
-    const jobId = job.id!
+    const jobId = job.id ?? 'unknown'
 
     const emitProgress = async (pct: number, step: string) => {
       await job.updateProgress(pct)
@@ -151,21 +151,40 @@ export class BacktestingProcessor extends WorkerHost {
 
   @OnWorkerEvent('failed')
   async onFailed(job: Job<BacktestingJobData | WalkForwardJobData | ComparisonJobData>, error: Error) {
-    const jobId = job.id!
+    const jobId = job.id ?? 'unknown'
     const data = job.data as BacktestingJobData & WalkForwardJobData & ComparisonJobData
-    const runId = data?.runId
     this.logger.error(`Backtest job failed id=${jobId}: ${error.message}`, error.stack)
 
-    if (runId) {
-      try {
-        await this.prisma.backtestRun.update({
-          where: { id: runId },
-          data: { status: 'FAILED', failedReason: error.message },
-        })
-      } catch (updateError) {
-        const message = updateError instanceof Error ? updateError.message : String(updateError)
-        this.logger.error(`Failed to update run status for runId=${runId}: ${message}`)
+    try {
+      switch (job.name) {
+        case BacktestingJobName.RUN_BACKTEST:
+          if (data?.runId) {
+            await this.prisma.backtestRun.update({
+              where: { id: data.runId },
+              data: { status: 'FAILED', failedReason: error.message },
+            })
+          }
+          break
+        case BacktestingJobName.RUN_WALK_FORWARD:
+          if (data?.wfRunId) {
+            await this.prisma.backtestWalkForwardRun.update({
+              where: { id: data.wfRunId },
+              data: { status: 'FAILED', failedReason: error.message },
+            })
+          }
+          break
+        case BacktestingJobName.RUN_COMPARISON:
+          if (data?.groupId) {
+            await this.prisma.backtestComparisonGroup.update({
+              where: { id: data.groupId },
+              data: { status: 'FAILED' },
+            })
+          }
+          break
       }
+    } catch (updateError) {
+      const message = updateError instanceof Error ? updateError.message : String(updateError)
+      this.logger.error(`Failed to update job status for id=${jobId}: ${message}`)
     }
 
     this.eventsGateway.emitBacktestFailed(jobId, error.message)

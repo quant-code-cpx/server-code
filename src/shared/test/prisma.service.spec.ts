@@ -36,11 +36,10 @@ describe('buildPrismaDatasourceUrl()', () => {
     expect(buildPrismaDatasourceUrl('')).toBeUndefined()
   })
 
-  it('[BUG P5-B10] databaseUrl 不是有效 URL（缺少协议头）→ 抛出 TypeError（当前行为）', () => {
-    // new URL('not-a-url') → throws TypeError: Invalid URL
-    // 当前行为：异常冒泡到 PrismaService 构造函数 → 应用启动失败，错误信息不友好
-    // 建议修复：增加 try-catch 包装，抛出友好的 ConfigurationError
-    expect(() => buildPrismaDatasourceUrl('not-a-valid-url')).toThrow(/Invalid URL/)
+  it('databaseUrl 不是有效 URL → 抛出友好 Error 消息（已修复 P5-B10）', () => {
+    // 修复后：try-catch 捕获 TypeError，重新抛出包含中文提示的友好 Error
+    // 不再直接暴露 "Invalid URL" 的原生 TypeError
+    expect(() => buildPrismaDatasourceUrl('not-a-valid-url')).toThrow(/DATABASE_URL 格式无效/)
   })
 
   it('[BIZ] 多个参数已存在时全部保留，不重复追加', () => {

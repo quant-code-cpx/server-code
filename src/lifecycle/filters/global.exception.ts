@@ -137,7 +137,7 @@ export class GlobalExceptionsFilter implements ExceptionFilter {
   }
 
   private parseErrorMessage(error: ErrorEnum): string {
-    return error.split(':')[1]
+    return error.split(':')[1] ?? '服务繁忙，请稍后再试'
   }
 
   private isRecord(value: unknown): value is Record<string, unknown> {

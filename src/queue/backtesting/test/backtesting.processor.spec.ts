@@ -199,11 +199,10 @@ describe('BacktestingProcessor', () => {
 
   // ── [EDGE] job.id 边界 ────────────────────────────────────────────────────
 
-  it('[BUG P5-B12] job.id 为 undefined → emitBacktestProgress/Completed 收到 undefined jobId', async () => {
-    // BullMQ 文档：job.id 在未完全持久化时可能为 undefined
-    // 当前代码使用 job.id!（非空断言）——运行时不崩溃但发送 jobId=undefined 给 WS 客户端
+  it('job.id 为 undefined → emitBacktestProgress/Completed 收到 "unknown" jobId（已修复 P5-B12）', async () => {
+    // 修复后：job.id ?? 'unknown' — undefined 情况下安全降级为 'unknown' 字符串
+    // WS 客户端收到 'unknown' 而非 undefined，不会出现 undefined 事件房间问题
     prisma.backtestRun.update.mockResolvedValue({} as never)
-    // 直接构造 job 对象，id 设为 undefined（makeJob 使用默认参数，传 undefined 会触发默认值 'job-1'）
     const job = {
       id: undefined,
       name: BacktestingJobName.RUN_BACKTEST,
@@ -213,10 +212,9 @@ describe('BacktestingProcessor', () => {
 
     await processor.process(job)
 
-    // 记录当前（有缺陷的）行为：jobId=undefined 传入 emitBacktestProgress 和 emitBacktestCompleted
-    expect(eventsGateway.emitBacktestProgress).toHaveBeenCalledWith(undefined, expect.any(Number), expect.any(String))
-    expect(eventsGateway.emitBacktestCompleted).toHaveBeenCalledWith(undefined, expect.anything())
-    // 修复建议：使用 job.id ?? 'unknown' 替代非空断言
+    // 修复后行为：jobId = 'unknown'
+    expect(eventsGateway.emitBacktestProgress).toHaveBeenCalledWith('unknown', expect.any(Number), expect.any(String))
+    expect(eventsGateway.emitBacktestCompleted).toHaveBeenCalledWith('unknown', expect.anything())
   })
 
   // ── [ERR] onFailed 错误处理 ───────────────────────────────────────────────
@@ -233,20 +231,26 @@ describe('BacktestingProcessor', () => {
     expect(eventsGateway.emitBacktestFailed).toHaveBeenCalledWith('job-1', 'engine failed')
   })
 
-  it('[BUG P5-B13] WalkForward job 在 onFailed 中 → data.runId 为 undefined → 跳过 DB 更新', async () => {
-    // WalkForwardJobData: { wfRunId, userId } — 无 runId 字段
-    // onFailed 中 data.runId = undefined → 不进入 if(runId) 分支 → backtestRun 不被更新
-    // walkForwardRun 状态可能滞留在 RUNNING
+  it('WalkForward job 在 onFailed 中 → 更新 backtestWalkForwardRun 状态为 FAILED（已修复 P5-B13）', async () => {
+    // 修复后：onFailed 区分 job.name，WalkForward 任务失败时更新 backtestWalkForwardRun
+    // 而不是错误地尝试更新 backtestRun（之前因 runId=undefined 而跳过）
+    prisma.backtestWalkForwardRun.update.mockResolvedValue({} as never)
     const job = makeJob(BacktestingJobName.RUN_WALK_FORWARD, { wfRunId: 'wf-fail', userId: 1 })
     const error = new Error('wf crashed')
 
     await processor.onFailed(job, error)
 
-    // 记录当前行为：backtestRun.update 不被调用（因为 runId = undefined）
+    // 修复后行为：更新 backtestWalkForwardRun 状态
+    expect(prisma.backtestWalkForwardRun.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'wf-fail' },
+        data: expect.objectContaining({ status: 'FAILED', failedReason: 'wf crashed' }),
+      }),
+    )
+    // backtestRun 不被错误更新
     expect(prisma.backtestRun.update).not.toHaveBeenCalled()
     // emitBacktestFailed 仍被调用
     expect(eventsGateway.emitBacktestFailed).toHaveBeenCalledWith('job-1', 'wf crashed')
-    // 修复建议：onFailed 中区分 job.name，使用对应的 DB 表进行状态更新
   })
 
   // ── [ERR] runBacktest 启动失败 ────────────────────────────────────────────

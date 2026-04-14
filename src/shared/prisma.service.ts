@@ -89,7 +89,15 @@ export function buildPrismaDatasourceUrl(databaseUrl?: string): string | undefin
     return undefined
   }
 
-  const url = new URL(databaseUrl)
+  let url: URL
+  try {
+    url = new URL(databaseUrl)
+  } catch {
+    throw new Error(
+      `DATABASE_URL 格式无效，无法解析连接池参数。请检查 .env 中的 DATABASE_URL 是否包含正确的协议头（如 postgresql://）。`,
+    )
+  }
+
   setSearchParamIfMissing(
     url,
     'connection_limit',

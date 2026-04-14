@@ -75,9 +75,8 @@ describe('LoggingInterceptor', () => {
       expect(logged.name).toBe('keep-me')
     })
 
-    it('[BUG P5-B3] 嵌套敏感字段不被脱敏（浅层处理缺陷）', async () => {
-      // 当前 sanitizeBody 只做一层 Object.assign，不递归处理嵌套对象
-      // 正确行为应为：{ user: { password: '***' } }
+    it('嵌套敏感字段（已修复 P5-B3）→ 递归脱敏为 "***"', async () => {
+      // sanitizeBody 改为递归处理，嵌套对象中的敏感字段也被脱敏
       const logger = makeLogger()
       const interceptor = new LoggingInterceptor(logger, true)
       const ctx = makeContext({ body: { user: { password: '123', name: 'admin' } } })
@@ -85,9 +84,9 @@ describe('LoggingInterceptor', () => {
       await firstValueFrom(interceptor.intercept(ctx, makeCallHandler({})))
 
       const logged = (logger.log.mock.calls[0][0] as Record<string, unknown>).body as Record<string, unknown>
-      // 记录当前（有缺陷的）行为：嵌套 password 未被脱敏
-      expect((logged.user as Record<string, unknown>).password).toBe('123')
-      // 修复后应改为: expect((logged.user as Record<string, unknown>).password).toBe('***')
+      // 修复后：嵌套 password 被脱敏
+      expect((logged.user as Record<string, unknown>).password).toBe('***')
+      expect((logged.user as Record<string, unknown>).name).toBe('admin')
     })
 
     it('[EDGE] body 为空对象 → 不写入 body 字段', async () => {

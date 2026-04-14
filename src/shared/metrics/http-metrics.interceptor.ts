@@ -54,6 +54,6 @@ export class HttpMetricsInterceptor implements NestInterceptor {
    */
   private extractRoute(context: ExecutionContext): string {
     const request = context.switchToHttp().getRequest()
-    return (request.route?.path as string) || request.url
+    return (request.route?.path as string) || 'UNKNOWN'
   }
 }

@@ -152,20 +152,18 @@ describe('HttpMetricsInterceptor', () => {
     })
   })
 
-  describe('[BUG P5-B8] 路由提取回退', () => {
-    it('[BUG P5-B8] 无匹配路由（request.route=undefined）→ 回退到完整 URL（含路径参数，风险：基数爆炸）', async () => {
-      // 404 场景：request.route 为 undefined → extractRoute 回退到 request.url
-      // 若 url 包含动态 ID，每个请求产生不同 label → Prometheus 基数爆炸
+  describe('[BUG P5-B8 已修复] 路由提取回退', () => {
+    it('无匹配路由（request.route=undefined）→ 回退到 "UNKNOWN"（避免基数爆炸）', async () => {
+      // 修复后：extractRoute 在无路由时返回 'UNKNOWN' 而非完整 URL
       const { interceptor, metrics } = makeInterceptor()
       const ctx = makeContext({ url: '/api/unknown/12345?q=test', route: undefined })
 
       await firstValueFrom(interceptor.intercept(ctx, makeCallHandler({})))
 
-      // 记录当前（有缺陷的）行为：route label 为完整 URL 而非路由模式
+      // 修复后行为：route label = 'UNKNOWN'，不包含动态 ID
       expect(metrics.durationHistogram.startTimer).toHaveBeenCalledWith(
-        expect.objectContaining({ route: '/api/unknown/12345?q=test' }),
+        expect.objectContaining({ route: 'UNKNOWN' }),
       )
-      // 建议修复：route = 'UNKNOWN' 作为兜底，避免基数爆炸
     })
 
     it('[BIZ] request.route.path 存在时使用路由模式而非真实 URL', async () => {

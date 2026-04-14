@@ -112,19 +112,18 @@ describe('JwtAuthGuard', () => {
     expect(superCanActivateSpy).not.toHaveBeenCalled()
   })
 
-  it('[BUG P5-B6] /metrics-debug 被 startsWith("/metrics") 前缀误放行 → 当前返回 true（不应跳过 JWT）', async () => {
-    // PUBLIC_PATHS = ['/metrics'], 使用 startsWith 匹配
-    // /metrics-debug startsWith /metrics = true → 被放行
-    // 正确行为应为：不放行，需要 JWT 验证
+  it('/metrics-debug 精确匹配修复（P5-B6）→ 需要 JWT 验证', async () => {
+    // 修复后：PUBLIC_PATHS 使用精确匹配（url === p 或 startsWith(p + '/')）
+    // /metrics-debug !== /metrics，不 startsWith '/metrics/'，也不 startsWith '/metrics?'
+    // 因此不被放行，走 JWT 验证流程
     const { ctx, mockReflector } = makeContext({ url: '/metrics-debug', isPublic: false })
     const guard = new JwtAuthGuard(mockReflector)
 
     const result = await guard.canActivate(ctx)
 
-    // 记录当前（有缺陷的）行为：/metrics-debug 被错误放行
-    expect(result).toBe(true)
-    expect(superCanActivateSpy).not.toHaveBeenCalled()
-    // 修复后应改为: expect(superCanActivateSpy).toHaveBeenCalled()
+    // 修复后行为：superCanActivate 被调用（JWT 验证），而不是被前缀放行
+    expect(superCanActivateSpy).toHaveBeenCalled()
+    expect(result).toBe(true) // superCanActivateSpy.mockResolvedValue(true)
   })
 
   // ── [EDGE] user.id 边界 ───────────────────────────────────────────────────

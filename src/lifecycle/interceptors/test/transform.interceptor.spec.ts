@@ -62,4 +62,30 @@ describe('TransformInterceptor', () => {
     expect(result).toBe(errorModel)
     expect((result as ResponseModel).code).toBe(9001)
   })
+
+  // ── [EDGE] 特殊数据类型 ───────────────────────────────────────────────────
+
+  it('[EDGE] 空数组 → ResponseModel.success({ data: [] })', async () => {
+    const result = (await firstValueFrom(interceptor.intercept(mockContext, makeCallHandler([])))) as ResponseModel
+
+    expect(result).toBeInstanceOf(ResponseModel)
+    expect(result.code).toBe(0)
+    expect(result.data).toEqual([])
+  })
+
+  it('[EDGE] 数字 0（falsy）→ ResponseModel.success({ data: 0 })', async () => {
+    const result = (await firstValueFrom(interceptor.intercept(mockContext, makeCallHandler(0)))) as ResponseModel
+
+    expect(result).toBeInstanceOf(ResponseModel)
+    expect(result.code).toBe(0)
+    expect(result.data).toBe(0)
+  })
+
+  it('[EDGE] 空字符串（falsy）→ ResponseModel.success({ data: "" })', async () => {
+    const result = (await firstValueFrom(interceptor.intercept(mockContext, makeCallHandler('')))) as ResponseModel
+
+    expect(result).toBeInstanceOf(ResponseModel)
+    expect(result.code).toBe(0)
+    expect(result.data).toBe('')
+  })
 })

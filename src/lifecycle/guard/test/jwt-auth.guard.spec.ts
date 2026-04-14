@@ -6,7 +6,7 @@ import { RequestContextService } from 'src/shared/context/request-context.servic
 import { TokenPayload } from 'src/shared/token.interface'
 import { UserRole } from '@prisma/client'
 
-function makeContext(opts: { isPublic?: boolean; user?: TokenPayload } = {}) {
+function makeContext(opts: { isPublic?: boolean; user?: TokenPayload; url?: string } = {}) {
   const handler = {}
   const controller = {}
 
@@ -17,7 +17,9 @@ function makeContext(opts: { isPublic?: boolean; user?: TokenPayload } = {}) {
     }),
   } as unknown as Reflector
 
-  const mockRequest: Record<string, unknown> = {}
+  const mockRequest: Record<string, unknown> = {
+    url: opts.url,
+  }
   if (opts.user !== undefined) {
     mockRequest.user = opts.user
   }
@@ -97,4 +99,69 @@ describe('JwtAuthGuard', () => {
 
     expect(setUserIdSpy).toHaveBeenCalledWith(42)
   })
+
+  // ── [SEC] PUBLIC_PATHS 白名单 ─────────────────────────────────────────────
+
+  it('[SEC] /metrics 路径命中 PUBLIC_PATHS → 跳过 JWT，不调用 super.canActivate', async () => {
+    const { ctx, mockReflector } = makeContext({ url: '/metrics', isPublic: false })
+    const guard = new JwtAuthGuard(mockReflector)
+
+    const result = await guard.canActivate(ctx)
+
+    expect(result).toBe(true)
+    expect(superCanActivateSpy).not.toHaveBeenCalled()
+  })
+
+  it('/metrics-debug 精确匹配修复（P5-B6）→ 需要 JWT 验证', async () => {
+    // 修复后：PUBLIC_PATHS 使用精确匹配（url === p 或 startsWith(p + '/')）
+    // /metrics-debug !== /metrics，不 startsWith '/metrics/'，也不 startsWith '/metrics?'
+    // 因此不被放行，走 JWT 验证流程
+    const { ctx, mockReflector } = makeContext({ url: '/metrics-debug', isPublic: false })
+    const guard = new JwtAuthGuard(mockReflector)
+
+    const result = await guard.canActivate(ctx)
+
+    // 修复后行为：superCanActivate 被调用（JWT 验证），而不是被前缀放行
+    expect(superCanActivateSpy).toHaveBeenCalled()
+    expect(result).toBe(true) // superCanActivateSpy.mockResolvedValue(true)
+  })
+
+  // ── [EDGE] user.id 边界 ───────────────────────────────────────────────────
+
+  it('[EDGE P5-B5] user.id 为 undefined → 不调用 setUserId', async () => {
+    const user = { id: undefined, account: 'test', nickname: 'Test', role: UserRole.USER, jti: 'jti-x' } as unknown as TokenPayload
+    const { ctx, mockReflector } = makeContext({ user })
+    const setUserIdSpy = jest.spyOn(RequestContextService, 'setUserId').mockImplementation(() => undefined)
+    const guard = new JwtAuthGuard(mockReflector)
+
+    const result = await guard.canActivate(ctx)
+
+    expect(result).toBe(true)
+    // user?.id is undefined (falsy) → setUserId is NOT called
+    expect(setUserIdSpy).not.toHaveBeenCalled()
+  })
+
+  it('[EDGE P5-B5] user.id 为 0（falsy）→ 不调用 setUserId', async () => {
+    const user = { id: 0, account: 'test', nickname: 'Test', role: UserRole.USER, jti: 'jti-x' } as unknown as TokenPayload
+    const { ctx, mockReflector } = makeContext({ user })
+    const setUserIdSpy = jest.spyOn(RequestContextService, 'setUserId').mockImplementation(() => undefined)
+    const guard = new JwtAuthGuard(mockReflector)
+
+    const result = await guard.canActivate(ctx)
+
+    expect(result).toBe(true)
+    // user?.id is 0 (falsy) → setUserId is NOT called (PostgreSQL auto-increment starts at 1, so id=0 shouldn't occur)
+    expect(setUserIdSpy).not.toHaveBeenCalled()
+  })
+
+  it('[EDGE] request.url 为 undefined → 不崩溃，走 JWT 验证流程', async () => {
+    // url undefined → url?.startsWith(p) = undefined → falsy → 不匹配 PUBLIC_PATHS
+    const user: TokenPayload = { id: 1, account: 'test', nickname: 'Test', role: UserRole.USER, jti: 'jti-y' }
+    const { ctx, mockReflector } = makeContext({ user, url: undefined })
+    const guard = new JwtAuthGuard(mockReflector)
+
+    await expect(guard.canActivate(ctx)).resolves.toBe(true)
+    expect(superCanActivateSpy).toHaveBeenCalled()
+  })
 })
+

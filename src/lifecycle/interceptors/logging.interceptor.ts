@@ -7,12 +7,15 @@ const EXCLUDED_PATHS = ['/health', '/ready', '/api/health', '/api/ready']
 
 const SENSITIVE_FIELDS = ['password', 'newPassword', 'oldPassword', 'token', 'secret', 'captchaCode']
 
-function sanitizeBody(body: Record<string, unknown>): Record<string, unknown> {
+function sanitizeBody(body: unknown): unknown {
   if (!body || typeof body !== 'object') return body
-  const sanitized = { ...body }
-  for (const field of SENSITIVE_FIELDS) {
-    if (field in sanitized) {
-      sanitized[field] = '***'
+  if (Array.isArray(body)) return body.map(sanitizeBody)
+  const sanitized = { ...(body as Record<string, unknown>) }
+  for (const [key, value] of Object.entries(sanitized)) {
+    if (SENSITIVE_FIELDS.includes(key)) {
+      sanitized[key] = '***'
+    } else if (value && typeof value === 'object') {
+      sanitized[key] = sanitizeBody(value)
     }
   }
   return sanitized
@@ -56,7 +59,7 @@ export class LoggingInterceptor implements NestInterceptor {
           }
 
           if (this.logHttpBody && request.body && Object.keys(request.body).length > 0) {
-            logData.body = sanitizeBody(request.body as Record<string, unknown>)
+            logData.body = sanitizeBody(request.body)
           }
 
           this.loggerService.log(logData, 'HTTP')

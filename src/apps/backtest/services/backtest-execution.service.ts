@@ -156,15 +156,25 @@ export class BacktestExecutionService {
       if (!config.partialFillEnabled && portfolio.cash < diffValue) continue
 
       // 买入数量必须是 LOT_SIZE 的整数倍
-      const rawQty = Math.floor(availableValue / execPrice / LOT_SIZE) * LOT_SIZE
+      let rawQty = Math.floor(availableValue / execPrice / LOT_SIZE) * LOT_SIZE
       if (rawQty <= 0) continue
 
-      const amount = rawQty * execPrice
-      if (portfolio.cash < amount) continue
+      // 先计算全部成本，再做资金检查。
+      // 对于 partialFill，初始 rawQty 以 portfolio.cash 为上限，但未扣除佣金+滑点。
+      // 逐步减少至恰好能覆盖所有成本（最坏情况：减少 1 手）。
+      let amount = rawQty * execPrice
+      let slippageCost = (amount * config.slippageBps) / 10000
+      let commission = Math.max(amount * config.commissionRate, config.minCommission)
+      while (rawQty > 0 && portfolio.cash < amount + commission + slippageCost) {
+        rawQty -= LOT_SIZE
+        if (rawQty <= 0) break
+        amount = rawQty * execPrice
+        slippageCost = (amount * config.slippageBps) / 10000
+        commission = Math.max(amount * config.commissionRate, config.minCommission)
+      }
+      if (rawQty <= 0) continue
 
-      const slippageCost = (amount * config.slippageBps) / 10000
       const actualPrice = execPrice + slippageCost / rawQty
-      const commission = Math.max(amount * config.commissionRate, config.minCommission)
 
       portfolio.cash -= amount + commission + slippageCost
 

@@ -158,4 +158,88 @@ describe('PortfolioPerformanceService', () => {
     // 峰值 1.2，低谷 0.9 → 回撤 = (1.2-0.9)/1.2 ≈ 0.25
     expect(result.metrics.maxDrawdown).toBeCloseTo(0.25, 2)
   })
+
+  // ── Sharpe 公式差异（P1-B15）────────────────────────────────────────────────
+
+  describe('[P1-B15 已修复] PortfolioPerformance Sharpe 加入无风险利率', () => {
+    it('[P1-B15 已修复] Sharpe = (annReturn - 2%) / annVol，与 BacktestMetrics 定义一致', async () => {
+      // 修复：(annReturn - RISK_FREE_RATE) / annVol，与 BacktestMetrics 保持一致
+      const { svc, mockPrisma } = createService()
+      mockPrisma.portfolioHolding.findMany.mockResolvedValue([{ tsCode: '000001.SZ', quantity: 100000, avgCost: 10 }])
+      mockPrisma.daily.findMany.mockResolvedValue([
+        { tsCode: '000001.SZ', tradeDate: new Date('2025-01-01'), close: 10 },
+        { tsCode: '000001.SZ', tradeDate: new Date('2025-01-02'), close: 11 },
+        { tsCode: '000001.SZ', tradeDate: new Date('2025-01-03'), close: 10 },
+        { tsCode: '000001.SZ', tradeDate: new Date('2025-01-04'), close: 11 },
+      ])
+      mockPrisma.indexDaily.findMany.mockResolvedValue([
+        { tradeDate: new Date('2025-01-01'), close: 1000 },
+        { tradeDate: new Date('2025-01-02'), close: 1000 },
+        { tradeDate: new Date('2025-01-03'), close: 1000 },
+        { tradeDate: new Date('2025-01-04'), close: 1000 },
+      ])
+
+      const result = await svc.getPerformance({ portfolioId: 'p-1' }, 1)
+
+      const series = result.dailySeries
+      expect(series.length).toBeGreaterThanOrEqual(2)
+
+      if (series.length >= 2) {
+        const dailyReturns = series.slice(1).map((s) => s.dailyReturn)
+        const n = dailyReturns.length
+        const m = dailyReturns.reduce((a, b) => a + b, 0) / n
+        const variance = n > 1 ? dailyReturns.reduce((sum, v) => sum + (v - m) ** 2, 0) / (n - 1) : 0
+        const annVol = Math.sqrt(variance) * Math.sqrt(252)
+
+        const lastNav = series[series.length - 1].portfolioNav
+        const totalReturn = lastNav - 1
+        const years = series.length / 252
+        const annReturn = Math.pow(1 + totalReturn, 1 / years) - 1
+
+        const sharpeWithRF = annVol > 0 ? (annReturn - 0.02) / annVol : 0
+        const sharpeWithoutRF = annVol > 0 ? annReturn / annVol : 0
+
+        if (annVol > 1e-8) {
+          // 修复后：Sharpe 更接近 sharpeWithRF（减去 rf=2%）
+          expect(Math.abs(result.metrics.sharpeRatio - sharpeWithRF)).toBeLessThan(
+            Math.abs(result.metrics.sharpeRatio - sharpeWithoutRF),
+          )
+          // sharpeWithRF < sharpeWithoutRF（rf 使分子减小）
+          expect(sharpeWithRF).toBeLessThan(sharpeWithoutRF)
+        }
+      }
+    })
+  })
+
+  // ── lastKnownPrice 修复（P1-B16）────────────────────────────────────────────
+
+  describe('[P1-B16 已修复] 首日无行情时不使用 avgCost 作为价格', () => {
+    it('[P1-B16 已修复] 首日无股价时 NAV = cashBalance/initialCash = 0.5（而非 1.0）', async () => {
+      // 修复：移除 lastKnownPrice 的 avgCost 初始化，无数据时该持仓贡献 0 市值
+      // 持仓 100000股 avgCost=5，cashBalance=500_000，initialCash=1_000_000
+      // 第1天无收盘价 → portfolioMV = cashBalance + 0 = 500_000 → NAV = 0.5
+      const { svc, mockPrisma } = createService()
+
+      mockPrisma.portfolioHolding.findMany.mockResolvedValue([
+        { tsCode: '000001.SZ', quantity: 100000, avgCost: 5 },
+      ])
+      mockPrisma.daily.findMany.mockResolvedValue([
+        { tsCode: '000001.SZ', tradeDate: new Date('2025-01-02'), close: 8 },
+        { tsCode: '000001.SZ', tradeDate: new Date('2025-01-03'), close: 8 },
+      ])
+      mockPrisma.indexDaily.findMany.mockResolvedValue([
+        { tradeDate: new Date('2025-01-01'), close: 1000 },
+        { tradeDate: new Date('2025-01-02'), close: 1000 },
+        { tradeDate: new Date('2025-01-03'), close: 1000 },
+      ])
+
+      const result = await svc.getPerformance({ portfolioId: 'p-1' }, 1)
+
+      // 修复后：第1天无价格 → 持仓市值=0 → NAV = 500_000/1_000_000 = 0.5
+      expect(result.dailySeries[0].portfolioNav).toBeCloseTo(0.5, 4)
+
+      // 第2天 close=8 → NAV = (500_000 + 100_000*8) / 1_000_000 = 1.3
+      expect(result.dailySeries[1].portfolioNav).toBeCloseTo(1.3, 3)
+    })
+  })
 })

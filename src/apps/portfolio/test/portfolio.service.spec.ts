@@ -466,4 +466,85 @@ describe('PortfolioService', () => {
       expect(result.summary.totalUnrealizedPnl).toBeCloseTo(200, 5)
     })
   })
+
+  // ─── addHolding: Number(Decimal) 精度丢失 ────────────────────────────────────
+
+  describe('[P1-B8 已修复] addHolding() — Decimal 运算代替 Number() 精度保护', () => {
+    it('[P1-B8 已修复] 成本价含高精度小数时使用 Decimal 运算，保持精度', async () => {
+      // 修复：newAvgCost = existing.avgCost.mul(existing.quantity).plus(Decimal(dto.avgCost).mul(dto.quantity)).div(newQty)
+      const prisma = buildPrismaMock()
+      prisma.portfolio.findUnique.mockResolvedValue(buildPortfolio({ userId: 10 }))
+      prisma.stockBasic.findFirst.mockResolvedValue({ name: '精度测试股' })
+
+      const exactDecimalStr = '3.33333333333333333333' // 20 位小数
+      prisma.portfolioHolding.findUnique.mockResolvedValue(
+        buildHolding({ quantity: 3, avgCost: new Decimal(exactDecimalStr) }),
+      )
+      prisma.portfolioHolding.update.mockResolvedValue(buildHolding({ quantity: 6 }))
+
+      const svc = createService(prisma)
+      await svc.addHolding({ portfolioId: 'portfolio-001', tsCode: '000001.SZ', quantity: 3, avgCost: 10 }, 10)
+
+      const updateCall = prisma.portfolioHolding.update.mock.calls[0][0]
+
+      // 修复后：传入的 avgCost 应为 Decimal 实例（而非 Number 转换后的 float）
+      expect(updateCall.data.avgCost).toBeInstanceOf(Decimal)
+
+      // 精确手算：newAvgCost = (3*3.33333333333333333333 + 3*10) / 6
+      const exactResult = new Decimal(exactDecimalStr).mul(3).plus(new Decimal(10).mul(3)).div(6)
+      // Decimal 精度下计算结果完全一致（无 IEEE 754 截断）
+      expect(updateCall.data.avgCost.toString()).toBe(exactResult.toString())
+    })
+  })
+
+  // ─── getPnlToday: NaN 与除零场景 ─────────────────────────────────────────────
+
+  describe('[P1-B9 已修复] getPnlToday() — pctChg=-100% 时返回 0 而非 NaN', () => {
+    it('[P1-B9 已修复] 股票退市（close=0, pctChg=-100）时 todayPnl 为 0 而非 NaN', async () => {
+      // 修复：分母 (1 + pctChg/100) = 0 时，返回 todayPnl=0（退市当天保守处理）
+      const prisma = buildPrismaMock()
+      const cache = buildCacheMock()
+      const tradeDate = new Date()
+      prisma.portfolio.findUnique.mockResolvedValue(buildPortfolio({ userId: 10 }))
+      prisma.tradeCal.findFirst.mockResolvedValue({ calDate: tradeDate })
+      prisma.portfolioHolding.findMany.mockResolvedValue([buildHolding({ quantity: 100, tsCode: '000001.SZ' })])
+      prisma.daily.findMany.mockResolvedValue([
+        { tsCode: '000001.SZ', close: new Decimal('0'), pctChg: new Decimal('-100') },
+      ])
+
+      const svc = createService(prisma, cache)
+      const result = await svc.getPnlToday('portfolio-001', 10)
+
+      // 修复后：分母为零时返回 0，不返回 NaN
+      expect(isNaN(result.todayPnl)).toBe(false)
+      expect(result.todayPnl).toBe(0)
+      // byHolding 中该持仓的 todayPnl 也为 0（非 NaN）
+      expect(result.byHolding[0].todayPnl).toBe(0)
+    })
+
+    it('[P1-B9 已修复] 退市持仓与正常持仓混合时总 todayPnl 为有限值', async () => {
+      // 修复后：退市持仓 pnl=0，正常持仓正常计算，汇总不会被 NaN 污染
+      const prisma = buildPrismaMock()
+      const cache = buildCacheMock()
+      const tradeDate = new Date()
+      prisma.portfolio.findUnique.mockResolvedValue(buildPortfolio({ userId: 10 }))
+      prisma.tradeCal.findFirst.mockResolvedValue({ calDate: tradeDate })
+      prisma.portfolioHolding.findMany.mockResolvedValue([
+        buildHolding({ quantity: 100, tsCode: '000001.SZ' }),
+        buildHolding({ id: 'h2', quantity: 200, tsCode: '000002.SZ', stockName: '正常股' }),
+      ])
+      prisma.daily.findMany.mockResolvedValue([
+        { tsCode: '000001.SZ', close: new Decimal('0'), pctChg: new Decimal('-100') }, // 退市
+        { tsCode: '000002.SZ', close: new Decimal('10'), pctChg: new Decimal('5') }, // 正常 +5%
+      ])
+
+      const svc = createService(prisma, cache)
+      const result = await svc.getPnlToday('portfolio-001', 10)
+
+      // 正常股手算：mv=10*200=2000, pnl=(2000/(1+0.05))*0.05 = (2000/1.05)*0.05 ≈ 95.238
+      const normalPnl = (2000 / 1.05) * 0.05
+      expect(isNaN(result.todayPnl)).toBe(false) // 无 NaN 污染
+      expect(result.todayPnl).toBeCloseTo(normalPnl, 2) // 仅正常股 pnl
+    })
+  })
 })

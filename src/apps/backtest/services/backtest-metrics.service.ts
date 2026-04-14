@@ -25,13 +25,16 @@ export class BacktestMetricsService {
 
     const nDays = navRecords.length
     const years = nDays / TRADING_DAYS_PER_YEAR
-    const annualizedReturn = years > 0 ? Math.pow(1 + totalReturn, 1 / years) - 1 : 0
+    // 极端亏损保护：totalReturn ≤ -1 时底数为负，Math.pow 返回 NaN；钳制为 -100%
+    const annualizedReturn = years > 0 ? (totalReturn <= -1 ? -1 : Math.pow(1 + totalReturn, 1 / years) - 1) : 0
 
     const dailyRfRate = RISK_FREE_RATE / TRADING_DAYS_PER_YEAR
     const excessDailyReturns = returns.map((r) => r - dailyRfRate)
 
-    const mean = excessDailyReturns.reduce((a, b) => a + b, 0) / excessDailyReturns.length
-    const variance = excessDailyReturns.reduce((a, b) => a + (b - mean) ** 2, 0) / excessDailyReturns.length
+    // 使用样本方差（÷(n-1)）以符合标准金融计量惯例，避免对短回测系统性高估 Sharpe
+    const n = excessDailyReturns.length
+    const mean = excessDailyReturns.reduce((a, b) => a + b, 0) / n
+    const variance = n > 1 ? excessDailyReturns.reduce((a, b) => a + (b - mean) ** 2, 0) / (n - 1) : 0
     const stdDev = Math.sqrt(variance)
     const annualizedStd = stdDev * Math.sqrt(TRADING_DAYS_PER_YEAR)
     const volatility = annualizedStd
@@ -51,25 +54,30 @@ export class BacktestMetricsService {
     // Calmar
     const calmarRatio = Math.abs(maxDrawdown) > 0 ? annualizedReturn / Math.abs(maxDrawdown) : 0
 
-    // Alpha & Beta (vs benchmark)
+    // Alpha & Beta (vs benchmark) — 使用样本协方差/样本方差（÷(n-1)）
     const benchmarkMean = benchmarkReturns.reduce((a, b) => a + b, 0) / benchmarkReturns.length
-    const bmVariance = benchmarkReturns.reduce((a, b) => a + (b - benchmarkMean) ** 2, 0) / benchmarkReturns.length
+    const nb = benchmarkReturns.length
+    const bmVariance = nb > 1 ? benchmarkReturns.reduce((a, b) => a + (b - benchmarkMean) ** 2, 0) / (nb - 1) : 0
 
     let beta = 0
     if (bmVariance > 0) {
       const returnsMean = returns.reduce((a, b) => a + b, 0) / returns.length
       const covariance =
-        returns.reduce((a, r, i) => a + (r - returnsMean) * (benchmarkReturns[i] - benchmarkMean), 0) / returns.length
+        returns.reduce((a, r, i) => a + (r - returnsMean) * (benchmarkReturns[i] - benchmarkMean), 0) /
+        (returns.length - 1)
       beta = covariance / bmVariance
     }
-    const annualizedBmReturn = years > 0 ? Math.pow(1 + benchmarkReturn, 1 / years) - 1 : 0
+    // 极端亏损保护（同上）
+    const annualizedBmReturn =
+      years > 0 ? (benchmarkReturn <= -1 ? -1 : Math.pow(1 + benchmarkReturn, 1 / years) - 1) : 0
     const alpha = annualizedReturn - (RISK_FREE_RATE + beta * (annualizedBmReturn - RISK_FREE_RATE))
 
-    // Information ratio
+    // Information ratio — 使用样本标准差（÷(n-1)）
     const excessSeriesDaily = returns.map((r, i) => r - benchmarkReturns[i])
     const excessMean = excessSeriesDaily.reduce((a, b) => a + b, 0) / excessSeriesDaily.length
+    const ne = excessSeriesDaily.length
     const excessStd = Math.sqrt(
-      excessSeriesDaily.reduce((a, b) => a + (b - excessMean) ** 2, 0) / excessSeriesDaily.length,
+      ne > 1 ? excessSeriesDaily.reduce((a, b) => a + (b - excessMean) ** 2, 0) / (ne - 1) : 0,
     )
     const annualizedExcessStd = excessStd * Math.sqrt(TRADING_DAYS_PER_YEAR)
     const informationRatio = annualizedExcessStd > 0 ? (excessMean * TRADING_DAYS_PER_YEAR) / annualizedExcessStd : 0

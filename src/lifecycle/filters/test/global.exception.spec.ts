@@ -113,10 +113,10 @@ describe('GlobalExceptionsFilter', () => {
 
   // ── [SEC] 非 Error 异常 ───────────────────────────────────────────────────
 
-  it('[BUG P5-B1] throw 字符串 → 不崩溃，logger.error 中 message 为 undefined，非 dev 返回通用 500 消息', () => {
+  it('[BUG P5-B1] throw 字符串 → 不崩溃，logger.error 中 message 为原始字符串，非 dev 返回通用 500 消息', () => {
     // exception = 'raw error text'（不是 Error 实例）
-    // 修复前：(exception as Error).message — string 有 .message 但值为 undefined 不崩溃
-    // 修复后：exception instanceof Error → false → message=undefined（与修复前一致）
+    // 修复后：exception instanceof Error → false → message = String('raw error text') = 'raw error text'
+    // （注：修复前为 (exception as Error).message = undefined，修复后保留原始异常信息在日志中）
     const mockLogger = {
       warn: jest.fn(),
       error: jest.fn(),
@@ -128,11 +128,11 @@ describe('GlobalExceptionsFilter', () => {
 
     expect(mockResponse.status).toHaveBeenCalledWith(500)
     const json = mockResponse.json.mock.calls[0][0] as ResponseModel
-    // 非 dev 模式下，message 被隐藏为通用消息（字符串异常不泄露到响应体）
+    // 非 dev 模式下，响应 message 被隐藏为通用消息（字符串异常不泄露到响应体）
     expect(json.message).toBe('服务繁忙，请稍后再试')
-    // logger.error 被调用，message=undefined，stack=undefined（string 不是 Error 实例）
+    // logger.error 中 message = 'raw error text'（保留调试信息），stack = undefined
     expect(mockLogger.error).toHaveBeenCalledWith(
-      expect.objectContaining({ message: undefined }),
+      expect.objectContaining({ message: 'raw error text' }),
       undefined,
       'GlobalExceptionsFilter',
     )

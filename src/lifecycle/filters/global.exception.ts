@@ -41,7 +41,7 @@ export class GlobalExceptionsFilter implements ExceptionFilter {
       const traceId = RequestContextService.getTraceId()
       this.loggerService.error(
         {
-          message: exception instanceof Error ? exception.message : undefined,
+          message: exception instanceof Error ? exception.message : String(exception ?? 'unknown'),
           traceId,
         },
         exception instanceof Error ? exception.stack : undefined,

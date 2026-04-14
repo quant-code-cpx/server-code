@@ -15,10 +15,10 @@ describe('RequestContextService', () => {
     })
 
     it('[BIZ] run 外部获取上下文 → undefined', () => {
-      // 在所有 run() 调用之外，存储中没有上下文
-      // Note: using setImmediate to break out of any existing ALS context
+      // 在所有 run() 调用之外，AsyncLocalStorage.getStore() 返回 undefined
+      // Jest 每个测试用例的 it() 回调运行在独立的同步帧中；
+      // 前一个 run() 的 ALS 上下文已随其回调执行完毕而消失（ALS 上下文生命周期与 async 执行链绑定）
       const result = RequestContextService.getCurrentContext()
-      // At top-level (outside run), it should be undefined
       expect(result).toBeUndefined()
     })
 

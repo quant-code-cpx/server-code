@@ -271,7 +271,7 @@ export class RiskCheckService {
     const prevYear = start.getFullYear() - 1
     const prevMonth = start.getMonth()
     start.setFullYear(prevYear)
-    // 若月份发生变化（例如 2024-02-29 → 2025-03-01），回退到上月末（2025-02-28）
+    // 若月份发生变化（例如 2024-02-29 回退一年 → 2023-03-01），回退到上月末（2023-02-28）
     if (start.getMonth() !== prevMonth) {
       start.setDate(0)
     }

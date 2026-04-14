@@ -40,8 +40,11 @@ export class GlobalExceptionsFilter implements ExceptionFilter {
     if (status === HttpStatus.INTERNAL_SERVER_ERROR && !(exception instanceof BusinessException)) {
       const traceId = RequestContextService.getTraceId()
       this.loggerService.error(
-        { message: (exception as Error).message, traceId },
-        (exception as Error).stack,
+        {
+          message: exception instanceof Error ? exception.message : undefined,
+          traceId,
+        },
+        exception instanceof Error ? exception.stack : undefined,
         'GlobalExceptionsFilter',
       )
       if (!this.isDev) {

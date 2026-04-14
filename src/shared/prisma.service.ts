@@ -83,7 +83,8 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
   }
 }
 
-function buildPrismaDatasourceUrl(databaseUrl?: string): string | undefined {
+/** @internal Exported for unit testing only */
+export function buildPrismaDatasourceUrl(databaseUrl?: string): string | undefined {
   if (!databaseUrl) {
     return undefined
   }
@@ -114,7 +115,8 @@ function setSearchParamIfMissing(url: URL, key: string, value: string) {
   }
 }
 
-function readPositiveIntegerEnv(name: string, fallback: number): number {
+/** @internal Exported for unit testing only */
+export function readPositiveIntegerEnv(name: string, fallback: number): number {
   const rawValue = process.env[name]
   if (!rawValue) {
     return fallback

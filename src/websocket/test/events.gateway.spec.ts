@@ -178,4 +178,107 @@ describe('EventsGateway', () => {
     const server = gateway.server as unknown as ReturnType<typeof makeMockServer>
     expect(server.emit).toHaveBeenCalledWith('auto_repair_queued', summary)
   })
+
+  // ── [SEC] Token 提取边界 ───────────────────────────────────────────────────
+
+  it('[SEC] Authorization header 中的 Bearer token 提取 → 正确去掉前缀后 decode', () => {
+    jwtService.decode.mockReturnValue({ id: 5 })
+    const socket = makeMockSocket({
+      handshake: {
+        auth: {},
+        headers: { authorization: 'Bearer valid-jwt-xxx' },
+      } as unknown as Socket['handshake'],
+    })
+
+    gateway.handleConnection(socket)
+
+    // 验证 decode 被调用且使用了去掉前缀的 token
+    expect(jwtService.decode).toHaveBeenCalledWith('valid-jwt-xxx')
+    expect(socket.join).toHaveBeenCalledWith('user:5')
+  })
+
+  it('[SEC] 空字符串 token → 不调用 decode，不加入房间', () => {
+    const socket = makeMockSocket({
+      handshake: { auth: { token: '' }, headers: {} } as unknown as Socket['handshake'],
+    })
+
+    gateway.handleConnection(socket)
+
+    expect(jwtService.decode).not.toHaveBeenCalled()
+    expect(socket.join).not.toHaveBeenCalled()
+  })
+
+  it('[SEC] decode 返回无 id 字段的 payload（如 { sub: "user" }）→ 不加入用户房间', () => {
+    jwtService.decode.mockReturnValue({ sub: 'user' })
+    const socket = makeMockSocket({
+      handshake: { auth: { token: 'some-jwt' }, headers: {} } as unknown as Socket['handshake'],
+    })
+
+    gateway.handleConnection(socket)
+
+    expect(socket.join).not.toHaveBeenCalled()
+  })
+
+  it('[BUG P5-B15] decode 不验证签名 → 任意 payload 也能加入指定用户房间（安全设计隐患）', () => {
+    // jwtService.decode 不验证签名，任何 Base64 编码的 JWT payload 都可解码
+    // 当前行为：成功加入 user:99 房间（即使 token 未签名）
+    // 安全隐患：任何人可构造 JWT payload 监听其他用户消息
+    jwtService.decode.mockReturnValue({ id: 99 })
+    const socket = makeMockSocket({
+      handshake: { auth: { token: 'forged.payload.nosig' }, headers: {} } as unknown as Socket['handshake'],
+    })
+
+    gateway.handleConnection(socket)
+
+    // 记录当前行为：伪造 token 也能加入 user:99 房间
+    expect(socket.join).toHaveBeenCalledWith('user:99')
+    // 修复建议：改用 jwtService.verify() 验证签名
+  })
+
+  // ── [EDGE] 订阅参数边界 ───────────────────────────────────────────────────
+
+  it('[EDGE] handleSubscribeBacktest 空 jobId → 房间名为 "backtest:"', () => {
+    const socket = makeMockSocket()
+    const result = gateway.handleSubscribeBacktest(socket, { jobId: '' })
+
+    expect(socket.join).toHaveBeenCalledWith('backtest:')
+    expect(result).toEqual({ event: 'subscribed', room: 'backtest:' })
+  })
+
+  // ── [BIZ] broadcastSyncProgress + broadcastSyncOverallProgress payload ────
+
+  it('[BIZ] broadcastSyncProgress — 验证完整 payload 结构', () => {
+    const payload = {
+      task: 'daily',
+      label: '日线数据',
+      category: 'stock',
+      completedItems: 50,
+      totalItems: 100,
+      percentage: 50,
+      currentKey: '20260101',
+      elapsedMs: 1000,
+      estimatedRemainingMs: 1000,
+    }
+
+    gateway.broadcastSyncProgress(payload)
+
+    const server = gateway.server as unknown as ReturnType<typeof makeMockServer>
+    expect(server.emit).toHaveBeenCalledWith('tushare_sync_progress', payload)
+  })
+
+  it('[BIZ] broadcastSyncOverallProgress — 验证完整 payload 结构', () => {
+    const payload = {
+      completedTasks: 3,
+      totalTasks: 10,
+      percentage: 30,
+      elapsedMs: 5000,
+      estimatedRemainingMs: 12000,
+    }
+
+    gateway.broadcastSyncOverallProgress(payload)
+
+    const server = gateway.server as unknown as ReturnType<typeof makeMockServer>
+    expect(server.emit).toHaveBeenCalledWith('tushare_sync_overall_progress', payload)
+  })
 })
+

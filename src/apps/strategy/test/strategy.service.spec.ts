@@ -36,7 +36,7 @@ function buildStrategy(overrides: Record<string, unknown> = {}) {
 }
 
 function buildPrismaMock() {
-  return {
+  const mock = {
     strategy: {
       create: jest.fn(),
       findMany: jest.fn(async () => []),
@@ -49,8 +49,14 @@ function buildPrismaMock() {
       create: jest.fn(async () => ({})),
       findMany: jest.fn(async () => []),
       findFirst: jest.fn(async () => null),
+      findUnique: jest.fn(async () => null),
     },
+    backtestRun: {
+      findFirst: jest.fn(async () => null),
+    },
+    $transaction: jest.fn(async (fn: (tx: unknown) => unknown) => fn(mock)),
   }
+  return mock
 }
 
 function buildBacktestRunServiceMock() {
@@ -503,18 +509,14 @@ describe('StrategyService', () => {
     })
   })
 
-  // ── Phase 2：update backtestDefaults 不递增版本 ───────────────────────────
+  // ── backtestDefaults 变更现在留版本痕迹（B11 已修复）───────────────────────
 
-  // 业务规则：backtestDefaults 影响回测基准、手续费等，变更理应留下版本审计
-  // 当前设计：只有 strategyConfig 变更才递增 version，backtestDefaults 无痕迹
-  // 此测试文档化当前行为，供团队决策是否修复
-
-  describe('[BUG-B11] update() — backtestDefaults 变更不留版本痕迹', () => {
-    it('[BUG] 只更新 backtestDefaults 时不写版本快照/不递增 version', async () => {
+  describe('[B11] update() — backtestDefaults 变更写版本快照（已修复）', () => {
+    it('只更新 backtestDefaults 时写版本快照并递增 version', async () => {
       const prisma = buildPrismaMock()
       prisma.strategy.findFirst.mockResolvedValue(buildStrategy({ version: 2 }))
       prisma.strategy.update.mockResolvedValue(
-        buildStrategy({ version: 2, backtestDefaults: { benchmarkTsCode: '399001.SZ' } }),
+        buildStrategy({ version: 3, backtestDefaults: { benchmarkTsCode: '399001.SZ' } }),
       )
       const svc = createService(prisma)
 
@@ -524,12 +526,10 @@ describe('StrategyService', () => {
         // strategyConfig 未传
       })
 
-      // 当前行为：不写快照，version 不变
-      expect(prisma.strategyVersion.create).not.toHaveBeenCalled()
-      // update 调用中不含 version increment
+      // 修复后：backtestDefaults 变更也写快照并递增版本
+      expect(prisma.strategyVersion.create).toHaveBeenCalledTimes(1)
       const updateCall = (prisma.strategy.update.mock.calls as any)[0][0]
-      expect(updateCall.data).not.toHaveProperty('version')
-      // 文档化正确行为：如果认为 backtestDefaults 变更也应留痕，应在此添加 strategyVersion.create
+      expect(updateCall.data).toHaveProperty('version', { increment: 1 })
     })
   })
 
@@ -661,31 +661,41 @@ describe('StrategyService', () => {
     })
   })
 
-  // ── Phase 2：update 并发场景文档化 ───────────────────────────────────────
+  // ── 版本快照在事务内执行（B5 已修复）────────────────────────────────────
+  //
+  // 修复后：findFirst + strategyVersion.create + strategy.update 在同一 $transaction 内。
+  // 单元测试中 $transaction 是 pass-through mock，无法模拟真实数据库串行化，
+  // 但可验证快照和递增在同一回调中执行（不会因 OOM 等原因出现半写状态）。
 
-  // 业务规则（B5 bug）：update() 先 findFirst 读 strategy.version，
-  // 再 strategyVersion.create({ version: old_version })，再 strategy.update({ increment: 1 })
-  // 无事务包裹 → 并发两请求各读到 version=3 → 两次快照都写 v=3 → version 跳到 5，v=4 缺失
-
-  describe('[BUG-B5] update() — 版本快照+递增未包在事务中', () => {
-    it('[BUG] 两次并发更新同一策略 config 时，两个快照写入相同的旧版本号', async () => {
+  describe('[B5] update() — 版本快照+递增在事务内执行（已修复）', () => {
+    it('更新 strategyConfig 时 $transaction 被调用（快照+递增原子化）', async () => {
       const prisma = buildPrismaMock()
-      // 两次 findFirst 都返回 version=3（模拟并发读）
       prisma.strategy.findFirst.mockResolvedValue(buildStrategy({ version: 3 }))
       prisma.strategy.update.mockResolvedValue(buildStrategy({ version: 4 }))
       const svc = createService(prisma)
 
-      // 第一次更新
       await svc.update(1, { id: 'strat-1', strategyConfig: { topN: 25 } })
-      // 第二次更新（模拟并发）
+
+      // 验证 $transaction 被调用 —— 说明快照写入和版本递增在同一事务中
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1)
+      // 验证快照写入和版本递增都发生
+      expect(prisma.strategyVersion.create).toHaveBeenCalledTimes(1)
+      const updateCall = (prisma.strategy.update.mock.calls as any)[0][0]
+      expect(updateCall.data.version).toEqual({ increment: 1 })
+    })
+
+    it('两次串行更新 strategyConfig 时各自写一次快照', async () => {
+      const prisma = buildPrismaMock()
+      prisma.strategy.findFirst.mockResolvedValue(buildStrategy({ version: 3 }))
+      prisma.strategy.update.mockResolvedValue(buildStrategy({ version: 4 }))
+      const svc = createService(prisma)
+
+      await svc.update(1, { id: 'strat-1', strategyConfig: { topN: 25 } })
       await svc.update(1, { id: 'strat-1', strategyConfig: { topN: 30 } })
 
-      // 验证两次快照都写了 version=3（并发 bug 的表现）
-      const createCalls = prisma.strategyVersion.create.mock.calls as any
-      expect(createCalls).toHaveLength(2)
-      expect(createCalls[0][0].data.version).toBe(3) // 第一次写 v=3
-      expect(createCalls[1][0].data.version).toBe(3) // 第二次也写 v=3（bug：应为 v=4）
-      // 修复方案：用 prisma.$transaction 包裹 findFirst + strategyVersion.create + strategy.update
+      // 两次调用各写一次快照
+      expect(prisma.strategyVersion.create).toHaveBeenCalledTimes(2)
+      // 注：单元 mock 不模拟 DB 串行化，真实并发保护由 $transaction 提供
     })
   })
 })

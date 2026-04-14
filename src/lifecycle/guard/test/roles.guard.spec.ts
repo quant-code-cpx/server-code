@@ -65,4 +65,38 @@ describe('RolesGuard', () => {
     const { guard, ctx } = makeGuardAndCtx({ role: UserRole.SUPER_ADMIN } as TokenPayload, [UserRole.USER])
     expect(guard.canActivate(ctx)).toBe(true)
   })
+
+  // ── [SEC] 角色伪造防护 ─────────────────────────────────────────────────────
+
+  it('[SEC] user.role 为非法值 "HACKER" → ROLE_LEVEL[HACKER] = undefined → ?? 0 → 权限不足', () => {
+    // ROLE_LEVEL 是固定 Record，'HACKER' 不在枚举中 → undefined
+    // undefined ?? 0 = 0; ROLE_LEVEL[USER] = 1; 0 >= 1 → false → ForbiddenException
+    const { guard, ctx } = makeGuardAndCtx({ role: 'HACKER' as unknown as UserRole }, [UserRole.USER])
+    expect(() => guard.canActivate(ctx)).toThrow(ForbiddenException)
+  })
+
+  it('[EDGE] user.role 为 undefined → ROLE_LEVEL[undefined] = undefined → ?? 0 → 权限不足', () => {
+    // undefined role: ROLE_LEVEL[undefined] = undefined → ?? 0 = 0 → 0 >= 1 → false → ForbiddenException
+    const { guard, ctx } = makeGuardAndCtx({ role: undefined as unknown as UserRole }, [UserRole.USER])
+    expect(() => guard.canActivate(ctx)).toThrow(ForbiddenException)
+  })
+
+  it('[BIZ] requiredRoles 使用 some 语义 — 只需满足其中一个最低角色即可', () => {
+    // requiredRoles = [ADMIN, SUPER_ADMIN]；some 语义：userLevel >= min(ADMIN.level, SUPER_ADMIN.level)
+    // 实际逻辑：some(role => userLevel >= ROLE_LEVEL[role])
+    // USER (level=1) vs ADMIN (level=2): 1 >= 2 → false; USER (level=1) vs SUPER_ADMIN (level=3): 1 >= 3 → false
+    // → ForbiddenException（both fail）
+    const { guard: guardFail, ctx: ctxFail } = makeGuardAndCtx(
+      { role: UserRole.USER } as TokenPayload,
+      [UserRole.ADMIN, UserRole.SUPER_ADMIN],
+    )
+    expect(() => guardFail.canActivate(ctxFail)).toThrow(ForbiddenException)
+
+    // ADMIN (level=2) vs ADMIN (level=2): 2 >= 2 → true (some → true)
+    const { guard: guardPass, ctx: ctxPass } = makeGuardAndCtx(
+      { role: UserRole.ADMIN } as TokenPayload,
+      [UserRole.ADMIN, UserRole.SUPER_ADMIN],
+    )
+    expect(guardPass.canActivate(ctxPass)).toBe(true)
+  })
 })

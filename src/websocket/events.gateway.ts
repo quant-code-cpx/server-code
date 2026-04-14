@@ -69,7 +69,7 @@ export class EventsGateway implements OnGatewayInit, OnGatewayConnection, OnGate
         (client.handshake.auth?.token as string) ||
         (client.handshake.headers?.authorization as string)?.replace('Bearer ', '')
       if (!token) return null
-      const payload = this.jwtService.decode(token) as { id?: number } | null
+      const payload = this.jwtService.verify<{ id?: number }>(token)
       return payload?.id ?? null
     } catch {
       return null

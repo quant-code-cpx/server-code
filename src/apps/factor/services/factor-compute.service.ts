@@ -32,8 +32,8 @@ const FIELD_REF_MAP: Record<string, FactorFieldMapping> = {
 
 /** Maps DERIVED factor name → value expression using daily_basic columns */
 const DERIVED_DAILY_BASIC_MAP: Record<string, string> = {
-  ep: 'CASE WHEN db.pe_ttm > 0 THEN 1.0 / db.pe_ttm ELSE NULL END',
-  bp: 'CASE WHEN db.pb > 0 THEN 1.0 / db.pb ELSE NULL END',
+  ep: 'CASE WHEN db.pe_ttm != 0 THEN 1.0 / db.pe_ttm ELSE NULL END',
+  bp: 'CASE WHEN db.pb != 0 THEN 1.0 / db.pb ELSE NULL END',
   ln_market_cap: 'CASE WHEN db.total_mv > 0 THEN LN(db.total_mv * 10000) ELSE NULL END',
   ln_circ_mv: 'CASE WHEN db.circ_mv > 0 THEN LN(db.circ_mv * 10000) ELSE NULL END',
 }
@@ -117,7 +117,7 @@ export class FactorComputeService {
   private buildUniverseJoinStr(universe: string | undefined, tradeDate: string, alias: string): string {
     if (!universe) return ''
     // Validate inputs to prevent SQL injection (DTO validates format, but assert here for safety)
-    if (!/^\d{6}\.\w{2}$/.test(universe)) throw new Error('Invalid universe format')
+    if (!/^\d{6}\.[A-Z]{2}$/.test(universe)) throw new Error('Invalid universe format')
     if (!/^\d{8}$/.test(tradeDate)) throw new Error('Invalid tradeDate format')
     return `INNER JOIN index_constituent_weights iw
   ON iw.con_code = ${alias}.ts_code
@@ -203,7 +203,7 @@ export class FactorComputeService {
       factorName,
       tradeDate,
       universe: dto.universe ?? null,
-      total: summary.count,
+      total: summary.count - summary.missing,
       page,
       pageSize,
       items,
@@ -231,10 +231,10 @@ export class FactorComputeService {
     const sql = this.expressionSvc.buildRawQuery(compiled, tradeDate, universeJoinStr)
 
     const rows = await this.prisma.$queryRawUnsafe<RawRow[]>(sql)
-    return rows.map((r) => ({
-      tsCode: r.ts_code,
-      factorValue: r.factor_value != null ? Number(r.factor_value) : null,
-    }))
+    return rows.map((r) => {
+      const num = r.factor_value != null ? Number(r.factor_value) : null
+      return { tsCode: r.ts_code, factorValue: num != null && Number.isFinite(num) ? num : null }
+    })
   }
 
   /**
@@ -315,7 +315,7 @@ export class FactorComputeService {
       factorName,
       tradeDate,
       universe: dto.universe ?? null,
-      total: summaryCheck.count,
+      total: summaryCheck.count - summaryCheck.missing,
       page,
       pageSize,
       items,
@@ -809,7 +809,7 @@ export class FactorComputeService {
       factorName: dto.factorName,
       tradeDate: dto.tradeDate,
       universe: dto.universe ?? null,
-      total: summary.count,
+      total: summary.count - summary.missing,
       page,
       pageSize,
       items,

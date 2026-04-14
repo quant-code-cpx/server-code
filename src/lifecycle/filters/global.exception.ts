@@ -40,8 +40,11 @@ export class GlobalExceptionsFilter implements ExceptionFilter {
     if (status === HttpStatus.INTERNAL_SERVER_ERROR && !(exception instanceof BusinessException)) {
       const traceId = RequestContextService.getTraceId()
       this.loggerService.error(
-        { message: (exception as Error).message, traceId },
-        (exception as Error).stack,
+        {
+          message: exception instanceof Error ? exception.message : String(exception ?? 'unknown'),
+          traceId,
+        },
+        exception instanceof Error ? exception.stack : undefined,
         'GlobalExceptionsFilter',
       )
       if (!this.isDev) {
@@ -134,7 +137,7 @@ export class GlobalExceptionsFilter implements ExceptionFilter {
   }
 
   private parseErrorMessage(error: ErrorEnum): string {
-    return error.split(':')[1]
+    return error.split(':')[1] ?? '服务繁忙，请稍后再试'
   }
 
   private isRecord(value: unknown): value is Record<string, unknown> {

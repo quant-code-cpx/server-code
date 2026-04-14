@@ -83,12 +83,21 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
   }
 }
 
-function buildPrismaDatasourceUrl(databaseUrl?: string): string | undefined {
+/** @internal Exported for unit testing only */
+export function buildPrismaDatasourceUrl(databaseUrl?: string): string | undefined {
   if (!databaseUrl) {
     return undefined
   }
 
-  const url = new URL(databaseUrl)
+  let url: URL
+  try {
+    url = new URL(databaseUrl)
+  } catch {
+    throw new Error(
+      `DATABASE_URL 格式无效，无法解析连接池参数。请检查 .env 中的 DATABASE_URL 是否包含正确的协议头（如 postgresql://）。`,
+    )
+  }
+
   setSearchParamIfMissing(
     url,
     'connection_limit',
@@ -114,7 +123,8 @@ function setSearchParamIfMissing(url: URL, key: string, value: string) {
   }
 }
 
-function readPositiveIntegerEnv(name: string, fallback: number): number {
+/** @internal Exported for unit testing only */
+export function readPositiveIntegerEnv(name: string, fallback: number): number {
   const rawValue = process.env[name]
   if (!rawValue) {
     return fallback

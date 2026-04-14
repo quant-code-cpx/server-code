@@ -25,7 +25,7 @@ export class RedisShutdownService implements OnApplicationShutdown {
         await this.redis.quit()
       }
     } catch (err) {
-      this.logger.error('Error closing Redis connection', err?.message, 'RedisShutdownService')
+      this.logger.error('Error closing Redis connection', err instanceof Error ? err.message : String(err), 'RedisShutdownService')
     }
   }
 }

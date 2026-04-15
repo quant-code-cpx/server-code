@@ -41,4 +41,4 @@ export const CACHE_KEY_PREFIX = {
 
 export const MONITORED_CACHE_NAMESPACES = Object.values(CACHE_NAMESPACE)
 
-export const SYNC_INVALIDATION_PREFIXES = ['market:', 'factor:', 'ind-rotation:', 'portfolio:'] as const
+export const SYNC_INVALIDATION_PREFIXES = ['market:', 'factor:', 'ind-rotation:', 'portfolio:', 'stock:factors:'] as const

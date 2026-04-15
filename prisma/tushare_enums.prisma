@@ -82,6 +82,8 @@ enum TushareSyncTask {
   // Option
   OPT_BASIC
   OPT_DAILY
+  // Stock technical factors
+  STK_FACTOR
 }
 
 // 同步任务执行结果

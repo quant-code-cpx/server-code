@@ -6,6 +6,10 @@
  * - applyAdjFactor()：adjFactor=1.0 → close 不变，adjFactor=2.0 → close 翻倍，null → 默认 1.0
  * - buildMaStatus()：数据不足时各字段为 null
  * - getRelativeStrength()：两者均无数据时返回 history:[]
+ * - getTechnicalFactors()：空数据 → count=0, items=[]
+ * - getTechnicalFactors()：有数据 → count=N, items 正确映射
+ * - getLatestFactors()：无数据 → 全 null
+ * - getLatestFactors()：有数据 → macdSignal 由 macdDif/macdDea 正确判断
  */
 
 import { StockAnalysisService } from '../stock-analysis.service'
@@ -409,5 +413,150 @@ describe('StockAnalysisService', () => {
       expect(result.beta).not.toBeNull()
       expect(result.beta).toBeCloseTo(1.0, 1)
     })
+  })
+})
+
+// ── getTechnicalFactors / getLatestFactors ────────────────────────────────────
+
+function buildStkFactorPrismaMock() {
+  return {
+    $queryRaw: jest.fn(async () => []),
+    stkFactor: {
+      findMany: jest.fn(async () => []),
+    },
+  }
+}
+
+function makeStkFactorRow(overrides: Partial<{
+  tsCode: string
+  tradeDate: Date
+  close: number | null
+  macdDif: number | null
+  macdDea: number | null
+  macd: number | null
+  kdjK: number | null
+  kdjD: number | null
+  kdjJ: number | null
+  rsi6: number | null
+  rsi12: number | null
+  rsi24: number | null
+  bollUpper: number | null
+  bollMid: number | null
+  bollLower: number | null
+  cci14: number | null
+  cci20: number | null
+  atr14: number | null
+  atr20: number | null
+  vr26: number | null
+}> = {}) {
+  return {
+    tsCode: '000001.SZ',
+    tradeDate: new Date('2026-04-01'),
+    close: 10.0,
+    macdDif: 0.5,
+    macdDea: 0.2,
+    macd: 0.6,
+    kdjK: 55,
+    kdjD: 50,
+    kdjJ: 65,
+    rsi6: 55,
+    rsi12: 52,
+    rsi24: 50,
+    bollUpper: 11.0,
+    bollMid: 10.0,
+    bollLower: 9.0,
+    cci14: 80,
+    cci20: 70,
+    atr14: 0.3,
+    atr20: 0.35,
+    vr26: 120,
+    ...overrides,
+  }
+}
+
+describe('getTechnicalFactors()', () => {
+  it('无数据 → count=0, items=[]', async () => {
+    const prisma = buildStkFactorPrismaMock()
+    const svc = new StockAnalysisService(prisma as any)
+    const result = await svc.getTechnicalFactors({ tsCode: '000001.SZ', days: 120 })
+    expect(result.count).toBe(0)
+    expect(result.items).toHaveLength(0)
+  })
+
+  it('有数据 → count 正确，items 正确映射 rsi6 等字段', async () => {
+    const prisma = buildStkFactorPrismaMock()
+    // Mock 模拟 orderBy: tradeDate DESC 返回（较新的在前）
+    // service 调用 rows.reverse() 后，items[0] 对应较早日期 (2026-04-01)
+    prisma.stkFactor.findMany.mockResolvedValue([
+      makeStkFactorRow({ tradeDate: new Date('2026-04-02'), rsi6: 70.0 }),
+      makeStkFactorRow({ rsi6: 60.5 }),
+    ])
+    const svc = new StockAnalysisService(prisma as any)
+    const result = await svc.getTechnicalFactors({ tsCode: '000001.SZ', days: 120 })
+    expect(result.count).toBe(2)
+    // reverse 后 items[0] 是较早的 2026-04-01 (rsi6=60.5)
+    expect(result.items[0].rsi6).toBe(60.5)
+    expect(result.items[1].rsi6).toBe(70.0)
+  })
+})
+
+describe('getLatestFactors()', () => {
+  it('无数据 → 全 null 字段', async () => {
+    const prisma = buildStkFactorPrismaMock()
+    const svc = new StockAnalysisService(prisma as any)
+    const result = await svc.getLatestFactors({ tsCode: '000001.SZ' })
+    expect(result.tradeDate).toBeNull()
+    expect(result.close).toBeNull()
+    expect(result.macdSignal).toBeNull()
+    expect(result.raw).toBeNull()
+  })
+
+  it('macdDif>macdDea 且前日 macdDif<=macdDea → macdSignal=golden_cross', async () => {
+    const prisma = buildStkFactorPrismaMock()
+    // latest: dif=0.3, dea=0.1 → dif > dea
+    // prev: dif=0.1, dea=0.3 → dif <= dea（金叉前）
+    prisma.stkFactor.findMany.mockResolvedValue([
+      makeStkFactorRow({ tradeDate: new Date('2026-04-02'), macdDif: 0.3, macdDea: 0.1 }),
+      makeStkFactorRow({ tradeDate: new Date('2026-04-01'), macdDif: 0.1, macdDea: 0.3 }),
+    ] as any)
+    const svc = new StockAnalysisService(prisma as any)
+    const result = await svc.getLatestFactors({ tsCode: '000001.SZ' })
+    expect(result.macdSignal).toBe('golden_cross')
+  })
+
+  it('macdDif<0 且无前日数据 → macdSignal=below_zero', async () => {
+    const prisma = buildStkFactorPrismaMock()
+    prisma.stkFactor.findMany.mockResolvedValue([
+      makeStkFactorRow({ macdDif: -0.5, macdDea: -0.2 }),
+    ] as any)
+    const svc = new StockAnalysisService(prisma as any)
+    const result = await svc.getLatestFactors({ tsCode: '000001.SZ' })
+    expect(result.macdSignal).toBe('below_zero')
+  })
+
+  it('rsi6>80 → rsiSignal=overbought', async () => {
+    const prisma = buildStkFactorPrismaMock()
+    prisma.stkFactor.findMany.mockResolvedValue([makeStkFactorRow({ rsi6: 85 })] as any)
+    const svc = new StockAnalysisService(prisma as any)
+    const result = await svc.getLatestFactors({ tsCode: '000001.SZ' })
+    expect(result.rsiSignal).toBe('overbought')
+  })
+
+  it('rsi6<20 → rsiSignal=oversold', async () => {
+    const prisma = buildStkFactorPrismaMock()
+    prisma.stkFactor.findMany.mockResolvedValue([makeStkFactorRow({ rsi6: 15 })] as any)
+    const svc = new StockAnalysisService(prisma as any)
+    const result = await svc.getLatestFactors({ tsCode: '000001.SZ' })
+    expect(result.rsiSignal).toBe('oversold')
+  })
+
+  it('close>bollUpper → bollPosition=above_upper', async () => {
+    const prisma = buildStkFactorPrismaMock()
+    prisma.stkFactor.findMany.mockResolvedValue([
+      makeStkFactorRow({ close: 12.0, bollUpper: 11.0, bollMid: 10.0, bollLower: 9.0 }),
+    ] as any)
+    const svc = new StockAnalysisService(prisma as any)
+    const result = await svc.getLatestFactors({ tsCode: '000001.SZ' })
+    expect(result.bollPosition).toBe('above_upper')
   })
 })

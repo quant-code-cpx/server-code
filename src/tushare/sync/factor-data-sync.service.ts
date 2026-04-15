@@ -16,9 +16,9 @@ import {
   TushareSyncTaskName,
 } from 'src/constant/tushare.constant'
 import { FactorDataApiService } from '../api/factor-data-api.service'
-import { mapHkHoldRecord, mapIndexWeightRecord, mapStkLimitRecord, mapSuspendDRecord } from '../tushare-sync.mapper'
+import { mapHkHoldRecord, mapIndexWeightRecord, mapStkFactorRecord, mapStkLimitRecord, mapSuspendDRecord } from '../tushare-sync.mapper'
 import { SyncHelperService } from './sync-helper.service'
-import { TushareSyncMode, TushareSyncPlan } from './sync-plan.types'
+import { TushareSyncMode, TushareSyncPlan, TushareSyncPlanContext } from './sync-plan.types'
 import { ValidationCollector } from './quality/validation-collector'
 
 /**
@@ -106,6 +106,24 @@ export class FactorDataSyncService {
           tradingDayOnly: true,
         },
         execute: (ctx) => this.syncHkHold(this.requireTradeDate(ctx.targetTradeDate), ctx.mode),
+      },
+      {
+        task: TushareSyncTaskName.STK_FACTOR,
+        label: '技术因子',
+        category: 'factor',
+        order: 550,
+        bootstrapEnabled: true,
+        supportsManual: true,
+        supportsFullSync: true,
+        requiresTradeDate: true,
+        schedule: {
+          cron: '0 40 19 * * 1-5',
+          timeZone: this.helper.syncTimeZone,
+          description: '交易日盘后同步技术因子',
+          tradingDayOnly: true,
+        },
+        execute: (ctx: TushareSyncPlanContext) =>
+          this.syncStkFactor(this.requireTradeDate(ctx.targetTradeDate), ctx.mode, ctx.onProgress),
       },
     ]
   }
@@ -213,8 +231,9 @@ export class FactorDataSyncService {
     fullSync?: boolean
     fetchAndMap: (tradeDate: string) => Promise<unknown[]>
     resolveDates: (startDate: string) => Promise<string[]>
+    onProgress?: (completed: number, total: number, currentKey?: string) => void
   }): Promise<void> {
-    const { task, label, modelName, targetTradeDate, fullSync = false, fetchAndMap, resolveDates } = opts
+    const { task, label, modelName, targetTradeDate, fullSync = false, fetchAndMap, resolveDates, onProgress } = opts
 
     if (!fullSync && (await this.helper.isTaskSyncedForTradeDate(task, targetTradeDate))) {
       this.logger.log(`[${label}] 目标交易日 ${targetTradeDate} 已同步，跳过`)
@@ -255,6 +274,7 @@ export class FactorDataSyncService {
         if (i === 0 || (i + 1) % 200 === 0 || i === tradeDates.length - 1) {
           this.logger.log(`[${label}] 进度 ${i + 1}/${tradeDates.length}，当前 ${td}，累计 ${totalRows} 条`)
         }
+        onProgress?.(i + 1, tradeDates.length, td)
       } catch (error) {
         const msg =
           error instanceof Error
@@ -289,6 +309,32 @@ export class FactorDataSyncService {
       throw new BusinessException(ErrorEnum.TUSHARE_TARGET_TRADE_DATE_REQUIRED)
     }
     return targetTradeDate
+  }
+
+  // ─── 技术因子 ────────────────────────────────────────────────────────────────
+
+  async syncStkFactor(
+    targetTradeDate: string,
+    mode: TushareSyncMode = 'incremental',
+    onProgress?: (completed: number, total: number, currentKey?: string) => void,
+  ): Promise<void> {
+    const collector = new ValidationCollector(TushareSyncTaskName.STK_FACTOR)
+    await this.syncByTradeDateString({
+      task: TushareSyncTaskName.STK_FACTOR,
+      label: '技术因子',
+      modelName: 'stkFactor',
+      targetTradeDate,
+      fullSync: mode === 'full',
+      fetchAndMap: async (td) => {
+        const rows = await this.api.getStkFactorByTradeDate(td)
+        return rows
+          .map((r) => mapStkFactorRecord(r, collector))
+          .filter((r): r is NonNullable<typeof r> => Boolean(r))
+      },
+      resolveDates: (start) => this.helper.getOpenTradeDatesBetween(start, targetTradeDate),
+      onProgress,
+    })
+    await this.helper.flushValidationLogs(collector)
   }
 
   // ─── 沪深股通持股明细 ────────────────────────────────────────────────────────

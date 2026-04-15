@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common'
 import dayjs from 'dayjs'
+import { StkFactor } from '@prisma/client'
 import { PrismaService } from 'src/shared/prisma.service'
 import { computeAllIndicators, OhlcvBar, detectMALatestCross } from './utils/technical-indicators'
 import { estimateChipDistribution } from './utils/chip-estimation'
@@ -10,6 +11,8 @@ import {
   StockChipDistributionDto,
   StockMarginQueryDto,
   StockRelativeStrengthDto,
+  StockTechnicalFactorsQueryDto,
+  StockLatestFactorsQueryDto,
 } from './dto/stock-analysis-request.dto'
 import {
   StockTechnicalDataDto,
@@ -17,6 +20,9 @@ import {
   ChipDistributionDataDto,
   StockMarginDataResponseDto,
   StockRelativeStrengthDataDto,
+  StkFactorDataPointDto,
+  StockTechnicalFactorsDataDto,
+  StockLatestFactorsDataDto,
 } from './dto/stock-response.dto'
 
 // 指数代码到名称的映射
@@ -983,5 +989,120 @@ export class StockAnalysisService {
     }
 
     return bins
+  }
+
+
+  // ─── 预计算技术因子（基于 stk_factor 表）────────────────────────────────────
+
+  async getTechnicalFactors(dto: StockTechnicalFactorsQueryDto): Promise<StockTechnicalFactorsDataDto> {
+    const { tsCode, days = 120 } = dto
+
+    const rows = await this.prisma.stkFactor.findMany({
+      where: { tsCode },
+      orderBy: { tradeDate: 'desc' },
+      take: days,
+    })
+
+    const items = rows.reverse().map((row) => this.mapToDataPoint(row))
+
+    return { tsCode, count: items.length, items }
+  }
+
+  async getLatestFactors(dto: StockLatestFactorsQueryDto): Promise<StockLatestFactorsDataDto> {
+    const rows = await this.prisma.stkFactor.findMany({
+      where: { tsCode: dto.tsCode },
+      orderBy: { tradeDate: 'desc' },
+      take: 2,
+    })
+
+    if (rows.length === 0) {
+      return {
+        tsCode: dto.tsCode,
+        tradeDate: null,
+        close: null,
+        macdSignal: null,
+        kdjSignal: null,
+        rsiSignal: null,
+        bollPosition: null,
+        raw: null,
+      }
+    }
+
+    const latest = rows[0]
+    const prev = rows[1] ?? null
+    return {
+      tsCode: dto.tsCode,
+      tradeDate: dayjs(latest.tradeDate).format('YYYYMMDD'),
+      close: latest.close,
+      macdSignal: this.detectMacdSignal(latest, prev),
+      kdjSignal: this.detectKdjSignal(latest, prev),
+      rsiSignal: this.detectRsiSignal(latest),
+      bollPosition: this.detectBollPosition(latest),
+      raw: this.mapToDataPoint(latest),
+    }
+  }
+
+  private mapToDataPoint(row: StkFactor): StkFactorDataPointDto {
+    return {
+      tradeDate: dayjs(row.tradeDate).format('YYYYMMDD'),
+      close: row.close,
+      macdDif: row.macdDif,
+      macdDea: row.macdDea,
+      macd: row.macd,
+      kdjK: row.kdjK,
+      kdjD: row.kdjD,
+      kdjJ: row.kdjJ,
+      rsi6: row.rsi6,
+      rsi12: row.rsi12,
+      rsi24: row.rsi24,
+      bollUpper: row.bollUpper,
+      bollMid: row.bollMid,
+      bollLower: row.bollLower,
+      cci14: row.cci14,
+      cci20: row.cci20,
+      atr14: row.atr14,
+      atr20: row.atr20,
+      vr26: row.vr26,
+    }
+  }
+
+  private detectMacdSignal(latest: StkFactor, prev: StkFactor | null): string | null {
+    if (latest.macdDif == null || latest.macdDea == null) return null
+    if (prev?.macdDif != null && prev?.macdDea != null) {
+      const prevDiff = prev.macdDif - prev.macdDea
+      const currDiff = latest.macdDif - latest.macdDea
+      if (prevDiff <= 0 && currDiff > 0) return 'golden_cross'
+      if (prevDiff >= 0 && currDiff < 0) return 'death_cross'
+    }
+    return latest.macdDif > 0 ? 'above_zero' : 'below_zero'
+  }
+
+  private detectKdjSignal(latest: StkFactor, prev: StkFactor | null): string | null {
+    if (latest.kdjK == null || latest.kdjD == null) return null
+    if (latest.kdjJ != null && latest.kdjJ > 100) return 'overbought'
+    if (latest.kdjJ != null && latest.kdjJ < 0) return 'oversold'
+    if (prev?.kdjK != null && prev?.kdjD != null) {
+      if (prev.kdjK <= prev.kdjD && latest.kdjK > latest.kdjD) return 'golden_cross'
+      if (prev.kdjK >= prev.kdjD && latest.kdjK < latest.kdjD) return 'death_cross'
+    }
+    return null
+  }
+
+  private detectRsiSignal(latest: StkFactor): string | null {
+    const rsi = latest.rsi6 ?? latest.rsi12
+    if (rsi == null) return null
+    if (rsi > 80) return 'overbought'
+    if (rsi < 20) return 'oversold'
+    return 'neutral'
+  }
+
+  private detectBollPosition(latest: StkFactor): string | null {
+    if (latest.close == null || latest.bollUpper == null || latest.bollMid == null || latest.bollLower == null)
+      return null
+    if (latest.close > latest.bollUpper) return 'above_upper'
+    if (latest.close > latest.bollUpper * 0.98) return 'near_upper'
+    if (latest.close < latest.bollLower) return 'below_lower'
+    if (latest.close < latest.bollLower * 1.02) return 'near_lower'
+    return 'middle'
   }
 }

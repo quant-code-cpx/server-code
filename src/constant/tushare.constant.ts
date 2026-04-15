@@ -56,6 +56,8 @@ export enum TushareApiName {
   // Option
   OPT_BASIC = 'opt_basic',
   OPT_DAILY = 'opt_daily',
+  // Stock technical factors
+  STK_FACTOR = 'stk_factor',
 }
 
 /** A 股常用交易所代码 */
@@ -146,6 +148,8 @@ export enum TushareSyncTaskName {
   // Option
   OPT_BASIC = 'OPT_BASIC',
   OPT_DAILY = 'OPT_DAILY',
+  // Stock technical factors
+  STK_FACTOR = 'STK_FACTOR',
   // Derived / computed
   VALUATION_MEDIAN = 'VALUATION_MEDIAN',
 }
@@ -1265,4 +1269,39 @@ export const TUSHARE_OPT_DAILY_FIELDS = [
   'vol',
   'amount',
   'oi',
+] as const
+
+
+// ─── Stock technical factors（股票技术因子）字段 ─────────────────────────────
+
+export const TUSHARE_STK_FACTOR_FIELDS = [
+  'ts_code',
+  'trade_date',
+  'close',
+  'open',
+  'high',
+  'low',
+  'pre_close',
+  'change',
+  'pct_chg',
+  'vol',
+  'amount',
+  'macd_dif',
+  'macd_dea',
+  'macd',
+  'kdj_k',
+  'kdj_d',
+  'kdj_j',
+  'rsi_6',
+  'rsi_12',
+  'rsi_24',
+  'boll_upper',
+  'boll_mid',
+  'boll_lower',
+  'cci_14',
+  'cci_20',
+  'tr',
+  'atr14',
+  'atr20',
+  'vr_26',
 ] as const

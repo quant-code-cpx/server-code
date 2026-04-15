@@ -41,8 +41,12 @@ function buildGatewayMock() {
   return { emitToUser: jest.fn() }
 }
 
+function buildNotificationMock() {
+  return { create: jest.fn(async () => undefined) }
+}
+
 function createService(prismaMock = buildPrismaMock(), gatewayMock = buildGatewayMock()) {
-  return new PriceAlertService(prismaMock as any, gatewayMock as any)
+  return new PriceAlertService(prismaMock as any, gatewayMock as any, buildNotificationMock() as any)
 }
 
 describe('PriceAlertService (OPT-4.3)', () => {

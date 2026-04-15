@@ -208,21 +208,12 @@ export class StockScreenerService {
     if (query.minRsi6 !== undefined) technicalConditions.push(Prisma.sql`stf.rsi_6 >= ${query.minRsi6}`)
     if (query.maxRsi6 !== undefined) technicalConditions.push(Prisma.sql`stf.rsi_6 <= ${query.maxRsi6}`)
     if (query.macdSignal === 'golden_cross') {
+      // 当日 DIF 上穿 DEA：当日 dif > dea，前日 dif <= dea（使用 LATERAL 中已预取的 prev 列，无额外子查询）
       technicalConditions.push(Prisma.sql`stf.macd_dif > stf.macd_dea`)
-      technicalConditions.push(Prisma.sql`(
-        SELECT sf2.macd_dif - sf2.macd_dea
-        FROM stock_technical_factors sf2
-        WHERE sf2.ts_code = sb.ts_code AND sf2.trade_date < stf.trade_date
-        ORDER BY sf2.trade_date DESC LIMIT 1
-      ) <= 0`)
+      technicalConditions.push(Prisma.sql`(stf.prev_macd_dif - stf.prev_macd_dea) <= 0`)
     } else if (query.macdSignal === 'death_cross') {
       technicalConditions.push(Prisma.sql`stf.macd_dif < stf.macd_dea`)
-      technicalConditions.push(Prisma.sql`(
-        SELECT sf2.macd_dif - sf2.macd_dea
-        FROM stock_technical_factors sf2
-        WHERE sf2.ts_code = sb.ts_code AND sf2.trade_date < stf.trade_date
-        ORDER BY sf2.trade_date DESC LIMIT 1
-      ) >= 0`)
+      technicalConditions.push(Prisma.sql`(stf.prev_macd_dif - stf.prev_macd_dea) >= 0`)
     } else if (query.macdSignal === 'above_zero') {
       technicalConditions.push(Prisma.sql`stf.macd_dif > 0`)
     } else if (query.macdSignal === 'below_zero') {
@@ -234,20 +225,10 @@ export class StockScreenerService {
       technicalConditions.push(Prisma.sql`stf.kdj_j < 0`)
     } else if (query.kdjSignal === 'golden_cross') {
       technicalConditions.push(Prisma.sql`stf.kdj_k > stf.kdj_d`)
-      technicalConditions.push(Prisma.sql`(
-        SELECT sf2.kdj_k - sf2.kdj_d
-        FROM stock_technical_factors sf2
-        WHERE sf2.ts_code = sb.ts_code AND sf2.trade_date < stf.trade_date
-        ORDER BY sf2.trade_date DESC LIMIT 1
-      ) <= 0`)
+      technicalConditions.push(Prisma.sql`(stf.prev_kdj_k - stf.prev_kdj_d) <= 0`)
     } else if (query.kdjSignal === 'death_cross') {
       technicalConditions.push(Prisma.sql`stf.kdj_k < stf.kdj_d`)
-      technicalConditions.push(Prisma.sql`(
-        SELECT sf2.kdj_k - sf2.kdj_d
-        FROM stock_technical_factors sf2
-        WHERE sf2.ts_code = sb.ts_code AND sf2.trade_date < stf.trade_date
-        ORDER BY sf2.trade_date DESC LIMIT 1
-      ) >= 0`)
+      technicalConditions.push(Prisma.sql`(stf.prev_kdj_k - stf.prev_kdj_d) >= 0`)
     }
     if (query.rsiSignal === 'overbought') {
       technicalConditions.push(Prisma.sql`stf.rsi_6 > 80`)
@@ -321,13 +302,34 @@ export class StockScreenerService {
         : Prisma.sql`LEFT JOIN LATERAL (SELECT NULL::numeric AS main_net_5d, NULL::numeric AS main_net_20d) mf_agg ON true`
 
     // 技术因子 JOIN（仅当有技术条件时拼接）
+    // 使用单次 ROW_NUMBER() 扫描获取最新两行，通过条件聚合 pivot 成一行，
+    // 避免为金叉/死叉判断产生额外的相关子查询（N+1 问题）
     const technicalFactorJoin = Prisma.sql`
       LEFT JOIN LATERAL (
-        SELECT macd_dif, macd_dea, kdj_k, kdj_d, kdj_j, rsi_6, rsi_12, rsi_24,
-               boll_upper, boll_mid, boll_lower, trade_date
-        FROM stock_technical_factors stf_inner
-        WHERE stf_inner.ts_code = sb.ts_code
-        ORDER BY stf_inner.trade_date DESC LIMIT 1
+        SELECT
+          MAX(CASE WHEN rn = 1 THEN macd_dif   END) AS macd_dif,
+          MAX(CASE WHEN rn = 1 THEN macd_dea   END) AS macd_dea,
+          MAX(CASE WHEN rn = 1 THEN kdj_k      END) AS kdj_k,
+          MAX(CASE WHEN rn = 1 THEN kdj_d      END) AS kdj_d,
+          MAX(CASE WHEN rn = 1 THEN kdj_j      END) AS kdj_j,
+          MAX(CASE WHEN rn = 1 THEN rsi_6      END) AS rsi_6,
+          MAX(CASE WHEN rn = 1 THEN rsi_12     END) AS rsi_12,
+          MAX(CASE WHEN rn = 1 THEN rsi_24     END) AS rsi_24,
+          MAX(CASE WHEN rn = 1 THEN boll_upper END) AS boll_upper,
+          MAX(CASE WHEN rn = 1 THEN boll_mid   END) AS boll_mid,
+          MAX(CASE WHEN rn = 1 THEN boll_lower END) AS boll_lower,
+          MAX(CASE WHEN rn = 2 THEN macd_dif   END) AS prev_macd_dif,
+          MAX(CASE WHEN rn = 2 THEN macd_dea   END) AS prev_macd_dea,
+          MAX(CASE WHEN rn = 2 THEN kdj_k      END) AS prev_kdj_k,
+          MAX(CASE WHEN rn = 2 THEN kdj_d      END) AS prev_kdj_d
+        FROM (
+          SELECT macd_dif, macd_dea, kdj_k, kdj_d, kdj_j, rsi_6, rsi_12, rsi_24,
+                 boll_upper, boll_mid, boll_lower,
+                 ROW_NUMBER() OVER (ORDER BY trade_date DESC) AS rn
+          FROM stock_technical_factors stf_inner
+          WHERE stf_inner.ts_code = sb.ts_code
+          ORDER BY trade_date DESC LIMIT 2
+        ) ranked
       ) stf ON true`
     const technicalJoin = technicalConditions.length > 0 ? technicalFactorJoin : Prisma.empty
 

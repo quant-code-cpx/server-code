@@ -256,10 +256,15 @@ export class MarketService {
     const cacheKey = `market:change-dist:${tradeDateStr}`
 
     return this.rememberMarketCache(cacheKey, MARKET_STANDARD_CACHE_TTL_SECONDS, async () => {
-      // 使用 PostgreSQL width_bucket 按 1% 步长分桶
+      // 使用 PostgreSQL width_bucket 按 1% 步长分桶（-10 ~ 10，共 20 档）
+      // bucket=0 为溢出低区（pct_chg < -10），bucket=22 为溢出高区（pct_chg >= 10）
       const bucketRows = await this.prisma.$queryRaw<{ bucket: number; cnt: bigint }[]>`
         SELECT
-          width_bucket(pct_chg, -11, 11, 22) AS bucket,
+          CASE
+            WHEN pct_chg < -10 THEN 0
+            WHEN pct_chg >= 10 THEN 22
+            ELSE width_bucket(pct_chg, -10, 10, 20)
+          END AS bucket,
           COUNT(*) AS cnt
         FROM stock_daily_prices
         WHERE trade_date = ${tradeDateStr}::date
@@ -272,16 +277,21 @@ export class MarketService {
         this.prisma.daily.count({ where: { tradeDate, pctChg: { lte: -9.5 } } }),
       ])
 
-      // 构建 21 档直方图（桶 1~21 对应 [-11,-10), [-10,-9), ..., [9,10), [10,11]）
+      // 构建 22 档直方图：溢出低区 + 20 个 1% 正常档 + 溢出高区
       const bucketMap = new Map(bucketRows.map((r) => [Number(r.bucket), Number(r.cnt)]))
-      const distribution = Array.from({ length: 21 }, (_, i) => {
-        const low = -11 + i
+      const regular = Array.from({ length: 20 }, (_, i) => {
+        const low = -10 + i
         const high = low + 1
         return {
           label: `${low}~${high}`,
           count: bucketMap.get(i + 1) ?? 0,
         }
       })
+      const distribution = [
+        { label: '<-10%', count: bucketMap.get(0) ?? 0 },
+        ...regular,
+        { label: '>10%', count: bucketMap.get(22) ?? 0 },
+      ]
 
       return { tradeDate, limitUp, limitDown, distribution }
     })

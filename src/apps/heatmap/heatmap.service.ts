@@ -70,9 +70,9 @@ export class HeatmapService {
         d.amount         AS "amount"
       FROM stock_basic_profiles sb
       JOIN stock_daily_prices d
-           ON sb.ts_code = d.ts_code AND d.trade_date = ${tradeDate}
+           ON sb.ts_code = d.ts_code AND d.trade_date = ${tradeDate}::date
       LEFT JOIN stock_daily_valuation_metrics db
-           ON sb.ts_code = db.ts_code AND db.trade_date = ${tradeDate}
+           ON sb.ts_code = db.ts_code AND db.trade_date = ${tradeDate}::date
       WHERE sb.list_status = 'L'
         AND sb.industry IS NOT NULL
       ORDER BY sb.industry, db.total_mv DESC NULLS LAST
@@ -115,9 +115,9 @@ export class HeatmapService {
       FROM index_constituent_weights iw
       JOIN stock_basic_profiles sb ON iw.con_code = sb.ts_code
       JOIN stock_daily_prices d
-           ON iw.con_code = d.ts_code AND d.trade_date = ${tradeDate}
+           ON iw.con_code = d.ts_code AND d.trade_date = ${tradeDate}::date
       LEFT JOIN stock_daily_valuation_metrics db
-           ON iw.con_code = db.ts_code AND db.trade_date = ${tradeDate}
+           ON iw.con_code = db.ts_code AND db.trade_date = ${tradeDate}::date
       WHERE iw.index_code = ${indexCode}
         AND iw.trade_date = ${latestWeightDate}
       ORDER BY iw.weight DESC NULLS LAST
@@ -144,7 +144,7 @@ export class HeatmapService {
         NULL::float AS "amount"
       FROM sector_capital_flows
       WHERE content_type = '概念'
-        AND trade_date = ${tradeDate}
+        AND trade_date = ${tradeDate}::date
       ORDER BY pct_change DESC NULLS LAST
     `
     return rows.map((r) => ({

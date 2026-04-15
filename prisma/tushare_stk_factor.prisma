@@ -1,0 +1,53 @@
+/// Tushare stk_factor — 股票技术因子（每日技术指标预计算数据）
+model StkFactor {
+  tsCode   String   @map("ts_code")    @db.VarChar(16)
+  tradeDate DateTime @map("trade_date") @db.Date
+
+  // ── 行情基础 ──
+  close    Float?
+  open     Float?
+  high     Float?
+  low      Float?
+  preClose Float?   @map("pre_close")
+  change   Float?
+  pctChg   Float?   @map("pct_chg")
+  vol      Float?
+  amount   Float?
+
+  // ── MACD ──
+  macdDif  Float?   @map("macd_dif")
+  macdDea  Float?   @map("macd_dea")
+  macd     Float?
+
+  // ── KDJ ──
+  kdjK     Float?   @map("kdj_k")
+  kdjD     Float?   @map("kdj_d")
+  kdjJ     Float?   @map("kdj_j")
+
+  // ── RSI ──
+  rsi6     Float?   @map("rsi_6")
+  rsi12    Float?   @map("rsi_12")
+  rsi24    Float?   @map("rsi_24")
+
+  // ── 布林带 ──
+  bollUpper Float?  @map("boll_upper")
+  bollMid   Float?  @map("boll_mid")
+  bollLower Float?  @map("boll_lower")
+
+  // ── CCI ──
+  cci14    Float?   @map("cci_14")
+  cci20    Float?   @map("cci_20")
+
+  // ── ATR / 波动率 ──
+  tr       Float?
+  atr14    Float?
+  atr20    Float?
+
+  // ── VR ──
+  vr26     Float?   @map("vr_26")
+
+  @@id([tsCode, tradeDate])
+  @@index([tradeDate])
+  @@index([tsCode, tradeDate(sort: Desc)])
+  @@map("stock_technical_factors")
+}

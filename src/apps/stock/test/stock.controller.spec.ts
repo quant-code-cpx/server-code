@@ -60,6 +60,8 @@ const mockStockAnalysisService = {
   getChipDistribution: jest.fn(async () => ({})),
   getMarginData: jest.fn(async () => ({})),
   getRelativeStrength: jest.fn(async () => ({})),
+  getTechnicalFactors: jest.fn(async () => ({ tsCode: '000001.SZ', count: 0, items: [] })),
+  getLatestFactors: jest.fn(async () => ({ tsCode: '000001.SZ', tradeDate: null, close: null, macdSignal: null, kdjSignal: null, rsiSignal: null, bollPosition: null, raw: null })),
 }
 
 describe('StockController (integration)', () => {
@@ -163,5 +165,36 @@ describe('StockController (integration)', () => {
     mockStockService.findOne.mockRejectedValueOnce(new NotFoundException('stock not found'))
     await request(app.getHttpServer()).post('/stock/detail').send({ code: '000001.SZ' }).expect(404)
     expect(mockStockService.findOne).toHaveBeenCalledTimes(1)
+  })
+
+  it('POST /stock/detail/analysis/factors → 201, data 含 count/items', async () => {
+    const res = await request(app.getHttpServer())
+      .post('/stock/detail/analysis/factors')
+      .send({ tsCode: '000001.SZ' })
+      .expect(201)
+    expect(res.body.code).toBe(0)
+    expect(res.body.data).toHaveProperty('count')
+    expect(res.body.data).toHaveProperty('items')
+    expect(mockStockAnalysisService.getTechnicalFactors).toHaveBeenCalledTimes(1)
+  })
+
+  it('[VAL] POST /stock/detail/analysis/factors 缺 tsCode → 400', async () => {
+    await request(app.getHttpServer()).post('/stock/detail/analysis/factors').send({}).expect(400)
+    expect(mockStockAnalysisService.getTechnicalFactors).not.toHaveBeenCalled()
+  })
+
+  it('POST /stock/detail/analysis/factors/latest → 201, data 含 tsCode/tradeDate', async () => {
+    const res = await request(app.getHttpServer())
+      .post('/stock/detail/analysis/factors/latest')
+      .send({ tsCode: '000001.SZ' })
+      .expect(201)
+    expect(res.body.code).toBe(0)
+    expect(res.body.data).toHaveProperty('tsCode')
+    expect(mockStockAnalysisService.getLatestFactors).toHaveBeenCalledTimes(1)
+  })
+
+  it('[VAL] POST /stock/detail/analysis/factors/latest 缺 tsCode → 400', async () => {
+    await request(app.getHttpServer()).post('/stock/detail/analysis/factors/latest').send({}).expect(400)
+    expect(mockStockAnalysisService.getLatestFactors).not.toHaveBeenCalled()
   })
 })

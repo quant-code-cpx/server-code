@@ -1,9 +1,10 @@
 import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common'
 import { Cron } from '@nestjs/schedule'
-import { PriceAlertRule, PriceAlertRuleStatus, PriceAlertRuleType } from '@prisma/client'
+import { NotificationType, PriceAlertRule, PriceAlertRuleStatus, PriceAlertRuleType } from '@prisma/client'
 import dayjs from 'dayjs'
 import { PrismaService } from 'src/shared/prisma.service'
 import { EventsGateway } from 'src/websocket/events.gateway'
+import { NotificationService } from 'src/apps/notification/notification.service'
 import { CreatePriceAlertRuleDto, UpdatePriceAlertRuleDto } from './dto/price-alert-rule.dto'
 
 interface PriceAlertPayload {
@@ -32,6 +33,7 @@ export class PriceAlertService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly eventsGateway: EventsGateway,
+    private readonly notificationService: NotificationService,
   ) {}
 
   // ── 规则 CRUD ──────────────────────────────────────────────────────────────
@@ -279,6 +281,14 @@ export class PriceAlertService {
           source: source ?? null,
         }
         this.eventsGateway.emitToUser(rule.userId, 'price-alert', payload)
+        // 同步创建站内通知（fire-and-forget）
+        void this.notificationService.create({
+          userId: rule.userId,
+          type: NotificationType.PRICE_ALERT,
+          title: `价格预警触发：${stockName ?? tsCode}`,
+          body: `${stockName ?? tsCode} ${rule.ruleType} 条件已触发，当前值 ${actualValue}`,
+          data: payload as unknown as Record<string, unknown>,
+        })
       }
     }
 

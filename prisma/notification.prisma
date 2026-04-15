@@ -1,0 +1,44 @@
+// ── 站内消息通知 ─────────────────────────────────────────────────────────────
+
+enum NotificationType {
+  PRICE_ALERT           // 价格预警触发
+  MARKET_ANOMALY        // 市场异动监控
+  SCREENER_ALERT        // 选股订阅命中
+  SIGNAL_TRIGGERED      // 交易信号触发
+  SYSTEM                // 系统通知
+
+  @@map("notification_type")
+}
+
+/// 站内消息通知记录
+model Notification {
+  id        Int              @id @default(autoincrement())
+  userId    Int              @map("user_id")
+  type      NotificationType
+  title     String           @db.VarChar(128)
+  body      String           @db.VarChar(512)
+  data      Json             @default("{}")
+  isRead    Boolean          @default(false) @map("is_read")
+  readAt    DateTime?        @map("read_at")
+  createdAt DateTime         @default(now()) @map("created_at")
+
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead, createdAt(sort: Desc)])
+  @@index([userId, createdAt(sort: Desc)])
+  @@map("notifications")
+}
+
+/// 通知偏好设置（按类型开关）
+model NotificationPreference {
+  id        Int              @id @default(autoincrement())
+  userId    Int              @map("user_id")
+  type      NotificationType
+  enabled   Boolean          @default(true)
+  updatedAt DateTime         @updatedAt @map("updated_at")
+
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, type])
+  @@map("notification_preferences")
+}

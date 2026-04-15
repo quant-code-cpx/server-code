@@ -41,6 +41,8 @@ model User {
   strategies         Strategy[]                        // 策略模板
   portfolios         Portfolio[]                        // 虚拟投资组合
   reports            Report[]                          // 量化报告
+  notifications      Notification[]                    // 站内消息
+  notificationPreferences NotificationPreference[]     // 通知偏好
   createdAt      DateTime   @default(now())
   updatedAt      DateTime   @updatedAt
 

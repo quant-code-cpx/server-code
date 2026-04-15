@@ -2182,3 +2182,49 @@ export function mapOptDailyRecord(
     oi: readNumber(record, 'oi'),
   }
 }
+
+export function mapStkFactorRecord(record: TushareRecord, collector?: ValidationCollector): Prisma.StkFactorCreateManyInput | null {
+  const tsCode = readString(record, 'ts_code')
+  const tradeDate = readDate(record, 'trade_date')
+
+  if (!tsCode) {
+    collector?.add({ tsCode: null, ruleName: 'missing_pk', severity: 'error', message: 'ts_code 缺失', rawData: record })
+    return null
+  }
+  if (!tradeDate) {
+    collector?.add({ tsCode, ruleName: 'missing_pk', severity: 'error', message: 'trade_date 缺失', rawData: record })
+    return null
+  }
+
+  return {
+    tsCode,
+    tradeDate,
+    close: readNumber(record, 'close'),
+    open: readNumber(record, 'open'),
+    high: readNumber(record, 'high'),
+    low: readNumber(record, 'low'),
+    preClose: readNumber(record, 'pre_close'),
+    change: readNumber(record, 'change'),
+    pctChg: readNumber(record, 'pct_chg'),
+    vol: readNumber(record, 'vol'),
+    amount: readNumber(record, 'amount'),
+    macdDif: readNumber(record, 'macd_dif'),
+    macdDea: readNumber(record, 'macd_dea'),
+    macd: readNumber(record, 'macd'),
+    kdjK: readNumber(record, 'kdj_k'),
+    kdjD: readNumber(record, 'kdj_d'),
+    kdjJ: readNumber(record, 'kdj_j'),
+    rsi6: readNumber(record, 'rsi_6'),
+    rsi12: readNumber(record, 'rsi_12'),
+    rsi24: readNumber(record, 'rsi_24'),
+    bollUpper: readNumber(record, 'boll_upper'),
+    bollMid: readNumber(record, 'boll_mid'),
+    bollLower: readNumber(record, 'boll_lower'),
+    cci14: readNumber(record, 'cci_14'),
+    cci20: readNumber(record, 'cci_20'),
+    tr: readNumber(record, 'tr'),
+    atr14: readNumber(record, 'atr14'),
+    atr20: readNumber(record, 'atr20'),
+    vr26: readNumber(record, 'vr_26'),
+  }
+}

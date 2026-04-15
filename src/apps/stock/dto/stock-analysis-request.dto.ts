@@ -126,3 +126,33 @@ export class StockRelativeStrengthDto {
   @Max(500)
   days?: number = 120
 }
+
+// ─── 技术因子查询 DTO ─────────────────────────────────────────────────────────
+
+export class StockTechnicalFactorsQueryDto {
+  @ApiProperty({ example: '000001.SZ', description: '股票代码（ts_code）' })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(16)
+  tsCode: string
+
+  @ApiPropertyOptional({
+    description: '返回最近多少个交易日，默认 120，最大 500',
+    default: 120,
+    minimum: 1,
+    maximum: 500,
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(500)
+  days?: number = 120
+}
+
+export class StockLatestFactorsQueryDto {
+  @ApiProperty({ example: '000001.SZ', description: '股票代码（ts_code）' })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(16)
+  tsCode: string
+}

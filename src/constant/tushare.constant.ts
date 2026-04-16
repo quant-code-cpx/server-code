@@ -199,8 +199,8 @@ export const TUSHARE_MONEYFLOW_CONTENT_TYPES = [
   MoneyflowContentType.REGION,
 ] as const
 
-/** 资金流向仅保留最近 60 个交易日，避免在低积分账户下做不可持续的历史全量回补 */
-export const TUSHARE_MONEYFLOW_RECENT_TRADE_DAYS = 60
+/** 资金流向保留最近 N 个交易日（可通过 TUSHARE_MONEYFLOW_RECENT_TRADE_DAYS 环境变量覆盖） */
+export const TUSHARE_MONEYFLOW_RECENT_TRADE_DAYS = Number(process.env.TUSHARE_MONEYFLOW_RECENT_TRADE_DAYS) || 60
 
 /** 接口字段清单：字段来自 Tushare 文档镜像模型元数据 */
 export const TUSHARE_STOCK_BASIC_FIELDS = [

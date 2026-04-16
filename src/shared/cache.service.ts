@@ -32,8 +32,8 @@ export interface CacheNamespaceMetrics {
 export class CacheService {
   private static readonly NAMESPACE_KEY_PREFIX = 'cache:namespace:'
   private static readonly METRICS_KEY_PREFIX = 'cache:metrics:'
-  private static readonly SCAN_COUNT = 200
-  private static readonly DELETE_CHUNK_SIZE = 200
+  private static readonly SCAN_COUNT = Number(process.env.CACHE_SCAN_COUNT) || 200
+  private static readonly DELETE_CHUNK_SIZE = Number(process.env.CACHE_DELETE_CHUNK_SIZE) || 200
 
   constructor(
     @Inject(REDIS_CLIENT) private readonly redis: RedisClientType,

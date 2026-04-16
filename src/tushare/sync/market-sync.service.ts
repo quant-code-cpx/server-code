@@ -6,6 +6,8 @@ import { MarketApiService } from '../api/market-api.service'
 import {
   mapAdjFactorRecord,
   mapCbDailyRecord,
+  mapCyqChipsRecord,
+  mapCyqPerfRecord,
   mapDailyBasicRecord,
   mapDailyInfoRecord,
   mapDailyRecord,
@@ -13,6 +15,8 @@ import {
   mapIndexDailyRecord,
   mapMarginDetailRecord,
   mapMonthlyRecord,
+  mapStkMinsRecord,
+  mapThsDailyRecord,
   mapWeeklyRecord,
 } from '../tushare-sync.mapper'
 import { SyncHelperService } from './sync-helper.service'
@@ -206,6 +210,74 @@ export class MarketSyncService {
           tradingDayOnly: true,
         },
         execute: (ctx) => this.syncDailyInfo(this.requireTradeDate(ctx.targetTradeDate), ctx.mode),
+      },
+      {
+        task: TushareSyncTaskName.CYQ_PERF,
+        label: '筹码获利比例',
+        category: 'market',
+        order: 195,
+        bootstrapEnabled: true,
+        supportsManual: true,
+        supportsFullSync: true,
+        requiresTradeDate: true,
+        schedule: {
+          cron: '0 0 20 * * 1-5',
+          timeZone: this.helper.syncTimeZone,
+          description: '交易日盘后同步筹码获利比例',
+          tradingDayOnly: true,
+        },
+        execute: (ctx) => this.syncCyqPerf(this.requireTradeDate(ctx.targetTradeDate), ctx.mode, ctx),
+      },
+      {
+        task: TushareSyncTaskName.CYQ_CHIPS,
+        label: '筹码分布',
+        category: 'market',
+        order: 196,
+        bootstrapEnabled: false,
+        supportsManual: true,
+        supportsFullSync: false,
+        requiresTradeDate: true,
+        schedule: {
+          cron: '0 30 20 * * 1-5',
+          timeZone: this.helper.syncTimeZone,
+          description: '交易日盘后同步筹码分布（按股票逐只）',
+          tradingDayOnly: true,
+        },
+        execute: (ctx) => this.syncCyqChips(ctx),
+      },
+      {
+        task: TushareSyncTaskName.STK_MINS,
+        label: '分钟级行情',
+        category: 'market',
+        order: 198,
+        bootstrapEnabled: false,
+        supportsManual: true,
+        supportsFullSync: false,
+        requiresTradeDate: false,
+        schedule: {
+          cron: '0 0 21 * * 1-5',
+          timeZone: this.helper.syncTimeZone,
+          description: '交易日盘后同步分钟级行情（按股票逐只）',
+          tradingDayOnly: true,
+        },
+        execute: (ctx) => this.syncStkMins(ctx),
+      },
+      {
+        task: TushareSyncTaskName.THS_DAILY,
+        label: '同花顺板块日线',
+        category: 'market',
+        order: 199,
+        bootstrapEnabled: true,
+        supportsManual: true,
+        supportsFullSync: true,
+        requiresTradeDate: true,
+        schedule: {
+          cron: '0 10 20 * * 1-5',
+          timeZone: this.helper.syncTimeZone,
+          description: '交易日盘后同步同花顺板块指数日线',
+          tradingDayOnly: true,
+        },
+        execute: (ctx) => this.syncThsDaily(this.requireTradeDate(ctx.targetTradeDate), ctx.mode, ctx),
       },
     ]
   }
@@ -731,6 +803,226 @@ export class MarketSyncService {
         return rows.map((r) => mapDailyInfoRecord(r, collector)).filter((r): r is NonNullable<typeof r> => Boolean(r))
       },
       resolveDates: (start) => this.helper.getOpenTradeDatesBetween(start, targetTradeDate),
+    })
+    await this.helper.flushValidationLogs(collector)
+  }
+
+  // ─── 筹码获利比例 ────────────────────────────────────────────────────────────
+
+  async syncCyqPerf(
+    targetTradeDate: string,
+    mode: TushareSyncMode = 'incremental',
+    context?: TushareSyncPlanContext,
+  ): Promise<void> {
+    const collector = new ValidationCollector(TushareSyncTaskName.CYQ_PERF)
+    await this.syncByTradeDate({
+      task: TushareSyncTaskName.CYQ_PERF,
+      label: '筹码获利比例',
+      modelName: 'cyqPerf',
+      targetTradeDate,
+      fullSync: mode === 'full',
+      fetchAndMap: async (td) => {
+        const rows = await this.api.getCyqPerfByTradeDate(td)
+        return rows.map((r) => mapCyqPerfRecord(r, collector)).filter((r): r is NonNullable<typeof r> => Boolean(r))
+      },
+      resolveDates: (start) => this.helper.getOpenTradeDatesBetween(start, targetTradeDate),
+      onProgress: context?.onProgress,
+    })
+    await this.helper.flushValidationLogs(collector)
+  }
+
+  // ─── 筹码分布（按股票逐只同步）──────────────────────────────────────────────
+
+  async syncCyqChips(ctx?: TushareSyncPlanContext): Promise<void> {
+    const targetTradeDate = this.requireTradeDate(ctx?.targetTradeDate)
+    const startedAt = new Date()
+    this.logger.log(`[筹码分布] 开始同步，目标交易日: ${targetTradeDate}`)
+
+    const stockList = await this.helper.prisma.stockBasic.findMany({
+      where: { listStatus: 'L' },
+      select: { tsCode: true },
+    })
+    const tsCodes: string[] = stockList.map((s: { tsCode: string }) => s.tsCode)
+
+    if (!tsCodes.length) {
+      this.logger.warn('[筹码分布] stock_basic 中无上市股票，请先同步股票列表')
+      return
+    }
+
+    this.logger.log(`[筹码分布] 待同步 ${tsCodes.length} 只股票`)
+
+    const resumeKey = await this.helper.getResumeKey(TushareSyncTaskName.CYQ_CHIPS)
+    let startIndex = 0
+    if (resumeKey) {
+      const idx = tsCodes.indexOf(resumeKey)
+      if (idx >= 0) {
+        startIndex = idx + 1
+        this.logger.log(`[筹码分布] 从断点续传: ${resumeKey} (index=${startIndex})`)
+      }
+    }
+
+    const collector = new ValidationCollector(TushareSyncTaskName.CYQ_CHIPS)
+    let totalRows = 0
+    const failed: Array<{ tsCode: string; error: string }> = []
+
+    for (let i = startIndex; i < tsCodes.length; i++) {
+      const tsCode = tsCodes[i]
+      try {
+        const rows = await this.api.getCyqChipsByTsCode(tsCode, targetTradeDate)
+        if (rows.length > 0) {
+          const mapped = rows
+            .map((r) => mapCyqChipsRecord(r, collector))
+            .filter((r): r is NonNullable<typeof r> => Boolean(r))
+
+          if (mapped.length > 0) {
+            const result = await this.helper.prisma.cyqChips.createMany({
+              data: mapped,
+              skipDuplicates: true,
+            })
+            totalRows += result.count
+          }
+        }
+
+        if ((i + 1) % 50 === 0 || i === tsCodes.length - 1) {
+          await this.helper.updateProgress(TushareSyncTaskName.CYQ_CHIPS, tsCode, i + 1, tsCodes.length)
+          ctx?.onProgress?.(i + 1, tsCodes.length, tsCode)
+          this.logger.log(`[筹码分布] 进度 ${i + 1}/${tsCodes.length}，累计 ${totalRows} 条`)
+        }
+      } catch (error) {
+        const msg = (error as Error).message
+        this.logger.error(`[筹码分布] ${tsCode} 同步失败: ${msg}`)
+        failed.push({ tsCode, error: msg })
+      }
+    }
+
+    await this.helper.markCompleted(TushareSyncTaskName.CYQ_CHIPS)
+    await this.helper.flushValidationLogs(collector)
+    this.logger.log(`[筹码分布] 同步完成，共 ${totalRows} 条${failed.length ? `，${failed.length} 只失败` : ''}`)
+    await this.helper.writeSyncLog(
+      TushareSyncTaskName.CYQ_CHIPS,
+      {
+        status: TushareSyncExecutionStatus.SUCCESS,
+        message: `筹码分布同步完成，共 ${totalRows} 条`,
+        tradeDate: this.helper.toDate(targetTradeDate),
+        payload: {
+          rowCount: totalRows,
+          stockCount: tsCodes.length,
+          failedStocks: failed.length > 0 ? failed : undefined,
+        },
+      },
+      startedAt,
+    )
+  }
+
+  // ─── 分钟级行情（按股票逐只同步）─────────────────────────────────────────────
+
+  async syncStkMins(ctx?: TushareSyncPlanContext): Promise<void> {
+    const isFullSync = ctx?.mode === 'full'
+    const startedAt = new Date()
+    const syncDays = Number(process.env.TUSHARE_STK_MINS_SYNC_DAYS) || 5
+    const freq = process.env.TUSHARE_STK_MINS_FREQ || '5min'
+    this.logger.log(`[分钟行情] 开始同步 (freq=${freq}, days=${syncDays})...${isFullSync ? '（全量模式）' : ''}`)
+
+    const stockList = await this.helper.prisma.stockBasic.findMany({
+      where: { listStatus: 'L' },
+      select: { tsCode: true },
+    })
+    const tsCodes: string[] = stockList.map((s: { tsCode: string }) => s.tsCode)
+
+    if (!tsCodes.length) {
+      this.logger.warn('[分钟行情] stock_basic 中无上市股票，请先同步股票列表')
+      return
+    }
+
+    const endDate = this.helper.getCurrentShanghaiDateString()
+    const startDate = this.helper.addDays(endDate, -(syncDays - 1))
+
+    this.logger.log(`[分钟行情] 待同步 ${tsCodes.length} 只股票，范围 ${startDate} → ${endDate}`)
+
+    const resumeKey = isFullSync ? null : await this.helper.getResumeKey(TushareSyncTaskName.STK_MINS)
+    let startIndex = 0
+    if (resumeKey) {
+      const idx = tsCodes.indexOf(resumeKey)
+      if (idx >= 0) {
+        startIndex = idx + 1
+        this.logger.log(`[分钟行情] 从断点续传: ${resumeKey} (index=${startIndex})`)
+      }
+    }
+
+    const collector = new ValidationCollector(TushareSyncTaskName.STK_MINS)
+    let totalRows = 0
+    const failed: Array<{ tsCode: string; error: string }> = []
+
+    for (let i = startIndex; i < tsCodes.length; i++) {
+      const tsCode = tsCodes[i]
+      try {
+        const rows = await this.api.getStkMinsByTsCode(tsCode, freq, startDate, endDate)
+        if (rows.length > 0) {
+          const mapped = rows
+            .map((r) => mapStkMinsRecord(r, freq, collector))
+            .filter((r): r is NonNullable<typeof r> => Boolean(r))
+
+          if (mapped.length > 0) {
+            const result = await this.helper.prisma.stkMins.createMany({
+              data: mapped,
+              skipDuplicates: true,
+            })
+            totalRows += result.count
+          }
+        }
+
+        if ((i + 1) % 50 === 0 || i === tsCodes.length - 1) {
+          await this.helper.updateProgress(TushareSyncTaskName.STK_MINS, tsCode, i + 1, tsCodes.length)
+          ctx?.onProgress?.(i + 1, tsCodes.length, tsCode)
+          this.logger.log(`[分钟行情] 进度 ${i + 1}/${tsCodes.length}，累计 ${totalRows} 条`)
+        }
+      } catch (error) {
+        const msg = (error as Error).message
+        this.logger.error(`[分钟行情] ${tsCode} 同步失败: ${msg}`)
+        failed.push({ tsCode, error: msg })
+      }
+    }
+
+    await this.helper.markCompleted(TushareSyncTaskName.STK_MINS)
+    await this.helper.flushValidationLogs(collector)
+    this.logger.log(`[分钟行情] 同步完成，共 ${totalRows} 条${failed.length ? `，${failed.length} 只失败` : ''}`)
+    await this.helper.writeSyncLog(
+      TushareSyncTaskName.STK_MINS,
+      {
+        status: TushareSyncExecutionStatus.SUCCESS,
+        message: `分钟行情同步完成，共 ${totalRows} 条`,
+        payload: {
+          rowCount: totalRows,
+          stockCount: tsCodes.length,
+          freq,
+          syncDays,
+          failedStocks: failed.length > 0 ? failed : undefined,
+        },
+      },
+      startedAt,
+    )
+  }
+
+  // ─── 同花顺板块指数日线 ─────────────────────────────────────────────────────
+
+  async syncThsDaily(
+    targetTradeDate: string,
+    mode: TushareSyncMode = 'incremental',
+    context?: TushareSyncPlanContext,
+  ): Promise<void> {
+    const collector = new ValidationCollector(TushareSyncTaskName.THS_DAILY)
+    await this.syncByTradeDate({
+      task: TushareSyncTaskName.THS_DAILY,
+      label: '同花顺板块日线',
+      modelName: 'thsDaily',
+      targetTradeDate,
+      fullSync: mode === 'full',
+      fetchAndMap: async (td) => {
+        const rows = await this.api.getThsDailyByTradeDate(td)
+        return rows.map((r) => mapThsDailyRecord(r, collector)).filter((r): r is NonNullable<typeof r> => Boolean(r))
+      },
+      resolveDates: (start) => this.helper.getOpenTradeDatesBetween(start, targetTradeDate),
+      onProgress: context?.onProgress,
     })
     await this.helper.flushValidationLogs(collector)
   }

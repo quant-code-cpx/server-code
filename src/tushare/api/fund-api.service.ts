@@ -5,6 +5,7 @@ import {
   TUSHARE_FUND_NAV_FIELDS,
   TUSHARE_FUND_PORTFOLIO_FIELDS,
   TUSHARE_FUND_SHARE_FIELDS,
+  TUSHARE_FUND_ADJ_FIELDS,
   TushareApiName,
 } from 'src/constant/tushare.constant'
 import { TushareClient } from './tushare-client.service'
@@ -56,6 +57,15 @@ export class FundApiService {
       api_name: TushareApiName.FUND_SHARE,
       params: { ts_code: tsCode, start_date: startDate, end_date: endDate },
       fields: [...TUSHARE_FUND_SHARE_FIELDS],
+    })
+  }
+
+  /** 按基金代码获取复权因子 */
+  getFundAdjByTsCode(tsCode: string, startDate?: string, endDate?: string) {
+    return this.client.call({
+      api_name: TushareApiName.FUND_ADJ,
+      params: { ts_code: tsCode, start_date: startDate, end_date: endDate },
+      fields: [...TUSHARE_FUND_ADJ_FIELDS],
     })
   }
 }

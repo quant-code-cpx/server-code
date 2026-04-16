@@ -2390,3 +2390,248 @@ export function mapFundShareRecord(
     fdShare: readNumber(record, 'fd_share'),
   }
 }
+
+// ─── 每日筹码获利比例 ─────────────────────────────────────────────────────────
+
+export function mapCyqPerfRecord(
+  record: TushareRecord,
+  collector?: ValidationCollector,
+): Prisma.CyqPerfCreateManyInput | null {
+  const tsCode = readString(record, 'ts_code')
+  const tradeDate = readDate(record, 'trade_date')
+
+  if (!tsCode || !tradeDate) {
+    collector?.add({
+      tsCode,
+      tradeDate: readString(record, 'trade_date'),
+      ruleName: 'missing_pk',
+      severity: 'error',
+      message: 'ts_code 或 trade_date 缺失',
+      rawData: record,
+    })
+    return null
+  }
+
+  return {
+    tsCode,
+    tradeDate,
+    hisLow: readNumber(record, 'his_low'),
+    hisHigh: readNumber(record, 'his_high'),
+    cost5pct: readNumber(record, 'cost_5pct'),
+    cost15pct: readNumber(record, 'cost_15pct'),
+    cost50pct: readNumber(record, 'cost_50pct'),
+    cost85pct: readNumber(record, 'cost_85pct'),
+    cost95pct: readNumber(record, 'cost_95pct'),
+    weightAvg: readNumber(record, 'weight_avg'),
+    winnerRate: readNumber(record, 'winner_rate'),
+  }
+}
+
+// ─── 每日筹码分布 ─────────────────────────────────────────────────────────────
+
+export function mapCyqChipsRecord(
+  record: TushareRecord,
+  collector?: ValidationCollector,
+): Prisma.CyqChipsCreateManyInput | null {
+  const tsCode = readString(record, 'ts_code')
+  const tradeDate = readDate(record, 'trade_date')
+  const price = readNumber(record, 'price')
+
+  if (!tsCode || !tradeDate || price === null) {
+    collector?.add({
+      tsCode,
+      tradeDate: readString(record, 'trade_date'),
+      ruleName: 'missing_pk',
+      severity: 'error',
+      message: 'ts_code、trade_date 或 price 缺失',
+      rawData: record,
+    })
+    return null
+  }
+
+  return {
+    tsCode,
+    tradeDate,
+    price,
+    percent: readNumber(record, 'percent'),
+  }
+}
+
+// ─── 分钟级行情 ───────────────────────────────────────────────────────────────
+
+function readDateTime(record: TushareRecord, key: string): Date | null {
+  const value = readString(record, key)
+  if (!value) return null
+
+  // Tushare returns trade_time as "YYYY-MM-DD HH:MM:SS" or "YYYYMMDD HH:MM:SS"
+  const normalized = value.replace(/-/g, '')
+  const match = normalized.match(/^(\d{4})(\d{2})(\d{2})\s+(\d{2}):(\d{2}):(\d{2})$/)
+  if (!match) return null
+
+  const [, y, mo, d, h, mi, s] = match
+  const parsed = new Date(Date.UTC(+y, +mo - 1, +d, +h - 8, +mi, +s)) // CST → UTC
+  return Number.isNaN(parsed.getTime()) ? null : parsed
+}
+
+export function mapStkMinsRecord(
+  record: TushareRecord,
+  freq: string,
+  collector?: ValidationCollector,
+): Prisma.StkMinsCreateManyInput | null {
+  const tsCode = readString(record, 'ts_code')
+  const tradeTime = readDateTime(record, 'trade_time')
+
+  if (!tsCode || !tradeTime) {
+    collector?.add({
+      tsCode,
+      tradeDate: readString(record, 'trade_time'),
+      ruleName: 'missing_pk',
+      severity: 'error',
+      message: 'ts_code 或 trade_time 缺失',
+      rawData: record,
+    })
+    return null
+  }
+
+  return {
+    tsCode,
+    tradeTime,
+    freq,
+    open: readNumber(record, 'open'),
+    high: readNumber(record, 'high'),
+    low: readNumber(record, 'low'),
+    close: readNumber(record, 'close'),
+    vol: readNumber(record, 'vol'),
+    amount: readNumber(record, 'amount'),
+  }
+}
+
+// ─── 技术面因子 ───────────────────────────────────────────────────────────────
+
+export function mapStkSurvRecord(
+  record: TushareRecord,
+  collector?: ValidationCollector,
+): Prisma.StkSurvCreateManyInput | null {
+  const tsCode = readString(record, 'ts_code')
+  const tradeDate = readDate(record, 'trade_date')
+
+  if (!tsCode || !tradeDate) {
+    collector?.add({
+      tsCode,
+      tradeDate: readString(record, 'trade_date'),
+      ruleName: 'missing_pk',
+      severity: 'error',
+      message: 'ts_code 或 trade_date 缺失',
+      rawData: record,
+    })
+    return null
+  }
+
+  return {
+    tsCode,
+    tradeDate,
+    tsName: readString(record, 'ts_name'),
+    priceTrend: readNumber(record, 'price_trend'),
+    volTrend: readNumber(record, 'vol_trend'),
+    priceMomentum: readNumber(record, 'price_momentum'),
+    volMomentum: readNumber(record, 'vol_momentum'),
+    turnoverTrend: readNumber(record, 'turnover_trend'),
+    mktCapTrend: readNumber(record, 'mkt_cap_trend'),
+    externalTrend: readNumber(record, 'external_trend'),
+    innerTrend: readNumber(record, 'inner_trend'),
+  }
+}
+
+// ─── 同花顺板块指数日线 ───────────────────────────────────────────────────────
+
+export function mapThsDailyRecord(
+  record: TushareRecord,
+  collector?: ValidationCollector,
+): Prisma.ThsDailyCreateManyInput | null {
+  const tsCode = readString(record, 'ts_code')
+  const tradeDate = readDate(record, 'trade_date')
+
+  if (!tsCode || !tradeDate) {
+    collector?.add({
+      tsCode,
+      tradeDate: readString(record, 'trade_date'),
+      ruleName: 'missing_pk',
+      severity: 'error',
+      message: 'ts_code 或 trade_date 缺失',
+      rawData: record,
+    })
+    return null
+  }
+
+  return {
+    tsCode,
+    tradeDate,
+    close: readNumber(record, 'close'),
+    open: readNumber(record, 'open'),
+    high: readNumber(record, 'high'),
+    low: readNumber(record, 'low'),
+    preClose: readNumber(record, 'pre_close'),
+    avgPrice: readNumber(record, 'avg_price'),
+    change: readNumber(record, 'change'),
+    pctChg: readNumber(record, 'pct_chg'),
+    vol: readNumber(record, 'vol'),
+    turnoverRate: readNumber(record, 'turnover_rate'),
+  }
+}
+
+// ─── 基金复权因子 ─────────────────────────────────────────────────────────────
+
+export function mapFundAdjRecord(
+  record: TushareRecord,
+  collector?: ValidationCollector,
+): Prisma.FundAdjCreateManyInput | null {
+  const tsCode = readString(record, 'ts_code')
+  const tradeDate = readDate(record, 'trade_date')
+
+  if (!tsCode || !tradeDate) {
+    collector?.add({
+      tsCode,
+      tradeDate: readString(record, 'trade_date'),
+      ruleName: 'missing_pk',
+      severity: 'error',
+      message: 'ts_code 或 trade_date 缺失',
+      rawData: record,
+    })
+    return null
+  }
+
+  return {
+    tsCode,
+    tradeDate,
+    adjFactor: readNumber(record, 'adj_factor'),
+  }
+}
+
+// ─── 港股通每日成交 ───────────────────────────────────────────────────────────
+
+export function mapGgtDailyRecord(
+  record: TushareRecord,
+  collector?: ValidationCollector,
+): Prisma.GgtDailyCreateManyInput | null {
+  const tradeDate = readDate(record, 'trade_date')
+  if (!tradeDate) {
+    collector?.add({
+      tradeDate: readString(record, 'trade_date'),
+      ruleName: 'missing_pk',
+      severity: 'error',
+      message: 'trade_date 缺失',
+      rawData: record,
+    })
+    return null
+  }
+
+  return {
+    tradeDate,
+    buyAmount: readNumber(record, 'buy_amount'),
+    buyVolume: readNumber(record, 'buy_volume'),
+    sellAmount: readNumber(record, 'sell_amount'),
+    sellVolume: readNumber(record, 'sell_volume'),
+    netAmount: readNumber(record, 'net_amount'),
+    netVolume: readNumber(record, 'net_volume'),
+  }
+}

@@ -64,6 +64,16 @@ export enum TushareApiName {
   // Fund extended
   FUND_PORTFOLIO = 'fund_portfolio',
   FUND_SHARE = 'fund_share',
+  // Phase 3: Chip distribution
+  CYQ_PERF = 'cyq_perf',
+  CYQ_CHIPS = 'cyq_chips',
+  // Phase 4: Minute data & technical survey
+  STK_MINS = 'stk_mins',
+  STK_SURV = 'stk_surv',
+  THS_DAILY = 'ths_daily',
+  // Phase 5: Fund adj & HK connect
+  FUND_ADJ = 'fund_adj',
+  GGT_DAILY = 'ggt_daily',
 }
 
 /** A 股常用交易所代码 */
@@ -162,6 +172,17 @@ export enum TushareSyncTaskName {
   // Fund extended
   FUND_PORTFOLIO = 'FUND_PORTFOLIO',
   FUND_SHARE = 'FUND_SHARE',
+  // Chip distribution
+  CYQ_PERF = 'CYQ_PERF',
+  CYQ_CHIPS = 'CYQ_CHIPS',
+  // Minute-level & survey
+  STK_MINS = 'STK_MINS',
+  STK_SURV = 'STK_SURV',
+  THS_DAILY = 'THS_DAILY',
+  // Fund adj factor
+  FUND_ADJ = 'FUND_ADJ',
+  // HK connect daily
+  GGT_DAILY = 'GGT_DAILY',
   // Derived / computed
   VALUATION_MEDIAN = 'VALUATION_MEDIAN',
 }
@@ -1377,4 +1398,87 @@ export const TUSHARE_FUND_SHARE_FIELDS = [
   'ts_code',
   'trade_date',
   'fd_share',
+] as const
+
+// ─── Phase 3: 筹码分布字段 ──────────────────────────────────────────────────
+
+export const TUSHARE_CYQ_PERF_FIELDS = [
+  'ts_code',
+  'trade_date',
+  'his_low',
+  'his_high',
+  'cost_5pct',
+  'cost_15pct',
+  'cost_50pct',
+  'cost_85pct',
+  'cost_95pct',
+  'weight_avg',
+  'winner_rate',
+] as const
+
+export const TUSHARE_CYQ_CHIPS_FIELDS = [
+  'ts_code',
+  'trade_date',
+  'price',
+  'percent',
+] as const
+
+// ─── Phase 4: 分钟行情 / 技术面因子 / 同花顺日线 ────────────────────────────
+
+export const TUSHARE_STK_MINS_FIELDS = [
+  'ts_code',
+  'trade_time',
+  'open',
+  'high',
+  'low',
+  'close',
+  'vol',
+  'amount',
+] as const
+
+export const TUSHARE_STK_SURV_FIELDS = [
+  'ts_code',
+  'trade_date',
+  'ts_name',
+  'price_trend',
+  'vol_trend',
+  'price_momentum',
+  'vol_momentum',
+  'turnover_trend',
+  'mkt_cap_trend',
+  'external_trend',
+  'inner_trend',
+] as const
+
+export const TUSHARE_THS_DAILY_FIELDS = [
+  'ts_code',
+  'trade_date',
+  'close',
+  'open',
+  'high',
+  'low',
+  'pre_close',
+  'avg_price',
+  'change',
+  'pct_chg',
+  'vol',
+  'turnover_rate',
+] as const
+
+// ─── Phase 5: 基金复权因子 / 港股通每日成交 ─────────────────────────────────
+
+export const TUSHARE_FUND_ADJ_FIELDS = [
+  'ts_code',
+  'trade_date',
+  'adj_factor',
+] as const
+
+export const TUSHARE_GGT_DAILY_FIELDS = [
+  'trade_date',
+  'buy_amount',
+  'buy_volume',
+  'sell_amount',
+  'sell_volume',
+  'net_amount',
+  'net_volume',
 ] as const

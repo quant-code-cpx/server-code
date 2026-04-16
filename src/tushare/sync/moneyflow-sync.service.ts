@@ -12,6 +12,7 @@ import {
 import { ITushareConfig, TUSHARE_CONFIG_TOKEN } from 'src/config/tushare.config'
 import { MoneyflowApiService } from '../api/moneyflow-api.service'
 import {
+  mapGgtDailyRecord,
   mapMoneyflowRecord,
   mapMoneyflowHsgtRecord,
   mapMoneyflowIndDcRecord,
@@ -120,6 +121,23 @@ export class MoneyflowSyncService {
           tradingDayOnly: true,
         },
         execute: ({ mode, targetTradeDate }) => this.syncMoneyflowHsgt(this.requireTradeDate(targetTradeDate), mode),
+      },
+      {
+        task: TushareSyncTaskName.GGT_DAILY,
+        label: '港股通每日成交',
+        category: 'moneyflow',
+        order: 365,
+        bootstrapEnabled: true,
+        supportsManual: true,
+        supportsFullSync: true,
+        requiresTradeDate: true,
+        schedule: {
+          cron: '0 25 19 * * 1-5',
+          timeZone: this.helper.syncTimeZone,
+          description: '交易日盘后同步港股通每日成交',
+          tradingDayOnly: true,
+        },
+        execute: ({ mode, targetTradeDate }) => this.syncGgtDaily(this.requireTradeDate(targetTradeDate), mode),
       },
     ]
   }
@@ -350,6 +368,61 @@ export class MoneyflowSyncService {
       {
         status: TushareSyncExecutionStatus.SUCCESS,
         message: `沪深港通资金流同步完成，${totalRows} 条`,
+        tradeDate: this.helper.toDate(targetTradeDate),
+        payload: { rowCount: totalRows },
+      },
+      startedAt,
+    )
+  }
+
+  // ─── 港股通每日成交 ────────────────────────────────────────────────────────
+
+  async syncGgtDaily(targetTradeDate: string, mode: TushareSyncMode = 'incremental'): Promise<void> {
+    if (
+      mode !== 'full' &&
+      (await this.helper.isTaskSyncedForTradeDate(TushareSyncTaskName.GGT_DAILY, targetTradeDate))
+    ) {
+      this.logger.log(`[港股通每日成交] 目标交易日 ${targetTradeDate} 已同步，跳过`)
+      return
+    }
+
+    const startedAt = new Date()
+    const latestDate = mode === 'full' ? null : await this.helper.getLatestDateString('ggtDaily')
+    const startDate = latestDate ? this.helper.addDays(latestDate, 1) : this.helper.syncStartDate
+
+    if (this.helper.compareDateString(startDate, targetTradeDate) > 0) {
+      this.logger.log('[港股通每日成交] 已是最新，无需同步')
+      return
+    }
+
+    this.logger.log(`[港股通每日成交] 拉取区间 ${startDate} → ${targetTradeDate}`)
+    let totalRows = 0
+
+    try {
+      const rows = await this.api.getGgtDailyByDateRange(startDate, targetTradeDate)
+      const collector = new ValidationCollector(TushareSyncTaskName.GGT_DAILY)
+      const mapped = rows
+        .map((r) => mapGgtDailyRecord(r, collector))
+        .filter((r): r is NonNullable<typeof r> => Boolean(r))
+
+      const tradeDate = this.helper.toDate(targetTradeDate)
+      const startDateObj = this.helper.toDate(startDate)
+      totalRows = await this.helper.replaceDateRangeRows('ggtDaily', 'tradeDate', startDateObj, tradeDate, mapped)
+      this.logger.log(`[港股通每日成交] 同步完成，${totalRows} 条`)
+      await this.helper.flushValidationLogs(collector)
+    } catch (error) {
+      if (this.isDailyQuotaExceeded(error)) {
+        this.logger.warn('[港股通每日成交] 触发每日配额限制，跳过')
+        return
+      }
+      throw error
+    }
+
+    await this.helper.writeSyncLog(
+      TushareSyncTaskName.GGT_DAILY,
+      {
+        status: TushareSyncExecutionStatus.SUCCESS,
+        message: `港股通每日成交同步完成，${totalRows} 条`,
         tradeDate: this.helper.toDate(targetTradeDate),
         payload: { rowCount: totalRows },
       },

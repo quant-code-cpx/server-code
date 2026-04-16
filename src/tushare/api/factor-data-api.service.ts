@@ -4,6 +4,7 @@ import {
   TUSHARE_INDEX_WEIGHT_FIELDS,
   TUSHARE_STK_FACTOR_FIELDS,
   TUSHARE_STK_LIMIT_FIELDS,
+  TUSHARE_STK_SURV_FIELDS,
   TUSHARE_SUSPEND_D_FIELDS,
   TushareApiName,
 } from 'src/constant/tushare.constant'
@@ -69,6 +70,15 @@ export class FactorDataApiService {
       api_name: TushareApiName.STK_FACTOR,
       params: { ts_code: tsCode, start_date: startDate, end_date: endDate },
       fields: [...TUSHARE_STK_FACTOR_FIELDS],
+    })
+  }
+
+  /** 按交易日获取技术面因子 */
+  getStkSurvByTradeDate(tradeDate: string) {
+    return this.client.call({
+      api_name: TushareApiName.STK_SURV,
+      params: { trade_date: tradeDate },
+      fields: [...TUSHARE_STK_SURV_FIELDS],
     })
   }
 }

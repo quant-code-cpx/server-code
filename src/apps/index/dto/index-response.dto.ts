@@ -33,10 +33,10 @@ export class IndexDailyItemDto {
   @ApiProperty({ required: false, nullable: true })
   pctChg: number | null
 
-  @ApiProperty({ required: false, nullable: true })
+  @ApiProperty({ required: false, nullable: true, description: '成交量（手）' })
   vol: number | null
 
-  @ApiProperty({ required: false, nullable: true })
+  @ApiProperty({ required: false, nullable: true, description: '成交额（千元）' })
   amount: number | null
 }
 

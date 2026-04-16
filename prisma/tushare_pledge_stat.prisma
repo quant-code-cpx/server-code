@@ -4,8 +4,8 @@ model PledgeStat {
   endDate      DateTime @map("end_date") @db.Date
 
   pledgeCount  Int      @map("pledge_count")
-  unrestPledge Float?   @map("unrest_pledge")
-  restPledge   Float?   @map("rest_pledge")
+  unrestPledge Float?   @map("unrest_pledge")       // 无限售股质押数量（万股）
+  restPledge   Float?   @map("rest_pledge")         // 限售股份质押数量（万股）
   totalShare   Float?   @map("total_share")
   pledgeRatio  Float?   @map("pledge_ratio")
 

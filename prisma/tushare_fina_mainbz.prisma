@@ -7,9 +7,9 @@ model FinaMainbz {
   endDate    DateTime @map("end_date") @db.Date
   bzItem     String   @map("bz_item") @db.VarChar(128)
 
-  bzSales    Float?   @map("bz_sales")
-  bzProfit   Float?   @map("bz_profit")
-  bzCost     Float?   @map("bz_cost")
+  bzSales    Float?   @map("bz_sales")                        // 主营业务收入（元）
+  bzProfit   Float?   @map("bz_profit")                       // 主营业务利润（元）
+  bzCost     Float?   @map("bz_cost")                         // 主营业务成本（元）
   currType   String?  @map("curr_type") @db.VarChar(8)
   updateFlag String?  @map("update_flag") @db.VarChar(4)
 

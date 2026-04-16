@@ -155,7 +155,7 @@ export class TopStockDto {
   @ApiProperty({ required: false, nullable: true }) pctChg: number | null
   @ApiProperty({ required: false, nullable: true }) peTtm: number | null
   @ApiProperty({ required: false, nullable: true }) pb: number | null
-  @ApiProperty({ required: false, nullable: true }) totalMv: number | null
+  @ApiProperty({ required: false, nullable: true, description: '总市值（万元）' }) totalMv: number | null
 }
 
 export class IndustryDetailResponseDto {

@@ -10,8 +10,8 @@ model ThsDaily {
   avgPrice    Float?   @map("avg_price")
   change      Float?
   pctChg      Float?   @map("pct_chg")
-  vol         Float?
-  turnoverRate Float?  @map("turnover_rate")
+  vol         Float?                        // 成交量（手）
+  turnoverRate Float?  @map("turnover_rate") // 换手率（%）
   syncedAt    DateTime @default(now()) @map("synced_at")
 
   @@id([tsCode, tradeDate])

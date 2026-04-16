@@ -2,17 +2,25 @@ import { ApiProperty } from '@nestjs/swagger'
 
 export class MarketMoneyFlowItemDto {
   @ApiProperty({ example: '2024-03-20' }) tradeDate: Date
-  @ApiProperty({ example: -523400, required: false, nullable: true, description: '净流入额（万元）' }) netAmount:
+  @ApiProperty({ example: -523400, required: false, nullable: true, description: '净流入额（元）' }) netAmount:
     | number
     | null
   @ApiProperty({ example: -0.0182, required: false, nullable: true }) netAmountRate: number | null
-  @ApiProperty({ example: 125000, required: false, nullable: true }) buyElgAmount: number | null
+  @ApiProperty({ example: 125000, required: false, nullable: true, description: '超大单净流入（元）' }) buyElgAmount:
+    | number
+    | null
   @ApiProperty({ example: 0.0043, required: false, nullable: true }) buyElgAmountRate: number | null
-  @ApiProperty({ example: 890000, required: false, nullable: true }) buyLgAmount: number | null
+  @ApiProperty({ example: 890000, required: false, nullable: true, description: '大单净流入（元）' }) buyLgAmount:
+    | number
+    | null
   @ApiProperty({ example: 0.031, required: false, nullable: true }) buyLgAmountRate: number | null
-  @ApiProperty({ example: 2340000, required: false, nullable: true }) buyMdAmount: number | null
+  @ApiProperty({ example: 2340000, required: false, nullable: true, description: '中单净流入（元）' }) buyMdAmount:
+    | number
+    | null
   @ApiProperty({ example: 0.081, required: false, nullable: true }) buyMdAmountRate: number | null
-  @ApiProperty({ example: 5670000, required: false, nullable: true }) buySmAmount: number | null
+  @ApiProperty({ example: 5670000, required: false, nullable: true, description: '小单净流入（元）' }) buySmAmount:
+    | number
+    | null
   @ApiProperty({ example: 0.197, required: false, nullable: true }) buySmAmountRate: number | null
   @ApiProperty({ description: '沪市收盘点位', example: 3050.23, required: false, nullable: true }) closeSh:
     | number
@@ -30,12 +38,14 @@ export class SectorFlowItemDto {
   @ApiProperty({ required: false, nullable: true }) name: string | null
   @ApiProperty({ required: false, nullable: true }) pctChange: number | null
   @ApiProperty({ required: false, nullable: true }) close: number | null
-  @ApiProperty({ required: false, nullable: true }) netAmount: number | null
+  @ApiProperty({ required: false, nullable: true, description: '净流入（元，来自 moneyflow_ind_dc）' }) netAmount:
+    | number
+    | null
   @ApiProperty({ required: false, nullable: true }) netAmountRate: number | null
-  @ApiProperty({ required: false, nullable: true }) buyElgAmount: number | null
-  @ApiProperty({ required: false, nullable: true }) buyLgAmount: number | null
-  @ApiProperty({ required: false, nullable: true }) buyMdAmount: number | null
-  @ApiProperty({ required: false, nullable: true }) buySmAmount: number | null
+  @ApiProperty({ required: false, nullable: true, description: '超大单净流入（元）' }) buyElgAmount: number | null
+  @ApiProperty({ required: false, nullable: true, description: '大单净流入（元）' }) buyLgAmount: number | null
+  @ApiProperty({ required: false, nullable: true, description: '中单净流入（元）' }) buyMdAmount: number | null
+  @ApiProperty({ required: false, nullable: true, description: '小单净流入（元）' }) buySmAmount: number | null
   @ApiProperty({ required: false, nullable: true }) rank: number | null
 }
 
@@ -77,20 +87,22 @@ export class IndexQuoteItemDto {
   @ApiProperty({ required: false, nullable: true }) preClose: number | null
   @ApiProperty({ required: false, nullable: true }) change: number | null
   @ApiProperty({ required: false, nullable: true }) pctChg: number | null
-  @ApiProperty({ required: false, nullable: true }) vol: number | null
-  @ApiProperty({ required: false, nullable: true }) amount: number | null
+  @ApiProperty({ required: false, nullable: true, description: '成交量（手）' }) vol: number | null
+  @ApiProperty({ required: false, nullable: true, description: '成交额（千元）' }) amount: number | null
 }
 
 export class HsgtFlowDto {
   @ApiProperty({ required: false, nullable: true }) tradeDate: Date | null
-  @ApiProperty({ description: '北向资金合计（沪股通+深股通）亿元', required: false, nullable: true }) northMoney:
+  @ApiProperty({ description: '北向资金合计（沪股通+深股通）百万元', required: false, nullable: true }) northMoney:
     | number
     | null
-  @ApiProperty({ description: '沪股通净流入亿元', required: false, nullable: true }) hgt: number | null
-  @ApiProperty({ description: '深股通净流入亿元', required: false, nullable: true }) sgt: number | null
-  @ApiProperty({ description: '南向资金合计（港股通）亿元', required: false, nullable: true }) southMoney: number | null
-  @ApiProperty({ description: '港股通（上海）亿元', required: false, nullable: true }) ggtSs: number | null
-  @ApiProperty({ description: '港股通（深圳）亿元', required: false, nullable: true }) ggtSz: number | null
+  @ApiProperty({ description: '沪股通净流入（百万元）', required: false, nullable: true }) hgt: number | null
+  @ApiProperty({ description: '深股通净流入（百万元）', required: false, nullable: true }) sgt: number | null
+  @ApiProperty({ description: '南向资金合计（港股通）百万元', required: false, nullable: true }) southMoney:
+    | number
+    | null
+  @ApiProperty({ description: '港股通（上海）百万元', required: false, nullable: true }) ggtSs: number | null
+  @ApiProperty({ description: '港股通（深圳）百万元', required: false, nullable: true }) ggtSz: number | null
 }
 
 export class HsgtFlowHistoryDto {
@@ -104,8 +116,8 @@ export class IndexTrendItemDto {
   @ApiProperty({ description: '交易日期 YYYY-MM-DD' }) tradeDate: string
   @ApiProperty({ required: false, nullable: true }) close: number | null
   @ApiProperty({ required: false, nullable: true }) pctChg: number | null
-  @ApiProperty({ required: false, nullable: true }) vol: number | null
-  @ApiProperty({ required: false, nullable: true }) amount: number | null
+  @ApiProperty({ required: false, nullable: true, description: '成交量（手）' }) vol: number | null
+  @ApiProperty({ required: false, nullable: true, description: '成交额（千元）' }) amount: number | null
 }
 
 export class IndexTrendResponseDto {
@@ -135,7 +147,9 @@ export class SectorRankingItemDto {
   @ApiProperty() tsCode: string
   @ApiProperty({ required: false, nullable: true }) name: string | null
   @ApiProperty({ description: '板块涨跌幅 %', required: false, nullable: true }) pctChange: number | null
-  @ApiProperty({ description: '净流入金额（万元）', required: false, nullable: true }) netAmount: number | null
+  @ApiProperty({ description: '净流入金额（元，来自 moneyflow_ind_dc）', required: false, nullable: true }) netAmount:
+    | number
+    | null
   @ApiProperty({ description: '净流入率 %', required: false, nullable: true }) netAmountRate: number | null
 }
 
@@ -189,12 +203,14 @@ export class ValuationTrendResponseDto {
 
 export class MoneyFlowTrendItemDto {
   @ApiProperty({ description: '交易日期 YYYY-MM-DD' }) tradeDate: string
-  @ApiProperty({ description: '当日净流入（万元）', required: false, nullable: true }) netAmount: number | null
-  @ApiProperty({ description: '累计净流入（从序列第 1 天开始累加）' }) cumulativeNet: number
-  @ApiProperty({ description: '超大单净流入', required: false, nullable: true }) buyElgAmount: number | null
-  @ApiProperty({ description: '大单净流入', required: false, nullable: true }) buyLgAmount: number | null
-  @ApiProperty({ description: '中单净流入', required: false, nullable: true }) buyMdAmount: number | null
-  @ApiProperty({ description: '小单净流入', required: false, nullable: true }) buySmAmount: number | null
+  @ApiProperty({ description: '当日净流入（元，来自 moneyflow_mkt_dc）', required: false, nullable: true }) netAmount:
+    | number
+    | null
+  @ApiProperty({ description: '累计净流入（从序列第 1 天开始累加，元）' }) cumulativeNet: number
+  @ApiProperty({ description: '超大单净流入（元）', required: false, nullable: true }) buyElgAmount: number | null
+  @ApiProperty({ description: '大单净流入（元）', required: false, nullable: true }) buyLgAmount: number | null
+  @ApiProperty({ description: '中单净流入（元）', required: false, nullable: true }) buyMdAmount: number | null
+  @ApiProperty({ description: '小单净流入（元）', required: false, nullable: true }) buySmAmount: number | null
 }
 
 export class MoneyFlowTrendResponseDto {
@@ -208,12 +224,14 @@ export class SectorFlowRankingItemDto {
   @ApiProperty({ required: false, nullable: true }) name: string | null
   @ApiProperty({ description: '板块涨跌幅 %', required: false, nullable: true }) pctChange: number | null
   @ApiProperty({ required: false, nullable: true }) close: number | null
-  @ApiProperty({ description: '净流入（万元）', required: false, nullable: true }) netAmount: number | null
+  @ApiProperty({ description: '净流入（元，来自 moneyflow_ind_dc）', required: false, nullable: true }) netAmount:
+    | number
+    | null
   @ApiProperty({ description: '净流入率 %', required: false, nullable: true }) netAmountRate: number | null
-  @ApiProperty({ description: '超大单净流入', required: false, nullable: true }) buyElgAmount: number | null
-  @ApiProperty({ description: '大单净流入', required: false, nullable: true }) buyLgAmount: number | null
-  @ApiProperty({ description: '中单净流入', required: false, nullable: true }) buyMdAmount: number | null
-  @ApiProperty({ description: '小单净流入', required: false, nullable: true }) buySmAmount: number | null
+  @ApiProperty({ description: '超大单净流入（元）', required: false, nullable: true }) buyElgAmount: number | null
+  @ApiProperty({ description: '大单净流入（元）', required: false, nullable: true }) buyLgAmount: number | null
+  @ApiProperty({ description: '中单净流入（元）', required: false, nullable: true }) buyMdAmount: number | null
+  @ApiProperty({ description: '小单净流入（元）', required: false, nullable: true }) buySmAmount: number | null
 }
 
 export class SectorFlowRankingResponseDto {
@@ -227,8 +245,10 @@ export class SectorFlowRankingResponseDto {
 export class SectorFlowTrendItemDto {
   @ApiProperty({ description: '交易日期 YYYY-MM-DD' }) tradeDate: string
   @ApiProperty({ description: '板块涨跌幅 %', required: false, nullable: true }) pctChange: number | null
-  @ApiProperty({ description: '当日净流入（万元）', required: false, nullable: true }) netAmount: number | null
-  @ApiProperty({ description: '累计净流入' }) cumulativeNet: number
+  @ApiProperty({ description: '当日净流入（元，来自 moneyflow_ind_dc）', required: false, nullable: true }) netAmount:
+    | number
+    | null
+  @ApiProperty({ description: '累计净流入（元）' }) cumulativeNet: number
 }
 
 export class SectorFlowTrendResponseDto {
@@ -241,14 +261,14 @@ export class SectorFlowTrendResponseDto {
 
 export class HsgtTrendItemDto {
   @ApiProperty({ description: '交易日期 YYYY-MM-DD' }) tradeDate: string
-  @ApiProperty({ description: '北向当日净买入（亿元）', required: false, nullable: true }) northMoney: number | null
-  @ApiProperty({ description: '南向当日净买入（亿元）', required: false, nullable: true }) southMoney: number | null
-  @ApiProperty({ description: '沪股通', required: false, nullable: true }) hgt: number | null
-  @ApiProperty({ description: '深股通', required: false, nullable: true }) sgt: number | null
-  @ApiProperty({ description: '港股通（上海）', required: false, nullable: true }) ggtSs: number | null
-  @ApiProperty({ description: '港股通（深圳）', required: false, nullable: true }) ggtSz: number | null
-  @ApiProperty({ description: '累计北向净买入（亿元）' }) cumulativeNorth: number
-  @ApiProperty({ description: '累计南向净买入（亿元）' }) cumulativeSouth: number
+  @ApiProperty({ description: '北向当日净买入（百万元）', required: false, nullable: true }) northMoney: number | null
+  @ApiProperty({ description: '南向当日净买入（百万元）', required: false, nullable: true }) southMoney: number | null
+  @ApiProperty({ description: '沪股通（百万元）', required: false, nullable: true }) hgt: number | null
+  @ApiProperty({ description: '深股通（百万元）', required: false, nullable: true }) sgt: number | null
+  @ApiProperty({ description: '港股通（上海）百万元', required: false, nullable: true }) ggtSs: number | null
+  @ApiProperty({ description: '港股通（深圳）百万元', required: false, nullable: true }) ggtSz: number | null
+  @ApiProperty({ description: '累计北向净买入（百万元）' }) cumulativeNorth: number
+  @ApiProperty({ description: '累计南向净买入（百万元）' }) cumulativeSouth: number
 }
 
 export class HsgtTrendResponseDto {
@@ -266,7 +286,7 @@ export class MainFlowRankingItemDto {
   @ApiProperty({ description: '超大单净流入（万元）' }) elgNetInflow: number
   @ApiProperty({ description: '大单净流入（万元）' }) lgNetInflow: number
   @ApiProperty({ description: '当日涨跌幅 %', required: false, nullable: true }) pctChg: number | null
-  @ApiProperty({ description: '当日成交额', required: false, nullable: true }) amount: number | null
+  @ApiProperty({ description: '当日成交额（千元）', required: false, nullable: true }) amount: number | null
 }
 
 export class MainFlowRankingResponseDto {
@@ -280,14 +300,14 @@ export class StockFlowDetailItemDto {
   @ApiProperty({ description: '交易日期 YYYY-MM-DD' }) tradeDate: string
   @ApiProperty({ description: '主力净流入 = 超大单净 + 大单净（万元）' }) mainNetInflow: number
   @ApiProperty({ description: '散户净流入 = 中单净 + 小单净（万元）' }) retailNetInflow: number
-  @ApiProperty({ required: false, nullable: true }) buyElgAmount: number | null
-  @ApiProperty({ required: false, nullable: true }) sellElgAmount: number | null
-  @ApiProperty({ required: false, nullable: true }) buyLgAmount: number | null
-  @ApiProperty({ required: false, nullable: true }) sellLgAmount: number | null
-  @ApiProperty({ required: false, nullable: true }) buyMdAmount: number | null
-  @ApiProperty({ required: false, nullable: true }) sellMdAmount: number | null
-  @ApiProperty({ required: false, nullable: true }) buySmAmount: number | null
-  @ApiProperty({ required: false, nullable: true }) sellSmAmount: number | null
+  @ApiProperty({ required: false, nullable: true, description: '特大单买入（万元）' }) buyElgAmount: number | null
+  @ApiProperty({ required: false, nullable: true, description: '特大单卖出（万元）' }) sellElgAmount: number | null
+  @ApiProperty({ required: false, nullable: true, description: '大单买入（万元）' }) buyLgAmount: number | null
+  @ApiProperty({ required: false, nullable: true, description: '大单卖出（万元）' }) sellLgAmount: number | null
+  @ApiProperty({ required: false, nullable: true, description: '中单买入（万元）' }) buyMdAmount: number | null
+  @ApiProperty({ required: false, nullable: true, description: '中单卖出（万元）' }) sellMdAmount: number | null
+  @ApiProperty({ required: false, nullable: true, description: '小单买入（万元）' }) buySmAmount: number | null
+  @ApiProperty({ required: false, nullable: true, description: '小单卖出（万元）' }) sellSmAmount: number | null
   @ApiProperty({ description: '总净流入（万元）', required: false, nullable: true }) netMfAmount: number | null
 }
 

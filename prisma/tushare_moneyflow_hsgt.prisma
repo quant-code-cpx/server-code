@@ -1,12 +1,13 @@
 // 沪深港通资金流向（来自 moneyflow_hsgt 接口）
+// 金额字段单位：百万元（与 Tushare 文档一致）
 model MoneyflowHsgt {
   tradeDate  DateTime @id @map("trade_date") @db.Date
-  ggtSs      Float?   @map("ggt_ss")      // 港股通（上海），南向资金
-  ggtSz      Float?   @map("ggt_sz")      // 港股通（深圳），南向资金
-  hgt        Float?                        // 沪股通，北向资金
-  sgt        Float?                        // 深股通，北向资金
-  northMoney Float?   @map("north_money") // 北向资金合计（hgt + sgt）
-  southMoney Float?   @map("south_money") // 南向资金合计（ggt_ss + ggt_sz）
+  ggtSs      Float?   @map("ggt_ss")      // 港股通（上海），南向资金（百万元）
+  ggtSz      Float?   @map("ggt_sz")      // 港股通（深圳），南向资金（百万元）
+  hgt        Float?                        // 沪股通，北向资金（百万元）
+  sgt        Float?                        // 深股通，北向资金（百万元）
+  northMoney Float?   @map("north_money") // 北向资金合计（hgt + sgt）（百万元）
+  southMoney Float?   @map("south_money") // 南向资金合计（ggt_ss + ggt_sz）（百万元）
   syncedAt   DateTime @default(now()) @map("synced_at")
 
   @@map("moneyflow_hsgt")

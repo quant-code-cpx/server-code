@@ -4,10 +4,10 @@ model FinaIndicator {
   tsCode            String    @map("ts_code") @db.VarChar(16)
   annDate           DateTime? @map("ann_date") @db.Date
   endDate           DateTime  @map("end_date") @db.Date
-  eps               Float?                                      // 基本每股收益
-  dtEps             Float?    @map("dt_eps")                   // 稀释每股收益
-  totalRevenuePers  Float?    @map("total_revenue_ps")         // 每股营业总收入
-  revenuePers       Float?    @map("revenue_ps")               // 每股营业收入
+  eps               Float?                                      // 基本每股收益（元/股）
+  dtEps             Float?    @map("dt_eps")                   // 稀释每股收益（元/股）
+  totalRevenuePers  Float?    @map("total_revenue_ps")         // 每股营业总收入（元/股）
+  revenuePers       Float?    @map("revenue_ps")              // 每股营业收入（元/股）
   grossprofit_margin Float?   @map("grossprofit_margin")       // 销售毛利率
   netprofit_margin  Float?    @map("netprofit_margin")         // 销售净利率
   roe               Float?                                      // 净资产收益率
@@ -18,11 +18,11 @@ model FinaIndicator {
   currentRatio      Float?    @map("current_ratio")            // 流动比率
   quickRatio        Float?    @map("quick_ratio")              // 速动比率
   cashRatio         Float?    @map("cash_ratio")               // 现金比率
-  fcff              Float?                                      // 企业自由现金流量
-  fcfe              Float?                                      // 股权自由现金流量
-  ebit              Float?                                      // 息税前利润
-  ebitda            Float?                                      // 息税折旧摊销前利润
-  netdebt           Float?                                      // 净债务
+  fcff              Float?                                      // 企业自由现金流量（元）
+  fcfe              Float?                                      // 股权自由现金流量（元）
+  ebit              Float?                                      // 息税前利润（元）
+  ebitda            Float?                                      // 息税折旧憘销前利润（元）
+  netdebt           Float?                                      // 净债务（元）
   ocfToNetprofit    Float?    @map("ocf_to_netprofit")         // 经营活动产生现金流量净额/净利润
   ocfToOr           Float?    @map("ocf_to_or")                // 经营活动现金流量/营业收入
   revenueYoy        Float?    @map("revenue_yoy")              // 营业收入同比增长率

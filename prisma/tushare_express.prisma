@@ -1,34 +1,35 @@
 // 业绩快报（来自 express 接口）
+// 金额字段单位：元；每股指标字段（dilutedEps/bps）单位：元/股；同比字段为小数比例（与 Tushare 文档一致）
 model Express {
   tsCode                String    @map("ts_code") @db.VarChar(16)
   annDate               DateTime  @map("ann_date") @db.Date
   endDate               DateTime  @map("end_date") @db.Date
-  revenue               Float?
-  operateProfit         Float?    @map("operate_profit")
-  totalProfit           Float?    @map("total_profit")
-  nIncome               Float?    @map("n_income")
-  totalAssets           Float?    @map("total_assets")
-  totalHldrEqyExcMinInt Float?    @map("total_hldr_eqy_exc_min_int")
-  dilutedEps            Float?    @map("diluted_eps")
-  dilutedRoe            Float?    @map("diluted_roe")
-  yoyNetProfit          Float?    @map("yoy_net_profit")
-  bps                   Float?
-  yoySales              Float?    @map("yoy_sales")
-  yoyOp                 Float?    @map("yoy_op")
-  yoyTp                 Float?    @map("yoy_tp")
-  yoyDeduNp             Float?    @map("yoy_dedu_np")
-  yoyEps                Float?    @map("yoy_eps")
-  yoyRoe                Float?    @map("yoy_roe")
-  growthAssets          Float?    @map("growth_assets")
-  yoyEquity             Float?    @map("yoy_equity")
-  growthBps             Float?    @map("growth_bps")
-  orLastYear            Float?    @map("or_last_year")
-  opLastYear            Float?    @map("op_last_year")
-  tpLastYear            Float?    @map("tp_last_year")
-  npLastYear            Float?    @map("np_last_year")
-  epsLastYear           Float?    @map("eps_last_year")
-  openNetAssets         Float?    @map("open_net_assets")
-  openBps               Float?    @map("open_bps")
+  revenue               Float?                                        // 营业收入（元）
+  operateProfit         Float?    @map("operate_profit")               // 营业利润（元）
+  totalProfit           Float?    @map("total_profit")                 // 利润总额（元）
+  nIncome               Float?    @map("n_income")                     // 净利润（元）
+  totalAssets           Float?    @map("total_assets")                 // 总资产（元）
+  totalHldrEqyExcMinInt Float?    @map("total_hldr_eqy_exc_min_int")  // 股东权益合计（不含少数股东权益）（元）
+  dilutedEps            Float?    @map("diluted_eps")                  // 每股收益（摘簿）（元/股）
+  dilutedRoe            Float?    @map("diluted_roe")                  // 净资产收益率（摘簿）（%）
+  yoyNetProfit          Float?    @map("yoy_net_profit")               // 去年同期修正后净利润（元）
+  bps                   Float?                                        // 每股净资产（元/股）
+  yoySales              Float?    @map("yoy_sales")                    // 同比增长率：营业收入
+  yoyOp                 Float?    @map("yoy_op")                      // 同比增长率：营业利润
+  yoyTp                 Float?    @map("yoy_tp")                      // 同比增长率：利润总额
+  yoyDeduNp             Float?    @map("yoy_dedu_np")                 // 同比增长率：归属母公司股东的净利润
+  yoyEps                Float?    @map("yoy_eps")                     // 同比增长率：基本每股收益
+  yoyRoe                Float?    @map("yoy_roe")                     // 同比增减：加权平均净资产收益率
+  growthAssets          Float?    @map("growth_assets")                // 比年初增长率：总资产
+  yoyEquity             Float?    @map("yoy_equity")                  // 比年初增长率：归属母公司的股东权益
+  growthBps             Float?    @map("growth_bps")                  // 比年初增长率：归属于母公司股东的每股净资产
+  orLastYear            Float?    @map("or_last_year")                // 去年同期营业收入（元）
+  opLastYear            Float?    @map("op_last_year")                // 去年同期营业利润（元）
+  tpLastYear            Float?    @map("tp_last_year")                // 去年同期利润总额（元）
+  npLastYear            Float?    @map("np_last_year")                // 去年同期净利润（元）
+  epsLastYear           Float?    @map("eps_last_year")               // 去年同期每股收益（元/股）
+  openNetAssets         Float?    @map("open_net_assets")             // 期初净资产（元）
+  openBps               Float?    @map("open_bps")                    // 期初每股净资产（元/股）
   perfSummary           String?   @map("perf_summary")
   isAudit               Int?      @map("is_audit")
   remark                String?

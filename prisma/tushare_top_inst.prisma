@@ -3,11 +3,11 @@ model TopInst {
   tradeDate String   @map("trade_date")
   tsCode    String   @map("ts_code")
   exalter   String   @map("exalter")           /// 营业部名称
-  buy       Decimal? @map("buy")       @db.Decimal(20, 4)
+  buy       Decimal? @map("buy")       @db.Decimal(20, 4)  /// 买入额（元）
   buyCost   Decimal? @map("buy_cost")  @db.Decimal(20, 4)
-  sell      Decimal? @map("sell")      @db.Decimal(20, 4)
+  sell      Decimal? @map("sell")      @db.Decimal(20, 4)  /// 卖出额（元）
   sellCost  Decimal? @map("sell_cost") @db.Decimal(20, 4)
-  netBuy    Decimal? @map("net_buy")   @db.Decimal(20, 4)
+  netBuy    Decimal? @map("net_buy")   @db.Decimal(20, 4)  /// 净成交额（元）
   side      String?  @map("side")               /// 买卖方向
   reason    String?  @map("reason")
   syncedAt  DateTime @default(now())   @map("synced_at")

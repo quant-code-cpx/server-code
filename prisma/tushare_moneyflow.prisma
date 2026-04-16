@@ -1,31 +1,32 @@
 // 个股资金流向（来自 Tushare moneyflow 接口，doc_id=170）
 // 字段统计规则：小单 <5万元，中单 5~20万，大单 20~100万，特大单 ≥100万
+// *Vol 字段单位：手；*Amount 字段单位：万元（与 Tushare 文档一致）
 model Moneyflow {
   tsCode        String   @map("ts_code") @db.VarChar(16)
   tradeDate     DateTime @map("trade_date") @db.Date
 
-  buySmVol      Int?     @map("buy_sm_vol")
-  buySmAmount   Float?   @map("buy_sm_amount")
-  sellSmVol     Int?     @map("sell_sm_vol")
-  sellSmAmount  Float?   @map("sell_sm_amount")
+  buySmVol      Int?     @map("buy_sm_vol")               // 小单买入量（手）
+  buySmAmount   Float?   @map("buy_sm_amount")             // 小单买入金额（万元）
+  sellSmVol     Int?     @map("sell_sm_vol")               // 小单卖出量（手）
+  sellSmAmount  Float?   @map("sell_sm_amount")            // 小单卖出金额（万元）
 
-  buyMdVol      Int?     @map("buy_md_vol")
-  buyMdAmount   Float?   @map("buy_md_amount")
-  sellMdVol     Int?     @map("sell_md_vol")
-  sellMdAmount  Float?   @map("sell_md_amount")
+  buyMdVol      Int?     @map("buy_md_vol")                // 中单买入量（手）
+  buyMdAmount   Float?   @map("buy_md_amount")             // 中单买入金额（万元）
+  sellMdVol     Int?     @map("sell_md_vol")               // 中单卖出量（手）
+  sellMdAmount  Float?   @map("sell_md_amount")            // 中单卖出金额（万元）
 
-  buyLgVol      Int?     @map("buy_lg_vol")
-  buyLgAmount   Float?   @map("buy_lg_amount")
-  sellLgVol     Int?     @map("sell_lg_vol")
-  sellLgAmount  Float?   @map("sell_lg_amount")
+  buyLgVol      Int?     @map("buy_lg_vol")                // 大单买入量（手）
+  buyLgAmount   Float?   @map("buy_lg_amount")             // 大单买入金额（万元）
+  sellLgVol     Int?     @map("sell_lg_vol")               // 大单卖出量（手）
+  sellLgAmount  Float?   @map("sell_lg_amount")            // 大单卖出金额（万元）
 
-  buyElgVol     Int?     @map("buy_elg_vol")
-  buyElgAmount  Float?   @map("buy_elg_amount")
-  sellElgVol    Int?     @map("sell_elg_vol")
-  sellElgAmount Float?   @map("sell_elg_amount")
+  buyElgVol     Int?     @map("buy_elg_vol")               // 特大单买入量（手）
+  buyElgAmount  Float?   @map("buy_elg_amount")            // 特大单买入金额（万元）
+  sellElgVol    Int?     @map("sell_elg_vol")              // 特大单卖出量（手）
+  sellElgAmount Float?   @map("sell_elg_amount")           // 特大单卖出金额（万元）
 
-  netMfVol      Int?     @map("net_mf_vol")
-  netMfAmount   Float?   @map("net_mf_amount")
+  netMfVol      Int?     @map("net_mf_vol")                // 净流入量（手）
+  netMfAmount   Float?   @map("net_mf_amount")             // 净流入额（万元）
 
   syncedAt      DateTime @default(now()) @map("synced_at")
 

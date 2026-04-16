@@ -1,4 +1,5 @@
 // 行业 / 概念 / 地域资金流向——东财数据（来自 moneyflow_ind_dc 接口）
+// 金额字段单位：元（与 Tushare 文档一致）
 model MoneyflowIndDc {
   tsCode           String               @map("ts_code") @db.VarChar(32)
   tradeDate        DateTime             @map("trade_date") @db.Date

@@ -1,5 +1,6 @@
 // 利润表（来自 income 接口）
 // 以单只股票历史报表回补为主，保留最近若干年季度/年报的完整利润表快照
+// 金额字段单位：元；每股收益字段（basicEps/dilutedEps）单位：元/股（与 Tushare 文档一致）
 model Income {
   id                     BigInt    @id @default(autoincrement())
   tsCode                 String    @map("ts_code") @db.VarChar(16)
@@ -9,8 +10,8 @@ model Income {
   reportType             String?   @map("report_type") @db.VarChar(16)
   compType               String?   @map("comp_type") @db.VarChar(16)
   endType                String?   @map("end_type") @db.VarChar(16)
-  basicEps               Float?    @map("basic_eps")
-  dilutedEps             Float?    @map("diluted_eps")
+  basicEps               Float?    @map("basic_eps")              // 基本每股收益（元/股）
+  dilutedEps             Float?    @map("diluted_eps")            // 稀释每股收益（元/股）
   totalRevenue           Float?    @map("total_revenue")
   revenue                Float?
   intIncome              Float?    @map("int_income")

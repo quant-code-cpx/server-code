@@ -13,11 +13,11 @@ model DailyBasic {
   psTtm         Float?   @map("ps_ttm")
   dvRatio       Float?   @map("dv_ratio")
   dvTtm         Float?   @map("dv_ttm")
-  totalShare    Float?   @map("total_share")
-  floatShare    Float?   @map("float_share")
-  freeShare     Float?   @map("free_share")
-  totalMv       Float?   @map("total_mv")
-  circMv        Float?   @map("circ_mv")
+  totalShare    Float?   @map("total_share")               // 总股本（万股）
+  floatShare    Float?   @map("float_share")               // 流通股本（万股）
+  freeShare     Float?   @map("free_share")                // 自由流通股本（万股）
+  totalMv       Float?   @map("total_mv")                  // 总市値（万元）
+  circMv        Float?   @map("circ_mv")                   // 流通市値（万元）
   limitStatus   Int?     @map("limit_status")
   syncedAt      DateTime @default(now()) @map("synced_at")
 

@@ -7,8 +7,8 @@ model FundPortfolio {
   annDate      DateTime @map("ann_date")        @db.Date
   endDate      DateTime @map("end_date")        @db.Date
   symbol       String                           @db.VarChar(16)
-  mkv          Float?
-  amount       Float?
+  mkv          Float?                               // 持有股票市値（元）
+  amount       Float?                               // 持有股票数量（股）
   stkMkvRatio  Float?   @map("stk_mkv_ratio")
   stkFloatRatio Float?  @map("stk_float_ratio")
   syncedAt     DateTime @default(now())         @map("synced_at")

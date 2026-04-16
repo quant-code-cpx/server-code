@@ -3,9 +3,9 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
 export class StockQuoteDto {
   @ApiPropertyOptional({ nullable: true }) close?: number | null
   @ApiPropertyOptional({ nullable: true }) pctChg?: number | null
-  @ApiPropertyOptional({ nullable: true }) vol?: number | null
-  @ApiPropertyOptional({ nullable: true }) amount?: number | null
-  @ApiPropertyOptional({ nullable: true }) totalMv?: number | null
+  @ApiPropertyOptional({ nullable: true, description: '成交量（手）' }) vol?: number | null
+  @ApiPropertyOptional({ nullable: true, description: '成交额（千元）' }) amount?: number | null
+  @ApiPropertyOptional({ nullable: true, description: '总市值（万元）' }) totalMv?: number | null
 }
 
 export class WatchlistDto {
@@ -53,7 +53,7 @@ export class WatchlistSummaryDto {
   @ApiProperty() downCount: number
   @ApiProperty() flatCount: number
   @ApiProperty() avgPctChg: number
-  @ApiProperty() totalMv: number
+  @ApiProperty({ description: '组合总市值（万元）' }) totalMv: number
 }
 
 export class WatchlistOverviewResponseDto {

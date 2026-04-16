@@ -4,11 +4,11 @@ model IndexDailyBasic {
   tsCode        String   @map("ts_code") @db.VarChar(16)
   tradeDate     DateTime @map("trade_date") @db.Date
 
-  totalMv       Float?   @map("total_mv")
-  floatMv       Float?   @map("float_mv")
-  totalShare    Float?   @map("total_share")
-  floatShare    Float?   @map("float_share")
-  freeShare     Float?   @map("free_share")
+  totalMv       Float?   @map("total_mv")           // 当日总市値（万元）
+  floatMv       Float?   @map("float_mv")           // 当日流通市値（万元）
+  totalShare    Float?   @map("total_share")         // 总股本（万股）
+  floatShare    Float?   @map("float_share")         // 流通股本（万股）
+  freeShare     Float?   @map("free_share")          // 自由流通股本（万股）
   turnoverRate  Float?   @map("turnover_rate")
   turnoverRateF Float?   @map("turnover_rate_f")
   pe            Float?   @map("pe")

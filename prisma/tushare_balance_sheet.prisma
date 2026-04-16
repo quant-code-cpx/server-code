@@ -1,5 +1,6 @@
 // 资产负债表（来自 balancesheet 接口）
 // 以单只股票历史报表回补为主，保留最近若干年季度/年报的完整资产负债表快照
+// 金额字段单位：元；totalShare 单位：万股（与 Tushare 文档一致）
 model BalanceSheet {
   id                   BigInt    @id @default(autoincrement())
   tsCode               String    @map("ts_code") @db.VarChar(16)
@@ -9,7 +10,7 @@ model BalanceSheet {
   reportType           String?   @map("report_type") @db.VarChar(16)
   compType             String?   @map("comp_type") @db.VarChar(16)
   endType              String?   @map("end_type") @db.VarChar(16)
-  totalShare           Float?    @map("total_share")
+  totalShare           Float?    @map("total_share")             // 年度实施股本（万股）
   capRese              Float?    @map("cap_rese")
   undistrPorfit        Float?    @map("undistr_porfit")
   surplusRese          Float?    @map("surplus_rese")

@@ -1,4 +1,5 @@
 // 全市场资金流向——东财数据（来自 moneyflow_mkt_dc 接口）
+// 金额字段单位：元（与 Tushare 文档一致）
 model MoneyflowMktDc {
   tradeDate        DateTime @id @map("trade_date") @db.Date
   closeSh          Float?   @map("close_sh")

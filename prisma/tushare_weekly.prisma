@@ -9,8 +9,8 @@ model Weekly {
   preClose  Float?   @map("pre_close")
   change    Float?
   pctChg    Float?   @map("pct_chg")
-  vol       Float?
-  amount    Float?
+  vol       Float?                        // 成交量（手）
+  amount    Float?                        // 成交额（千元）
   syncedAt  DateTime @default(now()) @map("synced_at")
 
   @@id([tsCode, tradeDate])

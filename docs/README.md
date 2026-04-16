@@ -86,6 +86,7 @@ docs/
 | [Phase5-Lifecycle测试重构-详细设计](design/Phase5-Lifecycle测试重构-详细设计.md)   | Phase 5 Lifecycle 基础设施测试详细设计（Guard / Interceptor / Filter / Gateway / Processor / Health，16 个 Bug，~75 新增用例） | 📋 需求稿 |
 | [Phase4-Controller测试重构-详细设计](design/Phase4-Controller测试重构-详细设计.md) | Phase 4 Controller 层测试详细设计（DTO 校验 / 异常透传 / 权限边界，21 个 Controller ~120 新增用例）               | 📋 需求稿 |
 | [后端功能盘点](后端功能盘点.md)                                                    | 全部 147 个 API 端点 · 14 个模块 · 异步任务 · WebSocket · Tushare 同步清单                                        | 按需更新  |
+| [代码审查与优化建议-20260416](代码审查与优化建议-20260416.md)                      | 全仓库代码审查：性能优化 · Tushare 数据挖掘 · 功能缺失 · 安全加固建议                                             | 📋 需求稿 |
 
 ---
 

@@ -4,7 +4,7 @@ import type { Counter, Histogram } from 'prom-client'
 import { LoggerService } from './logger/logger.service'
 import { PRISMA_QUERY_DURATION_TOKEN, PRISMA_QUERY_TOTAL_TOKEN } from './metrics/metrics.constants'
 
-const DEFAULT_PRISMA_CONNECTION_LIMIT = 15
+const DEFAULT_PRISMA_CONNECTION_LIMIT = 30
 const DEFAULT_PRISMA_POOL_TIMEOUT_SECONDS = 20
 const DEFAULT_PRISMA_CONNECT_TIMEOUT_SECONDS = 10
 const DEFAULT_PRISMA_TRANSACTION_MAX_WAIT_MS = 10_000

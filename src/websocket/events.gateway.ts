@@ -34,7 +34,9 @@ import type { RepairSummary } from 'src/tushare/sync/quality/auto-repair.service
  */
 @WebSocketGateway({
   namespace: '/ws',
-  cors: { origin: '*' },
+  cors: {
+    origin: process.env.CORS_ORIGIN?.split(',').map((s) => s.trim()) ?? ['http://localhost:5173'],
+  },
   transports: ['websocket', 'polling'],
 })
 export class EventsGateway implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect {
@@ -60,7 +62,12 @@ export class EventsGateway implements OnGatewayInit, OnGatewayConnection, OnGate
   }
 
   handleDisconnect(client: Socket) {
-    this.logger.log(`Client disconnected: ${client.id}`)
+    // 退出所有已加入的房间，避免长期累积空房间
+    const rooms = [...client.rooms].filter((r) => r !== client.id)
+    for (const room of rooms) {
+      client.leave(room)
+    }
+    this.logger.log(`Client disconnected: ${client.id}, left ${rooms.length} rooms`)
   }
 
   private extractUserId(client: Socket): number | null {

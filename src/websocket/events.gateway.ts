@@ -197,4 +197,11 @@ export class EventsGateway implements OnGatewayInit, OnGatewayConnection, OnGate
   broadcastAutoRepairQueued(summary: RepairSummary): void {
     this.server.emit('auto_repair_queued', summary)
   }
+
+  /** 获取当前 WebSocket 连接数（供 Prometheus 指标采集） */
+  async getConnectionCount(): Promise<number> {
+    if (!this.server) return 0
+    const sockets = await this.server.fetchSockets()
+    return sockets.length
+  }
 }

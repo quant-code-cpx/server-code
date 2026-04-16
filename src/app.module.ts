@@ -34,6 +34,7 @@ import { AlertModule } from './apps/alert/alert.module'
 import { SignalModule } from './apps/signal/signal.module'
 import { NotificationModule } from './apps/notification/notification.module'
 import { ExportModule } from './apps/export/export.module'
+import { CalendarModule } from './apps/calendar/calendar.module'
 import { MetricsModule } from './shared/metrics/metrics.module'
 
 @Module({
@@ -95,6 +96,7 @@ import { MetricsModule } from './shared/metrics/metrics.module'
     SignalModule,
     NotificationModule,
     ExportModule,
+    CalendarModule,
 
     // ── 队列模块（BullMQ 回测任务） ──
     QueueModule,

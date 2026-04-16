@@ -1,0 +1,25 @@
+// 每日市场概况（daily_info）
+// 记录 SSE / SZSE 两大交易所每个交易日的整体行情统计：
+// 挂牌数、总市值/流通市值、成交额/量、换手率、市盈率等。
+
+model DailyInfo {
+  tradeDate   DateTime @map("trade_date") @db.Date
+  tsCode      String   @map("ts_code")   @db.VarChar(16)
+  tsName      String?  @map("ts_name")   @db.VarChar(32)
+  comCount    Int?     @map("com_count")
+  totalShare  Float?   @map("total_share")
+  floatShare  Float?   @map("float_share")
+  totalMv     Float?   @map("total_mv")
+  floatMv     Float?   @map("float_mv")
+  amount      Float?
+  vol         Float?
+  transCount  Int?     @map("trans_count")
+  pe          Float?
+  tr          Float?
+  exchange    String?  @db.VarChar(8)
+  syncedAt    DateTime @default(now()) @map("synced_at")
+
+  @@id([tradeDate, tsCode])
+  @@index([tradeDate])
+  @@map("daily_info")
+}

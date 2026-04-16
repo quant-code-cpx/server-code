@@ -1,0 +1,15 @@
+// 基金份额变动（fund_share）
+// 记录公募基金（含 ETF）每日总份额（万份），
+// 用于 ETF 资金流向分析和机构行为研究。
+
+model FundShare {
+  tsCode    String   @map("ts_code")   @db.VarChar(16)
+  tradeDate DateTime @map("trade_date") @db.Date
+  fdShare   Float?   @map("fd_share")
+  syncedAt  DateTime @default(now())   @map("synced_at")
+
+  @@id([tsCode, tradeDate])
+  @@index([tradeDate])
+  @@index([tsCode, tradeDate(sort: Desc)])
+  @@map("fund_share")
+}

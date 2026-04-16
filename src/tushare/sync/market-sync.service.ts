@@ -7,6 +7,7 @@ import {
   mapAdjFactorRecord,
   mapCbDailyRecord,
   mapDailyBasicRecord,
+  mapDailyInfoRecord,
   mapDailyRecord,
   mapIndexDailyBasicRecord,
   mapIndexDailyRecord,
@@ -188,6 +189,23 @@ export class MarketSyncService {
           tradingDayOnly: true,
         },
         execute: (ctx) => this.syncCbDaily(this.requireTradeDate(ctx.targetTradeDate), ctx.mode),
+      },
+      {
+        task: TushareSyncTaskName.DAILY_INFO,
+        label: '每日市场全景',
+        category: 'market',
+        order: 190,
+        bootstrapEnabled: true,
+        supportsManual: true,
+        supportsFullSync: true,
+        requiresTradeDate: true,
+        schedule: {
+          cron: '0 50 18 * * 1-5',
+          timeZone: this.helper.syncTimeZone,
+          description: '交易日盘后同步各交易所整体行情统计',
+          tradingDayOnly: true,
+        },
+        execute: (ctx) => this.syncDailyInfo(this.requireTradeDate(ctx.targetTradeDate), ctx.mode),
       },
     ]
   }
@@ -696,5 +714,24 @@ export class MarketSyncService {
       },
       startedAt,
     )
+  }
+
+  // ─── 每日市场全景 ─────────────────────────────────────────────────────────
+
+  async syncDailyInfo(targetTradeDate: string, mode: TushareSyncMode = 'incremental'): Promise<void> {
+    const collector = new ValidationCollector(TushareSyncTaskName.DAILY_INFO)
+    await this.syncByTradeDate({
+      task: TushareSyncTaskName.DAILY_INFO,
+      label: '每日市场全景',
+      modelName: 'dailyInfo',
+      targetTradeDate,
+      fullSync: mode === 'full',
+      fetchAndMap: async (td) => {
+        const rows = await this.api.getDailyInfoByTradeDate(td)
+        return rows.map((r) => mapDailyInfoRecord(r, collector)).filter((r): r is NonNullable<typeof r> => Boolean(r))
+      },
+      resolveDates: (start) => this.helper.getOpenTradeDatesBetween(start, targetTradeDate),
+    })
+    await this.helper.flushValidationLogs(collector)
   }
 }

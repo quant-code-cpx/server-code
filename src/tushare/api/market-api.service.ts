@@ -4,6 +4,7 @@ import {
   TUSHARE_ADJ_FACTOR_FIELDS,
   TUSHARE_CB_DAILY_FIELDS,
   TUSHARE_DAILY_BASIC_FIELDS,
+  TUSHARE_DAILY_INFO_FIELDS,
   TUSHARE_INDEX_DAILY_FIELDS,
   TUSHARE_INDEX_DAILYBASIC_FIELDS,
   TUSHARE_OHLCV_FIELDS,
@@ -117,6 +118,15 @@ export class MarketApiService {
       api_name: TushareApiName.CB_DAILY,
       params: { trade_date: tradeDate },
       fields: [...TUSHARE_CB_DAILY_FIELDS],
+    })
+  }
+
+  /** 按交易日获取各市场全景统计（SSE / SZSE 合计两条记录） */
+  getDailyInfoByTradeDate(tradeDate: string) {
+    return this.client.call({
+      api_name: TushareApiName.DAILY_INFO,
+      params: { trade_date: tradeDate },
+      fields: [...TUSHARE_DAILY_INFO_FIELDS],
     })
   }
 }

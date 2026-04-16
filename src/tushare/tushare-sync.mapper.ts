@@ -2228,3 +2228,165 @@ export function mapStkFactorRecord(record: TushareRecord, collector?: Validation
     vr26: readNumber(record, 'vr_26'),
   }
 }
+
+// ─── 每日市场概况 ─────────────────────────────────────────────────────────────
+
+export function mapDailyInfoRecord(
+  record: TushareRecord,
+  collector?: ValidationCollector,
+): Prisma.DailyInfoCreateManyInput | null {
+  const tradeDate = readDate(record, 'trade_date')
+  const tsCode = readString(record, 'ts_code')
+
+  if (!tradeDate || !tsCode) {
+    collector?.add({
+      tsCode,
+      tradeDate: readString(record, 'trade_date'),
+      ruleName: 'missing_pk',
+      severity: 'error',
+      message: 'trade_date 或 ts_code 缺失',
+      rawData: record,
+    })
+    return null
+  }
+
+  return {
+    tradeDate,
+    tsCode,
+    tsName: readString(record, 'ts_name'),
+    comCount: readInt(record, 'com_count'),
+    totalShare: readNumber(record, 'total_share'),
+    floatShare: readNumber(record, 'float_share'),
+    totalMv: readNumber(record, 'total_mv'),
+    floatMv: readNumber(record, 'float_mv'),
+    amount: readNumber(record, 'amount'),
+    vol: readNumber(record, 'vol'),
+    transCount: readInt(record, 'trans_count'),
+    pe: readNumber(record, 'pe'),
+    tr: readNumber(record, 'tr'),
+    exchange: readString(record, 'exchange'),
+  }
+}
+
+// ─── 每日涨跌停统计 ───────────────────────────────────────────────────────────
+
+export function mapLimitListDRecord(
+  record: TushareRecord,
+  collector?: ValidationCollector,
+): Prisma.LimitListDCreateManyInput | null {
+  const tradeDate = readDate(record, 'trade_date')
+  const tsCode = readString(record, 'ts_code')
+
+  if (!tradeDate || !tsCode) {
+    collector?.add({
+      tsCode,
+      tradeDate: readString(record, 'trade_date'),
+      ruleName: 'missing_pk',
+      severity: 'error',
+      message: 'trade_date 或 ts_code 缺失',
+      rawData: record,
+    })
+    return null
+  }
+
+  const connectedRaw = readString(record, 'connected')
+  const connected =
+    connectedRaw === null ? null : connectedRaw === 'T' || connectedRaw === '1' || connectedRaw === 'true'
+
+  return {
+    tradeDate,
+    tsCode,
+    industry: readString(record, 'industry'),
+    name: readString(record, 'name'),
+    close: readNumber(record, 'close'),
+    pctChg: readNumber(record, 'pct_chg'),
+    amount: readNumber(record, 'amount'),
+    limitAmount: readNumber(record, 'limit_amount'),
+    floatMv: readNumber(record, 'float_mv'),
+    totalMv: readNumber(record, 'total_mv'),
+    turnoverRatio: readNumber(record, 'turnover_ratio'),
+    fdAmount: readNumber(record, 'fd_amount'),
+    firstTime: readString(record, 'first_time'),
+    lastTime: readString(record, 'last_time'),
+    openTimes: readInt(record, 'open_times'),
+    strth: readNumber(record, 'strth'),
+    limit: readString(record, 'limit'),
+    upStat: readString(record, 'up_stat'),
+    limitTimes: readInt(record, 'limit_times'),
+    connected,
+  }
+}
+
+// ─── 基金持仓明细 ─────────────────────────────────────────────────────────────
+
+export function mapFundPortfolioRecord(
+  record: TushareRecord,
+  collector?: ValidationCollector,
+): Prisma.FundPortfolioCreateManyInput | null {
+  const tsCode = readString(record, 'ts_code')
+  const endDate = readDate(record, 'end_date')
+  const symbol = readString(record, 'symbol')
+
+  if (!tsCode || !endDate || !symbol) {
+    collector?.add({
+      tsCode,
+      tradeDate: readString(record, 'end_date'),
+      ruleName: 'missing_pk',
+      severity: 'error',
+      message: 'ts_code、end_date 或 symbol 缺失',
+      rawData: record,
+    })
+    return null
+  }
+
+  const annDateRaw = readDate(record, 'ann_date')
+  if (!annDateRaw) {
+    collector?.add({
+      tsCode,
+      tradeDate: readString(record, 'end_date'),
+      ruleName: 'missing_ann_date',
+      severity: 'warn',
+      message: 'ann_date 缺失，使用 end_date 代替',
+      rawData: record,
+    })
+  }
+
+  return {
+    tsCode,
+    annDate: annDateRaw ?? endDate,
+    endDate,
+    symbol,
+    mkv: readNumber(record, 'mkv'),
+    amount: readNumber(record, 'amount'),
+    stkMkvRatio: readNumber(record, 'stk_mkv_ratio'),
+    stkFloatRatio: readNumber(record, 'stk_float_ratio'),
+  }
+}
+
+// ─── 基金份额变动 ─────────────────────────────────────────────────────────────
+
+export function mapFundShareRecord(
+  record: TushareRecord,
+  collector?: ValidationCollector,
+): Prisma.FundShareCreateManyInput | null {
+  const tsCode = readString(record, 'ts_code')
+  const tradeDate = readDate(record, 'trade_date')
+
+  if (!tsCode || !tradeDate) {
+    collector?.add({
+      tsCode,
+      tradeDate: readString(record, 'trade_date'),
+      ruleName: 'missing_pk',
+      severity: 'error',
+      message: 'ts_code 或 trade_date 缺失',
+      rawData: record,
+    })
+    return null
+  }
+
+  return {
+    tsCode,
+    tradeDate,
+    fdShare: readNumber(record, 'fd_share'),
+  }
+}

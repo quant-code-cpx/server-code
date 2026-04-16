@@ -12,7 +12,13 @@ type AnyModelDelegate = {
 import { ErrorEnum } from 'src/constant/response-code.constant'
 import { TushareSyncExecutionStatus, TushareSyncTaskName } from 'src/constant/tushare.constant'
 import { AlternativeDataApiService } from '../api/alternative-data-api.service'
-import { mapBlockTradeRecord, mapShareFloatRecord, mapTopInstRecord, mapTopListRecord } from '../tushare-sync.mapper'
+import {
+  mapBlockTradeRecord,
+  mapLimitListDRecord,
+  mapShareFloatRecord,
+  mapTopInstRecord,
+  mapTopListRecord,
+} from '../tushare-sync.mapper'
 import { SyncHelperService } from './sync-helper.service'
 import { TushareSyncMode, TushareSyncPlan } from './sync-plan.types'
 import { ValidationCollector } from './quality/validation-collector'
@@ -103,6 +109,23 @@ export class AlternativeDataSyncService {
           description: '每周一凌晨同步限售股解禁数据（需 Tushare 2000 积分）',
         },
         execute: ({ mode }) => this.syncShareFloat(mode),
+      },
+      {
+        task: TushareSyncTaskName.LIMIT_LIST_D,
+        label: '每日涨跌停明细',
+        category: 'alternative',
+        order: 565,
+        bootstrapEnabled: true,
+        supportsManual: true,
+        supportsFullSync: true,
+        requiresTradeDate: true,
+        schedule: {
+          cron: '0 15 20 * * 1-5',
+          timeZone: this.helper.syncTimeZone,
+          description: '交易日盘后同步涨跌停明细（需 Tushare 2000 积分）',
+          tradingDayOnly: true,
+        },
+        execute: ({ mode, targetTradeDate }) => this.syncLimitListD(this.requireTradeDate(targetTradeDate), mode),
       },
     ]
   }
@@ -215,6 +238,23 @@ export class AlternativeDataSyncService {
   /**
    * 按交易日字符串同步（复用 FactorDataSyncService 相同模板）
    */
+  async syncLimitListD(targetTradeDate: string, mode: TushareSyncMode = 'incremental'): Promise<void> {
+    const collector = new ValidationCollector(TushareSyncTaskName.LIMIT_LIST_D)
+    await this.syncByTradeDateString({
+      task: TushareSyncTaskName.LIMIT_LIST_D,
+      label: '每日涨跌停明细',
+      modelName: 'limitListD',
+      targetTradeDate,
+      fullSync: mode === 'full',
+      fetchAndMap: async (td) => {
+        const rows = await this.api.getLimitListDByTradeDate(td)
+        return rows.map((r) => mapLimitListDRecord(r, collector)).filter((r): r is NonNullable<typeof r> => Boolean(r))
+      },
+      resolveDates: (start) => this.helper.getOpenTradeDatesBetween(start, targetTradeDate),
+    })
+    await this.helper.flushValidationLogs(collector)
+  }
+
   private async syncByTradeDateString(opts: {
     task: TushareSyncTaskName
     label: string

@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common'
 import {
   TUSHARE_BLOCK_TRADE_FIELDS,
+  TUSHARE_LIMIT_LIST_D_FIELDS,
   TUSHARE_SHARE_FLOAT_FIELDS,
   TUSHARE_TOP_INST_FIELDS,
   TUSHARE_TOP_LIST_FIELDS,
@@ -41,6 +42,15 @@ export class AlternativeDataApiService {
       api_name: TushareApiName.SHARE_FLOAT,
       params: { ts_code: tsCode },
       fields: [...TUSHARE_SHARE_FLOAT_FIELDS],
+    })
+  }
+
+  /** 按交易日获取全市场涨跌停明细 */
+  getLimitListDByTradeDate(tradeDate: string) {
+    return this.client.call({
+      api_name: TushareApiName.LIMIT_LIST_D,
+      params: { trade_date: tradeDate },
+      fields: [...TUSHARE_LIMIT_LIST_D_FIELDS],
     })
   }
 }

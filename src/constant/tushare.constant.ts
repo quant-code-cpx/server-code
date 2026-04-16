@@ -58,6 +58,12 @@ export enum TushareApiName {
   OPT_DAILY = 'opt_daily',
   // Stock technical factors
   STK_FACTOR = 'stk_factor',
+  // Market overview & limit stats
+  DAILY_INFO = 'daily_info',
+  LIMIT_LIST_D = 'limit_list_d',
+  // Fund extended
+  FUND_PORTFOLIO = 'fund_portfolio',
+  FUND_SHARE = 'fund_share',
 }
 
 /** A 股常用交易所代码 */
@@ -150,6 +156,12 @@ export enum TushareSyncTaskName {
   OPT_DAILY = 'OPT_DAILY',
   // Stock technical factors
   STK_FACTOR = 'STK_FACTOR',
+  // Market overview & limit stats
+  DAILY_INFO = 'DAILY_INFO',
+  LIMIT_LIST_D = 'LIMIT_LIST_D',
+  // Fund extended
+  FUND_PORTFOLIO = 'FUND_PORTFOLIO',
+  FUND_SHARE = 'FUND_SHARE',
   // Derived / computed
   VALUATION_MEDIAN = 'VALUATION_MEDIAN',
 }
@@ -1304,4 +1316,65 @@ export const TUSHARE_STK_FACTOR_FIELDS = [
   'atr14',
   'atr20',
   'vr_26',
+] as const
+
+/** 每日市场概况（daily_info）字段 */
+export const TUSHARE_DAILY_INFO_FIELDS = [
+  'trade_date',
+  'ts_code',
+  'ts_name',
+  'com_count',
+  'total_share',
+  'float_share',
+  'total_mv',
+  'float_mv',
+  'amount',
+  'vol',
+  'trans_count',
+  'pe',
+  'tr',
+  'exchange',
+] as const
+
+/** 涨跌停统计（limit_list_d）字段 */
+export const TUSHARE_LIMIT_LIST_D_FIELDS = [
+  'trade_date',
+  'ts_code',
+  'industry',
+  'name',
+  'close',
+  'pct_chg',
+  'amount',
+  'limit_amount',
+  'float_mv',
+  'total_mv',
+  'turnover_ratio',
+  'fd_amount',
+  'first_time',
+  'last_time',
+  'open_times',
+  'strth',
+  'limit',
+  'up_stat',
+  'limit_times',
+  'connected',
+] as const
+
+/** 基金持仓（fund_portfolio）字段 */
+export const TUSHARE_FUND_PORTFOLIO_FIELDS = [
+  'ts_code',
+  'ann_date',
+  'end_date',
+  'symbol',
+  'mkv',
+  'amount',
+  'stk_mkv_ratio',
+  'stk_float_ratio',
+] as const
+
+/** 基金份额（fund_share）字段 */
+export const TUSHARE_FUND_SHARE_FIELDS = [
+  'ts_code',
+  'trade_date',
+  'fd_share',
 ] as const

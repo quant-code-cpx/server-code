@@ -84,6 +84,12 @@ enum TushareSyncTask {
   OPT_DAILY
   // Stock technical factors
   STK_FACTOR
+  // Market overview & limit stats
+  DAILY_INFO
+  LIMIT_LIST_D
+  // Fund extended
+  FUND_PORTFOLIO
+  FUND_SHARE
 }
 
 // 同步任务执行结果

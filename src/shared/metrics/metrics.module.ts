@@ -22,6 +22,9 @@ import {
   TUSHARE_SYNC_ROUND_TASKS,
   CACHE_OPERATIONS_TOTAL,
 } from './metrics.constants'
+import { REDIS_MEMORY_USAGE, CACHE_HIT_RATIO, WS_ACTIVE_CONNECTIONS } from './additional-metrics.constants'
+import { additionalMetricProviders } from './additional-metrics.provider'
+import { AdditionalMetricsCollector } from './additional-metrics.collector'
 import { HttpMetricsInterceptor } from './http-metrics.interceptor'
 
 @Global()
@@ -108,12 +111,17 @@ import { HttpMetricsInterceptor } from './http-metrics.interceptor'
       labelNames: ['namespace', 'operation'],
     }),
 
+    // ── Redis / Cache / WebSocket 附加指标 ──
+    ...additionalMetricProviders,
+    AdditionalMetricsCollector,
+
     // ── HttpMetricsInterceptor（需要 DI 注入指标，通过 app.get() 使用） ──
     HttpMetricsInterceptor,
   ],
   exports: [
     PrometheusModule,
     HttpMetricsInterceptor,
+    AdditionalMetricsCollector,
     // 将所有指标 provider 导出，使非直接导入 MetricsModule 的模块（如 TushareModule、QueueModule）
     // 能通过 @Global() 全局解析到这些 token
     getToken(HTTP_REQUEST_DURATION),
@@ -130,6 +138,9 @@ import { HttpMetricsInterceptor } from './http-metrics.interceptor'
     getToken(TUSHARE_SYNC_ROUND_DURATION),
     getToken(TUSHARE_SYNC_ROUND_TASKS),
     getToken(CACHE_OPERATIONS_TOTAL),
+    getToken(REDIS_MEMORY_USAGE),
+    getToken(CACHE_HIT_RATIO),
+    getToken(WS_ACTIVE_CONNECTIONS),
   ],
 })
 export class MetricsModule {}

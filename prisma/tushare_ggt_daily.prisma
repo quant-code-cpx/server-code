@@ -1,0 +1,13 @@
+// 港股通每日成交（ggt_daily 接口）
+model GgtDaily {
+  tradeDate  DateTime @id @map("trade_date") @db.Date
+  buyAmount  Float?   @map("buy_amount")
+  buyVolume  Float?   @map("buy_volume")
+  sellAmount Float?   @map("sell_amount")
+  sellVolume Float?   @map("sell_volume")
+  netAmount  Float?   @map("net_amount")
+  netVolume  Float?   @map("net_volume")
+  syncedAt   DateTime @default(now()) @map("synced_at")
+
+  @@map("ggt_daily")
+}

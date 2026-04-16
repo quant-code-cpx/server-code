@@ -1,0 +1,13 @@
+// 每日筹码分布（cyq_chips 接口）
+model CyqChips {
+  tsCode    String   @map("ts_code") @db.VarChar(16)
+  tradeDate DateTime @map("trade_date") @db.Date
+  price     Float    @map("price")
+  percent   Float?   @map("percent")
+  syncedAt  DateTime @default(now()) @map("synced_at")
+
+  @@id([tsCode, tradeDate, price])
+  @@index([tradeDate])
+  @@index([tsCode, tradeDate(sort: Desc)])
+  @@map("cyq_chips")
+}

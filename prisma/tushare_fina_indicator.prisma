@@ -37,6 +37,7 @@ model FinaIndicator {
   syncedAt          DateTime  @default(now()) @map("synced_at")
 
   @@id([tsCode, endDate])
+  @@index([tsCode])
   @@index([annDate])
   @@map("financial_indicator_snapshots")
 }

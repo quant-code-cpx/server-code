@@ -1,0 +1,32 @@
+// 每日涨跌停统计（limit_list_d）
+// 记录每个交易日各涨停（U）、跌停（D）、炸板（Z）个股的明细，
+// 含封单金额、首次封板时间、连板次数等，用于打板策略和市场情绪分析。
+
+model LimitListD {
+  tradeDate     DateTime @map("trade_date")    @db.Date
+  tsCode        String   @map("ts_code")       @db.VarChar(16)
+  industry      String?  @db.VarChar(32)
+  name          String?  @db.VarChar(32)
+  close         Float?
+  pctChg        Float?   @map("pct_chg")
+  amount        Float?
+  limitAmount   Float?   @map("limit_amount")
+  floatMv       Float?   @map("float_mv")
+  totalMv       Float?   @map("total_mv")
+  turnoverRatio Float?   @map("turnover_ratio")
+  fdAmount      Float?   @map("fd_amount")
+  firstTime     String?  @map("first_time")    @db.VarChar(8)
+  lastTime      String?  @map("last_time")     @db.VarChar(8)
+  openTimes     Int?     @map("open_times")
+  strth         Float?
+  limit         String?  @db.VarChar(2)
+  upStat        String?  @map("up_stat")       @db.VarChar(16)
+  limitTimes    Int?     @map("limit_times")
+  connected     Boolean?
+  syncedAt      DateTime @default(now())       @map("synced_at")
+
+  @@id([tradeDate, tsCode])
+  @@index([tradeDate])
+  @@index([tsCode, tradeDate(sort: Desc)])
+  @@map("limit_list_d")
+}

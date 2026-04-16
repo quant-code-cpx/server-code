@@ -16,7 +16,7 @@ import {
   TushareSyncTaskName,
 } from 'src/constant/tushare.constant'
 import { FactorDataApiService } from '../api/factor-data-api.service'
-import { mapHkHoldRecord, mapIndexWeightRecord, mapStkFactorRecord, mapStkLimitRecord, mapSuspendDRecord } from '../tushare-sync.mapper'
+import { mapHkHoldRecord, mapIndexWeightRecord, mapStkFactorRecord, mapStkLimitRecord, mapStkSurvRecord, mapSuspendDRecord } from '../tushare-sync.mapper'
 import { SyncHelperService } from './sync-helper.service'
 import { TushareSyncMode, TushareSyncPlan, TushareSyncPlanContext } from './sync-plan.types'
 import { ValidationCollector } from './quality/validation-collector'
@@ -124,6 +124,24 @@ export class FactorDataSyncService {
         },
         execute: (ctx: TushareSyncPlanContext) =>
           this.syncStkFactor(this.requireTradeDate(ctx.targetTradeDate), ctx.mode, ctx.onProgress),
+      },
+      {
+        task: TushareSyncTaskName.STK_SURV,
+        label: '技术面因子',
+        category: 'factor',
+        order: 500,
+        bootstrapEnabled: true,
+        supportsManual: true,
+        supportsFullSync: true,
+        requiresTradeDate: true,
+        schedule: {
+          cron: '0 50 19 * * 1-5',
+          timeZone: this.helper.syncTimeZone,
+          description: '交易日盘后同步技术面因子',
+          tradingDayOnly: true,
+        },
+        execute: (ctx: TushareSyncPlanContext) =>
+          this.syncStkSurv(this.requireTradeDate(ctx.targetTradeDate), ctx.mode, ctx.onProgress),
       },
     ]
   }
@@ -418,5 +436,31 @@ export class FactorDataSyncService {
       },
       startedAt,
     )
+  }
+
+  // ─── 技术面因子（stk_surv）────────────────────────────────────────────────────
+
+  async syncStkSurv(
+    targetTradeDate: string,
+    mode: TushareSyncMode = 'incremental',
+    onProgress?: (completed: number, total: number, currentKey?: string) => void,
+  ): Promise<void> {
+    const collector = new ValidationCollector(TushareSyncTaskName.STK_SURV)
+    await this.syncByTradeDateString({
+      task: TushareSyncTaskName.STK_SURV,
+      label: '技术面因子',
+      modelName: 'stkSurv',
+      targetTradeDate,
+      fullSync: mode === 'full',
+      fetchAndMap: async (td) => {
+        const rows = await this.api.getStkSurvByTradeDate(td)
+        return rows
+          .map((r) => mapStkSurvRecord(r, collector))
+          .filter((r): r is NonNullable<typeof r> => Boolean(r))
+      },
+      resolveDates: (start) => this.helper.getOpenTradeDatesBetween(start, targetTradeDate),
+      onProgress,
+    })
+    await this.helper.flushValidationLogs(collector)
   }
 }

@@ -1,0 +1,21 @@
+// 基金持仓明细（fund_portfolio）
+// 公募基金季度报告期披露的前十大（全部）重仓股，
+// 用于机构持仓因子构建和"跟踪明星基金经理"策略。
+
+model FundPortfolio {
+  tsCode       String   @map("ts_code")        @db.VarChar(16)
+  annDate      DateTime @map("ann_date")        @db.Date
+  endDate      DateTime @map("end_date")        @db.Date
+  symbol       String                           @db.VarChar(16)
+  mkv          Float?
+  amount       Float?
+  stkMkvRatio  Float?   @map("stk_mkv_ratio")
+  stkFloatRatio Float?  @map("stk_float_ratio")
+  syncedAt     DateTime @default(now())         @map("synced_at")
+
+  @@id([tsCode, endDate, symbol])
+  @@index([endDate])
+  @@index([tsCode, endDate(sort: Desc)])
+  @@index([symbol, endDate(sort: Desc)])
+  @@map("fund_portfolio")
+}

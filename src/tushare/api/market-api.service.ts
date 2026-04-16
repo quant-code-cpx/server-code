@@ -3,10 +3,15 @@ import {
   CORE_INDEX_CODES,
   TUSHARE_ADJ_FACTOR_FIELDS,
   TUSHARE_CB_DAILY_FIELDS,
+  TUSHARE_CYQ_CHIPS_FIELDS,
+  TUSHARE_CYQ_PERF_FIELDS,
   TUSHARE_DAILY_BASIC_FIELDS,
+  TUSHARE_DAILY_INFO_FIELDS,
   TUSHARE_INDEX_DAILY_FIELDS,
   TUSHARE_INDEX_DAILYBASIC_FIELDS,
   TUSHARE_OHLCV_FIELDS,
+  TUSHARE_STK_MINS_FIELDS,
+  TUSHARE_THS_DAILY_FIELDS,
   TushareApiName,
 } from 'src/constant/tushare.constant'
 import { TushareClient } from './tushare-client.service'
@@ -117,6 +122,51 @@ export class MarketApiService {
       api_name: TushareApiName.CB_DAILY,
       params: { trade_date: tradeDate },
       fields: [...TUSHARE_CB_DAILY_FIELDS],
+    })
+  }
+
+  /** 按交易日获取各市场全景统计（SSE / SZSE 合计两条记录） */
+  getDailyInfoByTradeDate(tradeDate: string) {
+    return this.client.call({
+      api_name: TushareApiName.DAILY_INFO,
+      params: { trade_date: tradeDate },
+      fields: [...TUSHARE_DAILY_INFO_FIELDS],
+    })
+  }
+
+  /** 按交易日获取全市场筹码获利比例 */
+  getCyqPerfByTradeDate(tradeDate: string) {
+    return this.client.call({
+      api_name: TushareApiName.CYQ_PERF,
+      params: { trade_date: tradeDate },
+      fields: [...TUSHARE_CYQ_PERF_FIELDS],
+    })
+  }
+
+  /** 按股票代码 + 交易日获取筹码分布 */
+  getCyqChipsByTsCode(tsCode: string, tradeDate: string) {
+    return this.client.call({
+      api_name: TushareApiName.CYQ_CHIPS,
+      params: { ts_code: tsCode, trade_date: tradeDate },
+      fields: [...TUSHARE_CYQ_CHIPS_FIELDS],
+    })
+  }
+
+  /** 按股票代码获取分钟级行情 */
+  getStkMinsByTsCode(tsCode: string, freq: string, startDate: string, endDate: string) {
+    return this.client.call({
+      api_name: TushareApiName.STK_MINS,
+      params: { ts_code: tsCode, freq, start_date: startDate, end_date: endDate },
+      fields: [...TUSHARE_STK_MINS_FIELDS],
+    })
+  }
+
+  /** 按交易日获取同花顺板块指数日线 */
+  getThsDailyByTradeDate(tradeDate: string) {
+    return this.client.call({
+      api_name: TushareApiName.THS_DAILY,
+      params: { trade_date: tradeDate },
+      fields: [...TUSHARE_THS_DAILY_FIELDS],
     })
   }
 }

@@ -3,7 +3,13 @@ import { Observable, tap } from 'rxjs'
 import { RequestContextService } from 'src/shared/context/request-context.service'
 import { LoggerService } from 'src/shared/logger/logger.service'
 
-const EXCLUDED_PATHS = ['/health', '/ready', '/api/health', '/api/ready']
+const EXCLUDED_PATHS = [
+  '/health',
+  '/ready',
+  '/api/health',
+  '/api/ready',
+  ...(process.env.LOG_EXCLUDED_PATHS?.split(',').map((s) => s.trim()) ?? []),
+]
 
 const SENSITIVE_FIELDS = ['password', 'newPassword', 'oldPassword', 'token', 'secret', 'captchaCode']
 

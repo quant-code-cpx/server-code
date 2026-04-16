@@ -21,6 +21,7 @@ model StkHolderTrade {
 
   @@unique([tsCode, annDate, holderName, inDe])
   @@index([tsCode])
+  @@index([tsCode, annDate(sort: Desc)])
   @@index([annDate])
   @@map("stock_holder_trades")
 }

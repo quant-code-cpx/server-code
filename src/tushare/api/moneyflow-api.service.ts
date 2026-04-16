@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common'
 import {
   MoneyflowContentType,
+  TUSHARE_GGT_DAILY_FIELDS,
   TUSHARE_MONEYFLOW_DC_FIELDS,
   TUSHARE_MONEYFLOW_HSGT_FIELDS,
   TUSHARE_MONEYFLOW_IND_DC_FIELDS,
@@ -47,6 +48,15 @@ export class MoneyflowApiService {
       api_name: TushareApiName.MONEYFLOW_HSGT,
       params: { start_date: startDate, end_date: endDate },
       fields: [...TUSHARE_MONEYFLOW_HSGT_FIELDS],
+    })
+  }
+
+  /** 按日期区间获取港股通每日成交 */
+  getGgtDailyByDateRange(startDate: string, endDate: string) {
+    return this.client.call({
+      api_name: TushareApiName.GGT_DAILY,
+      params: { start_date: startDate, end_date: endDate },
+      fields: [...TUSHARE_GGT_DAILY_FIELDS],
     })
   }
 }

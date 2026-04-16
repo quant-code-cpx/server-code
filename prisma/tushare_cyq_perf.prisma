@@ -1,0 +1,20 @@
+// 每日筹码获利比例（cyq_perf 接口）
+model CyqPerf {
+  tsCode     String   @map("ts_code") @db.VarChar(16)
+  tradeDate  DateTime @map("trade_date") @db.Date
+  hisLow     Float?   @map("his_low")
+  hisHigh    Float?   @map("his_high")
+  cost5pct   Float?   @map("cost_5pct")
+  cost15pct  Float?   @map("cost_15pct")
+  cost50pct  Float?   @map("cost_50pct")
+  cost85pct  Float?   @map("cost_85pct")
+  cost95pct  Float?   @map("cost_95pct")
+  weightAvg  Float?   @map("weight_avg")
+  winnerRate Float?   @map("winner_rate")
+  syncedAt   DateTime @default(now()) @map("synced_at")
+
+  @@id([tsCode, tradeDate])
+  @@index([tradeDate])
+  @@index([tsCode, tradeDate(sort: Desc)])
+  @@map("cyq_perf")
+}

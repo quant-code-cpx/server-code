@@ -1,0 +1,12 @@
+// 基金复权因子（fund_adj 接口）
+model FundAdj {
+  tsCode    String   @map("ts_code") @db.VarChar(16)
+  tradeDate DateTime @map("trade_date") @db.Date
+  adjFactor Float?   @map("adj_factor")
+  syncedAt  DateTime @default(now()) @map("synced_at")
+
+  @@id([tsCode, tradeDate])
+  @@index([tradeDate])
+  @@index([tsCode, tradeDate(sort: Desc)])
+  @@map("fund_adj")
+}

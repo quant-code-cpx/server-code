@@ -19,7 +19,15 @@ import { BacktestModule } from 'src/apps/backtest/backtest.module'
       },
       inject: [ConfigService],
     }),
-    BullModule.registerQueue({ name: BACKTESTING_QUEUE }),
+    BullModule.registerQueue({
+      name: BACKTESTING_QUEUE,
+      defaultJobOptions: {
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 5000 },
+        removeOnComplete: { count: 200 },
+        removeOnFail: false, // 保留失败任务供审查（DLQ 语义）
+      },
+    }),
     WebsocketModule,
     BacktestModule,
   ],

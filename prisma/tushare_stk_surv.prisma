@@ -1,0 +1,20 @@
+// 技术面因子（stk_surv 接口）
+model StkSurv {
+  tsCode        String   @map("ts_code") @db.VarChar(16)
+  tradeDate     DateTime @map("trade_date") @db.Date
+  tsName        String?  @map("ts_name") @db.VarChar(32)
+  priceTrend    Float?   @map("price_trend")
+  volTrend      Float?   @map("vol_trend")
+  priceMomentum Float?   @map("price_momentum")
+  volMomentum   Float?   @map("vol_momentum")
+  turnoverTrend Float?   @map("turnover_trend")
+  mktCapTrend   Float?   @map("mkt_cap_trend")
+  externalTrend Float?   @map("external_trend")
+  innerTrend    Float?   @map("inner_trend")
+  syncedAt      DateTime @default(now()) @map("synced_at")
+
+  @@id([tsCode, tradeDate])
+  @@index([tradeDate])
+  @@index([tsCode, tradeDate(sort: Desc)])
+  @@map("stk_surv")
+}

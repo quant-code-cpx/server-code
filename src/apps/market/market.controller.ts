@@ -24,6 +24,7 @@ import {
   ConceptListResponseDto,
   ConceptMembersResponseDto,
   HsgtFlowHistoryDto,
+  MarketBreadthDto,
   HsgtTrendResponseDto,
   IndexQuoteItemDto,
   IndexTrendResponseDto,
@@ -171,6 +172,13 @@ export class MarketController {
   @ApiSuccessResponse(StockFlowDetailResponseDto)
   getStockFlowDetail(@Body() query: StockFlowDetailQueryDto) {
     return this.marketService.getStockFlowDetail(query)
+  }
+
+  @Post('market-breadth')
+  @ApiOperation({ summary: '获取市场宽度统计（涨停/跌停/涨跌家数，单次 DB 查询）' })
+  @ApiSuccessResponse(MarketBreadthDto)
+  getMarketBreadth(@Body() query: MoneyFlowQueryDto) {
+    return this.marketService.getMarketBreadth(query)
   }
 
   @Post('concept/list')

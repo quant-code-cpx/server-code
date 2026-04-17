@@ -342,3 +342,17 @@ export class ConceptMembersResponseDto {
   @ApiProperty() total: number
   @ApiProperty({ type: [ConceptMemberItemDto] }) items: ConceptMemberItemDto[]
 }
+
+// ─── market-breadth ───────────────────────────────────────────────────────────
+
+export class MarketBreadthDto {
+  @ApiProperty({ description: '交易日期' }) tradeDate: Date
+  @ApiProperty({ description: '涨停家数（pct_chg ≥ 9.5）' }) limitUp: number
+  @ApiProperty({ description: '跌停家数（pct_chg ≤ -9.5）' }) limitDown: number
+  @ApiProperty({ description: '大涨家数（pct_chg ≥ 5%）' }) bigRise: number
+  @ApiProperty({ description: '上涨家数（0.001% ≤ pct_chg < 5%）' }) rise: number
+  @ApiProperty({ description: '平盘家数（pct_chg ≈ 0）' }) flat: number
+  @ApiProperty({ description: '下跌家数（-5% < pct_chg < -0.001%）' }) fall: number
+  @ApiProperty({ description: '大跌家数（pct_chg ≤ -5%）' }) bigFall: number
+  @ApiProperty({ description: '当日有行情的 A 股总数' }) total: number
+}

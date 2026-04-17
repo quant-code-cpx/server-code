@@ -10,16 +10,22 @@ export class HeatmapService {
   async getHeatmap(query: HeatmapQueryDto): Promise<HeatmapItemDto[]> {
     const tradeDate = await this.resolveTradeDate(query.trade_date)
 
+    let result: HeatmapItemDto[]
     switch (query.group_by ?? 'industry') {
       case 'industry':
-        return this.getIndustryHeatmap(tradeDate)
+        result = await this.getIndustryHeatmap(tradeDate)
+        break
       case 'index':
-        return this.getIndexHeatmap(tradeDate, query.index_code ?? '000300.SH')
+        result = await this.getIndexHeatmap(tradeDate, query.index_code ?? '000300.SH')
+        break
       case 'concept':
-        return this.getConceptHeatmap(tradeDate)
+        result = await this.getConceptHeatmap(tradeDate)
+        break
       default:
-        return this.getIndustryHeatmap(tradeDate)
+        result = await this.getIndustryHeatmap(tradeDate)
     }
+
+    return query.limit ? result.slice(0, query.limit) : result
   }
 
   // ── 工具方法 ─────────────────────────────────────────────────────────────

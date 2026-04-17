@@ -1,5 +1,6 @@
-import { IsIn, IsOptional, IsString, Matches } from 'class-validator'
+import { IsIn, IsInt, IsOptional, IsString, Matches, Max, Min } from 'class-validator'
 import { ApiPropertyOptional } from '@nestjs/swagger'
+import { Type } from 'class-transformer'
 
 export class HeatmapQueryDto {
   @ApiPropertyOptional({
@@ -38,4 +39,17 @@ export class HeatmapQueryDto {
   @IsOptional()
   @IsString()
   index_code?: string = '000300.SH'
+
+  @ApiPropertyOptional({
+    description: 'Top N 截断（group_by=industry 时按 total_mv 降序，index 时按权重降序），不传则返回全部',
+    minimum: 1,
+    maximum: 5000,
+    example: 200,
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(5000)
+  limit?: number
 }

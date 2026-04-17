@@ -77,10 +77,14 @@ export class MarketService {
 
     const rows = await this.prisma.moneyflowIndDc.findMany({
       where: { tradeDate, ...(contentTypeFilter ? { contentType: contentTypeFilter } : {}) },
-      orderBy: [{ contentType: 'asc' }, { rank: 'asc' }, { netAmount: 'desc' }],
+      orderBy: [{ contentType: 'asc' }, { netAmount: 'desc' }],
     })
 
-    const applyLimit = (items: typeof rows) => (query.limit ? items.slice(0, query.limit) : items)
+    // 有 limit 时按 abs(netAmount) 降序截断，无 limit 时保持原顺序
+    const applyLimit = (items: typeof rows) => {
+      if (!query.limit) return items
+      return [...items].sort((a, b) => Math.abs(b.netAmount ?? 0) - Math.abs(a.netAmount ?? 0)).slice(0, query.limit)
+    }
 
     return {
       tradeDate,
@@ -294,6 +298,56 @@ export class MarketService {
       ]
 
       return { tradeDate, limitUp, limitDown, distribution }
+    })
+  }
+
+  // ─── 市场宽度（涨停/跌停/涨跌家数）──────────────────────────────────────
+
+  async getMarketBreadth(query: MoneyFlowQueryDto) {
+    const tradeDate = query.trade_date ? this.parseDate(query.trade_date) : await this.resolveLatestDailyTradeDate()
+    if (!tradeDate) return null
+
+    const tradeDateStr = dayjs(tradeDate).tz('Asia/Shanghai').format('YYYY-MM-DD')
+    const cacheKey = `market:breadth:${tradeDateStr}`
+
+    return this.rememberMarketCache(cacheKey, MARKET_STANDARD_CACHE_TTL_SECONDS, async () => {
+      const [row] = await this.prisma.$queryRaw<
+        [
+          {
+            limitUp: bigint
+            limitDown: bigint
+            bigRise: bigint
+            rise: bigint
+            flat: bigint
+            fall: bigint
+            bigFall: bigint
+            total: bigint
+          },
+        ]
+      >`
+        SELECT
+          COUNT(*) FILTER (WHERE pct_chg >= 9.5)                              AS "limitUp",
+          COUNT(*) FILTER (WHERE pct_chg <= -9.5)                             AS "limitDown",
+          COUNT(*) FILTER (WHERE pct_chg >= 5)                                AS "bigRise",
+          COUNT(*) FILTER (WHERE pct_chg >= 0.001 AND pct_chg < 5)           AS "rise",
+          COUNT(*) FILTER (WHERE pct_chg > -0.001 AND pct_chg < 0.001)       AS "flat",
+          COUNT(*) FILTER (WHERE pct_chg > -5 AND pct_chg < -0.001)          AS "fall",
+          COUNT(*) FILTER (WHERE pct_chg <= -5)                               AS "bigFall",
+          COUNT(*)                                                             AS "total"
+        FROM stock_daily_prices
+        WHERE trade_date = ${tradeDateStr}::date
+      `
+      return {
+        tradeDate,
+        limitUp: Number(row.limitUp),
+        limitDown: Number(row.limitDown),
+        bigRise: Number(row.bigRise),
+        rise: Number(row.rise),
+        flat: Number(row.flat),
+        fall: Number(row.fall),
+        bigFall: Number(row.bigFall),
+        total: Number(row.total),
+      }
     })
   }
 

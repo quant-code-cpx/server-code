@@ -240,12 +240,16 @@ export class AlternativeDataSyncService {
    */
   async syncLimitListD(targetTradeDate: string, mode: TushareSyncMode = 'incremental'): Promise<void> {
     const collector = new ValidationCollector(TushareSyncTaskName.LIMIT_LIST_D)
+    // 接口每天限额 10000 次，bootstrap 仅保留近 5 年数据，避免打满限额
+    const year5AgoStr = String(parseInt(targetTradeDate.slice(0, 4), 10) - 5) + targetTradeDate.slice(4)
     await this.syncByTradeDateString({
       task: TushareSyncTaskName.LIMIT_LIST_D,
       label: '每日涨跌停明细',
       modelName: 'limitListD',
       targetTradeDate,
       fullSync: mode === 'full',
+      tradeDateType: 'date',
+      bootstrapStartDate: year5AgoStr,
       fetchAndMap: async (td) => {
         const rows = await this.api.getLimitListDByTradeDate(td)
         return rows.map((r) => mapLimitListDRecord(r, collector)).filter((r): r is NonNullable<typeof r> => Boolean(r))
@@ -261,10 +265,27 @@ export class AlternativeDataSyncService {
     modelName: string
     targetTradeDate: string
     fullSync?: boolean
+    /** tradeDate 字段的 Prisma 类型：'string'（默认）或 'date'（DateTime 字段需传此值） */
+    tradeDateType?: 'string' | 'date'
+    /**
+     * 当本地无历史数据（bootstrap 首次同步）时，覆盖全局 syncStartDate。
+     * 用于接口调用次数有限的数据集（如 limit_list_d），避免全量回拉打满限额。
+     */
+    bootstrapStartDate?: string
     fetchAndMap: (tradeDate: string) => Promise<unknown[]>
     resolveDates: (startDate: string) => Promise<string[]>
   }): Promise<void> {
-    const { task, label, modelName, targetTradeDate, fullSync = false, fetchAndMap, resolveDates } = opts
+    const {
+      task,
+      label,
+      modelName,
+      targetTradeDate,
+      fullSync = false,
+      tradeDateType = 'string',
+      bootstrapStartDate,
+      fetchAndMap,
+      resolveDates,
+    } = opts
 
     if (!fullSync && (await this.helper.isTaskSyncedForTradeDate(task, targetTradeDate))) {
       this.logger.log(`[${label}] 目标交易日 ${targetTradeDate} 已同步，跳过`)
@@ -273,7 +294,8 @@ export class AlternativeDataSyncService {
 
     const startedAt = new Date()
     const latestDate = fullSync ? null : await this.helper.getLatestDateString(modelName)
-    const startDate = latestDate ? this.helper.addDays(latestDate, 1) : this.helper.syncStartDate
+    const fallbackStart = bootstrapStartDate ?? this.helper.syncStartDate
+    const startDate = latestDate ? this.helper.addDays(latestDate, 1) : fallbackStart
 
     if (this.helper.compareDateString(startDate, targetTradeDate) > 0) {
       this.logger.log(`[${label}] 已是最新（本地最新: ${latestDate}），无需同步`)
@@ -297,8 +319,9 @@ export class AlternativeDataSyncService {
     for (const [i, td] of tradeDates.entries()) {
       try {
         const mapped = await fetchAndMap(td)
+        const tradeDateValue = tradeDateType === 'date' ? this.helper.toDate(td) : td
         const [, result] = await this.helper.prisma.$transaction([
-          model.deleteMany({ where: { tradeDate: td } }),
+          model.deleteMany({ where: { tradeDate: tradeDateValue } }),
           model.createMany({ data: mapped, skipDuplicates: true }),
         ])
         totalRows += (result as { count: number }).count

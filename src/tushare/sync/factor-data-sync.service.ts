@@ -16,7 +16,14 @@ import {
   TushareSyncTaskName,
 } from 'src/constant/tushare.constant'
 import { FactorDataApiService } from '../api/factor-data-api.service'
-import { mapHkHoldRecord, mapIndexWeightRecord, mapStkFactorRecord, mapStkLimitRecord, mapStkSurvRecord, mapSuspendDRecord } from '../tushare-sync.mapper'
+import {
+  mapHkHoldRecord,
+  mapIndexWeightRecord,
+  mapStkFactorRecord,
+  mapStkLimitRecord,
+  mapStkSurvRecord,
+  mapSuspendDRecord,
+} from '../tushare-sync.mapper'
 import { SyncHelperService } from './sync-helper.service'
 import { TushareSyncMode, TushareSyncPlan, TushareSyncPlanContext } from './sync-plan.types'
 import { ValidationCollector } from './quality/validation-collector'
@@ -247,11 +254,23 @@ export class FactorDataSyncService {
     modelName: string
     targetTradeDate: string
     fullSync?: boolean
+    /** tradeDate 字段的 Prisma 类型：'string'（默认）或 'date'（DateTime 字段需传此值） */
+    tradeDateType?: 'string' | 'date'
     fetchAndMap: (tradeDate: string) => Promise<unknown[]>
     resolveDates: (startDate: string) => Promise<string[]>
     onProgress?: (completed: number, total: number, currentKey?: string) => void
   }): Promise<void> {
-    const { task, label, modelName, targetTradeDate, fullSync = false, fetchAndMap, resolveDates, onProgress } = opts
+    const {
+      task,
+      label,
+      modelName,
+      targetTradeDate,
+      fullSync = false,
+      tradeDateType = 'string',
+      fetchAndMap,
+      resolveDates,
+      onProgress,
+    } = opts
 
     if (!fullSync && (await this.helper.isTaskSyncedForTradeDate(task, targetTradeDate))) {
       this.logger.log(`[${label}] 目标交易日 ${targetTradeDate} 已同步，跳过`)
@@ -284,8 +303,9 @@ export class FactorDataSyncService {
     for (const [i, td] of tradeDates.entries()) {
       try {
         const mapped = await fetchAndMap(td)
+        const tradeDateValue = tradeDateType === 'date' ? this.helper.toDate(td) : td
         const [, result] = await this.helper.prisma.$transaction([
-          model.deleteMany({ where: { tradeDate: td } }),
+          model.deleteMany({ where: { tradeDate: tradeDateValue } }),
           model.createMany({ data: mapped, skipDuplicates: true }),
         ])
         totalRows += (result as { count: number }).count
@@ -343,11 +363,10 @@ export class FactorDataSyncService {
       modelName: 'stkFactor',
       targetTradeDate,
       fullSync: mode === 'full',
+      tradeDateType: 'date',
       fetchAndMap: async (td) => {
         const rows = await this.api.getStkFactorByTradeDate(td)
-        return rows
-          .map((r) => mapStkFactorRecord(r, collector))
-          .filter((r): r is NonNullable<typeof r> => Boolean(r))
+        return rows.map((r) => mapStkFactorRecord(r, collector)).filter((r): r is NonNullable<typeof r> => Boolean(r))
       },
       resolveDates: (start) => this.helper.getOpenTradeDatesBetween(start, targetTradeDate),
       onProgress,
@@ -452,11 +471,10 @@ export class FactorDataSyncService {
       modelName: 'stkSurv',
       targetTradeDate,
       fullSync: mode === 'full',
+      tradeDateType: 'date',
       fetchAndMap: async (td) => {
         const rows = await this.api.getStkSurvByTradeDate(td)
-        return rows
-          .map((r) => mapStkSurvRecord(r, collector))
-          .filter((r): r is NonNullable<typeof r> => Boolean(r))
+        return rows.map((r) => mapStkSurvRecord(r, collector)).filter((r): r is NonNullable<typeof r> => Boolean(r))
       },
       resolveDates: (start) => this.helper.getOpenTradeDatesBetween(start, targetTradeDate),
       onProgress,

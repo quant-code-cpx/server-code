@@ -29,6 +29,7 @@ export const CACHE_KEY_PREFIX = {
   STOCK_OVERVIEW: 'stock:overview',
   STOCK_INDUSTRIES: 'stock:industries',
   STOCK_AREAS: 'stock:areas',
+  STOCK_SCREENER_CONCEPTS: 'stock:screener-concepts',
   TRADE_CALENDAR_OPEN_RANGE: 'trade-cal:open-range',
   TRADE_CALENDAR_RECENT_OPEN: 'trade-cal:recent-open',
   TRADE_CALENDAR_IS_TODAY_TRADING: 'trade-cal:is-today-trading',

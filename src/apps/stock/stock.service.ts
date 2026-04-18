@@ -113,6 +113,10 @@ export class StockService {
     return this.stockScreenerService.getAreas()
   }
 
+  getScreenerConcepts() {
+    return this.stockScreenerService.getScreenerConcepts()
+  }
+
   getScreenerPresets() {
     return this.stockScreenerService.getScreenerPresets()
   }

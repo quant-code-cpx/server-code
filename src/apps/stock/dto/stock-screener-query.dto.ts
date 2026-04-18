@@ -1,6 +1,7 @@
 import { ApiPropertyOptional } from '@nestjs/swagger'
 import { Transform, Type } from 'class-transformer'
 import {
+  ArrayMaxSize,
   IsArray,
   IsBoolean,
   IsEnum,
@@ -68,12 +69,14 @@ export class ScreenerFiltersDto {
   @ApiPropertyOptional({ description: '行业（多选，数组形式，从 /stock/industries 返回的列表中选择）', type: [String] })
   @IsOptional()
   @IsArray()
+  @ArrayMaxSize(30)
   @IsString({ each: true })
   industries?: string[]
 
   @ApiPropertyOptional({ description: '地域（多选，数组形式，从 /stock/areas 返回的列表中选择）', type: [String] })
   @IsOptional()
   @IsArray()
+  @ArrayMaxSize(30)
   @IsString({ each: true })
   areas?: string[]
 
@@ -83,6 +86,7 @@ export class ScreenerFiltersDto {
   })
   @IsOptional()
   @IsArray()
+  @ArrayMaxSize(20)
   @IsString({ each: true })
   conceptCodes?: string[]
 

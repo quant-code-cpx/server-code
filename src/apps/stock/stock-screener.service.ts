@@ -29,6 +29,9 @@ const SCREENER_SORT_MAP: Record<ScreenerSortBy, string> = {
   [ScreenerSortBy.LIST_DATE]: 'sb.list_date',
 }
 
+/** 布林带缩口判定阈值：上下轨差值 < 中轨 × BOLL_SQUEEZE_THRESHOLD 视为缩口 */
+const BOLL_SQUEEZE_THRESHOLD = 0.05
+
 // 内置选股预设
 interface ScreenerPreset {
   id: string
@@ -302,9 +305,9 @@ export class StockScreenerService {
     } else if (query.bollSignal === 'below_lower') {
       technicalConditions.push(Prisma.sql`d.close < stf.boll_lower`)
     } else if (query.bollSignal === 'squeeze') {
-      technicalConditions.push(Prisma.sql`(stf.boll_upper - stf.boll_lower) < stf.boll_mid * 0.05`)
+      technicalConditions.push(Prisma.sql`(stf.boll_upper - stf.boll_lower) < stf.boll_mid * ${BOLL_SQUEEZE_THRESHOLD}`)
     }
-    // 均线趋势（使用 boll_mid 近似 MA20）
+    // 均线趋势（使用 boll_mid 作为 MA20 近似值，因为布林带中轨即为 20 日均线）
     if (query.maTrend === 'bullish') {
       technicalConditions.push(Prisma.sql`d.close > stf.boll_mid`)
       technicalConditions.push(Prisma.sql`stf.macd_dif > 0`)
@@ -416,6 +419,7 @@ export class StockScreenerService {
     const technicalJoin = technicalConditions.length > 0 ? technicalFactorJoin : Prisma.empty
 
     // 概念板块 JOIN（INNER JOIN 强制匹配）
+    // 注意字段语义：tm.ts_code = 板块代码，tm.con_code = 成分股票代码（constituent code）
     const conceptJoinSql = needsConceptJoin
       ? Prisma.sql`INNER JOIN ths_index_members tm ON tm.con_code = sb.ts_code AND tm.is_new = 'Y'
           AND tm.ts_code = ANY(${query.conceptCodes!})`

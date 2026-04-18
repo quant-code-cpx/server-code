@@ -4,7 +4,10 @@
  * 覆盖要点：
  * - screener(): $queryRaw 被调用；返回 { page, pageSize, total, items } 结构；
  *   items 字段经过数值类型转换（Number）；空结果时 items 为 []
+ *   V2 新增：psTtm 字段、concepts 字段、概念/北向/布林带/均线筛选
  * - getScreenerPresets(): 返回内置预设列表，每项含 id/name/description/filters/type
+ *   V2 新增预设：northbound / tech_breakout / oversold_rebound / low_ps_growth
+ * - getScreenerConcepts(): 从缓存或 DB 获取概念板块列表
  * - getStrategies(userId): 从 prisma.screenerStrategy.findMany 获取数据并格式化
  * - createStrategy(): 达到上限 → BadRequestException；正常创建 → 返回序列化策略
  * - updateStrategy(): 不存在 → NotFoundException；正常更新 → 返回序列化策略
@@ -58,6 +61,7 @@ function buildPrismaMock() {
 function buildCacheServiceMock() {
   return {
     getOrSet: jest.fn(async (_key: unknown, _ns: unknown, _ttl: unknown, loader: () => Promise<unknown>) => loader()),
+    rememberJson: jest.fn(async (opts: { loader: () => Promise<unknown> }) => opts.loader()),
   }
 }
 
@@ -98,7 +102,7 @@ describe('StockScreenerService', () => {
       expect(Array.isArray(result.items)).toBe(true)
     })
 
-    it('有结果时 → items 包含格式化字段', async () => {
+    it('有结果时 → items 包含格式化字段（含 V2 新增 psTtm 和 concepts）', async () => {
       const prisma = buildPrismaMock()
       const rawItem = {
         tsCode: '000001.SZ',
@@ -108,6 +112,7 @@ describe('StockScreenerService', () => {
         latestFinDate: new Date('2024-12-31'),
         peTtm: '8.5',
         pb: '0.7',
+        psTtm: '1.2',
         dvTtm: '5.2',
         totalMv: '300000000',
         circMv: '250000000',
@@ -128,6 +133,11 @@ describe('StockScreenerService', () => {
         mainNetInflow20d: '500000',
       }
       mockScreenerQueryRaw(prisma, [rawItem], 1)
+      // Mock concept query: returns concept data for this stock
+      prisma.$queryRaw.mockResolvedValueOnce([
+        { conCode: '000001.SZ', name: '数字经济' },
+        { conCode: '000001.SZ', name: '金融科技' },
+      ])
       const service = createService(prisma)
 
       const result = await service.screener({} as StockScreenerQueryDto)
@@ -139,6 +149,11 @@ describe('StockScreenerService', () => {
       expect(typeof item.peTtm).toBe('number')
       expect(item.peTtm).toBeCloseTo(8.5)
       expect(item.totalMv).toBe(300_000_000)
+      // V2 新增: psTtm
+      expect(typeof item.psTtm).toBe('number')
+      expect(item.psTtm).toBeCloseTo(1.2)
+      // V2 新增: concepts
+      expect(item.concepts).toEqual(['数字经济', '金融科技'])
       // null 字段保持 null
       expect(item.currentRatio).toBeNull()
     })
@@ -164,7 +179,7 @@ describe('StockScreenerService', () => {
       expect(result.total).toBe(100)
     })
 
-    it('$queryRaw 被调用两次（count + items）', async () => {
+    it('$queryRaw 被调用两次（count + items），空结果时不调用概念查询', async () => {
       const prisma = buildPrismaMock()
       mockScreenerQueryRaw(prisma, [], 0)
       const service = createService(prisma)
@@ -183,6 +198,7 @@ describe('StockScreenerService', () => {
         latestFinDate: null,
         peTtm: null,
         pb: null,
+        psTtm: null,
         dvTtm: null,
         totalMv: null,
         circMv: null,
@@ -203,10 +219,93 @@ describe('StockScreenerService', () => {
         mainNetInflow20d: null,
       }
       mockScreenerQueryRaw(prisma, [rawItem], 1)
+      // Mock concept query returning empty array
+      prisma.$queryRaw.mockResolvedValueOnce([])
       const service = createService(prisma)
 
       const result = await service.screener({} as StockScreenerQueryDto)
       expect(result.items[0].listDate).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+    })
+
+    it('无概念数据时 → concepts 字段为 null', async () => {
+      const prisma = buildPrismaMock()
+      const rawItem = {
+        tsCode: '600001.SH',
+        name: '测试股',
+        industry: null,
+        market: null,
+        listDate: null,
+        latestFinDate: null,
+        peTtm: null,
+        pb: null,
+        psTtm: null,
+        dvTtm: null,
+        totalMv: null,
+        circMv: null,
+        turnoverRate: null,
+        close: null,
+        pctChg: null,
+        amount: null,
+        revenueYoy: null,
+        netprofitYoy: null,
+        roe: null,
+        grossMargin: null,
+        netMargin: null,
+        debtToAssets: null,
+        currentRatio: null,
+        quickRatio: null,
+        ocfToNetprofit: null,
+        mainNetInflow5d: null,
+        mainNetInflow20d: null,
+      }
+      mockScreenerQueryRaw(prisma, [rawItem], 1)
+      // 概念查询返回空数组
+      prisma.$queryRaw.mockResolvedValueOnce([])
+      const service = createService(prisma)
+
+      const result = await service.screener({} as StockScreenerQueryDto)
+      expect(result.items[0].concepts).toBeNull()
+    })
+
+    it('概念查询失败时 → 降级为空映射，不影响主查询', async () => {
+      const prisma = buildPrismaMock()
+      const rawItem = {
+        tsCode: '600001.SH',
+        name: '测试股',
+        industry: null,
+        market: null,
+        listDate: null,
+        latestFinDate: null,
+        peTtm: null,
+        pb: null,
+        psTtm: null,
+        dvTtm: null,
+        totalMv: null,
+        circMv: null,
+        turnoverRate: null,
+        close: null,
+        pctChg: null,
+        amount: null,
+        revenueYoy: null,
+        netprofitYoy: null,
+        roe: null,
+        grossMargin: null,
+        netMargin: null,
+        debtToAssets: null,
+        currentRatio: null,
+        quickRatio: null,
+        ocfToNetprofit: null,
+        mainNetInflow5d: null,
+        mainNetInflow20d: null,
+      }
+      mockScreenerQueryRaw(prisma, [rawItem], 1)
+      // 概念查询抛出错误
+      prisma.$queryRaw.mockRejectedValueOnce(new Error('table not found'))
+      const service = createService(prisma)
+
+      const result = await service.screener({} as StockScreenerQueryDto)
+      expect(result.items).toHaveLength(1)
+      expect(result.items[0].concepts).toBeNull()
     })
   })
 
@@ -237,6 +336,72 @@ describe('StockScreenerService', () => {
       const { presets } = service.getScreenerPresets()
       const valuePreset = presets.find((p) => p.id === 'value')
       expect(valuePreset).toBeDefined()
+    })
+
+    it('V2: 包含新增预设 id: northbound（北向资金重仓）', () => {
+      const service = createService()
+      const { presets } = service.getScreenerPresets()
+      const northboundPreset = presets.find((p) => p.id === 'northbound')
+      expect(northboundPreset).toBeDefined()
+      expect(northboundPreset!.filters).toHaveProperty('northboundOnly')
+    })
+
+    it('V2: 包含新增预设 id: tech_breakout（技术突破）', () => {
+      const service = createService()
+      const { presets } = service.getScreenerPresets()
+      const techPreset = presets.find((p) => p.id === 'tech_breakout')
+      expect(techPreset).toBeDefined()
+      expect(techPreset!.filters).toHaveProperty('macdSignal')
+      expect(techPreset!.filters).toHaveProperty('bollSignal')
+    })
+
+    it('V2: 包含新增预设 id: oversold_rebound（超跌反弹）', () => {
+      const service = createService()
+      const { presets } = service.getScreenerPresets()
+      const oversoldPreset = presets.find((p) => p.id === 'oversold_rebound')
+      expect(oversoldPreset).toBeDefined()
+    })
+
+    it('V2: 包含新增预设 id: low_ps_growth（低PS高成长）', () => {
+      const service = createService()
+      const { presets } = service.getScreenerPresets()
+      const lowPsPreset = presets.find((p) => p.id === 'low_ps_growth')
+      expect(lowPsPreset).toBeDefined()
+      expect(lowPsPreset!.filters).toHaveProperty('maxPsTtm')
+    })
+
+    it('V2: 预设总数应为 10 个', () => {
+      const service = createService()
+      const { presets } = service.getScreenerPresets()
+      // 原始 6 + 新增 4 = 10
+      expect(presets).toHaveLength(10)
+    })
+  })
+
+  // ── getScreenerConcepts ────────────────────────────────────────────────────
+
+  describe('getScreenerConcepts()', () => {
+    it('返回概念板块列表', async () => {
+      const prisma = buildPrismaMock()
+      prisma.$queryRaw.mockResolvedValueOnce([
+        { tsCode: 'TS001', name: 'AI概念', count: BigInt(50) },
+        { tsCode: 'TS002', name: '新能源', count: BigInt(120) },
+      ])
+      const service = createService(prisma)
+
+      const result = await service.getScreenerConcepts()
+      expect(result.concepts).toHaveLength(2)
+      expect(result.concepts[0]).toEqual({ tsCode: 'TS001', name: 'AI概念', count: 50 })
+      expect(result.concepts[1]).toEqual({ tsCode: 'TS002', name: '新能源', count: 120 })
+    })
+
+    it('无概念数据时返回空数组', async () => {
+      const prisma = buildPrismaMock()
+      prisma.$queryRaw.mockResolvedValueOnce([])
+      const service = createService(prisma)
+
+      const result = await service.getScreenerConcepts()
+      expect(result.concepts).toEqual([])
     })
   })
 
@@ -362,7 +527,7 @@ describe('StockScreenerService', () => {
     })
   })
 
-  // ── screener() — 排序参数 ────────────────────────────────────────────────
+  // ── screener() — 排序与新增筛选参数 ─────────────────────────────────────
 
   describe('screener() — 排序与筛选参数', () => {
     it('sortBy=PE_TTM 参数时 $queryRaw 仍被调用', async () => {
@@ -399,6 +564,117 @@ describe('StockScreenerService', () => {
         peTtmMax: 20,
         pbMin: 0.5,
         pbMax: 3.0,
+      } as StockScreenerQueryDto)
+
+      expect(prisma.$queryRaw).toHaveBeenCalledTimes(2)
+    })
+
+    it('V2: sortBy=PS_TTM → $queryRaw 被调用', async () => {
+      const prisma = buildPrismaMock()
+      mockScreenerQueryRaw(prisma, [], 0)
+      const service = createService(prisma)
+
+      await service.screener({
+        sortBy: ScreenerSortBy.PS_TTM,
+        sortOrder: 'asc',
+      } as StockScreenerQueryDto)
+
+      expect(prisma.$queryRaw).toHaveBeenCalledTimes(2)
+    })
+
+    it('V2: sortBy=CLOSE → $queryRaw 被调用', async () => {
+      const prisma = buildPrismaMock()
+      mockScreenerQueryRaw(prisma, [], 0)
+      const service = createService(prisma)
+
+      await service.screener({
+        sortBy: ScreenerSortBy.CLOSE,
+        sortOrder: 'desc',
+      } as StockScreenerQueryDto)
+
+      expect(prisma.$queryRaw).toHaveBeenCalledTimes(2)
+    })
+
+    it('V2: 多行业筛选 (industries 数组) → $queryRaw 被调用', async () => {
+      const prisma = buildPrismaMock()
+      mockScreenerQueryRaw(prisma, [], 0)
+      const service = createService(prisma)
+
+      await service.screener({
+        industries: ['银行', '保险'],
+      } as StockScreenerQueryDto)
+
+      expect(prisma.$queryRaw).toHaveBeenCalledTimes(2)
+    })
+
+    it('V2: 多地域筛选 (areas 数组) → $queryRaw 被调用', async () => {
+      const prisma = buildPrismaMock()
+      mockScreenerQueryRaw(prisma, [], 0)
+      const service = createService(prisma)
+
+      await service.screener({
+        areas: ['广东', '北京', '上海'],
+      } as StockScreenerQueryDto)
+
+      expect(prisma.$queryRaw).toHaveBeenCalledTimes(2)
+    })
+
+    it('V2: PS(TTM) 范围筛选 → $queryRaw 被调用', async () => {
+      const prisma = buildPrismaMock()
+      mockScreenerQueryRaw(prisma, [], 0)
+      const service = createService(prisma)
+
+      await service.screener({
+        minPsTtm: 1,
+        maxPsTtm: 10,
+      } as StockScreenerQueryDto)
+
+      expect(prisma.$queryRaw).toHaveBeenCalledTimes(2)
+    })
+
+    it('V2: bollSignal 布林带信号筛选 → $queryRaw 被调用', async () => {
+      const prisma = buildPrismaMock()
+      mockScreenerQueryRaw(prisma, [], 0)
+      const service = createService(prisma)
+
+      await service.screener({
+        bollSignal: 'above_upper',
+      } as StockScreenerQueryDto)
+
+      expect(prisma.$queryRaw).toHaveBeenCalledTimes(2)
+    })
+
+    it('V2: maTrend 均线趋势筛选 → $queryRaw 被调用', async () => {
+      const prisma = buildPrismaMock()
+      mockScreenerQueryRaw(prisma, [], 0)
+      const service = createService(prisma)
+
+      await service.screener({
+        maTrend: 'bullish',
+      } as StockScreenerQueryDto)
+
+      expect(prisma.$queryRaw).toHaveBeenCalledTimes(2)
+    })
+
+    it('V2: northboundOnly=true → $queryRaw 被调用', async () => {
+      const prisma = buildPrismaMock()
+      mockScreenerQueryRaw(prisma, [], 0)
+      const service = createService(prisma)
+
+      await service.screener({
+        northboundOnly: true,
+      } as StockScreenerQueryDto)
+
+      expect(prisma.$queryRaw).toHaveBeenCalledTimes(2)
+    })
+
+    it('V2: conceptCodes 概念筛选 → $queryRaw 被调用', async () => {
+      const prisma = buildPrismaMock()
+      mockScreenerQueryRaw(prisma, [], 0)
+      const service = createService(prisma)
+
+      await service.screener({
+        conceptCodes: ['TS001', 'TS002'],
       } as StockScreenerQueryDto)
 
       expect(prisma.$queryRaw).toHaveBeenCalledTimes(2)

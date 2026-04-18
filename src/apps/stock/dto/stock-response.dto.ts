@@ -351,6 +351,7 @@ export class StockScreenerItemDto {
 
   @ApiProperty({ required: false, nullable: true, description: '市盈率 TTM' }) peTtm: number | null
   @ApiProperty({ required: false, nullable: true, description: '市净率 PB' }) pb: number | null
+  @ApiProperty({ required: false, nullable: true, description: '市销率 TTM' }) psTtm: number | null
   @ApiProperty({ required: false, nullable: true, description: '股息率 TTM（%）' }) dvTtm: number | null
   @ApiProperty({ required: false, nullable: true, description: '总市值（万元）' }) totalMv: number | null
   @ApiProperty({ required: false, nullable: true, description: '流通市值（万元）' }) circMv: number | null
@@ -378,6 +379,14 @@ export class StockScreenerItemDto {
   @ApiProperty({ required: false, nullable: true, description: '最新财报期（如 2025-09-30）' }) latestFinDate:
     | string
     | null
+
+  @ApiProperty({
+    required: false,
+    nullable: true,
+    type: [String],
+    description: '所属概念板块名称列表',
+  })
+  concepts: string[] | null
 }
 
 export class StockScreenerDataDto {
@@ -444,6 +453,16 @@ export class ScreenerStrategyListDataDto {
 
 export class ScreenerStrategyDeleteDataDto {
   @ApiProperty() message: string
+}
+
+export class ScreenerConceptItemDto {
+  @ApiProperty({ description: '板块代码' }) tsCode: string
+  @ApiProperty({ description: '板块名称' }) name: string
+  @ApiProperty({ description: '成分股数量' }) count: number
+}
+
+export class ScreenerConceptListDataDto {
+  @ApiProperty({ type: [ScreenerConceptItemDto] }) concepts: ScreenerConceptItemDto[]
 }
 
 // ─── 分析 Tab — 技术指标 ──────────────────────────────────────────────────────

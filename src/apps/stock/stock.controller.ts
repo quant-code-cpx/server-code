@@ -42,6 +42,7 @@ import {
   ScreenerStrategyDataDto,
   ScreenerStrategyDeleteDataDto,
   ScreenerStrategyListDataDto,
+  ScreenerConceptListDataDto,
   StockSearchItemDto,
   StockShareCapitalDataDto,
   StockShareholdersDataDto,
@@ -231,6 +232,13 @@ export class StockController {
   @ApiSuccessResponse(ScreenerPresetDataDto)
   screenerPresets() {
     return this.stockService.getScreenerPresets()
+  }
+
+  @Post('screener/concepts')
+  @ApiOperation({ summary: '选股器 - 可用概念板块列表（供概念筛选器下拉选择）' })
+  @ApiSuccessResponse(ScreenerConceptListDataDto)
+  screenerConcepts() {
+    return this.stockService.getScreenerConcepts()
   }
 
   @Post('screener/strategies/list')

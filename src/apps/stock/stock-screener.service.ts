@@ -13,10 +13,12 @@ const SCREENER_SORT_MAP: Record<ScreenerSortBy, string> = {
   [ScreenerSortBy.CIRC_MV]: 'db.circ_mv',
   [ScreenerSortBy.PE_TTM]: 'db.pe_ttm',
   [ScreenerSortBy.PB]: 'db.pb',
+  [ScreenerSortBy.PS_TTM]: 'db.ps_ttm',
   [ScreenerSortBy.DV_TTM]: 'db.dv_ttm',
   [ScreenerSortBy.PCT_CHG]: 'd.pct_chg',
   [ScreenerSortBy.TURNOVER_RATE]: 'db.turnover_rate',
   [ScreenerSortBy.AMOUNT]: 'd.amount',
+  [ScreenerSortBy.CLOSE]: 'd.close',
   [ScreenerSortBy.ROE]: 'fi.roe',
   [ScreenerSortBy.REVENUE_YOY]: 'fi.revenue_yoy',
   [ScreenerSortBy.NETPROFIT_YOY]: 'fi.netprofit_yoy',
@@ -109,6 +111,54 @@ const BUILT_IN_PRESETS: ScreenerPreset[] = [
       sortOrder: 'desc',
     },
   },
+  {
+    id: 'northbound',
+    name: '北向资金重仓',
+    description: '北向资金持仓 + PE<30 + 市值>50亿',
+    filters: {
+      northboundOnly: true,
+      maxPeTtm: 30,
+      minTotalMv: 500000,
+      sortBy: ScreenerSortBy.TOTAL_MV,
+      sortOrder: 'desc',
+    },
+  },
+  {
+    id: 'tech_breakout',
+    name: '技术突破',
+    description: 'MACD金叉 + 布林带突破上轨 + 换手率>2%',
+    filters: {
+      macdSignal: 'golden_cross',
+      bollSignal: 'above_upper',
+      minTurnoverRate: 2,
+      sortBy: ScreenerSortBy.PCT_CHG,
+      sortOrder: 'desc',
+    },
+  },
+  {
+    id: 'oversold_rebound',
+    name: '超跌反弹',
+    description: 'RSI<30超卖 + KDJ金叉 + PE>0',
+    filters: {
+      rsiSignal: 'oversold',
+      kdjSignal: 'golden_cross',
+      minPeTtm: 0,
+      sortBy: ScreenerSortBy.PCT_CHG,
+      sortOrder: 'desc',
+    },
+  },
+  {
+    id: 'low_ps_growth',
+    name: '低PS高成长',
+    description: 'PS<3 + 营收增速>30% + 净利增速>20%',
+    filters: {
+      maxPsTtm: 3,
+      minRevenueYoy: 30,
+      minNetprofitYoy: 20,
+      sortBy: ScreenerSortBy.REVENUE_YOY,
+      sortOrder: 'desc',
+    },
+  },
 ]
 
 const MAX_SCREENER_STRATEGIES = 20
@@ -136,8 +186,17 @@ export class StockScreenerService {
 
     if (query.exchange) stockConditions.push(Prisma.sql`sb.exchange = ${query.exchange}::"StockExchange"`)
     if (query.market) stockConditions.push(Prisma.sql`sb.market = ${query.market}`)
-    if (query.industry) stockConditions.push(Prisma.sql`sb.industry = ${query.industry}`)
-    if (query.area) stockConditions.push(Prisma.sql`sb.area = ${query.area}`)
+    // 多行业/多地域优先于单选
+    if (query.industries?.length) {
+      stockConditions.push(Prisma.sql`sb.industry = ANY(${query.industries})`)
+    } else if (query.industry) {
+      stockConditions.push(Prisma.sql`sb.industry = ${query.industry}`)
+    }
+    if (query.areas?.length) {
+      stockConditions.push(Prisma.sql`sb.area = ANY(${query.areas})`)
+    } else if (query.area) {
+      stockConditions.push(Prisma.sql`sb.area = ${query.area}`)
+    }
     if (query.isHs) stockConditions.push(Prisma.sql`sb.is_hs = ${query.isHs}`)
 
     // 估值
@@ -150,6 +209,8 @@ export class StockScreenerService {
     if (query.maxTotalMv !== undefined) valuationConditions.push(Prisma.sql`db.total_mv <= ${query.maxTotalMv}`)
     if (query.minCircMv !== undefined) valuationConditions.push(Prisma.sql`db.circ_mv >= ${query.minCircMv}`)
     if (query.maxCircMv !== undefined) valuationConditions.push(Prisma.sql`db.circ_mv <= ${query.maxCircMv}`)
+    if (query.minPsTtm !== undefined) valuationConditions.push(Prisma.sql`db.ps_ttm >= ${query.minPsTtm}`)
+    if (query.maxPsTtm !== undefined) valuationConditions.push(Prisma.sql`db.ps_ttm <= ${query.maxPsTtm}`)
     if (query.minTurnoverRate !== undefined)
       valuationConditions.push(Prisma.sql`db.turnover_rate >= ${query.minTurnoverRate}`)
     if (query.maxTurnoverRate !== undefined)
@@ -235,6 +296,27 @@ export class StockScreenerService {
     } else if (query.rsiSignal === 'oversold') {
       technicalConditions.push(Prisma.sql`stf.rsi_6 < 20`)
     }
+    // 布林带信号
+    if (query.bollSignal === 'above_upper') {
+      technicalConditions.push(Prisma.sql`d.close > stf.boll_upper`)
+    } else if (query.bollSignal === 'below_lower') {
+      technicalConditions.push(Prisma.sql`d.close < stf.boll_lower`)
+    } else if (query.bollSignal === 'squeeze') {
+      technicalConditions.push(Prisma.sql`(stf.boll_upper - stf.boll_lower) < stf.boll_mid * 0.05`)
+    }
+    // 均线趋势（使用 boll_mid 近似 MA20）
+    if (query.maTrend === 'bullish') {
+      technicalConditions.push(Prisma.sql`d.close > stf.boll_mid`)
+      technicalConditions.push(Prisma.sql`stf.macd_dif > 0`)
+    } else if (query.maTrend === 'bearish') {
+      technicalConditions.push(Prisma.sql`d.close < stf.boll_mid`)
+      technicalConditions.push(Prisma.sql`stf.macd_dif < 0`)
+    }
+
+    // 概念板块
+    const needsConceptJoin = query.conceptCodes && query.conceptCodes.length > 0
+    // 北向资金
+    const needsNorthboundJoin = query.northboundOnly === true
 
     const whereClause = Prisma.sql`WHERE ${Prisma.join(
       [
@@ -252,7 +334,7 @@ export class StockScreenerService {
 
     const valuationJoin = Prisma.sql`
       LEFT JOIN LATERAL (
-        SELECT pe_ttm, pb, dv_ttm, total_mv, circ_mv, turnover_rate
+        SELECT pe_ttm, pb, ps_ttm, dv_ttm, total_mv, circ_mv, turnover_rate
         FROM stock_daily_valuation_metrics
         WHERE ts_code = sb.ts_code
         ORDER BY trade_date DESC LIMIT 1
@@ -333,11 +415,30 @@ export class StockScreenerService {
       ) stf ON true`
     const technicalJoin = technicalConditions.length > 0 ? technicalFactorJoin : Prisma.empty
 
+    // 概念板块 JOIN（INNER JOIN 强制匹配）
+    const conceptJoinSql = needsConceptJoin
+      ? Prisma.sql`INNER JOIN ths_index_members tm ON tm.con_code = sb.ts_code AND tm.is_new = 'Y'
+          AND tm.ts_code = ANY(${query.conceptCodes!})`
+      : Prisma.empty
+
+    // 北向资金 JOIN（INNER JOIN 强制匹配）
+    const northboundJoinSql = needsNorthboundJoin
+      ? Prisma.sql`INNER JOIN LATERAL (
+          SELECT vol, ratio
+          FROM hk_hold_detail
+          WHERE ts_code = sb.ts_code
+          ORDER BY trade_date DESC LIMIT 1
+        ) hk ON hk.vol > 0`
+      : Prisma.empty
+
     const countValuationJoin = valuationConditions.length > 0 ? valuationJoin : Prisma.empty
     const countMarketJoin = marketConditions.length > 0 ? marketJoin : Prisma.empty
     const countFinancialJoin = financialConditions.length > 0 ? financialJoin : Prisma.empty
     const countMoneyflowJoin = moneyflowConditions.length > 0 ? moneyflowAggregateJoin : Prisma.empty
     const countTechnicalJoin = technicalConditions.length > 0 ? technicalFactorJoin : Prisma.empty
+
+    // 概念板块 JOIN + DISTINCT 需要用于 count 查询
+    const distinctPrefix = needsConceptJoin ? Prisma.sql`DISTINCT` : Prisma.empty
 
     interface ScreenerRow {
       tsCode: string
@@ -351,6 +452,7 @@ export class StockScreenerService {
       turnoverRate: number | null
       peTtm: number | null
       pb: number | null
+      psTtm: number | null
       dvTtm: number | null
       totalMv: number | null
       circMv: number | null
@@ -370,17 +472,19 @@ export class StockScreenerService {
 
     const [countResult, items] = await Promise.all([
       this.prisma.$queryRaw<[{ count: bigint }]>`
-        SELECT COUNT(*)::bigint AS count
+        SELECT COUNT(${distinctPrefix} sb.ts_code)::bigint AS count
         FROM stock_basic_profiles sb
         ${countValuationJoin}
         ${countMarketJoin}
         ${countFinancialJoin}
         ${countMoneyflowJoin}
         ${countTechnicalJoin}
+        ${conceptJoinSql}
+        ${needsNorthboundJoin ? northboundJoinSql : Prisma.empty}
         ${whereClause}
       `,
       this.prisma.$queryRaw<ScreenerRow[]>`
-        SELECT
+        SELECT ${distinctPrefix}
           sb.ts_code            AS "tsCode",
           sb.name,
           sb.industry,
@@ -392,6 +496,7 @@ export class StockScreenerService {
           db.turnover_rate      AS "turnoverRate",
           db.pe_ttm             AS "peTtm",
           db.pb,
+          db.ps_ttm             AS "psTtm",
           db.dv_ttm             AS "dvTtm",
           db.total_mv           AS "totalMv",
           db.circ_mv            AS "circMv",
@@ -413,6 +518,8 @@ export class StockScreenerService {
         ${financialJoin}
         ${moneyflowJoin}
         ${technicalJoin}
+        ${conceptJoinSql}
+        ${northboundJoinSql}
         ${whereClause}
         ORDER BY ${sortCol} ${sortDir}
         LIMIT ${pageSize} OFFSET ${offset}
@@ -420,6 +527,36 @@ export class StockScreenerService {
     ])
 
     const formatDate = (d: Date | null) => (d ? dayjs(d).format('YYYY-MM-DD') : null)
+
+    // 批量查询概念板块名称（仅对返回的结果集查询，避免 N+1）
+    const tsCodes = items.map((r) => r.tsCode)
+    let conceptMap: Map<string, string[]> = new Map()
+    if (tsCodes.length > 0) {
+      interface ConceptRow {
+        conCode: string
+        name: string
+      }
+      try {
+        const conceptRows = await this.prisma.$queryRaw<ConceptRow[]>`
+          SELECT tm.con_code AS "conCode", ti.name
+          FROM ths_index_members tm
+          JOIN ths_index_boards ti ON ti.ts_code = tm.ts_code
+          WHERE tm.con_code = ANY(${tsCodes})
+            AND tm.is_new = 'Y'
+            AND ti.type = 'N'
+          ORDER BY tm.con_code, ti.name
+        `
+        if (Array.isArray(conceptRows)) {
+          for (const row of conceptRows) {
+            const existing = conceptMap.get(row.conCode) ?? []
+            existing.push(row.name)
+            conceptMap.set(row.conCode, existing)
+          }
+        }
+      } catch {
+        // 概念表可能不存在或为空，降级为空映射
+      }
+    }
 
     return {
       page,
@@ -431,6 +568,7 @@ export class StockScreenerService {
         latestFinDate: formatDate(r.latestFinDate),
         peTtm: r.peTtm !== null ? Number(r.peTtm) : null,
         pb: r.pb !== null ? Number(r.pb) : null,
+        psTtm: r.psTtm !== null ? Number(r.psTtm) : null,
         dvTtm: r.dvTtm !== null ? Number(r.dvTtm) : null,
         totalMv: r.totalMv !== null ? Number(r.totalMv) : null,
         circMv: r.circMv !== null ? Number(r.circMv) : null,
@@ -449,6 +587,7 @@ export class StockScreenerService {
         ocfToNetprofit: r.ocfToNetprofit !== null ? Number(r.ocfToNetprofit) : null,
         mainNetInflow5d: r.mainNetInflow5d !== null ? Number(r.mainNetInflow5d) : null,
         mainNetInflow20d: r.mainNetInflow20d !== null ? Number(r.mainNetInflow20d) : null,
+        concepts: conceptMap.get(r.tsCode) ?? null,
       })),
     }
   }
@@ -497,6 +636,39 @@ export class StockScreenerService {
         `
 
         return { areas: rows.map((r) => ({ name: r.name, count: Number(r.count) })) }
+      },
+    })
+  }
+
+  async getScreenerConcepts() {
+    return this.cacheService.rememberJson({
+      namespace: CACHE_NAMESPACE.STOCK_METADATA,
+      key: CACHE_KEY_PREFIX.STOCK_SCREENER_CONCEPTS,
+      ttlSeconds: CACHE_TTL_SECONDS.STOCK_METADATA,
+      loader: async () => {
+        interface ConceptRow {
+          tsCode: string
+          name: string
+          count: bigint
+        }
+
+        const rows = await this.prisma.$queryRaw<ConceptRow[]>`
+          SELECT ti.ts_code AS "tsCode", ti.name, COUNT(tm.con_code)::bigint AS count
+          FROM ths_index_boards ti
+          JOIN ths_index_members tm ON tm.ts_code = ti.ts_code AND tm.is_new = 'Y'
+          WHERE ti.type = 'N'
+          GROUP BY ti.ts_code, ti.name
+          HAVING COUNT(tm.con_code) > 0
+          ORDER BY COUNT(tm.con_code) DESC
+        `
+
+        return {
+          concepts: rows.map((r) => ({
+            tsCode: r.tsCode,
+            name: r.name,
+            count: Number(r.count),
+          })),
+        }
       },
     })
   }

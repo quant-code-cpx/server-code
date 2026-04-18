@@ -1,16 +1,29 @@
 import { ApiPropertyOptional } from '@nestjs/swagger'
-import { Type } from 'class-transformer'
-import { IsEnum, IsIn, IsInt, IsNumber, IsOptional, IsString, Max, Min } from 'class-validator'
+import { Transform, Type } from 'class-transformer'
+import {
+  IsArray,
+  IsBoolean,
+  IsEnum,
+  IsIn,
+  IsInt,
+  IsNumber,
+  IsOptional,
+  IsString,
+  Max,
+  Min,
+} from 'class-validator'
 
 export enum ScreenerSortBy {
   TOTAL_MV = 'totalMv',
   CIRC_MV = 'circMv',
   PE_TTM = 'peTtm',
   PB = 'pb',
+  PS_TTM = 'psTtm',
   DV_TTM = 'dvTtm',
   PCT_CHG = 'pctChg',
   TURNOVER_RATE = 'turnoverRate',
   AMOUNT = 'amount',
+  CLOSE = 'close',
   ROE = 'roe',
   REVENUE_YOY = 'revenueYoy',
   NETPROFIT_YOY = 'netprofitYoy',
@@ -51,6 +64,27 @@ export class ScreenerFiltersDto {
   @IsString()
   @IsIn(['N', 'H', 'S'])
   isHs?: string
+
+  @ApiPropertyOptional({ description: '行业（多选，数组形式，从 /stock/industries 返回的列表中选择）', type: [String] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  industries?: string[]
+
+  @ApiPropertyOptional({ description: '地域（多选，数组形式，从 /stock/areas 返回的列表中选择）', type: [String] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  areas?: string[]
+
+  @ApiPropertyOptional({
+    description: '概念板块代码（多选，从 /stock/screener/concepts 返回的列表中选择）',
+    type: [String],
+  })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  conceptCodes?: string[]
 
   // ─── 估值维度 ───
   @ApiPropertyOptional({ description: '最小市盈率 TTM' })
@@ -111,6 +145,18 @@ export class ScreenerFiltersDto {
   @IsNumber()
   @Min(0)
   maxCircMv?: number
+
+  @ApiPropertyOptional({ description: '最小市销率 TTM' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  minPsTtm?: number
+
+  @ApiPropertyOptional({ description: '最大市销率 TTM' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  maxPsTtm?: number
 
   // ─── 行情维度 ───
   @ApiPropertyOptional({ description: '最小涨跌幅（%）' })
@@ -294,6 +340,29 @@ export class ScreenerFiltersDto {
   @Min(0)
   @Max(100)
   maxRsi6?: number
+
+  @ApiPropertyOptional({
+    description: '布林带信号筛选',
+    enum: ['above_upper', 'below_lower', 'squeeze'],
+  })
+  @IsOptional()
+  @IsIn(['above_upper', 'below_lower', 'squeeze'])
+  bollSignal?: string
+
+  @ApiPropertyOptional({
+    description: '均线趋势筛选（bullish=多头排列, bearish=空头排列）',
+    enum: ['bullish', 'bearish'],
+  })
+  @IsOptional()
+  @IsIn(['bullish', 'bearish'])
+  maTrend?: string
+
+  // ─── 北向资金 ───
+  @ApiPropertyOptional({ description: '仅显示北向资金持仓股票' })
+  @IsOptional()
+  @Transform(({ value }) => value === true || value === 'true')
+  @IsBoolean()
+  northboundOnly?: boolean
 }
 
 export class StockScreenerQueryDto extends ScreenerFiltersDto {

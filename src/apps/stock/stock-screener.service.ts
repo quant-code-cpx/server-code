@@ -435,8 +435,16 @@ export class StockScreenerService {
         ) hk ON hk.vol > 0`
       : Prisma.empty
 
+    // bollSignal(above_upper/below_lower) 和 maTrend(bullish/bearish) 的条件引用了 d.close，
+    // 这些条件被放入 technicalConditions 而非 marketConditions，需确保 count 查询也有 marketJoin
+    const technicalNeedsMarketAlias =
+      query.bollSignal === 'above_upper' ||
+      query.bollSignal === 'below_lower' ||
+      query.maTrend === 'bullish' ||
+      query.maTrend === 'bearish'
+
     const countValuationJoin = valuationConditions.length > 0 ? valuationJoin : Prisma.empty
-    const countMarketJoin = marketConditions.length > 0 ? marketJoin : Prisma.empty
+    const countMarketJoin = marketConditions.length > 0 || technicalNeedsMarketAlias ? marketJoin : Prisma.empty
     const countFinancialJoin = financialConditions.length > 0 ? financialJoin : Prisma.empty
     const countMoneyflowJoin = moneyflowConditions.length > 0 ? moneyflowAggregateJoin : Prisma.empty
     const countTechnicalJoin = technicalConditions.length > 0 ? technicalFactorJoin : Prisma.empty

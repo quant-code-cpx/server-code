@@ -4,6 +4,7 @@ import dayjs from 'dayjs'
 import timezone from 'dayjs/plugin/timezone'
 import utc from 'dayjs/plugin/utc'
 import { CACHE_NAMESPACE } from 'src/constant/cache.constant'
+import { CORE_INDEX_CODES, CORE_INDEX_NAME_MAP } from 'src/constant/tushare.constant'
 import { CacheService } from 'src/shared/cache.service'
 import { PrismaService } from 'src/shared/prisma.service'
 import { MoneyFlowQueryDto } from './dto/money-flow-query.dto'
@@ -21,6 +22,7 @@ import { SectorFlowTrendQueryDto } from './dto/sector-flow-trend-query.dto'
 import { HsgtTrendQueryDto } from './dto/hsgt-trend-query.dto'
 import { MainFlowRankingQueryDto } from './dto/main-flow-ranking-query.dto'
 import { StockFlowDetailQueryDto } from './dto/stock-flow-detail-query.dto'
+import { IndexQuoteWithSparklineQueryDto } from './dto/index-quote-with-sparkline-query.dto'
 
 dayjs.extend(utc)
 dayjs.extend(timezone)
@@ -49,15 +51,91 @@ export class MarketService {
   // ─── 大盘资金流向 ──────────────────────────────────────────────────────────
 
   async getMarketMoneyFlow(query: MoneyFlowQueryDto) {
-    const tradeDate = query.trade_date ? this.parseDate(query.trade_date) : await this.resolveLatestMarketTradeDate()
+    const tradeDate = query.trade_date ? this.parseDate(query.trade_date) : await this.resolveLatestStockFlowTradeDate()
     if (!tradeDate) {
       return []
     }
 
-    return this.prisma.moneyflowMktDc.findMany({
-      where: { tradeDate },
-      orderBy: { tradeDate: 'desc' },
-    })
+    // 单一数据源：THS 个股资金流向（moneyflow）全市场汇总 + 指数收盘（indexDaily）
+    const [agg, shRow, szRow] = await Promise.all([
+      this.prisma.moneyflow.aggregate({
+        where: { tradeDate },
+        _sum: {
+          buyElgAmount: true,
+          sellElgAmount: true,
+          buyLgAmount: true,
+          sellLgAmount: true,
+          buyMdAmount: true,
+          sellMdAmount: true,
+          buySmAmount: true,
+          sellSmAmount: true,
+          netMfAmount: true,
+        },
+      }),
+      this.prisma.indexDaily.findFirst({
+        where: { tsCode: '000001.SH', tradeDate },
+        select: { close: true, pctChg: true },
+      }),
+      this.prisma.indexDaily.findFirst({
+        where: { tsCode: '399001.SZ', tradeDate },
+        select: { close: true, pctChg: true },
+      }),
+    ])
+
+    // THS 字段单位：万元 → 元
+    const toYuan = (v: number | null | undefined) => (v != null ? v * 10000 : null)
+    const s = agg._sum
+    const elgBuy = toYuan(s.buyElgAmount)
+    const elgSell = toYuan(s.sellElgAmount)
+    const lgBuy = toYuan(s.buyLgAmount)
+    const lgSell = toYuan(s.sellLgAmount)
+    const mdBuy = toYuan(s.buyMdAmount)
+    const mdSell = toYuan(s.sellMdAmount)
+    const smBuy = toYuan(s.buySmAmount)
+    const smSell = toYuan(s.sellSmAmount)
+
+    // 全市场单边总成交 = 四层买入之和（各层 buy ≈ sell，与 daily.amount 口径一致）
+    const totalAmount =
+      elgBuy != null && lgBuy != null && mdBuy != null && smBuy != null ? elgBuy + lgBuy + mdBuy + smBuy : null
+
+    // 占比工具（分母为总成交）
+    const pct = (v: number | null) =>
+      v != null && totalAmount != null && totalAmount !== 0 ? (v / totalAmount) * 100 : null
+
+    // 构造单层数据
+    const makeTier = (buy: number | null, sell: number | null) => {
+      const net = buy != null && sell != null ? buy - sell : null
+      return {
+        buyAmount: buy,
+        sellAmount: sell,
+        netAmount: net,
+        buyRate: pct(buy),
+        sellRate: pct(sell),
+        netRate: pct(net),
+      }
+    }
+
+    // 主力 = 超大 + 大单，散户 = 中 + 小单
+    const mainBuy = elgBuy != null && lgBuy != null ? elgBuy + lgBuy : null
+    const mainSell = elgSell != null && lgSell != null ? elgSell + lgSell : null
+    const retailBuy = mdBuy != null && smBuy != null ? mdBuy + smBuy : null
+    const retailSell = mdSell != null && smSell != null ? mdSell + smSell : null
+
+    return {
+      tradeDate,
+      closeSh: shRow?.close ?? null,
+      pctChangeSh: shRow?.pctChg ?? null,
+      closeSz: szRow?.close ?? null,
+      pctChangeSz: szRow?.pctChg ?? null,
+      totalAmount,
+      netMfAmount: toYuan(s.netMfAmount),
+      main: makeTier(mainBuy, mainSell),
+      retail: makeTier(retailBuy, retailSell),
+      elg: makeTier(elgBuy, elgSell),
+      lg: makeTier(lgBuy, lgSell),
+      md: makeTier(mdBuy, mdSell),
+      sm: makeTier(smBuy, smSell),
+    }
   }
 
   // ─── 行业板块资金流向 ──────────────────────────────────────────────────────
@@ -208,16 +286,6 @@ export class MarketService {
 
   // ─── 核心指数走势 ──────────────────────────────────────────────────────────
 
-  /** 指数代码 → 中文名称映射 */
-  private static readonly INDEX_NAME_MAP: Record<string, string> = {
-    '000001.SH': '上证指数',
-    '399001.SZ': '深证成指',
-    '399006.SZ': '创业板指',
-    '000300.SH': '沪深300',
-    '000905.SH': '中证500',
-    '000852.SH': '中证1000',
-  }
-
   async getIndexTrend(query: IndexTrendQueryDto) {
     const tsCode = query.ts_code ?? '000001.SH'
     const period = query.period ?? '3m'
@@ -225,7 +293,7 @@ export class MarketService {
 
     return this.rememberMarketCache(cacheKey, MARKET_STANDARD_CACHE_TTL_SECONDS, async () => {
       const latestDate = await this.resolveLatestIndexTradeDate()
-      if (!latestDate) return { tsCode, name: MarketService.INDEX_NAME_MAP[tsCode] ?? tsCode, period, data: [] }
+      if (!latestDate) return { tsCode, name: CORE_INDEX_NAME_MAP[tsCode] ?? tsCode, period, data: [] }
 
       const startDate = this.periodToStartDate(latestDate, period as IndexTrendPeriod)
 
@@ -237,7 +305,7 @@ export class MarketService {
 
       return {
         tsCode,
-        name: MarketService.INDEX_NAME_MAP[tsCode] ?? tsCode,
+        name: CORE_INDEX_NAME_MAP[tsCode] ?? tsCode,
         period,
         data: rows.map((r) => ({
           tradeDate: dayjs(r.tradeDate).format('YYYY-MM-DD'),
@@ -247,6 +315,65 @@ export class MarketService {
           amount: r.amount,
         })),
       }
+    })
+  }
+
+  // ─── 批量指数行情 + 迷你走势 ────────────────────────────────────────────────
+
+  async getIndexQuoteWithSparkline(query: IndexQuoteWithSparklineQueryDto) {
+    const period = query.sparkline_period ?? '1m'
+    const tradeDate = query.trade_date ? this.parseDate(query.trade_date) : await this.resolveLatestIndexTradeDate()
+    if (!tradeDate) return { tradeDate: null, sparklinePeriod: period, indices: [] }
+
+    const cacheKey = `market:index-quote-sparkline:${dayjs(tradeDate).format('YYYYMMDD')}:${period}`
+
+    return this.rememberMarketCache(cacheKey, MARKET_STANDARD_CACHE_TTL_SECONDS, async () => {
+      const startDate = this.periodToStartDate(tradeDate, period as IndexTrendPeriod)
+
+      // 一次查询取 sparkline 窗口内所有核心指数数据（当日行情也包含在内）
+      const rows = await this.prisma.indexDaily.findMany({
+        where: {
+          tsCode: { in: [...CORE_INDEX_CODES] },
+          tradeDate: { gte: startDate },
+        },
+        orderBy: [{ tsCode: 'asc' }, { tradeDate: 'asc' }],
+        select: {
+          tsCode: true,
+          tradeDate: true,
+          close: true,
+          preClose: true,
+          change: true,
+          pctChg: true,
+          vol: true,
+          amount: true,
+        },
+      })
+
+      // 按指数分组
+      const grouped = new Map<string, typeof rows>()
+      for (const r of rows) {
+        if (!grouped.has(r.tsCode)) grouped.set(r.tsCode, [])
+        grouped.get(r.tsCode)!.push(r)
+      }
+
+      const indices = CORE_INDEX_CODES.map((tsCode) => {
+        const series = grouped.get(tsCode) ?? []
+        const latest = series.filter((r) => r.tradeDate <= tradeDate).at(-1)
+        return {
+          tsCode,
+          name: CORE_INDEX_NAME_MAP[tsCode] ?? tsCode,
+          tradeDate: latest?.tradeDate ?? tradeDate,
+          close: latest?.close ?? null,
+          preClose: latest?.preClose ?? null,
+          change: latest?.change ?? null,
+          pctChg: latest?.pctChg ?? null,
+          vol: latest?.vol ?? null,
+          amount: latest?.amount ?? null,
+          sparkline: series.map((r) => r.close),
+        }
+      })
+
+      return { tradeDate, sparklinePeriod: period, indices }
     })
   }
 
@@ -458,55 +585,60 @@ export class MarketService {
     const tradeDateStr = dayjs(tradeDate).format('YYYYMMDD')
     const cacheKey = `market:sentiment-trend:${tradeDateStr}:${days}`
 
-    return this.rememberMarketCache(cacheKey, MARKET_STANDARD_CACHE_TTL_SECONDS, async () => {
-      const sentimentLowerBound = new Date(tradeDate)
-      sentimentLowerBound.setDate(sentimentLowerBound.getDate() - days * 3)
-      const dateRows = await this.prisma.$queryRaw<{ trade_date: Date }[]>`
-        SELECT DISTINCT trade_date
-        FROM stock_daily_prices
-        WHERE trade_date <= ${tradeDate}
-          AND trade_date >= ${sentimentLowerBound}
-        ORDER BY trade_date DESC
-        LIMIT ${days}
-      `
-      if (dateRows.length === 0) return { data: [] }
+    return this.rememberMarketCache(
+      cacheKey,
+      MARKET_STANDARD_CACHE_TTL_SECONDS,
+      async () => {
+        const sentimentLowerBound = new Date(tradeDate)
+        sentimentLowerBound.setDate(sentimentLowerBound.getDate() - days * 3)
+        const dateRows = await this.prisma.$queryRaw<{ trade_date: Date }[]>`
+          SELECT DISTINCT trade_date
+          FROM stock_daily_prices
+          WHERE trade_date <= ${tradeDate}
+            AND trade_date >= ${sentimentLowerBound}
+          ORDER BY trade_date DESC
+          LIMIT ${days}
+        `
+        if (dateRows.length === 0) return { data: [] }
 
-      const tradeDates = dateRows.map((r) => r.trade_date)
+        const tradeDates = dateRows.map((r) => r.trade_date)
 
-      const sentimentRows = await this.prisma.$queryRaw<
-        {
-          trade_date: Date
-          rise: bigint
-          flat: bigint
-          fall: bigint
-          limit_up: bigint
-          limit_down: bigint
-        }[]
-      >`
-        SELECT
-          trade_date,
-          COUNT(*) FILTER (WHERE pct_chg > 0.001)                        AS rise,
-          COUNT(*) FILTER (WHERE pct_chg >= -0.001 AND pct_chg <= 0.001) AS flat,
-          COUNT(*) FILTER (WHERE pct_chg < -0.001)                       AS fall,
-          COUNT(*) FILTER (WHERE pct_chg >= 9.5)                         AS limit_up,
-          COUNT(*) FILTER (WHERE pct_chg <= -9.5)                        AS limit_down
-        FROM stock_daily_prices
-        WHERE trade_date = ANY(${tradeDates})
-        GROUP BY trade_date
-        ORDER BY trade_date ASC
-      `
+        const sentimentRows = await this.prisma.$queryRaw<
+          {
+            trade_date: Date
+            rise: bigint
+            flat: bigint
+            fall: bigint
+            limit_up: bigint
+            limit_down: bigint
+          }[]
+        >`
+          SELECT
+            trade_date,
+            COUNT(*) FILTER (WHERE pct_chg > 0.001)                        AS rise,
+            COUNT(*) FILTER (WHERE pct_chg >= -0.001 AND pct_chg <= 0.001) AS flat,
+            COUNT(*) FILTER (WHERE pct_chg < -0.001)                       AS fall,
+            COUNT(*) FILTER (WHERE pct_chg >= 9.5)                         AS limit_up,
+            COUNT(*) FILTER (WHERE pct_chg <= -9.5)                        AS limit_down
+          FROM stock_daily_prices
+          WHERE trade_date = ANY(${tradeDates})
+          GROUP BY trade_date
+          ORDER BY trade_date ASC
+        `
 
-      return {
-        data: sentimentRows.map((r) => ({
-          tradeDate: dayjs(r.trade_date).format('YYYY-MM-DD'),
-          rise: Number(r.rise),
-          flat: Number(r.flat),
-          fall: Number(r.fall),
-          limitUp: Number(r.limit_up),
-          limitDown: Number(r.limit_down),
-        })),
-      }
-    })
+        return {
+          data: sentimentRows.map((r) => ({
+            tradeDate: dayjs(r.trade_date).format('YYYY-MM-DD'),
+            rise: Number(r.rise),
+            flat: Number(r.flat),
+            fall: Number(r.fall),
+            limitUp: Number(r.limit_up),
+            limitDown: Number(r.limit_down),
+          })),
+        }
+      },
+      (result) => result.data.length === 0,
+    )
   }
 
   // ─── 估值趋势 ─────────────────────────────────────────────────────────────
@@ -913,7 +1045,7 @@ export class MarketService {
   }
 
   private async resolveLatestMarketTradeDate() {
-    const record = await this.prisma.moneyflowMktDc.findFirst({
+    const record = await this.prisma.moneyflow.findFirst({
       orderBy: { tradeDate: 'desc' },
       select: { tradeDate: true },
     })
@@ -972,12 +1104,18 @@ export class MarketService {
     return dayjs.tz(value, 'YYYYMMDD', 'Asia/Shanghai').toDate()
   }
 
-  private rememberMarketCache<T>(key: string, ttlSeconds: number, loader: () => Promise<T>) {
+  private rememberMarketCache<T>(
+    key: string,
+    ttlSeconds: number,
+    loader: () => Promise<T>,
+    skipCacheIf?: (v: T) => boolean,
+  ) {
     return this.cacheService.rememberJson({
       namespace: CACHE_NAMESPACE.MARKET,
       key,
       ttlSeconds,
       loader,
+      skipCacheIf,
     })
   }
 

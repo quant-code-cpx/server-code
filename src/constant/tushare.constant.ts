@@ -890,6 +890,32 @@ export const CORE_INDEX_CODES = [
   '899050.BJ', // 北证50
 ] as const
 
+/** 核心指数代码 → 中文名称映射（与 CORE_INDEX_CODES 一一对应） */
+export const CORE_INDEX_NAME_MAP: Record<string, string> = {
+  // 沪深宽基
+  '000300.SH': '沪深300',
+  '000016.SH': '上证50',
+  '000903.SH': '中证100',
+  '000905.SH': '中证500',
+  '000852.SH': '中证1000',
+  '932000.CSI': '中证2000',
+  '000985.SH': '中证全指',
+  // 上交所
+  '000001.SH': '上证指数',
+  '000010.SH': '上证180',
+  '000688.SH': '科创50',
+  '000698.SH': '科创100',
+  // 深交所
+  '399001.SZ': '深证成指',
+  '399107.SZ': '深证综指',
+  '399330.SZ': '深证100',
+  '399006.SZ': '创业板指',
+  '399673.SZ': '创业板50',
+  '399005.SZ': '中小100',
+  // 北交所
+  '899050.BJ': '北证50',
+}
+
 export const TUSHARE_STK_LIMIT_FIELDS = ['ts_code', 'trade_date', 'up_limit', 'down_limit'] as const
 
 export const TUSHARE_SUSPEND_D_FIELDS = ['ts_code', 'trade_date', 'suspend_timing', 'suspend_type'] as const
@@ -1304,7 +1330,6 @@ export const TUSHARE_OPT_DAILY_FIELDS = [
   'oi',
 ] as const
 
-
 // ─── Stock technical factors（股票技术因子）字段 ─────────────────────────────
 
 export const TUSHARE_STK_FACTOR_FIELDS = [
@@ -1394,11 +1419,7 @@ export const TUSHARE_FUND_PORTFOLIO_FIELDS = [
 ] as const
 
 /** 基金份额（fund_share）字段 */
-export const TUSHARE_FUND_SHARE_FIELDS = [
-  'ts_code',
-  'trade_date',
-  'fd_share',
-] as const
+export const TUSHARE_FUND_SHARE_FIELDS = ['ts_code', 'trade_date', 'fd_share'] as const
 
 // ─── Phase 3: 筹码分布字段 ──────────────────────────────────────────────────
 
@@ -1416,12 +1437,7 @@ export const TUSHARE_CYQ_PERF_FIELDS = [
   'winner_rate',
 ] as const
 
-export const TUSHARE_CYQ_CHIPS_FIELDS = [
-  'ts_code',
-  'trade_date',
-  'price',
-  'percent',
-] as const
+export const TUSHARE_CYQ_CHIPS_FIELDS = ['ts_code', 'trade_date', 'price', 'percent'] as const
 
 // ─── Phase 4: 分钟行情 / 技术面因子 / 同花顺日线 ────────────────────────────
 
@@ -1467,11 +1483,7 @@ export const TUSHARE_THS_DAILY_FIELDS = [
 
 // ─── Phase 5: 基金复权因子 / 港股通每日成交 ─────────────────────────────────
 
-export const TUSHARE_FUND_ADJ_FIELDS = [
-  'ts_code',
-  'trade_date',
-  'adj_factor',
-] as const
+export const TUSHARE_FUND_ADJ_FIELDS = ['ts_code', 'trade_date', 'adj_factor'] as const
 
 export const TUSHARE_GGT_DAILY_FIELDS = [
   'trade_date',

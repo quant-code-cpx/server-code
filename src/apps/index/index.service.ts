@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common'
 import dayjs from 'dayjs'
 import timezone from 'dayjs/plugin/timezone'
 import utc from 'dayjs/plugin/utc'
-import { CORE_INDEX_CODES } from 'src/constant/tushare.constant'
+import { CORE_INDEX_CODES, CORE_INDEX_NAME_MAP } from 'src/constant/tushare.constant'
 import { CACHE_NAMESPACE } from 'src/constant/cache.constant'
 import { CacheService } from 'src/shared/cache.service'
 import { PrismaService } from 'src/shared/prisma.service'
@@ -13,17 +13,6 @@ dayjs.extend(utc)
 dayjs.extend(timezone)
 
 const INDEX_CACHE_TTL_SECONDS = 4 * 3600
-
-/** 指数代码 → 中文名称映射 */
-const INDEX_NAME_MAP: Record<string, string> = {
-  '000001.SH': '上证指数',
-  '399001.SZ': '深证成指',
-  '399006.SZ': '创业板指',
-  '000300.SH': '沪深300',
-  '000905.SH': '中证500',
-  '000852.SH': '中证1000',
-  '000016.SH': '上证50',
-}
 
 @Injectable()
 export class IndexService {
@@ -38,7 +27,7 @@ export class IndexService {
   async getIndexList() {
     return CORE_INDEX_CODES.map((code) => ({
       tsCode: code,
-      name: INDEX_NAME_MAP[code] ?? code,
+      name: CORE_INDEX_NAME_MAP[code] ?? code,
     }))
   }
 
@@ -107,7 +96,7 @@ export class IndexService {
           if (!latest) {
             return {
               indexCode: index_code,
-              indexName: INDEX_NAME_MAP[index_code] ?? index_code,
+              indexName: CORE_INDEX_NAME_MAP[index_code] ?? index_code,
               tradeDate: '',
               total: 0,
               constituents: [],
@@ -132,7 +121,7 @@ export class IndexService {
 
         return {
           indexCode: index_code,
-          indexName: INDEX_NAME_MAP[index_code] ?? index_code,
+          indexName: CORE_INDEX_NAME_MAP[index_code] ?? index_code,
           tradeDate,
           total: weights.length,
           constituents: weights.map((w) => ({
@@ -149,7 +138,7 @@ export class IndexService {
   private buildDailyResponse(tsCode: string, rows: Array<Record<string, unknown>>) {
     return {
       tsCode,
-      name: INDEX_NAME_MAP[tsCode] ?? tsCode,
+      name: CORE_INDEX_NAME_MAP[tsCode] ?? tsCode,
       data: rows.map((r) => ({
         tradeDate: dayjs(r.tradeDate as Date).format('YYYY-MM-DD'),
         open: r.open ?? null,

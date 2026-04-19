@@ -12,6 +12,8 @@ interface RememberJsonOptions<T> {
   key: string
   ttlSeconds: number
   loader: () => Promise<T>
+  /** 返回 true 时跳过缓存写入（例如空结果不应被长期缓存） */
+  skipCacheIf?: (value: T) => boolean
 }
 
 export interface CacheNamespaceMetrics {
@@ -49,7 +51,7 @@ export class CacheService {
     return `${prefix}:${digest}`
   }
 
-  async rememberJson<T>({ namespace, key, ttlSeconds, loader }: RememberJsonOptions<T>): Promise<T> {
+  async rememberJson<T>({ namespace, key, ttlSeconds, loader, skipCacheIf }: RememberJsonOptions<T>): Promise<T> {
     try {
       const cached = await this.redis.get(key)
       if (cached !== null) {
@@ -72,6 +74,7 @@ export class CacheService {
     const value = await loader()
 
     try {
+      if (skipCacheIf?.(value)) return value
       const serialized = JSON.stringify(value ?? null)
       await this.redis.setEx(key, ttlSeconds, serialized)
       await this.redis.sAdd(this.getNamespaceKey(namespace), key)

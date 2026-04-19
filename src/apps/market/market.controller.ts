@@ -16,6 +16,7 @@ import { HsgtTrendQueryDto } from './dto/hsgt-trend-query.dto'
 import { MainFlowRankingQueryDto } from './dto/main-flow-ranking-query.dto'
 import { StockFlowDetailQueryDto } from './dto/stock-flow-detail-query.dto'
 import { IndexQuoteQueryDto } from './dto/index-quote-query.dto'
+import { IndexQuoteWithSparklineQueryDto } from './dto/index-quote-with-sparkline-query.dto'
 import { ConceptListDto } from './dto/concept-list.dto'
 import { ConceptMembersDto } from './dto/concept-members.dto'
 import { ApiSuccessResponse } from 'src/common/decorators/api-success-response.decorator'
@@ -27,8 +28,10 @@ import {
   MarketBreadthDto,
   HsgtTrendResponseDto,
   IndexQuoteItemDto,
+  IndexQuoteWithSparklineResponseDto,
   IndexTrendResponseDto,
   MainFlowRankingResponseDto,
+  MarketMoneyFlowDto,
   MarketMoneyFlowItemDto,
   MarketSentimentDto,
   MarketValuationDto,
@@ -50,7 +53,7 @@ export class MarketController {
 
   @Post('money-flow')
   @ApiOperation({ summary: '获取市场整体资金流入流出（含各级别拆分）' })
-  @ApiSuccessResponse(MarketMoneyFlowItemDto, { isArray: true })
+  @ApiSuccessResponse(MarketMoneyFlowDto)
   getMarketMoneyFlow(@Body() query: MoneyFlowQueryDto) {
     return this.marketService.getMarketMoneyFlow(query)
   }
@@ -95,6 +98,13 @@ export class MarketController {
   @ApiSuccessResponse(IndexTrendResponseDto)
   getIndexTrend(@Body() query: IndexTrendQueryDto) {
     return this.marketService.getIndexTrend(query)
+  }
+
+  @Post('index-quote-with-sparkline')
+  @ApiOperation({ summary: '批量获取核心指数行情 + 迷你走势（单次查询合并）' })
+  @ApiSuccessResponse(IndexQuoteWithSparklineResponseDto)
+  getIndexQuoteWithSparkline(@Body() query: IndexQuoteWithSparklineQueryDto) {
+    return this.marketService.getIndexQuoteWithSparkline(query)
   }
 
   @Post('change-distribution')

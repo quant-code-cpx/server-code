@@ -39,7 +39,9 @@ export class IndustryRotationService {
     const sortPeriod = query.sort_period ?? 20
     const order = query.order ?? 'desc'
     const tradeDateStr = this.formatDateStr(tradeDate)
-    const maxPeriod = Math.max(...periods)
+    // sortPeriod 必须存在于 SELECT 列中；若不在 periods 里则追加，确保别名 return_N 可被 ORDER BY 引用
+    const effectivePeriods = periods.includes(sortPeriod) ? periods : [...periods, sortPeriod]
+    const maxPeriod = Math.max(...effectivePeriods)
 
     const cacheKey = this.cacheService.buildKey('ind-rotation:return', {
       tradeDateStr,
@@ -50,11 +52,11 @@ export class IndustryRotationService {
 
     return this.rememberCache(cacheKey, STANDARD_CACHE_TTL, async () => {
       // Build dynamic columns for each period
-      const periodColumns = periods
+      const periodColumns = effectivePeriods
         .map((p) => `MAX(CASE WHEN rn = ${p + 1} THEN close END) AS close_${p}`)
         .join(',\n      ')
 
-      const returnColumns = periods
+      const returnColumns = effectivePeriods
         .map((p) => `ROUND((((latest.close / NULLIF(agg.close_${p}, 0)) - 1) * 100)::numeric, 4) AS return_${p}`)
         .join(',\n    ')
 

@@ -1,36 +1,113 @@
 import { ApiProperty } from '@nestjs/swagger'
 
-export class MarketMoneyFlowItemDto {
-  @ApiProperty({ example: '2024-03-20' }) tradeDate: Date
-  @ApiProperty({ example: -523400, required: false, nullable: true, description: '净流入额（元）' }) netAmount:
-    | number
-    | null
-  @ApiProperty({ example: -0.0182, required: false, nullable: true }) netAmountRate: number | null
-  @ApiProperty({ example: 125000, required: false, nullable: true, description: '超大单净流入（元）' }) buyElgAmount:
-    | number
-    | null
-  @ApiProperty({ example: 0.0043, required: false, nullable: true }) buyElgAmountRate: number | null
-  @ApiProperty({ example: 890000, required: false, nullable: true, description: '大单净流入（元）' }) buyLgAmount:
-    | number
-    | null
-  @ApiProperty({ example: 0.031, required: false, nullable: true }) buyLgAmountRate: number | null
-  @ApiProperty({ example: 2340000, required: false, nullable: true, description: '中单净流入（元）' }) buyMdAmount:
-    | number
-    | null
-  @ApiProperty({ example: 0.081, required: false, nullable: true }) buyMdAmountRate: number | null
-  @ApiProperty({ example: 5670000, required: false, nullable: true, description: '小单净流入（元）' }) buySmAmount:
-    | number
-    | null
-  @ApiProperty({ example: 0.197, required: false, nullable: true }) buySmAmountRate: number | null
-  @ApiProperty({ description: '沪市收盘点位', example: 3050.23, required: false, nullable: true }) closeSh:
-    | number
-    | null
-  @ApiProperty({ description: '沪市涨跌幅', example: 0.35, required: false, nullable: true }) pctChangeSh: number | null
-  @ApiProperty({ description: '深市收盘点位', example: 9872.45, required: false, nullable: true }) closeSz:
-    | number
-    | null
-  @ApiProperty({ description: '深市涨跌幅', example: 0.42, required: false, nullable: true }) pctChangeSz: number | null
+/**
+ * 单一层级（超大/大/中/小单）或汇总组（主力/散户）的资金流向
+ *
+ * 注意：buyAmount / sellAmount 是按订单规模分类的买方 / 卖方成交额，
+ * 并非「主动买入 / 主动卖出」。每笔成交同时计入买方和卖方，因此
+ * 四层 buyAmount 之和 ≈ 四层 sellAmount 之和 ≈ 全市场单边总成交额。
+ * netAmount（buy − sell）反映该规模订单的买卖方向偏压，是标准的
+ * 「资金流向」展示口径。
+ */
+export class TierFlowDto {
+  @ApiProperty({
+    example: 317691000000,
+    required: false,
+    nullable: true,
+    description: '买方订单成交额（元，按订单规模分类，非主动买入）',
+  })
+  buyAmount: number | null
+
+  @ApiProperty({
+    example: 326989000000,
+    required: false,
+    nullable: true,
+    description: '卖方订单成交额（元，按订单规模分类，非主动卖出）',
+  })
+  sellAmount: number | null
+
+  @ApiProperty({
+    example: -9298000000,
+    required: false,
+    nullable: true,
+    description: '净流入 = 买入 - 卖出（元，正=净流入，负=净流出）',
+  })
+  netAmount: number | null
+
+  @ApiProperty({ example: 13.1, required: false, nullable: true, description: '买入额 / 全市场总成交（%）' })
+  buyRate: number | null
+
+  @ApiProperty({ example: 13.5, required: false, nullable: true, description: '卖出额 / 全市场总成交（%）' })
+  sellRate: number | null
+
+  @ApiProperty({ example: -0.38, required: false, nullable: true, description: '净流入 / 全市场总成交（%）' })
+  netRate: number | null
 }
+
+/**
+ * 大盘资金流向（单日，基于 THS 个股资金流向全市场汇总）
+ *
+ * 数据说明：
+ * - THS moneyflow 按订单规模将每笔成交分别计入买方和卖方对应层级
+ * - buyAmount / sellAmount 是订单规模分类后的成交额，非「主动买入/卖出」
+ * - 四层 buyAmount 之和 ≈ 四层 sellAmount 之和 ≈ 全市场单边总成交额（totalAmount）
+ * - netAmount = buy − sell：反映该规模订单的买卖方向偏压（正=净流入）
+ * - netMfAmount 来自 Tushare 独立逐笔计算，更接近「真实主力净流入」
+ * - 数据起始日期 2026-01-15
+ */
+export class MarketMoneyFlowDto {
+  @ApiProperty({ example: '2026-04-17' }) tradeDate: Date
+
+  @ApiProperty({ example: 4051.43, required: false, nullable: true, description: '上证指数收盘点位' }) closeSh:
+    | number
+    | null
+  @ApiProperty({ example: -0.1, required: false, nullable: true, description: '上证指数涨跌幅（%）' }) pctChangeSh:
+    | number
+    | null
+  @ApiProperty({ example: 14885.42, required: false, nullable: true, description: '深证成指收盘点位' }) closeSz:
+    | number
+    | null
+  @ApiProperty({ example: 0.6, required: false, nullable: true, description: '深证成指涨跌幅（%）' }) pctChangeSz:
+    | number
+    | null
+
+  @ApiProperty({
+    example: 2425382634900,
+    required: false,
+    nullable: true,
+    description: '全市场单边总成交金额（元），等于四层买入之和，与 daily.amount 口径一致',
+  })
+  totalAmount: number | null
+
+  @ApiProperty({
+    example: -5833283680000,
+    required: false,
+    nullable: true,
+    description: '逐笔主力净流入汇总（元，来自 net_mf_amount 全市场求和，独立算法，与分层 netAmount 非同一口径）',
+  })
+  netMfAmount: number | null
+
+  @ApiProperty({ type: () => TierFlowDto, description: '主力资金（超大单 + 大单）汇总' })
+  main: TierFlowDto
+
+  @ApiProperty({ type: () => TierFlowDto, description: '散户资金（中单 + 小单）汇总' })
+  retail: TierFlowDto
+
+  @ApiProperty({ type: () => TierFlowDto, description: '超大单（单笔成交 ≥ 100万元）' })
+  elg: TierFlowDto
+
+  @ApiProperty({ type: () => TierFlowDto, description: '大单（单笔 20~100万元）' })
+  lg: TierFlowDto
+
+  @ApiProperty({ type: () => TierFlowDto, description: '中单（单笔 4~20万元）' })
+  md: TierFlowDto
+
+  @ApiProperty({ type: () => TierFlowDto, description: '小单（单笔 < 4万元）' })
+  sm: TierFlowDto
+}
+
+/** @deprecated 已替换为 MarketMoneyFlowDto，保留兼容 controller 引用 */
+export class MarketMoneyFlowItemDto extends MarketMoneyFlowDto {}
 
 export class SectorFlowItemDto {
   @ApiProperty() tradeDate: Date
@@ -355,4 +432,29 @@ export class MarketBreadthDto {
   @ApiProperty({ description: '下跌家数（-5% < pct_chg < -0.001%）' }) fall: number
   @ApiProperty({ description: '大跌家数（pct_chg ≤ -5%）' }) bigFall: number
   @ApiProperty({ description: '当日有行情的 A 股总数' }) total: number
+}
+
+// ─── index-quote-with-sparkline ───────────────────────────────────────────────
+
+export class IndexQuoteWithSparklineItemDto {
+  @ApiProperty({ description: '指数代码' }) tsCode: string
+  @ApiProperty({ description: '指数名称' }) name: string
+  @ApiProperty({ description: '交易日期' }) tradeDate: Date
+  @ApiProperty({ required: false, nullable: true, description: '收盘价' }) close: number | null
+  @ApiProperty({ required: false, nullable: true, description: '昨收价' }) preClose: number | null
+  @ApiProperty({ required: false, nullable: true, description: '涨跌额' }) change: number | null
+  @ApiProperty({ required: false, nullable: true, description: '涨跌幅（%）' }) pctChg: number | null
+  @ApiProperty({ required: false, nullable: true, description: '成交量（手）' }) vol: number | null
+  @ApiProperty({ required: false, nullable: true, description: '成交额（千元）' }) amount: number | null
+  @ApiProperty({
+    description: 'sparkline：近 N 交易日收盘价数组（升序），N 由 sparkline_period 决定',
+    type: [Number],
+  })
+  sparkline: (number | null)[]
+}
+
+export class IndexQuoteWithSparklineResponseDto {
+  @ApiProperty({ description: '查询日期' }) tradeDate: Date
+  @ApiProperty({ description: 'sparkline 时间跨度' }) sparklinePeriod: string
+  @ApiProperty({ type: [IndexQuoteWithSparklineItemDto] }) indices: IndexQuoteWithSparklineItemDto[]
 }

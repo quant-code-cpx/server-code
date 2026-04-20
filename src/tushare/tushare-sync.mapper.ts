@@ -2183,12 +2183,21 @@ export function mapOptDailyRecord(
   }
 }
 
-export function mapStkFactorRecord(record: TushareRecord, collector?: ValidationCollector): Prisma.StkFactorCreateManyInput | null {
+export function mapStkFactorRecord(
+  record: TushareRecord,
+  collector?: ValidationCollector,
+): Prisma.StkFactorCreateManyInput | null {
   const tsCode = readString(record, 'ts_code')
   const tradeDate = readDate(record, 'trade_date')
 
   if (!tsCode) {
-    collector?.add({ tsCode: null, ruleName: 'missing_pk', severity: 'error', message: 'ts_code 缺失', rawData: record })
+    collector?.add({
+      tsCode: null,
+      ruleName: 'missing_pk',
+      severity: 'error',
+      message: 'ts_code 缺失',
+      rawData: record,
+    })
     return null
   }
   if (!tradeDate) {
@@ -2454,55 +2463,6 @@ export function mapCyqChipsRecord(
     tradeDate,
     price,
     percent: readNumber(record, 'percent'),
-  }
-}
-
-// ─── 分钟级行情 ───────────────────────────────────────────────────────────────
-
-function readDateTime(record: TushareRecord, key: string): Date | null {
-  const value = readString(record, key)
-  if (!value) return null
-
-  // Tushare returns trade_time as "YYYY-MM-DD HH:MM:SS" or "YYYYMMDD HH:MM:SS"
-  const normalized = value.replace(/-/g, '')
-  const match = normalized.match(/^(\d{4})(\d{2})(\d{2})\s+(\d{2}):(\d{2}):(\d{2})$/)
-  if (!match) return null
-
-  const [, y, mo, d, h, mi, s] = match
-  const parsed = new Date(Date.UTC(+y, +mo - 1, +d, +h - 8, +mi, +s)) // CST → UTC
-  return Number.isNaN(parsed.getTime()) ? null : parsed
-}
-
-export function mapStkMinsRecord(
-  record: TushareRecord,
-  freq: string,
-  collector?: ValidationCollector,
-): Prisma.StkMinsCreateManyInput | null {
-  const tsCode = readString(record, 'ts_code')
-  const tradeTime = readDateTime(record, 'trade_time')
-
-  if (!tsCode || !tradeTime) {
-    collector?.add({
-      tsCode,
-      tradeDate: readString(record, 'trade_time'),
-      ruleName: 'missing_pk',
-      severity: 'error',
-      message: 'ts_code 或 trade_time 缺失',
-      rawData: record,
-    })
-    return null
-  }
-
-  return {
-    tsCode,
-    tradeTime,
-    freq,
-    open: readNumber(record, 'open'),
-    high: readNumber(record, 'high'),
-    low: readNumber(record, 'low'),
-    close: readNumber(record, 'close'),
-    vol: readNumber(record, 'vol'),
-    amount: readNumber(record, 'amount'),
   }
 }
 

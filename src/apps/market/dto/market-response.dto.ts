@@ -52,7 +52,7 @@ export class TierFlowDto {
  * - buyAmount / sellAmount 是订单规模分类后的成交额，非「主动买入/卖出」
  * - 四层 buyAmount 之和 ≈ 四层 sellAmount 之和 ≈ 全市场单边总成交额（totalAmount）
  * - netAmount = buy − sell：反映该规模订单的买卖方向偏压（正=净流入）
- * - netMfAmount 来自 Tushare 独立逐笔计算，更接近「真实主力净流入」
+ * - netMfAmount 来自 Tushare 独立逐笔（主动买卖单）计算的净流入额，与分层 netAmount 非同一口径
  * - 数据起始日期 2026-01-15
  */
 export class MarketMoneyFlowDto {
@@ -83,7 +83,8 @@ export class MarketMoneyFlowDto {
     example: -5833283680000,
     required: false,
     nullable: true,
-    description: '逐笔主力净流入汇总（元，来自 net_mf_amount 全市场求和，独立算法，与分层 netAmount 非同一口径）',
+    description:
+      '全市场净流入汇总（元，来自 net_mf_amount 全市场求和；基于主动买卖单统计，与分层 netAmount 非同一口径）',
   })
   netMfAmount: number | null
 

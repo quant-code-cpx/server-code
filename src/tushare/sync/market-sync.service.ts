@@ -15,7 +15,6 @@ import {
   mapIndexDailyRecord,
   mapMarginDetailRecord,
   mapMonthlyRecord,
-  mapStkMinsRecord,
   mapThsDailyRecord,
   mapWeeklyRecord,
 } from '../tushare-sync.mapper'
@@ -244,23 +243,6 @@ export class MarketSyncService {
           tradingDayOnly: true,
         },
         execute: (ctx) => this.syncCyqChips(ctx),
-      },
-      {
-        task: TushareSyncTaskName.STK_MINS,
-        label: '分钟级行情',
-        category: 'market',
-        order: 198,
-        bootstrapEnabled: false,
-        supportsManual: true,
-        supportsFullSync: false,
-        requiresTradeDate: false,
-        schedule: {
-          cron: '0 0 21 * * 1-5',
-          timeZone: this.helper.syncTimeZone,
-          description: '交易日盘后同步分钟级行情（按股票逐只）',
-          tradingDayOnly: true,
-        },
-        execute: (ctx) => this.syncStkMins(ctx),
       },
       {
         task: TushareSyncTaskName.THS_DAILY,
@@ -907,95 +889,6 @@ export class MarketSyncService {
         payload: {
           rowCount: totalRows,
           stockCount: tsCodes.length,
-          failedStocks: failed.length > 0 ? failed : undefined,
-        },
-      },
-      startedAt,
-    )
-  }
-
-  // ─── 分钟级行情（按股票逐只同步）─────────────────────────────────────────────
-
-  async syncStkMins(ctx?: TushareSyncPlanContext): Promise<void> {
-    const isFullSync = ctx?.mode === 'full'
-    const startedAt = new Date()
-    const syncDays = Number(process.env.TUSHARE_STK_MINS_SYNC_DAYS) || 5
-    const freq = process.env.TUSHARE_STK_MINS_FREQ || '5min'
-    this.logger.log(`[分钟行情] 开始同步 (freq=${freq}, days=${syncDays})...${isFullSync ? '（全量模式）' : ''}`)
-
-    const stockList = await this.helper.prisma.stockBasic.findMany({
-      where: { listStatus: 'L' },
-      select: { tsCode: true },
-    })
-    const tsCodes: string[] = stockList.map((s: { tsCode: string }) => s.tsCode)
-
-    if (!tsCodes.length) {
-      this.logger.warn('[分钟行情] stock_basic 中无上市股票，请先同步股票列表')
-      return
-    }
-
-    const endDate = this.helper.getCurrentShanghaiDateString()
-    const startDate = this.helper.addDays(endDate, -(syncDays - 1))
-
-    this.logger.log(`[分钟行情] 待同步 ${tsCodes.length} 只股票，范围 ${startDate} → ${endDate}`)
-
-    const resumeKey = isFullSync ? null : await this.helper.getResumeKey(TushareSyncTaskName.STK_MINS)
-    let startIndex = 0
-    if (resumeKey) {
-      const idx = tsCodes.indexOf(resumeKey)
-      if (idx >= 0) {
-        startIndex = idx + 1
-        this.logger.log(`[分钟行情] 从断点续传: ${resumeKey} (index=${startIndex})`)
-      }
-    }
-
-    const collector = new ValidationCollector(TushareSyncTaskName.STK_MINS)
-    let totalRows = 0
-    const failed: Array<{ tsCode: string; error: string }> = []
-
-    for (let i = startIndex; i < tsCodes.length; i++) {
-      const tsCode = tsCodes[i]
-      try {
-        const rows = await this.api.getStkMinsByTsCode(tsCode, freq, startDate, endDate)
-        if (rows.length > 0) {
-          const mapped = rows
-            .map((r) => mapStkMinsRecord(r, freq, collector))
-            .filter((r): r is NonNullable<typeof r> => Boolean(r))
-
-          if (mapped.length > 0) {
-            const result = await this.helper.prisma.stkMins.createMany({
-              data: mapped,
-              skipDuplicates: true,
-            })
-            totalRows += result.count
-          }
-        }
-
-        if ((i + 1) % 50 === 0 || i === tsCodes.length - 1) {
-          await this.helper.updateProgress(TushareSyncTaskName.STK_MINS, tsCode, i + 1, tsCodes.length)
-          ctx?.onProgress?.(i + 1, tsCodes.length, tsCode)
-          this.logger.log(`[分钟行情] 进度 ${i + 1}/${tsCodes.length}，累计 ${totalRows} 条`)
-        }
-      } catch (error) {
-        const msg = (error as Error).message
-        this.logger.error(`[分钟行情] ${tsCode} 同步失败: ${msg}`)
-        failed.push({ tsCode, error: msg })
-      }
-    }
-
-    await this.helper.markCompleted(TushareSyncTaskName.STK_MINS)
-    await this.helper.flushValidationLogs(collector)
-    this.logger.log(`[分钟行情] 同步完成，共 ${totalRows} 条${failed.length ? `，${failed.length} 只失败` : ''}`)
-    await this.helper.writeSyncLog(
-      TushareSyncTaskName.STK_MINS,
-      {
-        status: TushareSyncExecutionStatus.SUCCESS,
-        message: `分钟行情同步完成，共 ${totalRows} 条`,
-        payload: {
-          rowCount: totalRows,
-          stockCount: tsCodes.length,
-          freq,
-          syncDays,
           failedStocks: failed.length > 0 ? failed : undefined,
         },
       },

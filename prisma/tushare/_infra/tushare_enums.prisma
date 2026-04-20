@@ -93,8 +93,7 @@ enum TushareSyncTask {
   // Chip distribution
   CYQ_PERF
   CYQ_CHIPS
-  // Minute-level & survey
-  STK_MINS
+  // Survey
   STK_SURV
   // THS board index daily
   THS_DAILY

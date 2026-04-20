@@ -67,8 +67,7 @@ export enum TushareApiName {
   // Phase 3: Chip distribution
   CYQ_PERF = 'cyq_perf',
   CYQ_CHIPS = 'cyq_chips',
-  // Phase 4: Minute data & technical survey
-  STK_MINS = 'stk_mins',
+  // Phase 4: Technical survey & THS daily
   STK_SURV = 'stk_surv',
   THS_DAILY = 'ths_daily',
   // Phase 5: Fund adj & HK connect
@@ -175,8 +174,7 @@ export enum TushareSyncTaskName {
   // Chip distribution
   CYQ_PERF = 'CYQ_PERF',
   CYQ_CHIPS = 'CYQ_CHIPS',
-  // Minute-level & survey
-  STK_MINS = 'STK_MINS',
+  // Survey & THS daily
   STK_SURV = 'STK_SURV',
   THS_DAILY = 'THS_DAILY',
   // Fund adj factor
@@ -1439,18 +1437,7 @@ export const TUSHARE_CYQ_PERF_FIELDS = [
 
 export const TUSHARE_CYQ_CHIPS_FIELDS = ['ts_code', 'trade_date', 'price', 'percent'] as const
 
-// ─── Phase 4: 分钟行情 / 技术面因子 / 同花顺日线 ────────────────────────────
-
-export const TUSHARE_STK_MINS_FIELDS = [
-  'ts_code',
-  'trade_time',
-  'open',
-  'high',
-  'low',
-  'close',
-  'vol',
-  'amount',
-] as const
+// ─── Phase 4: 技术面因子 / 同花顺日线 ─────────────────────────────────────────
 
 export const TUSHARE_STK_SURV_FIELDS = [
   'ts_code',

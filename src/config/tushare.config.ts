@@ -32,6 +32,15 @@ export const TushareConfig = registerAs(TUSHARE_CONFIG_TOKEN, () => ({
   syncConcurrency: parseInt(process.env.TUSHARE_SYNC_CONCURRENCY ?? '', 10) || 3,
   /** 按日期并发同步时每批日期数（1 = 串行，默认 1，推荐 3-5） */
   dateBatchConcurrency: parseInt(process.env.TUSHARE_DATE_BATCH_CONCURRENCY ?? '', 10) || 1,
+  /**
+   * 是否在应用启动时运行 bootstrap 同步。
+   * 默认：生产环境 true，开发环境 false（防止 nest start --watch 热更新时反复触发全量同步）。
+   * 可通过 TUSHARE_BOOTSTRAP_ON_START=true/false 显式覆盖。
+   */
+  bootstrapOnStart:
+    process.env.TUSHARE_BOOTSTRAP_ON_START !== undefined
+      ? process.env.TUSHARE_BOOTSTRAP_ON_START !== 'false'
+      : process.env.NODE_ENV !== 'development',
 }))
 
 export type ITushareConfig = ConfigType<typeof TushareConfig>

@@ -86,6 +86,15 @@ export class TushareClient {
         signal: controller.signal,
       })
     } catch (err) {
+      clearTimeout(timer)
+      if (this.isRetriableNetworkError(err) && attempt <= this.maxRetries) {
+        const delayMs = Math.min(1000 * Math.pow(2, attempt - 1), 30_000)
+        this.logger.warn(
+          `Tushare 网络错误 [${req.api_name}] (${(err as Error).message})，第 ${attempt} 次重试，等待 ${delayMs}ms`,
+        )
+        await this.sleep(delayMs)
+        return this.callWithRetry<T>(req, attempt + 1)
+      }
       this.logger.error(`Tushare 请求失败 [${req.api_name}]: ${(err as Error).message}`)
       throw err
     } finally {
@@ -158,6 +167,18 @@ export class TushareClient {
 
   private isRetryableRateLimitError(json: TushareResponse) {
     return json.code === 40203 && /每分钟最多访问该接口/.test(json.msg)
+  }
+
+  /**
+   * 判断 fetch 捕获的异常是否为可重试的网络/超时错误：
+   * - AbortError：AbortController.abort() 触发（超时、或 Mac 唤醒后 setTimeout 提前触发）
+   * - TypeError: fetch 底层网络错误（DNS 失败、连接被拒、网络中断等）
+   */
+  private isRetriableNetworkError(err: unknown): boolean {
+    if (!(err instanceof Error)) return false
+    if (err.name === 'AbortError') return true
+    if (err instanceof TypeError) return true
+    return false
   }
 
   private sleep(ms: number) {

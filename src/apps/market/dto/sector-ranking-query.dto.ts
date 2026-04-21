@@ -13,11 +13,11 @@ export class SectorRankingQueryDto {
   @IsEnum(['pct_change', 'net_amount'])
   sort_by?: 'pct_change' | 'net_amount' = 'pct_change'
 
-  @ApiPropertyOptional({ description: 'Top N 返回数量，默认全量', minimum: 1, maximum: 100 })
+  @ApiPropertyOptional({ description: 'Top N 返回数量，默认全量', minimum: 1, maximum: 500 })
   @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(1)
-  @Max(100)
+  @Max(500)
   limit?: number
 }

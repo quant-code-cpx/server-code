@@ -423,6 +423,11 @@ export class ConceptMembersResponseDto {
 
 // ─── market-breadth ───────────────────────────────────────────────────────────
 
+export class ConsecutiveLimitGroupDto {
+  @ApiProperty({ description: '连板次数' }) board: number
+  @ApiProperty({ description: '该连板梯队股票数量' }) count: number
+}
+
 export class MarketBreadthDto {
   @ApiProperty({ description: '交易日期' }) tradeDate: Date
   @ApiProperty({ description: '涨停家数（pct_chg ≥ 9.5）' }) limitUp: number
@@ -433,6 +438,57 @@ export class MarketBreadthDto {
   @ApiProperty({ description: '下跌家数（-5% < pct_chg < -0.001%）' }) fall: number
   @ApiProperty({ description: '大跌家数（pct_chg ≤ -5%）' }) bigFall: number
   @ApiProperty({ description: '当日有行情的 A 股总数' }) total: number
+  @ApiProperty({ description: '炸板数（limit_list_d 中 limit=Z 的记录数）' }) limitUpBroken: number
+  @ApiProperty({
+    description: '连板分布（按 limit_times 分组，仅统计 limit=U 涨停板）',
+    type: [ConsecutiveLimitGroupDto],
+  })
+  consecutiveLimitGroups: ConsecutiveLimitGroupDto[]
+}
+
+// ─── daily-narrative ──────────────────────────────────────────────────────────
+
+export class DailyNarrativeKeyEventDto {
+  @ApiProperty({
+    description: '事件分类',
+    enum: ['breadth', 'money_flow', 'northbound', 'sector', 'limit_up', 'valuation'],
+  })
+  category: 'breadth' | 'money_flow' | 'northbound' | 'sector' | 'limit_up' | 'valuation'
+
+  @ApiProperty({ description: '事件标题' }) title: string
+  @ApiProperty({ description: '关键数值', required: false, nullable: true }) value?: number
+}
+
+export class DailyNarrativeResponseDto {
+  @ApiProperty({ description: '交易日期' }) tradeDate: Date
+  @ApiProperty({
+    description: '市场基调',
+    enum: ['bullish', 'bearish', 'divergent', 'neutral'],
+  })
+  tone: 'bullish' | 'bearish' | 'divergent' | 'neutral'
+
+  @ApiProperty({ description: '一句话摘要，如"全面普涨，成长风格占优"' }) headline: string
+  @ApiProperty({ description: '3-5 条支撑证据', type: [String] }) bullets: string[]
+  @ApiProperty({ description: '0–100 综合做多信心指数' }) score: number
+  @ApiProperty({ description: '关键事件列表', type: [DailyNarrativeKeyEventDto] })
+  keyEvents: DailyNarrativeKeyEventDto[]
+}
+
+// ─── top-movers ───────────────────────────────────────────────────────────────
+
+export class TopMoverItemDto {
+  @ApiProperty() tsCode: string
+  @ApiProperty({ required: false, nullable: true }) name: string | null
+  @ApiProperty({ required: false, nullable: true }) industry: string | null
+  @ApiProperty({ description: '涨跌幅 %', required: false, nullable: true }) pctChg: number | null
+  @ApiProperty({ description: '成交额（千元）', required: false, nullable: true }) amount: number | null
+  @ApiProperty({ description: '换手率 %', required: false, nullable: true }) turnoverRate: number | null
+  @ApiProperty({ description: '振幅 % = (high - low) / preClose * 100', required: false, nullable: true })
+  amplitude: number | null
+}
+
+export class TopMoversResponseDto {
+  @ApiProperty({ type: [TopMoverItemDto] }) data: TopMoverItemDto[]
 }
 
 // ─── index-quote-with-sparkline ───────────────────────────────────────────────
@@ -458,4 +514,36 @@ export class IndexQuoteWithSparklineResponseDto {
   @ApiProperty({ description: '查询日期' }) tradeDate: Date
   @ApiProperty({ description: 'sparkline 时间跨度' }) sparklinePeriod: string
   @ApiProperty({ type: [IndexQuoteWithSparklineItemDto] }) indices: IndexQuoteWithSparklineItemDto[]
+}
+
+// ─── sector-top-bottom ────────────────────────────────────────────────────────
+
+export class SectorTopBottomItemDto {
+  @ApiProperty() tsCode: string
+  @ApiProperty({ required: false, nullable: true }) name: string | null
+  @ApiProperty({ description: '涨跌幅 %', required: false, nullable: true }) pctChange: number | null
+  @ApiProperty({ description: '主力净流入（元）', required: false, nullable: true }) netAmount: number | null
+}
+
+export class SectorTopBottomResponseDto {
+  @ApiProperty({ description: '交易日期 YYYYMMDD', nullable: true }) tradeDate: string | null
+  @ApiProperty({ type: [SectorTopBottomItemDto] }) pctGainers: SectorTopBottomItemDto[]
+  @ApiProperty({ type: [SectorTopBottomItemDto] }) pctLosers: SectorTopBottomItemDto[]
+  @ApiProperty({ type: [SectorTopBottomItemDto] }) flowGainers: SectorTopBottomItemDto[]
+  @ApiProperty({ type: [SectorTopBottomItemDto] }) flowLosers: SectorTopBottomItemDto[]
+  @ApiProperty() gainersCount: number
+  @ApiProperty() losersCount: number
+  @ApiProperty() flatCount: number
+  @ApiProperty() totalCount: number
+}
+
+// ─── data-dates ───────────────────────────────────────────────────────────────
+
+export class MarketDataDatesDto {
+  @ApiProperty({ description: '日线最新交易日', nullable: true }) daily: string | null
+  @ApiProperty({ description: '指数最新交易日', nullable: true }) index: string | null
+  @ApiProperty({ description: '行业资金最新交易日', nullable: true }) sector: string | null
+  @ApiProperty({ description: '个股资金流最新交易日', nullable: true }) moneyflow: string | null
+  @ApiProperty({ description: '每日指标最新交易日', nullable: true }) dailyBasic: string | null
+  @ApiProperty({ description: '沪深港通最新交易日', nullable: true }) hsgt: string | null
 }

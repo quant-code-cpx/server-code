@@ -289,12 +289,15 @@ export class MarketService {
   async getIndexTrend(query: IndexTrendQueryDto) {
     const tsCode = query.ts_code ?? '000001.SH'
     const period = query.period ?? '3m'
-    const cacheKey = `market:index-trend:${tsCode}:${period}`
+
+    // Resolve latest date outside the cache block so the key reflects newest available data
+    const latestDate = await this.resolveLatestIndexTradeDate()
+    if (!latestDate) return { tsCode, name: CORE_INDEX_NAME_MAP[tsCode] ?? tsCode, period, data: [] }
+
+    const latestDateStr = dayjs(latestDate).tz('Asia/Shanghai').format('YYYYMMDD')
+    const cacheKey = `market:index-trend:${tsCode}:${period}:${latestDateStr}`
 
     return this.rememberMarketCache(cacheKey, MARKET_STANDARD_CACHE_TTL_SECONDS, async () => {
-      const latestDate = await this.resolveLatestIndexTradeDate()
-      if (!latestDate) return { tsCode, name: CORE_INDEX_NAME_MAP[tsCode] ?? tsCode, period, data: [] }
-
       const startDate = this.periodToStartDate(latestDate, period as IndexTrendPeriod)
 
       const rows = await this.prisma.indexDaily.findMany({
@@ -438,32 +441,50 @@ export class MarketService {
     const cacheKey = `market:breadth:${tradeDateStr}`
 
     return this.rememberMarketCache(cacheKey, MARKET_STANDARD_CACHE_TTL_SECONDS, async () => {
-      const [row] = await this.prisma.$queryRaw<
-        [
-          {
-            limitUp: bigint
-            limitDown: bigint
-            bigRise: bigint
-            rise: bigint
-            flat: bigint
-            fall: bigint
-            bigFall: bigint
-            total: bigint
-          },
-        ]
-      >`
-        SELECT
-          COUNT(*) FILTER (WHERE pct_chg >= 9.5)                              AS "limitUp",
-          COUNT(*) FILTER (WHERE pct_chg <= -9.5)                             AS "limitDown",
-          COUNT(*) FILTER (WHERE pct_chg >= 5)                                AS "bigRise",
-          COUNT(*) FILTER (WHERE pct_chg >= 0.001 AND pct_chg < 5)           AS "rise",
-          COUNT(*) FILTER (WHERE pct_chg > -0.001 AND pct_chg < 0.001)       AS "flat",
-          COUNT(*) FILTER (WHERE pct_chg > -5 AND pct_chg < -0.001)          AS "fall",
-          COUNT(*) FILTER (WHERE pct_chg <= -5)                               AS "bigFall",
-          COUNT(*)                                                             AS "total"
-        FROM stock_daily_prices
-        WHERE trade_date = ${tradeDateStr}::date
-      `
+      const [[row], limitListRows] = await Promise.all([
+        this.prisma.$queryRaw<
+          [
+            {
+              limitUp: bigint
+              limitDown: bigint
+              bigRise: bigint
+              rise: bigint
+              flat: bigint
+              fall: bigint
+              bigFall: bigint
+              total: bigint
+            },
+          ]
+        >`
+          SELECT
+            COUNT(*) FILTER (WHERE pct_chg >= 9.5)                              AS "limitUp",
+            COUNT(*) FILTER (WHERE pct_chg <= -9.5)                             AS "limitDown",
+            COUNT(*) FILTER (WHERE pct_chg >= 5)                                AS "bigRise",
+            COUNT(*) FILTER (WHERE pct_chg >= 0.001 AND pct_chg < 5)           AS "rise",
+            COUNT(*) FILTER (WHERE pct_chg > -0.001 AND pct_chg < 0.001)       AS "flat",
+            COUNT(*) FILTER (WHERE pct_chg > -5 AND pct_chg < -0.001)          AS "fall",
+            COUNT(*) FILTER (WHERE pct_chg <= -5)                               AS "bigFall",
+            COUNT(*)                                                             AS "total"
+          FROM stock_daily_prices
+          WHERE trade_date = ${tradeDateStr}::date
+        `,
+        this.prisma.limitListD.findMany({
+          where: { tradeDate },
+          select: { limit: true, limitTimes: true },
+        }),
+      ])
+
+      const limitUpBroken = limitListRows.filter((r) => r.limit === 'Z').length
+
+      const groupMap = new Map<number, number>()
+      for (const r of limitListRows.filter((r) => r.limit === 'U')) {
+        const board = r.limitTimes ?? 1
+        groupMap.set(board, (groupMap.get(board) ?? 0) + 1)
+      }
+      const consecutiveLimitGroups = Array.from(groupMap.entries())
+        .sort((a, b) => a[0] - b[0])
+        .map(([board, count]) => ({ board, count }))
+
       return {
         tradeDate,
         limitUp: Number(row.limitUp),
@@ -474,6 +495,8 @@ export class MarketService {
         fall: Number(row.fall),
         bigFall: Number(row.bigFall),
         total: Number(row.total),
+        limitUpBroken,
+        consecutiveLimitGroups,
       }
     })
   }
@@ -518,29 +541,35 @@ export class MarketService {
     if (!tradeDate) return { data: [] }
 
     const days = query.days ?? 20
-    const tradeDateStr = dayjs(tradeDate).format('YYYYMMDD')
+    // Use Shanghai timezone for formatting to avoid UTC-offset date mismatch
+    const tradeDateStr = dayjs(tradeDate).tz('Asia/Shanghai').format('YYYYMMDD')
+    const tradeDateIso = `${tradeDateStr.slice(0, 4)}-${tradeDateStr.slice(4, 6)}-${tradeDateStr.slice(6, 8)}`
     const cacheKey = `market:vol-overview:${tradeDateStr}:${days}`
 
     return this.rememberMarketCache(cacheKey, MARKET_STANDARD_CACHE_TTL_SECONDS, async () => {
       // 全A成交额（万元，amount字段单位为千元，除以100000转亿元）
       // 下界：3倍日历天数，足够覆盖任意 days 个交易日（约含周末/节假日缓冲）
-      const volLowerBound = new Date(tradeDate)
-      volLowerBound.setDate(volLowerBound.getDate() - days * 3)
+      // Use date strings with ::date cast to avoid UTC-offset comparison issues
+      const volLowerBoundIso = dayjs
+        .tz(tradeDateStr, 'YYYYMMDD', 'Asia/Shanghai')
+        .subtract(days * 3, 'day')
+        .format('YYYY-MM-DD')
       const totalRows = await this.prisma.$queryRaw<{ trade_date: Date; total_amount: string }[]>`
         SELECT trade_date, SUM(amount) / 100000.0 AS total_amount
         FROM stock_daily_prices
-        WHERE trade_date <= ${tradeDate}
-          AND trade_date >= ${volLowerBound}
+        WHERE trade_date <= ${tradeDateIso}::date
+          AND trade_date >= ${volLowerBoundIso}::date
         GROUP BY trade_date
         ORDER BY trade_date DESC
         LIMIT ${days}
       `
 
       // 指数成交额（index_daily amount 字段单位同 daily，除以100000转亿元）
+      const tradeDateUtc = new Date(`${tradeDateIso}T00:00:00.000Z`)
       const indexRows = await this.prisma.indexDaily.findMany({
         where: {
           tsCode: { in: ['000001.SH', '399001.SZ'] },
-          tradeDate: { lte: tradeDate },
+          tradeDate: { lte: tradeDateUtc },
         },
         orderBy: { tradeDate: 'desc' },
         take: days * 2,
@@ -995,9 +1024,335 @@ export class MarketService {
     return { tsCode, name: board?.name ?? null, total, items }
   }
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // 私有辅助方法
-  // ═══════════════════════════════════════════════════════════════════════════
+  // ─── 日度叙事（P0）──────────────────────────────────────────────────────────
+
+  async getDailyNarrative(query: MoneyFlowQueryDto) {
+    const tradeDate = query.trade_date ? this.parseDate(query.trade_date) : await this.resolveLatestDailyTradeDate()
+    if (!tradeDate) return null
+
+    const tradeDateStr = dayjs(tradeDate).tz('Asia/Shanghai').format('YYYY-MM-DD')
+    const cacheKey = `market:daily-narrative:${tradeDateStr}`
+
+    return this.rememberMarketCache(
+      cacheKey,
+      MARKET_STANDARD_CACHE_TTL_SECONDS,
+      async () => {
+        const [breadthRows, mktFlowRow, hsgtRow, sectorRows, valuationRows, limitListRows] = await Promise.all([
+          // 1. 涨跌家数统计
+          this.prisma.$queryRaw<[{ limit_up: bigint; limit_down: bigint; rise: bigint; fall: bigint; total: bigint }]>`
+            SELECT
+              COUNT(*) FILTER (WHERE pct_chg >= 9.5)   AS limit_up,
+              COUNT(*) FILTER (WHERE pct_chg <= -9.5)  AS limit_down,
+              COUNT(*) FILTER (WHERE pct_chg > 0.001)  AS rise,
+              COUNT(*) FILTER (WHERE pct_chg < -0.001) AS fall,
+              COUNT(*)                                  AS total
+            FROM stock_daily_prices
+            WHERE trade_date = ${tradeDateStr}::date
+          `,
+          // 2. 全市场资金流（moneyflow_mkt_dc，netAmount 单位：元）
+          this.prisma.moneyflowMktDc.findFirst({
+            where: { tradeDate: { lte: tradeDate } },
+            orderBy: { tradeDate: 'desc' },
+            select: { netAmount: true, tradeDate: true },
+          }),
+          // 3. 北向资金（最近一条 ≤ 当日）
+          this.prisma.moneyflowHsgt.findFirst({
+            where: { tradeDate: { lte: tradeDate } },
+            orderBy: { tradeDate: 'desc' },
+            select: { northMoney: true, tradeDate: true },
+          }),
+          // 4. 行业板块涨跌（用于计算分化度）
+          this.prisma.moneyflowIndDc.findMany({
+            where: { tradeDate, contentType: MoneyflowContentType.INDUSTRY },
+            select: { pctChange: true },
+          }),
+          // 5. 当日 PE_TTM 中位数
+          this.prisma.$queryRaw<[{ pe_ttm_median: string | null }]>`
+            SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY pe_ttm)::text AS pe_ttm_median
+            FROM stock_daily_valuation_metrics
+            WHERE trade_date = ${tradeDateStr}::date
+              AND pe_ttm > 0 AND pe_ttm < 1000
+          `,
+          // 6. 涨停板明细（炸板数、连板数据）
+          this.prisma.limitListD.findMany({
+            where: { tradeDate },
+            select: { limit: true, limitTimes: true },
+          }),
+        ])
+
+        const b = breadthRows[0]
+        const limitUp = Number(b.limit_up)
+        const limitDown = Number(b.limit_down)
+        const rise = Number(b.rise)
+        const fall = Number(b.fall)
+        const total = Number(b.total)
+
+        const netAmount = mktFlowRow?.netAmount ?? null // 元
+        const northMoney = hsgtRow?.northMoney ?? null // 百万元
+
+        const pctChanges = sectorRows.map((r) => r.pctChange ?? 0)
+        const sectorDivergence = this.computeStdDev(pctChanges)
+
+        const peTtmMedian = valuationRows[0]?.pe_ttm_median != null ? Number(valuationRows[0].pe_ttm_median) : null
+
+        const limitUpBroken = limitListRows.filter((r) => r.limit === 'Z').length
+
+        // ─── 各维度得分（0–100）───────────────────────────────────────────────
+        // 涨跌比得分：上涨家数 / 全市场总家数
+        const breadthScore = total > 0 ? Math.min(100, Math.max(0, Math.round((rise / total) * 100))) : 50
+
+        // 主力资金得分：以 ±500亿元（±5e10）为满分区间
+        const mainFlowScore =
+          netAmount != null ? Math.min(100, Math.max(0, Math.round((netAmount / 5e10) * 50 + 50))) : 50
+
+        // 北向得分：以 ±200亿元（±20000 百万）为满分区间
+        const northScore =
+          northMoney != null ? Math.min(100, Math.max(0, Math.round((northMoney / 20000) * 50 + 50))) : 50
+
+        // 估值得分：PE_TTM 越低越看多；以 PE=10 为 100 分，PE=50 为 0 分
+        const valuationScore =
+          peTtmMedian != null ? Math.min(100, Math.max(0, Math.round(100 - ((peTtmMedian - 10) / 40) * 100))) : 50
+
+        // 综合得分
+        const score = Math.round(0.4 * breadthScore + 0.3 * mainFlowScore + 0.2 * northScore + 0.1 * valuationScore)
+
+        // ─── 基调判断 ──────────────────────────────────────────────────────────
+        // 板块分化且整体偏强/偏弱：divergent；否则按综合分判断
+        const isDivergent = sectorDivergence > 3 && Math.abs(breadthScore - mainFlowScore) > 25
+        let tone: 'bullish' | 'bearish' | 'divergent' | 'neutral'
+        if (isDivergent) {
+          tone = 'divergent'
+        } else if (score >= 65) {
+          tone = 'bullish'
+        } else if (score <= 35) {
+          tone = 'bearish'
+        } else {
+          tone = 'neutral'
+        }
+
+        // ─── 一句话标题 ────────────────────────────────────────────────────────
+        const riseRate = total > 0 ? Math.round((rise / total) * 100) : 0
+        const headlines: Record<typeof tone, string> = {
+          bullish: `全面普涨，${riseRate}% 个股上涨，做多情绪偏强`,
+          bearish: `市场普跌，${riseRate}% 个股上涨，做空压力较大`,
+          divergent: `分化行情，板块轮动明显，${riseRate}% 个股上涨`,
+          neutral: `窄幅震荡，${riseRate}% 个股上涨，市场方向待明朗`,
+        }
+        const headline = headlines[tone]
+
+        // ─── 支撑证据 ──────────────────────────────────────────────────────────
+        const bullets: string[] = []
+        bullets.push(`涨停 ${limitUp} 家，跌停 ${limitDown} 家`)
+        if (limitUpBroken > 0) {
+          const brokenRate =
+            limitUp + limitUpBroken > 0 ? Math.round((limitUpBroken / (limitUp + limitUpBroken)) * 100) : 0
+          bullets.push(`炸板 ${limitUpBroken} 家，炸板率 ${brokenRate}%`)
+        }
+        if (netAmount != null) {
+          const net100M = (netAmount / 1e8).toFixed(1)
+          bullets.push(`主力净${netAmount >= 0 ? '流入' : '流出'} ${Math.abs(Number(net100M))} 亿元`)
+        }
+        if (northMoney != null) {
+          const north100M = (northMoney / 100).toFixed(1)
+          bullets.push(`北向资金净${northMoney >= 0 ? '买入' : '卖出'} ${Math.abs(Number(north100M))} 亿元`)
+        }
+        if (peTtmMedian != null) {
+          bullets.push(`全A PE_TTM 中位数 ${peTtmMedian.toFixed(1)}x`)
+        }
+
+        // ─── 关键事件 ──────────────────────────────────────────────────────────
+        const keyEvents: Array<{
+          category: 'breadth' | 'money_flow' | 'northbound' | 'sector' | 'limit_up' | 'valuation'
+          title: string
+          value?: number
+        }> = [
+          { category: 'breadth', title: `${rise} 家上涨 / ${fall} 家下跌`, value: riseRate },
+          { category: 'limit_up', title: `涨停 ${limitUp} 家 / 炸板 ${limitUpBroken} 家`, value: limitUp },
+        ]
+        if (netAmount != null) {
+          keyEvents.push({
+            category: 'money_flow',
+            title: `主力净流入 ${(netAmount / 1e8).toFixed(1)} 亿`,
+            value: Number((netAmount / 1e8).toFixed(1)),
+          })
+        }
+        if (northMoney != null) {
+          keyEvents.push({
+            category: 'northbound',
+            title: `北向净${northMoney >= 0 ? '买入' : '卖出'} ${Math.abs(northMoney / 100).toFixed(1)} 亿`,
+            value: Number((northMoney / 100).toFixed(1)),
+          })
+        }
+        if (sectorDivergence > 0) {
+          keyEvents.push({
+            category: 'sector',
+            title: `板块涨跌分化度（行业标准差）${sectorDivergence.toFixed(2)}`,
+            value: Number(sectorDivergence.toFixed(2)),
+          })
+        }
+        if (peTtmMedian != null) {
+          keyEvents.push({
+            category: 'valuation',
+            title: `全A PE_TTM 中位数 ${peTtmMedian.toFixed(1)}`,
+            value: Number(peTtmMedian.toFixed(1)),
+          })
+        }
+
+        return { tradeDate, tone, headline, bullets, score, keyEvents }
+      },
+      (result) => !result,
+    )
+  }
+
+  // ─── Top 异动合并（P2）──────────────────────────────────────────────────────
+
+  async getTopMovers(query: { trade_date?: string; dim: 'gain' | 'loss' | 'amplitude' | 'amount'; limit?: number }) {
+    const tradeDate = query.trade_date ? this.parseDate(query.trade_date) : await this.resolveLatestDailyTradeDate()
+    if (!tradeDate) return { data: [] }
+
+    const dim = query.dim
+    const limit = query.limit ?? 20
+    const tradeDateStr = dayjs(tradeDate).tz('Asia/Shanghai').format('YYYY-MM-DD')
+    const cacheKey = `market:top-movers:${tradeDateStr}:${dim}:${limit}`
+
+    return this.rememberMarketCache(cacheKey, MARKET_STANDARD_CACHE_TTL_SECONDS, async () => {
+      const orderExpr = {
+        gain: Prisma.sql`d.pct_chg DESC NULLS LAST`,
+        loss: Prisma.sql`d.pct_chg ASC NULLS LAST`,
+        amplitude: Prisma.sql`CASE WHEN d.pre_close > 0 THEN (d.high - d.low) / d.pre_close * 100 ELSE NULL END DESC NULLS LAST`,
+        amount: Prisma.sql`d.amount DESC NULLS LAST`,
+      }[dim]
+
+      const rows = await this.prisma.$queryRaw<
+        Array<{
+          ts_code: string
+          name: string | null
+          industry: string | null
+          pct_chg: number | null
+          amount: number | null
+          turnover_rate: number | null
+          amplitude: number | null
+        }>
+      >`
+        SELECT
+          d.ts_code,
+          sb.name,
+          sb.industry,
+          d.pct_chg,
+          d.amount,
+          db.turnover_rate,
+          CASE WHEN d.pre_close > 0 THEN ROUND(((d.high - d.low) / d.pre_close * 100)::numeric, 2) ELSE NULL END AS amplitude
+        FROM stock_daily_prices d
+        JOIN stock_basic_profiles sb ON sb.ts_code = d.ts_code
+        LEFT JOIN stock_daily_valuation_metrics db ON db.ts_code = d.ts_code AND db.trade_date = d.trade_date
+        WHERE d.trade_date = ${tradeDateStr}::date
+        ORDER BY ${orderExpr}
+        LIMIT ${limit}
+      `
+
+      return {
+        data: rows.map((r) => ({
+          tsCode: r.ts_code,
+          name: r.name,
+          industry: r.industry,
+          pctChg: r.pct_chg !== null ? Number(r.pct_chg) : null,
+          amount: r.amount !== null ? Number(r.amount) : null,
+          turnoverRate: r.turnover_rate !== null ? Number(r.turnover_rate) : null,
+          amplitude: r.amplitude !== null ? Number(r.amplitude) : null,
+        })),
+      }
+    })
+  }
+
+  // ─── 数据日期汇总（供前端登录后初始化） ──────────────────────────────────────
+
+  async getDataDates() {
+    const [daily, index, sector, moneyflow, dailyBasic, hsgt] = await Promise.all([
+      this.resolveLatestDailyTradeDate(),
+      this.resolveLatestIndexTradeDate(),
+      this.resolveLatestSectorTradeDate(),
+      this.resolveLatestMarketTradeDate(),
+      this.resolveLatestDailyBasicTradeDate(),
+      this.resolveLatestHsgtTradeDate(),
+    ])
+    const fmt = (d: Date | null) => (d ? dayjs(d).tz('Asia/Shanghai').format('YYYYMMDD') : null)
+    return {
+      daily: fmt(daily),
+      index: fmt(index),
+      sector: fmt(sector),
+      moneyflow: fmt(moneyflow),
+      dailyBasic: fmt(dailyBasic),
+      hsgt: fmt(hsgt),
+    }
+  }
+
+  // ─── 行业涨跌幅 + 资金双榜 ────────────────────────────────────────────────────
+
+  async getSectorTopBottom(query: { trade_date?: string; top_n?: number }) {
+    const tradeDate = query.trade_date ? this.parseDate(query.trade_date) : await this.resolveLatestSectorTradeDate()
+    if (!tradeDate)
+      return {
+        tradeDate: null,
+        pctGainers: [],
+        pctLosers: [],
+        flowGainers: [],
+        flowLosers: [],
+        gainersCount: 0,
+        losersCount: 0,
+        flatCount: 0,
+        totalCount: 0,
+      }
+
+    const topN = query.top_n ?? 5
+    const tradeDateStr = dayjs(tradeDate).tz('Asia/Shanghai').format('YYYYMMDD')
+    const cacheKey = `market:sector-top-bottom:${tradeDateStr}:${topN}`
+
+    return this.rememberMarketCache(cacheKey, MARKET_STANDARD_CACHE_TTL_SECONDS, async () => {
+      const all = await this.prisma.moneyflowIndDc.findMany({
+        where: { tradeDate, contentType: MoneyflowContentType.INDUSTRY },
+        select: { tsCode: true, name: true, pctChange: true, netAmount: true },
+      })
+
+      type Row = (typeof all)[0]
+      const toItem = (r: Row) => ({
+        tsCode: r.tsCode,
+        name: r.name,
+        pctChange: r.pctChange !== null ? Number(r.pctChange) : null,
+        netAmount: r.netAmount !== null ? Number(r.netAmount) : null,
+      })
+
+      const gainers = all.filter((r) => (r.pctChange ?? 0) > 0.001)
+      const losers = all.filter((r) => (r.pctChange ?? 0) < -0.001)
+      const flowGainers = all.filter((r) => (r.netAmount ?? 0) > 0)
+      const flowLosers = all.filter((r) => (r.netAmount ?? 0) < 0)
+      const flat = all.length - gainers.length - losers.length
+
+      gainers.sort((a, b) => (b.pctChange ?? 0) - (a.pctChange ?? 0))
+      losers.sort((a, b) => (a.pctChange ?? 0) - (b.pctChange ?? 0))
+      flowGainers.sort((a, b) => (b.netAmount ?? 0) - (a.netAmount ?? 0))
+      flowLosers.sort((a, b) => (a.netAmount ?? 0) - (b.netAmount ?? 0))
+
+      return {
+        tradeDate: tradeDateStr,
+        pctGainers: gainers.slice(0, topN).map(toItem),
+        pctLosers: losers.slice(0, topN).map(toItem),
+        flowGainers: flowGainers.slice(0, topN).map(toItem),
+        flowLosers: flowLosers.slice(0, topN).map(toItem),
+        gainersCount: gainers.length,
+        losersCount: losers.length,
+        flatCount: flat,
+        totalCount: all.length,
+      }
+    })
+  }
+
+  private computeStdDev(values: number[]): number {
+    const n = values.length
+    if (n <= 1) return 0
+    const mean = values.reduce((a, b) => a + b, 0) / n
+    const variance = values.reduce((sum, v) => sum + (v - mean) ** 2, 0) / n
+    return Math.sqrt(variance)
+  }
 
   private async computeValuationPercentile(tradeDate: Date, field: 'pe_ttm' | 'pb') {
     const oneYearAgo = new Date(tradeDate)

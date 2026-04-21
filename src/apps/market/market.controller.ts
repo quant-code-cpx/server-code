@@ -19,11 +19,14 @@ import { IndexQuoteQueryDto } from './dto/index-quote-query.dto'
 import { IndexQuoteWithSparklineQueryDto } from './dto/index-quote-with-sparkline-query.dto'
 import { ConceptListDto } from './dto/concept-list.dto'
 import { ConceptMembersDto } from './dto/concept-members.dto'
+import { TopMoversQueryDto } from './dto/top-movers-query.dto'
+import { SectorTopBottomQueryDto } from './dto/sector-top-bottom-query.dto'
 import { ApiSuccessResponse } from 'src/common/decorators/api-success-response.decorator'
 import {
   ChangeDistributionResponseDto,
   ConceptListResponseDto,
   ConceptMembersResponseDto,
+  DailyNarrativeResponseDto,
   HsgtFlowHistoryDto,
   MarketBreadthDto,
   HsgtTrendResponseDto,
@@ -42,8 +45,11 @@ import {
   SectorRankingResponseDto,
   SentimentTrendResponseDto,
   StockFlowDetailResponseDto,
+  TopMoversResponseDto,
   ValuationTrendResponseDto,
   VolumeOverviewResponseDto,
+  SectorTopBottomResponseDto,
+  MarketDataDatesDto,
 } from './dto/market-response.dto'
 
 @ApiTags('Market - 市场与行业')
@@ -203,5 +209,33 @@ export class MarketController {
   @ApiSuccessResponse(ConceptMembersResponseDto)
   getConceptMembers(@Body() dto: ConceptMembersDto) {
     return this.marketService.getConceptMembers(dto)
+  }
+
+  @Post('daily-narrative')
+  @ApiOperation({ summary: '获取当日市场叙事摘要（基调/得分/关键事件，供叙事驱动页面使用）' })
+  @ApiSuccessResponse(DailyNarrativeResponseDto)
+  getDailyNarrative(@Body() query: MoneyFlowQueryDto) {
+    return this.marketService.getDailyNarrative(query)
+  }
+
+  @Post('top-movers')
+  @ApiOperation({ summary: '获取 Top 异动个股（涨幅/跌幅/振幅/成交额，单次调用）' })
+  @ApiSuccessResponse(TopMoversResponseDto)
+  getTopMovers(@Body() query: TopMoversQueryDto) {
+    return this.marketService.getTopMovers(query)
+  }
+
+  @Post('data-dates')
+  @ApiOperation({ summary: '获取各数据源最新交易日期（登录后初始化使用）' })
+  @ApiSuccessResponse(MarketDataDatesDto)
+  getDataDates() {
+    return this.marketService.getDataDates()
+  }
+
+  @Post('sector-top-bottom')
+  @ApiOperation({ summary: '一次返回行业涨跌幅 + 资金双榜（Top N 涨/跌/流入/流出），前端切换零请求' })
+  @ApiSuccessResponse(SectorTopBottomResponseDto)
+  getSectorTopBottom(@Body() dto: SectorTopBottomQueryDto) {
+    return this.marketService.getSectorTopBottom(dto)
   }
 }

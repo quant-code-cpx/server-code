@@ -76,15 +76,15 @@ export class PortfolioRiskService {
       ),
       holdings AS (
         SELECT
-          h.ts_code,
+          h."tsCode" AS ts_code,
           h.quantity,
           b.name,
           b.industry,
-          COALESCE(l.close * h.quantity, h.avg_cost * h.quantity) AS mkt_val
+          COALESCE(l.close * h.quantity, h."avgCost" * h.quantity) AS mkt_val
         FROM portfolio_holdings h
-        JOIN stock_basic_profiles b ON b.ts_code = h.ts_code
-        LEFT JOIN latest l ON l.ts_code = h.ts_code
-        WHERE h.portfolio_id = $1
+        JOIN stock_basic_profiles b ON b.ts_code = h."tsCode"
+        LEFT JOIN latest l ON l.ts_code = h."tsCode"
+        WHERE h."portfolioId" = $1
       ),
       total AS (
         SELECT SUM(mkt_val) AS total_mv FROM holdings
@@ -134,12 +134,12 @@ export class PortfolioRiskService {
       ),
       holdings AS (
         SELECT
-          h.ts_code,
-          h.stock_name,
-          COALESCE(l.close * h.quantity, h.avg_cost * h.quantity) AS mkt_val
+          h."tsCode" AS ts_code,
+          h."stockName" AS stock_name,
+          COALESCE(l.close * h.quantity, h."avgCost" * h.quantity) AS mkt_val
         FROM portfolio_holdings h
-        LEFT JOIN latest l ON l.ts_code = h.ts_code
-        WHERE h.portfolio_id = $1
+        LEFT JOIN latest l ON l.ts_code = h."tsCode"
+        WHERE h."portfolioId" = $1
       ),
       total AS (
         SELECT SUM(mkt_val) AS total_mv FROM holdings
@@ -204,13 +204,13 @@ export class PortfolioRiskService {
       ),
       holdings AS (
         SELECT
-          h.ts_code,
-          h.stock_name,
-          COALESCE(lv.close * h.quantity, h.avg_cost * h.quantity) AS mkt_val,
+          h."tsCode" AS ts_code,
+          h."stockName" AS stock_name,
+          COALESCE(lv.close * h.quantity, h."avgCost" * h.quantity) AS mkt_val,
           lv.total_mv_raw
         FROM portfolio_holdings h
-        LEFT JOIN latest_val lv ON lv.ts_code = h.ts_code
-        WHERE h.portfolio_id = $1
+        LEFT JOIN latest_val lv ON lv.ts_code = h."tsCode"
+        WHERE h."portfolioId" = $1
       ),
       total AS (
         SELECT SUM(mkt_val) AS total_mv FROM holdings

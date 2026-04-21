@@ -365,19 +365,24 @@ export class PortfolioService {
 
   private async calcPnlHistory(portfolioId: string, startDate: string, endDate: string) {
     type HistRow = { trade_date: Date; market_value: unknown; cost_basis: unknown }
-    const rows = await this.prisma.$queryRaw<HistRow[]>`
+    const rows = await this.prisma.$queryRawUnsafe<HistRow[]>(
+      `
       SELECT
         d.trade_date,
-        SUM(h.quantity * d.close)       AS market_value,
-        SUM(h.quantity * h.avg_cost)    AS cost_basis
+        SUM(h.quantity * d.close)           AS market_value,
+        SUM(h.quantity * h."avgCost")       AS cost_basis
       FROM portfolio_holdings h
       JOIN stock_daily_prices d
-        ON d.ts_code = h.ts_code
-        AND d.trade_date BETWEEN ${startDate}::date AND ${endDate}::date
-      WHERE h.portfolio_id = ${portfolioId}
+        ON d.ts_code = h."tsCode"
+        AND d.trade_date BETWEEN $2::date AND $3::date
+      WHERE h."portfolioId" = $1
       GROUP BY d.trade_date
       ORDER BY d.trade_date
-    `
+      `,
+      portfolioId,
+      startDate,
+      endDate,
+    )
     return rows.map((r) => {
       const mv = Number(r.market_value)
       const cb = Number(r.cost_basis)

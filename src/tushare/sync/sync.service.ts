@@ -8,9 +8,10 @@ import {
   forwardRef,
 } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
-import { SchedulerRegistry } from '@nestjs/schedule'
+import { Cron, SchedulerRegistry } from '@nestjs/schedule'
 import { InjectMetric } from '@willsoto/nestjs-prometheus'
 import { CronJob } from 'cron'
+import dayjs from 'dayjs'
 import { Counter, Gauge, Histogram } from 'prom-client'
 import { BusinessException } from 'src/common/exceptions/business.exception'
 import { ITushareConfig, TUSHARE_CONFIG_TOKEN } from 'src/config/tushare.config'
@@ -65,6 +66,7 @@ export class TushareSyncService implements OnApplicationBootstrap {
   private readonly syncEnabled: boolean
   private readonly syncTimeZone: string
   private readonly syncConcurrency: number
+  private readonly bootstrapOnStart: boolean
   private running = false
 
   constructor(
@@ -91,6 +93,7 @@ export class TushareSyncService implements OnApplicationBootstrap {
     this.syncEnabled = cfg.syncEnabled
     this.syncTimeZone = cfg.syncTimeZone
     this.syncConcurrency = cfg.syncConcurrency ?? 3
+    this.bootstrapOnStart = cfg.bootstrapOnStart
   }
 
   async onApplicationBootstrap() {
@@ -101,13 +104,130 @@ export class TushareSyncService implements OnApplicationBootstrap {
 
     this.registerSyncJobs()
 
-    void this.runPlans({
-      trigger: 'bootstrap',
-      mode: 'incremental',
-      plans: this.registry.getBootstrapPlans(),
-    }).catch((error) => {
+    if (!this.bootstrapOnStart) {
+      this.logger.log(
+        'Bootstrap 同步已关闭（开发模式 / TUSHARE_BOOTSTRAP_ON_START=false），仅注册定时任务',
+      )
+      // 开发模式仍做一次 catch-up，方便联调盘后数据
+      void this.checkAndCatchUpMissedSchedules()
+      return
+    }
+
+    void this.runBootstrap().catch((error) => {
       this.logger.error(`启动同步失败: ${(error as Error).message}`, (error as Error).stack)
     })
+  }
+
+  /**
+   * Bootstrap 流程（仅在 bootstrapOnStart=true 时执行）：
+   * 先做 freshness check，只对数据陈旧的任务执行同步，避免每次重启都跑全量。
+   */
+  private async runBootstrap() {
+    const bootstrapPlans = this.registry.getBootstrapPlans()
+    const latestTradeDate = await this.helper.resolveLatestCompletedTradeDate()
+
+    // 逐 plan 检查数据新鲜度，只保留需要同步的
+    const stalePlans: TushareSyncPlan[] = []
+    for (const plan of bootstrapPlans) {
+      const isFresh = await this.helper.isTaskFresh(plan.task, latestTradeDate)
+      if (!isFresh) stalePlans.push(plan)
+    }
+
+    if (stalePlans.length === 0) {
+      this.logger.log('✅ 所有 bootstrap 任务数据已是最新，跳过启动同步')
+    } else {
+      this.logger.log(
+        `启动同步：${stalePlans.length} / ${bootstrapPlans.length} 个任务需要同步（数据陈旧或未初始化）`,
+      )
+      await this.runPlans({ trigger: 'bootstrap', mode: 'incremental', plans: stalePlans })
+    }
+
+    // bootstrap 完成后立刻做一次 catch-up 检查，补上启动期间可能错过的定时任务
+    void this.checkAndCatchUpMissedSchedules()
+  }
+
+  /** 每整点检查一次，补跑因 Mac 休眠 / 容器重启等原因错过的当日定时任务 */
+  @Cron('0 0 * * * *', { timeZone: 'Asia/Shanghai' })
+  async onHourlyCatchupCheck() {
+    if (!this.syncEnabled) return
+    await this.checkAndCatchUpMissedSchedules()
+  }
+
+  /**
+   * Catch-up 补跑逻辑：
+   * 扫描所有有 schedule 的 plan，若满足以下条件则补跑：
+   *   1. 今天是（或应该是）该任务的触发日（交易日 / 周五 / 月初等）
+   *   2. 该 cron 的触发时间已过
+   *   3. 今天尚未成功同步该任务
+   */
+  private async checkAndCatchUpMissedSchedules() {
+    const now = this.helper.getCurrentShanghaiNow()
+
+    // 18:30 之前不可能有盘后任务到期，提前退出节省 DB 查询
+    if (now.hour() < 18 || (now.hour() === 18 && now.minute() < 30)) return
+
+    let isTradingDay: boolean
+    let latestTradeDate: string | null
+    try {
+      ;[isTradingDay, latestTradeDate] = await Promise.all([
+        this.helper.isTodayTradingDay(),
+        this.helper.resolveLatestCompletedTradeDate(),
+      ])
+    } catch (err) {
+      this.logger.warn(`[Catch-up] 无法查询交易日历，跳过本次检查: ${(err as Error).message}`)
+      return
+    }
+
+    const plansToRun: TushareSyncPlan[] = []
+
+    for (const plan of this.registry.getScheduledPlans()) {
+      if (!plan.schedule) continue
+
+      // 跳过「仅交易日」但今天不是交易日的任务
+      if (plan.schedule.tradingDayOnly && !isTradingDay) continue
+
+      // 跳过 cron 触发时间还没到的任务
+      if (!this.hasCronPassedToday(plan.schedule.cron, now)) continue
+
+      // 检查今天是否已成功完成
+      try {
+        const alreadyRan = await this.helper.isTaskFresh(plan.task, latestTradeDate)
+        if (!alreadyRan) plansToRun.push(plan)
+      } catch (err) {
+        this.logger.warn(`[Catch-up] 检查 ${plan.task} 新鲜度失败: ${(err as Error).message}`)
+      }
+    }
+
+    if (plansToRun.length === 0) return
+
+    this.logger.warn(
+      `[Catch-up] 发现 ${plansToRun.length} 个任务今日未完成，触发补跑: ${plansToRun.map((p) => p.task).join(', ')}`,
+    )
+
+    void this.runPlans({
+      trigger: 'schedule',
+      mode: 'incremental',
+      plans: plansToRun,
+    }).catch((err) => {
+      this.logger.error(`[Catch-up] 补跑失败: ${(err as Error).message}`, (err as Error).stack)
+    })
+  }
+
+  /**
+   * 解析 6 段 cron 表达式（秒 分 时 日 月 周），判断今天该 cron 的触发时刻是否已过。
+   * 仅解析固定的 hour/minute 值（含通配 *）；范围/步进等复杂表达式视为「已过」（保守补跑）。
+   */
+  private hasCronPassedToday(cronStr: string, now: dayjs.Dayjs): boolean {
+    const parts = cronStr.split(' ')
+    if (parts.length < 6) return false
+    const minutePart = parts[1]
+    const hourPart = parts[2]
+    // 通配符（*）视为「任意时刻，已过」
+    if (hourPart === '*') return true
+    const hour = parseInt(hourPart, 10)
+    const minute = minutePart === '*' ? 0 : parseInt(minutePart, 10)
+    if (isNaN(hour) || isNaN(minute)) return true
+    return now.hour() > hour || (now.hour() === hour && now.minute() >= minute)
   }
 
   getAvailableSyncPlans() {

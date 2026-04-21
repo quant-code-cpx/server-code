@@ -109,6 +109,18 @@ export class SyncHelperService {
     return Boolean(log)
   }
 
+  /**
+   * 检查某个任务的数据是否最新：
+   * - 若提供了 latestTradeDate，则检查该交易日是否已同步成功（适用于有 tradeDate 的日线类任务）
+   * - 否则退回到检查今天是否同步过（适用于 stock_basic 等非日期维度任务）
+   */
+  async isTaskFresh(task: TushareSyncTaskName, latestTradeDate: string | null): Promise<boolean> {
+    if (latestTradeDate) {
+      return this.isTaskSyncedForTradeDate(task, latestTradeDate)
+    }
+    return this.isTaskSyncedToday(task)
+  }
+
   /** 写入同步日志 */
   async writeSyncLog(task: TushareSyncTaskName, result: SyncLogPayload, startedAt: Date) {
     await this.prisma.tushareSyncLog.create({

@@ -95,6 +95,24 @@ export class SyncHelperService {
     return logDate === todayStr
   }
 
+  /** 检查某个任务在最近 N 天内（按上海时区）是否已成功同步过 */
+  async isTaskSyncedWithinDays(task: TushareSyncTaskName, days: number): Promise<boolean> {
+    const log = await this.prisma.tushareSyncLog.findFirst({
+      where: {
+        task: TushareSyncTask[task],
+        status: TushareSyncStatus.SUCCESS,
+      },
+      orderBy: { startedAt: 'desc' },
+      select: { startedAt: true },
+    })
+
+    if (!log) return false
+
+    const cutoff = this.getCurrentShanghaiNow().subtract(days, 'day')
+    const logTime = dayjs(log.startedAt).tz(this.syncTimeZone)
+    return logTime.isAfter(cutoff)
+  }
+
   /** 检查某个任务是否已成功同步到指定交易日（按 sync log.tradeDate 判断） */
   async isTaskSyncedForTradeDate(task: TushareSyncTaskName, tradeDate: string): Promise<boolean> {
     const log = await this.prisma.tushareSyncLog.findFirst({

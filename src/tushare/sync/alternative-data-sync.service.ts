@@ -132,12 +132,15 @@ export class AlternativeDataSyncService {
 
   async syncTopList(targetTradeDate: string, mode: TushareSyncMode = 'incremental'): Promise<void> {
     const collector = new ValidationCollector(TushareSyncTaskName.TOP_LIST)
+    // bootstrap 仅保留近 5 年，避免全量回拉 2010 年起所有龙虎榜数据
+    const year5AgoStr = String(parseInt(targetTradeDate.slice(0, 4), 10) - 5) + targetTradeDate.slice(4)
     await this.syncByTradeDateString({
       task: TushareSyncTaskName.TOP_LIST,
       label: '龙虎榜明细',
       modelName: 'topList',
       targetTradeDate,
       fullSync: mode === 'full',
+      bootstrapStartDate: year5AgoStr,
       fetchAndMap: async (td) => {
         const rows = await this.api.getTopListByTradeDate(td)
         return rows.map((r) => mapTopListRecord(r, collector)).filter((r): r is NonNullable<typeof r> => Boolean(r))
@@ -149,12 +152,15 @@ export class AlternativeDataSyncService {
 
   async syncTopInst(targetTradeDate: string, mode: TushareSyncMode = 'incremental'): Promise<void> {
     const collector = new ValidationCollector(TushareSyncTaskName.TOP_INST)
+    // bootstrap 仅保留近 5 年，避免全量回拉 2010 年起所有龙虎榜机构明细
+    const year5AgoStr = String(parseInt(targetTradeDate.slice(0, 4), 10) - 5) + targetTradeDate.slice(4)
     await this.syncByTradeDateString({
       task: TushareSyncTaskName.TOP_INST,
       label: '龙虎榜机构明细',
       modelName: 'topInst',
       targetTradeDate,
       fullSync: mode === 'full',
+      bootstrapStartDate: year5AgoStr,
       fetchAndMap: async (td) => {
         const rows = await this.api.getTopInstByTradeDate(td)
         return rows.map((r) => mapTopInstRecord(r, collector)).filter((r): r is NonNullable<typeof r> => Boolean(r))
@@ -166,12 +172,15 @@ export class AlternativeDataSyncService {
 
   async syncBlockTrade(targetTradeDate: string, mode: TushareSyncMode = 'incremental'): Promise<void> {
     const collector = new ValidationCollector(TushareSyncTaskName.BLOCK_TRADE)
+    // bootstrap 仅保留近 5 年，避免全量回拉 2010 年起所有大宗交易数据
+    const year5AgoStr = String(parseInt(targetTradeDate.slice(0, 4), 10) - 5) + targetTradeDate.slice(4)
     await this.syncByTradeDateString({
       task: TushareSyncTaskName.BLOCK_TRADE,
       label: '大宗交易',
       modelName: 'blockTrade',
       targetTradeDate,
       fullSync: mode === 'full',
+      bootstrapStartDate: year5AgoStr,
       fetchAndMap: async (td) => {
         const rows = await this.api.getBlockTradeByTradeDate(td)
         return rows.map((r) => mapBlockTradeRecord(r, collector)).filter((r): r is NonNullable<typeof r> => Boolean(r))

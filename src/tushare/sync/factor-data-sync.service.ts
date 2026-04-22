@@ -11,7 +11,7 @@ type AnyModelDelegate = {
 }
 import { ErrorEnum } from 'src/constant/response-code.constant'
 import {
-  FACTOR_UNIVERSE_INDEX_CODES,
+  INDEX_WEIGHT_INDEX_CODES,
   TushareSyncExecutionStatus,
   TushareSyncTaskName,
 } from 'src/constant/tushare.constant'
@@ -191,26 +191,38 @@ export class FactorDataSyncService {
     const startedAt = new Date()
     const today = this.helper.getCurrentShanghaiDateString()
 
-    let startDate: string
-    if (mode === 'full') {
-      startDate = this.INDEX_WEIGHT_SYNC_START
-    } else {
-      const latest = await this.helper.getLatestDateString('indexWeight')
-      startDate = latest ? this.helper.addDays(latest, 1) : this.INDEX_WEIGHT_SYNC_START
+    const syncTargets: Array<{ indexCode: string; startDate: string }> = []
+    for (const indexCode of INDEX_WEIGHT_INDEX_CODES) {
+      const latest =
+        mode === 'full'
+          ? null
+          : await this.helper.prisma.indexWeight.findFirst({
+              where: { indexCode },
+              orderBy: { tradeDate: 'desc' },
+              select: { tradeDate: true },
+            })
+      const startDate = latest ? this.helper.addDays(latest.tradeDate, 1) : this.INDEX_WEIGHT_SYNC_START
+      if (this.helper.compareDateString(startDate, today) <= 0) {
+        syncTargets.push({ indexCode, startDate })
+      }
     }
 
-    if (this.helper.compareDateString(startDate, today) > 0) {
+    if (syncTargets.length === 0) {
       this.logger.log('[指数成分权重] 已是最新，无需同步')
       return
     }
 
-    this.logger.log(`[指数成分权重] 同步范围: ${startDate} → ${today}`)
+    const earliestStartDate = syncTargets.reduce(
+      (min, item) => (this.helper.compareDateString(item.startDate, min) < 0 ? item.startDate : min),
+      syncTargets[0].startDate,
+    )
+    this.logger.log(`[指数成分权重] 同步范围: ${earliestStartDate} → ${today}，指数数=${syncTargets.length}`)
 
     let totalRows = 0
     const failed: string[] = []
     const collector = new ValidationCollector(TushareSyncTaskName.INDEX_WEIGHT)
 
-    for (const indexCode of FACTOR_UNIVERSE_INDEX_CODES) {
+    for (const { indexCode, startDate } of syncTargets) {
       try {
         const rows = await this.api.getIndexWeightByMonth(indexCode, startDate, today)
         const mapped = rows

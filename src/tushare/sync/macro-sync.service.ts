@@ -182,7 +182,7 @@ export class MacroSyncService {
 
     // 增量：从本地最新日期 +1 天开始
     const latestDate = isFullSync ? null : await this.helper.getLatestDateString('macroShibor', 'date')
-    const startDate = latestDate ? this.helper.addDays(latestDate, 1) : '20060101' // Shibor 从 2006 年开始
+    const startDate = latestDate ? this.helper.addDays(latestDate, 1) : '20150101' // Shibor 从 2006 年开始，但 2015 年前数据对量化实用价值有限
     const todayStr = this.helper.formatDate(new Date())
 
     if (this.helper.compareDateString(startDate, todayStr) > 0) {

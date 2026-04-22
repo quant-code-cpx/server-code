@@ -30,6 +30,7 @@ import { ValidationCollector } from './quality/validation-collector'
 @Injectable()
 export class BasicSyncService {
   private readonly logger = new Logger(BasicSyncService.name)
+  private static readonly WEEKLY_SNAPSHOT_FRESH_DAYS = 7
 
   constructor(
     private readonly api: BasicApiService,
@@ -289,7 +290,11 @@ export class BasicSyncService {
 
   // ─── 申万行业分类 ──────────────────────────────────────────────────────────
 
-  async syncIndexClassify(_mode: TushareSyncMode = 'incremental'): Promise<void> {
+  async syncIndexClassify(mode: TushareSyncMode = 'incremental'): Promise<void> {
+    if (await this.shouldSkipWeeklySnapshotTask(TushareSyncTaskName.INDEX_CLASSIFY, '申万行业分类', mode)) {
+      return
+    }
+
     const startedAt = new Date()
     this.logger.log('[申万行业分类] 开始全量同步...')
 
@@ -326,7 +331,11 @@ export class BasicSyncService {
 
   // ─── 申万行业成分 ──────────────────────────────────────────────────────────
 
-  async syncIndexMemberAll(_mode: TushareSyncMode = 'incremental'): Promise<void> {
+  async syncIndexMemberAll(mode: TushareSyncMode = 'incremental'): Promise<void> {
+    if (await this.shouldSkipWeeklySnapshotTask(TushareSyncTaskName.INDEX_MEMBER_ALL, '申万行业成分', mode)) {
+      return
+    }
+
     const startedAt = new Date()
     this.logger.log('[申万行业成分] 开始全量同步...')
 
@@ -377,7 +386,11 @@ export class BasicSyncService {
 
   // ─── 可转债基础信息 ────────────────────────────────────────────────────────
 
-  async syncCbBasic(_mode: TushareSyncMode = 'incremental'): Promise<void> {
+  async syncCbBasic(mode: TushareSyncMode = 'incremental'): Promise<void> {
+    if (await this.shouldSkipWeeklySnapshotTask(TushareSyncTaskName.CB_BASIC, '可转债基础信息', mode)) {
+      return
+    }
+
     const startedAt = new Date()
     this.logger.log('[可转债基础信息] 开始全量同步...')
 
@@ -402,7 +415,11 @@ export class BasicSyncService {
 
   // ─── 同花顺板块目录 ────────────────────────────────────────────────────────
 
-  async syncThsIndex(): Promise<void> {
+  async syncThsIndex(mode: TushareSyncMode = 'incremental'): Promise<void> {
+    if (await this.shouldSkipWeeklySnapshotTask(TushareSyncTaskName.THS_INDEX, '同花顺板块目录', mode)) {
+      return
+    }
+
     const startedAt = new Date()
     this.logger.log('[同花顺板块目录] 开始全量同步...')
 
@@ -433,7 +450,11 @@ export class BasicSyncService {
 
   // ─── 同花顺概念成分 ────────────────────────────────────────────────────────
 
-  async syncThsMember(): Promise<void> {
+  async syncThsMember(mode: TushareSyncMode = 'incremental'): Promise<void> {
+    if (await this.shouldSkipWeeklySnapshotTask(TushareSyncTaskName.THS_MEMBER, '同花顺概念成分', mode)) {
+      return
+    }
+
     const startedAt = new Date()
     this.logger.log('[同花顺概念成分] 开始全量同步...')
 
@@ -477,5 +498,24 @@ export class BasicSyncService {
       },
       startedAt,
     )
+  }
+
+  private async shouldSkipWeeklySnapshotTask(
+    task: TushareSyncTaskName,
+    label: string,
+    mode: TushareSyncMode,
+  ): Promise<boolean> {
+    if (mode === 'full') {
+      return false
+    }
+
+    const syncedRecently = await this.helper.isTaskSyncedWithinDays(task, BasicSyncService.WEEKLY_SNAPSHOT_FRESH_DAYS)
+
+    if (syncedRecently) {
+      this.logger.log(`[${label}] 增量模式下最近 ${BasicSyncService.WEEKLY_SNAPSHOT_FRESH_DAYS} 天已同步，跳过`)
+      return true
+    }
+
+    return false
   }
 }

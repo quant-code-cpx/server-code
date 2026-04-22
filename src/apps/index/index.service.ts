@@ -76,38 +76,28 @@ export class IndexService {
    */
   async getIndexConstituents(query: IndexConstituentsQueryDto) {
     const { index_code } = query
-    const cacheKey = `index:constituents:${index_code}:${query.trade_date ?? 'latest'}`
+    const requestedTradeDate = query.trade_date ?? 'latest'
+    const resolvedTradeDate = await this.resolveAvailableIndexWeightTradeDate(index_code, query.trade_date)
+    const cacheKey = `index:constituents:${index_code}:${requestedTradeDate}:${resolvedTradeDate ?? 'empty'}`
 
     return this.cacheService.rememberJson({
       namespace: CACHE_NAMESPACE.MARKET,
       key: cacheKey,
       ttlSeconds: INDEX_CACHE_TTL_SECONDS,
       loader: async () => {
-        // 确定查询日期
-        let tradeDate: string
-        if (query.trade_date) {
-          tradeDate = query.trade_date
-        } else {
-          const latest = await this.prisma.indexWeight.findFirst({
-            where: { indexCode: index_code },
-            orderBy: { tradeDate: 'desc' },
-            select: { tradeDate: true },
-          })
-          if (!latest) {
-            return {
-              indexCode: index_code,
-              indexName: CORE_INDEX_NAME_MAP[index_code] ?? index_code,
-              tradeDate: '',
-              total: 0,
-              constituents: [],
-            }
+        if (!resolvedTradeDate) {
+          return {
+            indexCode: index_code,
+            indexName: CORE_INDEX_NAME_MAP[index_code] ?? index_code,
+            tradeDate: '',
+            total: 0,
+            constituents: [],
           }
-          tradeDate = latest.tradeDate
         }
 
         // 查询成分股权重
         const weights = await this.prisma.indexWeight.findMany({
-          where: { indexCode: index_code, tradeDate },
+          where: { indexCode: index_code, tradeDate: resolvedTradeDate },
           orderBy: { weight: 'desc' },
         })
 
@@ -122,7 +112,7 @@ export class IndexService {
         return {
           indexCode: index_code,
           indexName: CORE_INDEX_NAME_MAP[index_code] ?? index_code,
-          tradeDate,
+          tradeDate: resolvedTradeDate,
           total: weights.length,
           constituents: weights.map((w) => ({
             conCode: w.conCode,
@@ -133,6 +123,16 @@ export class IndexService {
         }
       },
     })
+  }
+
+  private async resolveAvailableIndexWeightTradeDate(indexCode: string, tradeDate?: string): Promise<string | null> {
+    const latest = await this.prisma.indexWeight.findFirst({
+      where: tradeDate ? { indexCode, tradeDate: { lte: tradeDate } } : { indexCode },
+      orderBy: { tradeDate: 'desc' },
+      select: { tradeDate: true },
+    })
+
+    return latest?.tradeDate ?? null
   }
 
   private buildDailyResponse(tsCode: string, rows: Array<Record<string, unknown>>) {

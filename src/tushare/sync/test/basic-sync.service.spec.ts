@@ -40,6 +40,7 @@ function buildMockHelper(prismaMock = buildPrismaMock()) {
       syncTimeZone: 'Asia/Shanghai',
       syncStartDate: '20100101',
       isTaskSyncedToday: jest.fn(async () => false),
+      isTaskSyncedWithinDays: jest.fn(async () => false),
       replaceAllRows: jest.fn(async () => 0),
       replaceDateRangeRows: jest.fn(async () => 0),
       writeSyncLog: jest.fn(async () => undefined),
@@ -170,6 +171,18 @@ describe('BasicSyncService', () => {
   // ── syncThsIndex() ─────────────────────────────────────────────────────────
 
   describe('syncThsIndex()', () => {
+    it('incremental 模式最近 7 天已同步时应跳过，不调用 API', async () => {
+      const helper = buildMockHelper()
+      helper.isTaskSyncedWithinDays.mockResolvedValue(true)
+      const api = buildMockApi()
+      const service = createService(api, helper)
+
+      await service.syncThsIndex('incremental')
+
+      expect(api.getThsIndex).not.toHaveBeenCalled()
+      expect(helper.writeSyncLog).not.toHaveBeenCalled()
+    })
+
     it('应先删 thsMember，再删 thsIndex（外键顺序保证）', async () => {
       const prismaMock = buildPrismaMock()
       const callOrder: string[] = []
@@ -186,8 +199,10 @@ describe('BasicSyncService', () => {
         return { count: 0 }
       })
 
-      const service = createService(buildMockApi(), buildMockHelper(prismaMock))
-      await service.syncThsIndex()
+      const helper = buildMockHelper(prismaMock)
+      helper.isTaskSyncedWithinDays.mockResolvedValue(false)
+      const service = createService(buildMockApi(), helper)
+      await service.syncThsIndex('incremental')
 
       expect(callOrder[0]).toBe('thsMember.deleteMany')
       expect(callOrder[1]).toBe('thsIndex.deleteMany')
@@ -198,7 +213,7 @@ describe('BasicSyncService', () => {
       const helper = buildMockHelper()
       const service = createService(buildMockApi(), helper)
 
-      await service.syncThsIndex()
+      await service.syncThsIndex('full')
 
       expect(helper.flushValidationLogs).toHaveBeenCalled()
       expect(helper.writeSyncLog).toHaveBeenCalledWith(
@@ -212,13 +227,27 @@ describe('BasicSyncService', () => {
   // ── syncThsMember() ────────────────────────────────────────────────────────
 
   describe('syncThsMember()', () => {
+    it('incremental 模式最近 7 天已同步时应跳过，不调用 API', async () => {
+      const helper = buildMockHelper()
+      helper.isTaskSyncedWithinDays.mockResolvedValue(true)
+      const api = buildMockApi()
+      const service = createService(api, helper)
+
+      await service.syncThsMember('incremental')
+
+      expect(api.getThsMemberByCode).not.toHaveBeenCalled()
+      expect(helper.writeSyncLog).not.toHaveBeenCalled()
+    })
+
     it('thsIndex 为空时应提前返回，不调用 API', async () => {
       const prismaMock = buildPrismaMock()
       prismaMock.thsIndex.findMany.mockResolvedValue([]) // 空板块列表
       const api = buildMockApi()
-      const service = createService(api, buildMockHelper(prismaMock))
+      const helper = buildMockHelper(prismaMock)
+      helper.isTaskSyncedWithinDays.mockResolvedValue(false)
+      const service = createService(api, helper)
 
-      await service.syncThsMember()
+      await service.syncThsMember('incremental')
 
       expect(api.getThsMemberByCode).not.toHaveBeenCalled()
     })
@@ -231,9 +260,11 @@ describe('BasicSyncService', () => {
       ] as never)
 
       const api = buildMockApi()
-      const service = createService(api, buildMockHelper(prismaMock))
+      const helper = buildMockHelper(prismaMock)
+      helper.isTaskSyncedWithinDays.mockResolvedValue(false)
+      const service = createService(api, helper)
 
-      await service.syncThsMember()
+      await service.syncThsMember('incremental')
 
       expect(api.getThsMemberByCode).toHaveBeenCalledTimes(2)
       expect(api.getThsMemberByCode).toHaveBeenCalledWith('884001.TI')
@@ -243,11 +274,51 @@ describe('BasicSyncService', () => {
     it('同步前应先清空 thsMember 旧数据', async () => {
       const prismaMock = buildPrismaMock()
       prismaMock.thsIndex.findMany.mockResolvedValue([{ tsCode: '884001.TI', type: 'N' }] as never)
-      const service = createService(buildMockApi(), buildMockHelper(prismaMock))
+      const helper = buildMockHelper(prismaMock)
+      helper.isTaskSyncedWithinDays.mockResolvedValue(false)
+      const service = createService(buildMockApi(), helper)
 
-      await service.syncThsMember()
+      await service.syncThsMember('incremental')
 
       expect(prismaMock.thsMember.deleteMany).toHaveBeenCalled()
+    })
+  })
+
+  describe('snapshot tasks incremental gating', () => {
+    it('syncIndexClassify 在 incremental 且最近 7 天已同步时应跳过', async () => {
+      const helper = buildMockHelper()
+      helper.isTaskSyncedWithinDays.mockResolvedValue(true)
+      const api = buildMockApi()
+      const service = createService(api, helper)
+
+      await service.syncIndexClassify('incremental')
+
+      expect(api.getIndexClassify).not.toHaveBeenCalled()
+      expect(helper.writeSyncLog).not.toHaveBeenCalled()
+    })
+
+    it('syncIndexMemberAll 在 incremental 且最近 7 天已同步时应跳过', async () => {
+      const helper = buildMockHelper()
+      helper.isTaskSyncedWithinDays.mockResolvedValue(true)
+      const api = buildMockApi()
+      const service = createService(api, helper)
+
+      await service.syncIndexMemberAll('incremental')
+
+      expect(api.getIndexMemberAllByL1Code).not.toHaveBeenCalled()
+      expect(helper.writeSyncLog).not.toHaveBeenCalled()
+    })
+
+    it('syncCbBasic 在 incremental 且最近 7 天已同步时应跳过', async () => {
+      const helper = buildMockHelper()
+      helper.isTaskSyncedWithinDays.mockResolvedValue(true)
+      const api = buildMockApi()
+      const service = createService(api, helper)
+
+      await service.syncCbBasic('incremental')
+
+      expect(api.getCbBasicAll).not.toHaveBeenCalled()
+      expect(helper.writeSyncLog).not.toHaveBeenCalled()
     })
   })
 

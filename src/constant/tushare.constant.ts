@@ -920,14 +920,8 @@ export const TUSHARE_SUSPEND_D_FIELDS = ['ts_code', 'trade_date', 'suspend_timin
 
 export const TUSHARE_INDEX_WEIGHT_FIELDS = ['index_code', 'con_code', 'trade_date', 'weight'] as const
 
-/** 因子分析需要跟踪成分权重的核心指数 */
-export const FACTOR_UNIVERSE_INDEX_CODES = [
-  '000300.SH', // 沪深300
-  '000905.SH', // 中证500
-  '000852.SH', // 中证1000
-  '000016.SH', // 上证50
-  '399006.SZ', // 创业板指
-] as const
+/** 指数成分权重同步覆盖的核心指数（与 /index/list 保持一致） */
+export const INDEX_WEIGHT_INDEX_CODES = CORE_INDEX_CODES
 
 export const TUSHARE_TOP_LIST_FIELDS = [
   'trade_date',

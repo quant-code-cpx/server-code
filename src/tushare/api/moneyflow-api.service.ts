@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common'
 import {
   MoneyflowContentType,
   TUSHARE_GGT_DAILY_FIELDS,
-  TUSHARE_MONEYFLOW_DC_FIELDS,
+  TUSHARE_MONEYFLOW_FIELDS,
   TUSHARE_MONEYFLOW_HSGT_FIELDS,
   TUSHARE_MONEYFLOW_IND_DC_FIELDS,
   TUSHARE_MONEYFLOW_MKT_DC_FIELDS,
@@ -18,9 +18,9 @@ export class MoneyflowApiService {
   /** 按交易日获取个股资金流向 */
   getMoneyflowByTradeDate(tradeDate: string) {
     return this.client.call({
-      api_name: TushareApiName.MONEYFLOW_DC,
+      api_name: TushareApiName.MONEYFLOW,
       params: { trade_date: tradeDate },
-      fields: [...TUSHARE_MONEYFLOW_DC_FIELDS],
+      fields: [...TUSHARE_MONEYFLOW_FIELDS],
     })
   }
 

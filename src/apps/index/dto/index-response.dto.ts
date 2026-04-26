@@ -58,10 +58,25 @@ export class IndexConstituentItemDto {
   @ApiProperty({ description: '成分股名称', required: false, nullable: true })
   name: string | null
 
+  @ApiProperty({ description: '所属行业', required: false, nullable: true })
+  industry: string | null
+
   @ApiProperty({ description: '权重（%）', required: false, nullable: true })
   weight: number | null
 
-  @ApiProperty({ description: '数据日期' })
+  @ApiProperty({ description: '收盘价', required: false, nullable: true })
+  close: number | null
+
+  @ApiProperty({ description: '涨跌幅（%）', required: false, nullable: true })
+  pctChg: number | null
+
+  @ApiProperty({ description: '总市值（万元）', required: false, nullable: true })
+  totalMv: number | null
+
+  @ApiProperty({ description: '流通市值（万元）', required: false, nullable: true })
+  circMv: number | null
+
+  @ApiProperty({ description: '权重快照日期（YYYYMMDD）' })
   tradeDate: string
 }
 
@@ -72,8 +87,11 @@ export class IndexConstituentsResponseDto {
   @ApiProperty({ description: '指数名称' })
   indexName: string
 
-  @ApiProperty({ description: '数据日期' })
+  @ApiProperty({ description: '权重快照日期（YYYYMMDD）' })
   tradeDate: string
+
+  @ApiProperty({ description: '行情数据日期（YYYYMMDD），即收盘价/涨跌幅/市值对应的最新交易日' })
+  dailyTradeDate: string
 
   @ApiProperty({ description: '成分股总数' })
   total: number

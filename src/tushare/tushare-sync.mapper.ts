@@ -2473,15 +2473,15 @@ export function mapStkSurvRecord(
   collector?: ValidationCollector,
 ): Prisma.StkSurvCreateManyInput | null {
   const tsCode = readString(record, 'ts_code')
-  const tradeDate = readDate(record, 'trade_date')
+  const survDate = readDate(record, 'surv_date')
 
-  if (!tsCode || !tradeDate) {
+  if (!tsCode || !survDate) {
     collector?.add({
       tsCode,
-      tradeDate: readString(record, 'trade_date'),
+      tradeDate: readString(record, 'surv_date'),
       ruleName: 'missing_pk',
       severity: 'error',
-      message: 'ts_code 或 trade_date 缺失',
+      message: 'ts_code 或 surv_date 缺失',
       rawData: record,
     })
     return null
@@ -2489,16 +2489,14 @@ export function mapStkSurvRecord(
 
   return {
     tsCode,
-    tradeDate,
-    tsName: readString(record, 'ts_name'),
-    priceTrend: readNumber(record, 'price_trend'),
-    volTrend: readNumber(record, 'vol_trend'),
-    priceMomentum: readNumber(record, 'price_momentum'),
-    volMomentum: readNumber(record, 'vol_momentum'),
-    turnoverTrend: readNumber(record, 'turnover_trend'),
-    mktCapTrend: readNumber(record, 'mkt_cap_trend'),
-    externalTrend: readNumber(record, 'external_trend'),
-    innerTrend: readNumber(record, 'inner_trend'),
+    survDate,
+    name: readString(record, 'name'),
+    fundVisitors: readString(record, 'fund_visitors'),
+    recePlace: readString(record, 'rece_place'),
+    receMode: readString(record, 'rece_mode'),
+    receOrg: readString(record, 'rece_org'),
+    orgType: readString(record, 'org_type'),
+    compRece: readString(record, 'comp_rece'),
   }
 }
 

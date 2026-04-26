@@ -134,21 +134,20 @@ export class FactorDataSyncService {
       },
       {
         task: TushareSyncTaskName.STK_SURV,
-        label: '技术面因子',
+        label: '机构调研',
         category: 'factor',
         order: 500,
         bootstrapEnabled: true,
         supportsManual: true,
         supportsFullSync: true,
-        requiresTradeDate: true,
+        requiresTradeDate: false,
         schedule: {
           cron: '0 50 19 * * 1-5',
           timeZone: this.helper.syncTimeZone,
-          description: '交易日盘后同步技术面因子',
+          description: '交易日盘后同步机构调研数据',
           tradingDayOnly: true,
         },
-        execute: (ctx: TushareSyncPlanContext) =>
-          this.syncStkSurv(this.requireTradeDate(ctx.targetTradeDate), ctx.mode, ctx.onProgress),
+        execute: (ctx: TushareSyncPlanContext) => this.syncStkSurv(ctx.mode),
       },
     ]
   }
@@ -469,28 +468,62 @@ export class FactorDataSyncService {
     )
   }
 
-  // ─── 技术面因子（stk_surv）────────────────────────────────────────────────────
+  // ─── 机构调研（stk_surv）────────────────────────────────────────────────────
 
-  async syncStkSurv(
-    targetTradeDate: string,
-    mode: TushareSyncMode = 'incremental',
-    onProgress?: (completed: number, total: number, currentKey?: string) => void,
-  ): Promise<void> {
+  /**
+   * 机构调研数据同步。
+   * stk_surv API 不支持 trade_date 参数，需按日期范围（start_date/end_date）批量获取。
+   * 按年分批，避免单次请求数据量过大。
+   */
+  async syncStkSurv(mode: TushareSyncMode = 'incremental'): Promise<void> {
+    const today = this.helper.getCurrentShanghaiDateString()
+    const startedAt = new Date()
     const collector = new ValidationCollector(TushareSyncTaskName.STK_SURV)
-    await this.syncByTradeDateString({
-      task: TushareSyncTaskName.STK_SURV,
-      label: '技术面因子',
-      modelName: 'stkSurv',
-      targetTradeDate,
-      fullSync: mode === 'full',
-      tradeDateType: 'date',
-      fetchAndMap: async (td) => {
-        const rows = await this.api.getStkSurvByTradeDate(td)
-        return rows.map((r) => mapStkSurvRecord(r, collector)).filter((r): r is NonNullable<typeof r> => Boolean(r))
-      },
-      resolveDates: (start) => this.helper.getOpenTradeDatesBetween(start, targetTradeDate),
-      onProgress,
-    })
+
+    const latestDate = mode === 'full' ? null : await this.helper.getLatestDateString('stkSurv', 'survDate')
+    const startDate = latestDate ? this.helper.addDays(latestDate, 1) : this.helper.syncStartDate
+
+    if (this.helper.compareDateString(startDate, today) > 0) {
+      this.logger.log(`[机构调研] 已是最新（本地最新: ${latestDate}），无需同步`)
+      return
+    }
+
+    const startYear = parseInt(startDate.slice(0, 4))
+    const endYear = parseInt(today.slice(0, 4))
+    this.logger.log(`[机构调研] 同步范围: ${startDate} → ${today}，按年分批`)
+
+    let totalRows = 0
+    const failed: Array<{ year: number; error: string }> = []
+
+    for (let year = startYear; year <= endYear; year++) {
+      const batchStart = year === startYear ? startDate : `${year}0101`
+      const batchEnd = year === endYear ? today : `${year}1231`
+      try {
+        const rows = await this.api.getStkSurvByDateRange(batchStart, batchEnd)
+        const mapped = rows
+          .map((r) => mapStkSurvRecord(r, collector))
+          .filter((r): r is NonNullable<typeof r> => Boolean(r))
+        if (mapped.length > 0) {
+          const result = await this.helper.prisma.stkSurv.createMany({ data: mapped, skipDuplicates: true })
+          totalRows += result.count
+        }
+        this.logger.log(`[机构调研] ${year}: 获取 ${rows.length} 条，入库 ${mapped.length} 条（跳重后）`)
+      } catch (error) {
+        const msg = (error as Error).message
+        this.logger.error(`[机构调研] ${year} 同步失败: ${msg}`)
+        failed.push({ year, error: msg })
+      }
+    }
+
     await this.helper.flushValidationLogs(collector)
+    await this.helper.writeSyncLog(
+      TushareSyncTaskName.STK_SURV,
+      {
+        status: TushareSyncExecutionStatus.SUCCESS,
+        message: `机构调研同步完成，${totalRows} 条，${failed.length} 年曾失败`,
+        payload: { rowCount: totalRows, ...(failed.length > 0 && { failedYears: failed }) },
+      },
+      startedAt,
+    )
   }
 }

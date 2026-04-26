@@ -73,11 +73,11 @@ export class FactorDataApiService {
     })
   }
 
-  /** 按交易日获取技术面因子 */
-  getStkSurvByTradeDate(tradeDate: string) {
+  /** 按日期范围获取机构调研数据（stk_surv 不支持 trade_date 参数，需传 start_date/end_date） */
+  getStkSurvByDateRange(startDate: string, endDate: string) {
     return this.client.call({
       api_name: TushareApiName.STK_SURV,
-      params: { trade_date: tradeDate },
+      params: { start_date: startDate, end_date: endDate },
       fields: [...TUSHARE_STK_SURV_FIELDS],
     })
   }

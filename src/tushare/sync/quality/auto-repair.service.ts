@@ -45,7 +45,7 @@ export class AutoRepairService {
     adjFactor: TushareSyncTask.ADJ_FACTOR,
     indexDaily: TushareSyncTask.INDEX_DAILY,
     marginDetail: TushareSyncTask.MARGIN_DETAIL,
-    moneyflow: TushareSyncTask.MONEYFLOW_DC,
+    moneyflow: TushareSyncTask.MONEYFLOW,
     moneyflowIndDc: TushareSyncTask.MONEYFLOW_IND_DC,
     moneyflowMktDc: TushareSyncTask.MONEYFLOW_MKT_DC,
     moneyflowHsgt: TushareSyncTask.MONEYFLOW_HSGT,

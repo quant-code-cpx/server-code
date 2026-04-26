@@ -3,7 +3,7 @@
  *
  * 覆盖要点：
  * - getSyncPlans() 返回 moneyflow 类别的所有任务
- * - getSyncPlans() 包含 MONEYFLOW_DC / MONEYFLOW_IND_DC / MONEYFLOW_MKT_DC / MONEYFLOW_HSGT 任务
+ * - getSyncPlans() 包含 MONEYFLOW / MONEYFLOW_IND_DC / MONEYFLOW_MKT_DC / MONEYFLOW_HSGT 任务
  * - syncMoneyflow: 调用 api.getMoneyflowByTradeDate 并写入结果
  * - syncMoneyflow: 每日配额耗尽（TushareApiError 40203）时记录警告并跳过，不抛出
  * - syncMoneyflowIndDc: 对每个 content_type 调用一次 api
@@ -85,7 +85,7 @@ function createService(
 
 /** 构造一个每日配额耗尽的 TushareApiError */
 function dailyQuotaError() {
-  return new TushareApiError('moneyflow_dc', 40203, 'Tushare error: 每天最多访问该接口10次')
+  return new TushareApiError('moneyflow', 40203, 'Tushare error: 每天最多访问该接口10次')
 }
 
 // ── 测试套件 ──────────────────────────────────────────────────────────────────
@@ -108,11 +108,11 @@ describe('MoneyflowSyncService', () => {
       }
     })
 
-    it('包含核心任务：MONEYFLOW_DC / MONEYFLOW_IND_DC / MONEYFLOW_MKT_DC / MONEYFLOW_HSGT', () => {
+    it('包含核心任务：MONEYFLOW / MONEYFLOW_IND_DC / MONEYFLOW_MKT_DC / MONEYFLOW_HSGT', () => {
       const tasks = createService()
         .getSyncPlans()
         .map((p) => p.task)
-      expect(tasks).toContain(TushareSyncTaskName.MONEYFLOW_DC)
+      expect(tasks).toContain(TushareSyncTaskName.MONEYFLOW)
       expect(tasks).toContain(TushareSyncTaskName.MONEYFLOW_IND_DC)
       expect(tasks).toContain(TushareSyncTaskName.MONEYFLOW_MKT_DC)
       expect(tasks).toContain(TushareSyncTaskName.MONEYFLOW_HSGT)
@@ -176,7 +176,7 @@ describe('MoneyflowSyncService', () => {
       helper.getLatestDateString.mockResolvedValue(null)
       const api = buildMockApi()
       api.getMoneyflowByTradeDate
-        .mockRejectedValueOnce(new TushareApiError('moneyflow_dc', -2001, 'invalid token'))
+        .mockRejectedValueOnce(new TushareApiError('moneyflow', -2001, 'invalid token'))
         .mockResolvedValueOnce([])
       const service = createService(api, helper)
 
@@ -313,7 +313,7 @@ describe('MoneyflowSyncService', () => {
     it('targetTradeDate 为 undefined 时应抛出 BusinessException', async () => {
       const service = createService()
       const plans = service.getSyncPlans()
-      const plan = plans.find((p) => p.task === TushareSyncTaskName.MONEYFLOW_DC)!
+      const plan = plans.find((p) => p.task === TushareSyncTaskName.MONEYFLOW)!
 
       await expect(async () =>
         plan.execute({ mode: 'incremental', targetTradeDate: undefined, trigger: 'manual' }),

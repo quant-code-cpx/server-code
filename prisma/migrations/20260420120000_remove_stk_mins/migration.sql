@@ -5,9 +5,9 @@ DROP TABLE IF EXISTS "stk_mins";
 -- PostgreSQL does not support DROP VALUE; recreate the type instead
 
 -- 1. Clean up any stray rows referencing STK_MINS (should be empty)
-DELETE FROM "tushare_sync_logs" WHERE "task" = 'STK_MINS';
-DELETE FROM "tushare_sync_progress" WHERE "task" = 'STK_MINS';
-DELETE FROM "tushare_sync_retry_queue" WHERE "task" = 'STK_MINS';
+DELETE FROM "tushare_sync_logs" WHERE "task"::text = 'STK_MINS';
+DELETE FROM "tushare_sync_progress" WHERE "task"::text = 'STK_MINS';
+DELETE FROM "tushare_sync_retry_queue" WHERE "task"::text = 'STK_MINS';
 
 -- 2. Create replacement enum without STK_MINS
 CREATE TYPE "TushareSyncTask_new" AS ENUM (

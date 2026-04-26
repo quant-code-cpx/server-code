@@ -55,7 +55,7 @@ export class MoneyflowSyncService {
   getSyncPlans(): TushareSyncPlan[] {
     return [
       {
-        task: TushareSyncTaskName.MONEYFLOW_DC,
+        task: TushareSyncTaskName.MONEYFLOW,
         label: '个股资金流',
         category: 'moneyflow',
         order: 410,
@@ -145,9 +145,9 @@ export class MoneyflowSyncService {
   // ─── 个股资金流 ────────────────────────────────────────────────────────────
 
   async syncMoneyflow(targetTradeDate: string, mode: TushareSyncMode = 'incremental'): Promise<void> {
-    const collector = new ValidationCollector(TushareSyncTaskName.MONEYFLOW_DC)
+    const collector = new ValidationCollector(TushareSyncTaskName.MONEYFLOW)
     await this.runSyncTemplate({
-      task: TushareSyncTaskName.MONEYFLOW_DC,
+      task: TushareSyncTaskName.MONEYFLOW,
       label: '个股资金流',
       modelName: 'moneyflow',
       targetTradeDate,

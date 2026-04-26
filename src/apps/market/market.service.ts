@@ -4,7 +4,7 @@ import dayjs from 'dayjs'
 import timezone from 'dayjs/plugin/timezone'
 import utc from 'dayjs/plugin/utc'
 import { CACHE_NAMESPACE } from 'src/constant/cache.constant'
-import { CORE_INDEX_CODES, CORE_INDEX_NAME_MAP } from 'src/constant/tushare.constant'
+import { CORE_INDEX_CODES, CORE_INDEX_NAME_MAP, CORE_INDEX_BASE_MAP } from 'src/constant/tushare.constant'
 import { CacheService } from 'src/shared/cache.service'
 import { PrismaService } from 'src/shared/prisma.service'
 import { MoneyFlowQueryDto } from './dto/money-flow-query.dto'
@@ -255,9 +255,19 @@ export class MarketService {
 
     const tsCodeFilter = query.ts_codes && query.ts_codes.length > 0 ? { in: query.ts_codes } : undefined
 
-    return this.prisma.indexDaily.findMany({
+    const rows = await this.prisma.indexDaily.findMany({
       where: { tradeDate, ...(tsCodeFilter ? { tsCode: tsCodeFilter } : {}) },
       orderBy: { tsCode: 'asc' },
+    })
+    console.log(rows, rows[0].tsCode, CORE_INDEX_BASE_MAP[rows[0].tsCode], CORE_INDEX_NAME_MAP[rows[0].tsCode])
+
+    return rows.map((r) => {
+      const base = CORE_INDEX_BASE_MAP[r.tsCode]
+      return {
+        ...r,
+        baseDate: base?.baseDate ?? '',
+        basePoint: base?.basePoint ?? 0,
+      }
     })
   }
 
@@ -362,6 +372,7 @@ export class MarketService {
       const indices = CORE_INDEX_CODES.map((tsCode) => {
         const series = grouped.get(tsCode) ?? []
         const latest = series.filter((r) => r.tradeDate <= tradeDate).at(-1)
+        const base = CORE_INDEX_BASE_MAP[tsCode]
         return {
           tsCode,
           name: CORE_INDEX_NAME_MAP[tsCode] ?? tsCode,
@@ -372,6 +383,8 @@ export class MarketService {
           pctChg: latest?.pctChg ?? null,
           vol: latest?.vol ?? null,
           amount: latest?.amount ?? null,
+          baseDate: base?.baseDate ?? '',
+          basePoint: base?.basePoint ?? 0,
           sparkline: series.map((r) => r.close),
         }
       })

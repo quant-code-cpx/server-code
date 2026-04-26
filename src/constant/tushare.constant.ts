@@ -9,7 +9,7 @@ export enum TushareApiName {
   ADJ_FACTOR = 'adj_factor',
   DAILY_BASIC = 'daily_basic',
   INDEX_DAILY = 'index_daily',
-  MONEYFLOW_DC = 'moneyflow',
+  MONEYFLOW = 'moneyflow',
   MONEYFLOW_IND_DC = 'moneyflow_ind_dc',
   MONEYFLOW_MKT_DC = 'moneyflow_mkt_dc',
   MONEYFLOW_HSGT = 'moneyflow_hsgt',
@@ -96,7 +96,7 @@ export enum TradeCalendarOpenStatus {
   OPEN = '1',
 }
 
-/** 东财板块资金流向分类 */
+/** 板块资金流向分类（用于东财 moneyflow_ind_dc / moneyflow_mkt_dc 接口的 content_type 参数）*/
 export enum MoneyflowContentType {
   INDUSTRY = '行业',
   CONCEPT = '概念',
@@ -114,7 +114,7 @@ export enum TushareSyncTaskName {
   ADJ_FACTOR = 'ADJ_FACTOR',
   DAILY_BASIC = 'DAILY_BASIC',
   INDEX_DAILY = 'INDEX_DAILY',
-  MONEYFLOW_DC = 'MONEYFLOW_DC',
+  MONEYFLOW = 'MONEYFLOW',
   MONEYFLOW_IND_DC = 'MONEYFLOW_IND_DC',
   MONEYFLOW_MKT_DC = 'MONEYFLOW_MKT_DC',
   MONEYFLOW_HSGT = 'MONEYFLOW_HSGT',
@@ -304,7 +304,7 @@ export const TUSHARE_DAILY_BASIC_FIELDS = [
   'limit_status',
 ] as const
 
-export const TUSHARE_MONEYFLOW_DC_FIELDS = [
+export const TUSHARE_MONEYFLOW_FIELDS = [
   'ts_code',
   'trade_date',
   'buy_sm_vol',
@@ -914,6 +914,32 @@ export const CORE_INDEX_NAME_MAP: Record<string, string> = {
   '899050.BJ': '北证50',
 }
 
+/** 核心指数基期（YYYYMMDD）和基点映射，值固定不变 */
+export const CORE_INDEX_BASE_MAP: Record<string, { baseDate: string; basePoint: number }> = {
+  // 沪深宽基
+  '000300.SH': { baseDate: '20041231', basePoint: 1000 },
+  '000016.SH': { baseDate: '20031231', basePoint: 1000 },
+  '000903.SH': { baseDate: '20051230', basePoint: 1000 },
+  '000905.SH': { baseDate: '20041231', basePoint: 1000 },
+  '000852.SH': { baseDate: '20041231', basePoint: 1000 },
+  '932000.CSI': { baseDate: '20131231', basePoint: 1000 },
+  '000985.SH': { baseDate: '20041231', basePoint: 1000 },
+  // 上交所
+  '000001.SH': { baseDate: '19901219', basePoint: 100 },
+  '000010.SH': { baseDate: '20020628', basePoint: 3299.06 },
+  '000688.SH': { baseDate: '20191231', basePoint: 1000 },
+  '000698.SH': { baseDate: '20221230', basePoint: 1000 },
+  // 深交所
+  '399001.SZ': { baseDate: '19940720', basePoint: 1000 },
+  '399107.SZ': { baseDate: '19910403', basePoint: 100 },
+  '399330.SZ': { baseDate: '20021231', basePoint: 1000 },
+  '399006.SZ': { baseDate: '20100531', basePoint: 1000 },
+  '399673.SZ': { baseDate: '20100531', basePoint: 1000 },
+  '399005.SZ': { baseDate: '20050607', basePoint: 1000 },
+  // 北交所
+  '899050.BJ': { baseDate: '20220429', basePoint: 1000 },
+}
+
 export const TUSHARE_STK_LIMIT_FIELDS = ['ts_code', 'trade_date', 'up_limit', 'down_limit'] as const
 
 export const TUSHARE_SUSPEND_D_FIELDS = ['ts_code', 'trade_date', 'suspend_timing', 'suspend_type'] as const
@@ -1435,16 +1461,14 @@ export const TUSHARE_CYQ_CHIPS_FIELDS = ['ts_code', 'trade_date', 'price', 'perc
 
 export const TUSHARE_STK_SURV_FIELDS = [
   'ts_code',
-  'trade_date',
-  'ts_name',
-  'price_trend',
-  'vol_trend',
-  'price_momentum',
-  'vol_momentum',
-  'turnover_trend',
-  'mkt_cap_trend',
-  'external_trend',
-  'inner_trend',
+  'name',
+  'surv_date',
+  'fund_visitors',
+  'rece_place',
+  'rece_mode',
+  'rece_org',
+  'org_type',
+  'comp_rece',
 ] as const
 
 export const TUSHARE_THS_DAILY_FIELDS = [

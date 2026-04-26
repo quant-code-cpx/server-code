@@ -32,10 +32,7 @@ function buildHelperMock() {
   return {}
 }
 
-function createService(
-  prisma = buildPrismaMock(),
-  helper = buildHelperMock(),
-): AutoRepairService {
+function createService(prisma = buildPrismaMock(), helper = buildHelperMock()): AutoRepairService {
   // @ts-ignore 局部 mock，跳过 DI
   return new AutoRepairService(prisma as PrismaService, helper as SyncHelperService)
 }
@@ -82,9 +79,9 @@ describe('AutoRepairService', () => {
       expect(service.taskToDataSet(TushareSyncTask.DAILY_BASIC)).toBe('dailyBasic')
     })
 
-    it('已知 task MONEYFLOW_DC → 返回 moneyflow', () => {
+    it('已知 task MONEYFLOW → 返回 moneyflow', () => {
       const service = createService()
-      expect(service.taskToDataSet(TushareSyncTask.MONEYFLOW_DC)).toBe('moneyflow')
+      expect(service.taskToDataSet(TushareSyncTask.MONEYFLOW)).toBe('moneyflow')
     })
 
     it('未知 task → 返回 null', () => {
@@ -116,8 +113,12 @@ describe('AutoRepairService', () => {
     it('completeness warn 报告（非 fail）→ 不生成补数任务', async () => {
       const prisma = buildPrismaMock()
       const service = createService(prisma)
-      const report = buildReport({ dataSet: 'daily', checkType: 'completeness', status: 'warn',
-        details: { missingDates: ['20250320'], totalMissing: 1 } })
+      const report = buildReport({
+        dataSet: 'daily',
+        checkType: 'completeness',
+        status: 'warn',
+        details: { missingDates: ['20250320'], totalMissing: 1 },
+      })
       const summary = await service.analyzeAndRepair([report])
       expect(summary.repairTasks).toBe(0)
     })
@@ -125,8 +126,12 @@ describe('AutoRepairService', () => {
     it('completeness fail 但 missingDates 为空 → 跳过', async () => {
       const prisma = buildPrismaMock()
       const service = createService(prisma)
-      const report = buildReport({ dataSet: 'daily', checkType: 'completeness', status: 'fail',
-        details: { missingDates: [], totalMissing: 0 } })
+      const report = buildReport({
+        dataSet: 'daily',
+        checkType: 'completeness',
+        status: 'fail',
+        details: { missingDates: [], totalMissing: 0 },
+      })
       const summary = await service.analyzeAndRepair([report])
       expect(summary.repairTasks).toBe(0)
     })
@@ -161,7 +166,8 @@ describe('AutoRepairService', () => {
       const prisma = buildPrismaMock()
       const service = createService(prisma)
       // 构造 31 个缺失日期
-      const missing = Array.from({ length: 31 }, (_, i) => `2025020${String(i + 1).padStart(2, '0')}`).slice(0, 31)
+      const missing = Array.from({ length: 31 }, (_, i) => `2025020${String(i + 1).padStart(2, '0')}`)
+        .slice(0, 31)
         .map((_, i) => {
           const d = new Date('2025-01-01')
           d.setDate(d.getDate() + i)
@@ -224,9 +230,7 @@ describe('AutoRepairService', () => {
     it('部分日期已有记录，部分没有 → 只为新记录入队', async () => {
       const prisma = buildPrismaMock()
       // 第一次调用返回已有记录，第二次返回 null（新记录）
-      prisma.tushareSyncRetryQueue.findFirst
-        .mockResolvedValueOnce({ id: 1 } as never)
-        .mockResolvedValueOnce(null)
+      prisma.tushareSyncRetryQueue.findFirst.mockResolvedValueOnce({ id: 1 } as never).mockResolvedValueOnce(null)
 
       const service = createService(prisma)
       const report = buildCompletenessFailReport('daily', ['20250310', '20250311'])

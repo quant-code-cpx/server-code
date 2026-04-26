@@ -211,7 +211,7 @@ private readonly DATASET_TO_TASK: Record<string, string> = {
   adjFactor: 'ADJ_FACTOR',
   indexDaily: 'INDEX_DAILY',
   stkLimit: 'STK_LIMIT',
-  moneyflow: 'MONEYFLOW_DC',
+  moneyflow: 'MONEYFLOW',
   moneyflowIndDc: 'MONEYFLOW_IND_DC',
   moneyflowMktDc: 'MONEYFLOW_MKT_DC',
   moneyflowHsgt: 'MONEYFLOW_HSGT',

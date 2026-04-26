@@ -1,0 +1,326 @@
+---
+name: quant-server-collaboration-style
+description: '适用于本量化交易 NestJS 后端（Prisma、Docker、Redis、Tushare sync）开发；use when working on tushare sync, prisma schema, docker startup, nestjs refactor, docs。固化用户偏好：自动化启动与迁移、尽量少让用户手动跑终端、必须做编译/日志/运行验证、依据 Tushare 文档与真实返回修正 schema、保留全量同步并处理频控、避免泄露个人绝对路径、保持同步模块按分类与 plan-driven 架构扩展、docs 文件除 README 外一律中文命名。'
+argument-hint: '可选关注点，例如：tushare sync、docker 启动、prisma schema、重构风格'
+---
+
+# 量化后端协作风格
+
+## 何时使用
+
+当任务涉及本仓库时优先使用，尤其是以下场景：
+
+- NestJS 模块、服务、依赖注入相关改动
+- Prisma schema、迁移、初始化启动流程
+- Docker Compose、Redis、PostgreSQL、本地持久化目录
+- Tushare API 集成、同步逻辑、字段映射、数据新鲜度检测
+- 中大型重构，尤其是可维护性相关的结构调整
+- 任何需要遵循用户既定协作风格，而不是每次重新摸索偏好的任务
+
+## 核心期望
+
+### 1. 优先自动化，而不是把步骤甩给用户
+
+- 首次启动时，应尽可能自动准备数据库结构。
+- 涉及 schema 变更时，优先采用适合容器开发环境的安全启动流程，例如 Prisma generate + migrate deploy。
+- 尽量减少用户手动操作终端；只要工具允许，常规验证和检查应由代理直接完成。
+
+### 2. 运行时验证是必做项，不是加分项
+
+不要只停留在静态推理。
+
+- 有意义的重构后要跑真实的 TypeScript 编译。
+- 涉及 Docker 服务时，要通过重建容器与检查日志验证运行情况。
+- 涉及外部 API 时，在可行的前提下要验证真实返回结果。
+- 以编译、日志、运行行为为准，不要靠主观猜测收尾。
+
+### 3. Tushare 相关工作必须同时参考文档与真实返回
+
+处理 Tushare 相关任务时：
+
+- 改请求策略、字段假设、同步方式前，先查官方文档。
+- 用真实返回结果交叉验证文档说明。
+- 如果 Prisma schema 与真实返回不一致，应修正 schema 和 mapper，而不是强行让代码迎合错误假设。
+- 临时 debug 接口可以用于排查，但在恢复正式同步流程后应移除或从模块中解除挂载。
+
+### 4. 保留全量同步，但要尊重账户频控限制
+
+- 用户要的是全量数据，不是为了省事而加的人为限制。
+- 如果受 Tushare 账户等级或频控约束，应通过节流、重试、分批、调度设计来解决。
+- 如果新增 Tushare 接口，先列出接口名称和对应所需积分，供用户参考后再决定是否引入，不要基于固定积分数做方案取舍。
+- 全量回补时必须控制频率。不同数据集优先采用文档推荐的获取方式。
+
+### 5. 共享文件中不要泄露用户机器细节
+
+- 不要把用户个人绝对路径硬编码进版本控制文件。
+- 机器相关路径、密钥和本地目录放进 `.env`，再由 Compose 或配置文件引用。
+- 如果某些环境变量是必须的，而项目里还没有 `.env`，应在合适时自动补占位值并告知用户。
+
+### 6. 新增或修改 docs/ 文件时必须同步更新 docs/README.md
+
+- 在 `docs/` 任意子目录下新增文档后，必须同步在 `docs/README.md` 对应分类表格中新增一行，包含：文件链接、说明和状态标记。
+- 修改文档状态（如从「待实现」变为「已实现」）后，也要同步更新 `docs/README.md` 中对应条目的状态列。
+- 状态标记规范：✅ 已实现 / 🔧 待实现 / 📋 需求稿 / 🗓️ 规划中。
+- 删除文档时，同步从 `docs/README.md` 移除对应条目。
+
+### 7. docs/ 文件一律使用中文命名
+
+- 除 `README.md` 外，所有文档文件名必须使用中文。
+- 命名格式：`<模块名>-后端设计.md`（功能设计）、`<模块名>-需求.md`（需求稿）。
+- 文档内容也应以中文撰写。
+- 如需引用其他文档，使用中文文件名引用。
+
+### 8. 以长期可维护性为目标
+
+- 不要让单个同步服务膨胀成上千行文件。
+- Tushare 同步应尽量按照官方文档分类拆分。
+- 顶层编排优先采用配置驱动或 plan-driven 方式，这样以后新增数据集时不必频繁修改总控。
+- 公共同步工具逻辑放在 support 层，分类服务保持单一职责。
+
+### 9. 采用小步、可回退的改动方式
+
+- 优先做小而可验证的修改，而不是大面积重写。
+- 除非确有必要，尽量保持现有 API 和代码风格稳定。
+- 每完成一个逻辑步骤就验证一次，再继续深入。
+- 如果重构跨越多个 service，要同时确认编译与运行时行为。
+
+### 10. 所有 Controller 端点统一使用 POST
+
+- 本项目所有 NestJS Controller 端点**必须**使用 `@Post` 装饰器，禁止使用 `@Get`、`@Put`、`@Patch`、`@Delete`。
+- 此规则适用于全部功能模块（Auth 模块的登录/登出等已有 `@Post` 端点，无需变动）。
+- 查询参数一律通过请求 Body 传递（使用 `@Body()` DTO），禁止使用 `@Query()` 装饰器。
+- 资源 ID 可保留在 URL 路径参数中（`@Param()`），路径结构仍可反映资源层级。
+- 路径冲突处理规范：
+  - 列表查询端点（原 GET `/resource`）改为 `POST /resource/list`
+  - 更新端点（原 PUT `/:id`）保持 `POST /:id`；若与列表/详情路径冲突则追加 `/update`
+  - 删除端点（原 DELETE `/:id`）改为 `POST /:id/delete`
+  - 原 GET `/:id`（详情）改为 `POST /:id`，此时 PUT → `POST /:id/update`
+
+### 11. 所有 @Post 端点必须携带非空路径字符串
+
+- `@Post()` 无参数形式**禁止使用**；每个端点必须明确传入路径，如 `@Post('create')`、`@Post('list')` 等。
+- 路径应反映操作语义，遵守上方规则 #10 中列出的命名约定（`list`、`create`、`update`、`delete` 等）。
+
+### 12. 每个端点必须声明 Swagger 响应类型
+
+- 每个 Controller 方法必须使用以下之一标注返回类型：
+  - `@ApiSuccessResponse(DtoClass)` — 有明确 DTO 类型的响应
+  - `@ApiSuccessResponse(DtoClass, { isArray: true })` — 数组响应
+  - `@ApiSuccessRawResponse({ type: 'object' })` — 动态 / 复杂计算结果（无法预先定义 DTO）
+  - `@ApiSuccessRawResponse({ type: 'null', nullable: true })` — 无返回值 / 仅触发操作
+- 对于有固定结构的 CRUD 接口，应创建对应的 `*-response.dto.ts` 文件并使用 `@ApiSuccessResponse`。
+- Import 路径：`import { ApiSuccessResponse, ApiSuccessRawResponse } from 'src/common/decorators/api-success-response.decorator'`
+
+### 13. 测试文件必须放在模块的 test/ 子目录下
+
+- 每个模块/子目录的所有 `.spec.ts` 文件**统一放到**该模块目录下的 `test/` 子目录中。
+- 例如：`src/apps/backtest/` 模块的测试放到 `src/apps/backtest/test/`。
+- 例如：`src/tushare/sync/` 的测试放到 `src/tushare/sync/test/`。
+- spec 文件内的**相对路径 import** 需相应上移一层，如 `'./sync.service'` → `'../sync.service'`。
+- 使用 `src/*` 绝对路径的 import 无需修改。
+- 根级别的 `test/` 目录（`test/setup.ts`、`test/helpers/`）保留原位，专门放全局 setup 和通用 mock 工具。
+- 新建测试文件时**不得**将 spec 文件与源文件放在同一目录下。
+
+### 14. 代码改动必须同步维护测试用例
+
+**这条规则是强制性的，不需要用户每次单独提示。**
+
+#### 何时必须更新测试
+
+| 改动类型 | 要求 |
+|----------|------|
+| 新增 service / controller 方法 | 在对应 `*.spec.ts` 中新增测试用例，覆盖正常路径与主要错误路径 |
+| 修改现有方法的业务逻辑 | 更新依赖该方法的所有 `*.spec.ts` 中的断言和 mock |
+| 修改方法签名（参数 / 返回值类型） | 同步更新测试中的调用方式与 mock 返回值 |
+| 修改错误处理逻辑 | 确保异常路径测试仍然正确，必要时补充新 case |
+| 新增模块 | 必须在 `test/` 子目录下创建对应的 `*.spec.ts` 文件 |
+| 删除方法或模块 | 同步删除或调整对应测试用例，避免僵尸测试 |
+
+#### 允许跳过测试更新的例外
+
+- 纯注释、JSDoc、Swagger 装饰器（`@ApiProperty`、`@ApiTags` 等）的变更
+- 仅修改类型别名、枚举名，无逻辑变化
+- 纯 `docs/`、`prisma/migrations/`、`.env.example` 等配置类文件变更
+
+#### 执行机制
+
+- **本地**：手动执行 `pnpm test` 或 `pnpm exec jest --findRelatedTests <文件>` 验证。
+- **CI**：feature 分支 push 触发增量测试（`jest --findRelatedTests`）；main 分支 push 与 PR to main 触发全量测试。
+- 代理执行改动后**必须**在同一 PR/commit 内同步维护测试，不得留下"TODO: 补测试"的空承诺。
+
+### 15. 测试用例必须基于业务逻辑独立推导，禁止默认现有代码无 bug
+
+**这是最高优先级的测试原则，违反此规则编写的测试无意义。**
+
+#### 核心理念
+
+测试的目的是**发现代码中的 bug**，不是证明代码"正确"。如果测试只是把当前代码的输出当作期望值、把 mock 的返回当作正确结果，那么即使代码有严重 bug，测试也会全部通过——这样的测试完全没有价值。
+
+#### 必须遵守的原则
+
+| 原则 | 说明 |
+|------|------|
+| **独立推导期望值** | 期望值必须从业务规则/数学公式独立计算得出，绝不能从"跑一遍代码看输出是多少"来反推 |
+| **先理解业务再写测试** | 写测试前必须先理解被测方法的业务语义（如：日收益率 = 昨日市值 × 涨幅，不是今日市值 × 涨幅） |
+| **用具体数值验证** | 构造可手算的输入，期望值用手算结果而非代码运行结果 |
+| **质疑代码实现** | 对照业务逻辑审视代码，主动寻找偏差（公式错误、边界遗漏、类型陷阱等） |
+| **bug 文档化** | 如果发现代码有 bug 但当前不修复，测试中应标注 `[BUG]` 并记录期望正确行为，待修复时反转断言 |
+
+#### 反面示例（禁止）
+
+```typescript
+// ❌ 错误做法：从代码运行结果反推期望值
+it('计算今日盈亏', () => {
+  mockPrisma.daily.findMany.mockResolvedValue([{ close: 11, pctChg: 10 }])
+  const result = await service.getPnlToday(...)
+  // 直接拿 result.todayPnl 的实际输出当断言 → 即使公式错了测试也通过
+  expect(result.todayPnl).toBe(110) // 看起来对，实际公式有 bug
+})
+
+// ❌ 错误做法：只测"调用了什么"不测"结果对不对"
+it('addHolding 加仓时调用 update', () => {
+  await service.addHolding(dto, userId)
+  expect(prisma.portfolioHolding.update).toHaveBeenCalled() // 只验证调用，不验证计算
+})
+```
+
+#### 正确示例
+
+```typescript
+// ✅ 正确做法：独立推导期望值
+it('加仓后加权平均成本 = (旧数量×旧成本 + 新数量×新价格) / 总数量', () => {
+  // 已有 100股@10元，加仓 200股@15元
+  // 手算：(100*10 + 200*15) / 300 = 4000/300 ≈ 13.333
+  const result = await service.addHolding({ quantity: 200, avgCost: 15, ... }, userId)
+  expect(Number(result.avgCost)).toBeCloseTo(4000 / 300, 5)
+})
+
+// ✅ 正确做法：发现 bug 并文档化
+it('[BUG] 今日盈亏公式使用今日市值×涨幅（应为昨日市值×涨幅）', () => {
+  // close=11, pctChg=10(%), quantity=100
+  // 代码计算: 11*100 * 10/100 = 110（错误）
+  // 正确应为: 11*100/(1+10/100) * 10/100 = 100（正确的昨日市值×涨幅）
+  const result = await service.getPnlToday(...)
+  expect(result.todayPnl).toBe(110) // 记录当前（错误的）行为
+  // 修复后应改为: expect(result.todayPnl).toBeCloseTo(100, 2)
+})
+```
+
+#### 工作流
+
+1. **读代码前**：先理解业务规则（如金融公式、A 股交易规则、风控逻辑等）
+2. **读代码时**：对照业务规则逐行审计，记录任何偏差
+3. **写测试时**：用手算的期望值作为断言依据
+4. **发现 bug 时**：在测试中标注 `[BUG]`，记录正确行为，当前断言记录实际（错误的）行为
+5. **汇总报告**：每次测试编写完成后，必须列出发现的 bug 清单（含严重等级）
+
+## 推荐工作流程
+
+1. 编辑前先读取相关代码和当前项目结构。
+2. 判断任务主要影响 Docker 启动、Prisma schema、Tushare 同步，还是 NestJS 模块结构。
+3. 如果涉及 Tushare，先核对文档，再核对真实返回字段，再决定 schema 或 mapper 调整方式。
+4. 实施能够解决根因的最小改动。
+5. 根据任务类型做编译、诊断、容器日志、真实接口返回等验证。
+6. 最后总结修改内容、验证方式，以及仍需注意的运行限制。
+
+## 仓库级具体指导
+
+### 启动与基础设施
+
+- 容器启动流程应继续优先支持自动 Prisma 准备。
+- Redis 和 PostgreSQL 的持久化路径应继续通过 `.env` 驱动的宿主机目录挂载实现，而不是写死个人路径。
+- 如果改动影响容器启动，必须通过重建相应服务并查看日志来验证。
+
+### Tushare 同步架构
+
+- `TushareSyncService` 应保持为编排器，而不是巨型实现文件。
+- 各领域服务应暴露同步计划项，而不是要求顶层服务了解每一个数据集的具体实现。
+- 当某个领域继续膨胀时，应进一步拆成更细粒度的子服务，例如 financial、moneyflow 的再拆分。
+
+### 数据正确性
+
+- 数据模型正确性优先于“先跑通再说”的便利性。
+- mapper 必须反映上游真实字段类型。
+- 调试验证可以临时使用低量调用，但正式同步仍应保留全量逻辑，并配合节流控制。
+
+## 什么样的结果算是符合预期
+
+一个好的改动，通常同时满足以下几点：
+
+- 尽量少让用户手动操作
+- 有真实验证，而不是只改代码不验证
+- 不泄露本机私有路径
+- Tushare 行为同时符合文档和真实返回
+- NestJS 结构保持清晰、可扩展
+- 代码改动与测试用例保持同步，无未更新的 spec 文件
+- 总结里清楚说明频控、迁移、启动行为等运行权衡
+
+## API 参数与响应约定
+
+### 日期参数格式
+
+- 所有 `trade_date` 参数统一使用 **YYYYMMDD** 格式（8 位纯数字字符串）。
+- DTO 统一用 `@Matches(/^\d{8}$/)` 校验，示例：
+  ```typescript
+  @Matches(/^\d{8}$/, { message: 'trade_date 格式应为 YYYYMMDD，例如 20240101' })
+  trade_date?: string
+  ```
+- 不传 `trade_date` 时，后端自动取对应数据表最新交易日（通过 `resolveLatestXxx()` 系列方法）。
+
+### 日期解析与时区（重要）
+
+`parseDate(yyyymmdd)` 与 `resolveLatestXxx()` 会返回不同的 JS `Date` 对象：
+
+| 来源                                                       | Date 值（UTC）             | 含义              |
+| ---------------------------------------------------------- | -------------------------- | ----------------- |
+| `parseDate("20260403")` — `dayjs.tz(..., 'Asia/Shanghai')` | `2026-04-02T16:00:00.000Z` | 上海凌晨 = UTC-8h |
+| `resolveLatestXxx()` — Prisma `@db.Date`                   | `2026-04-03T00:00:00.000Z` | UTC 午夜          |
+
+两者指向同一个日历日期 **4 月 3 日**，但 UTC 值不同。
+
+**在 $queryRaw 中计算 tradeDateStr 必须用 Shanghai 时区**，否则 `UTC midnight` 日期在 UTC 容器环境下会被 dayjs 格式化为前一天：
+
+```typescript
+// ✅ 正确：两条路径都能得到正确的日历日期字符串
+const tradeDateStr = (dayjs(tradeDate) as any).tz('Asia/Shanghai').format('YYYYMMDD')
+
+// ❌ 错误：parseDate 路径下会格式化为前一天（UTC 服务器环境）
+const tradeDateStr = dayjs(tradeDate).format('YYYYMMDD')
+```
+
+然后在 SQL 中配合 `::date` 强制类型转换：
+
+```sql
+WHERE trade_date = ${tradeDateStr}::date
+```
+
+### 原生 SQL 表名规则
+
+- `$queryRaw` 中引用的表名必须与 Prisma schema 里 `@@map("actual_table")` 的值完全一致。
+- **禁止**用 Prisma 模型名（camelCase，如 `MoneyflowMktDc`）直接当作原生 SQL 表名。
+- 常用映射速查：
+
+  | Prisma 模型      | 实际表名                        |
+  | ---------------- | ------------------------------- |
+  | `Daily`          | `stock_daily_prices`            |
+  | `Moneyflow`      | `stock_capital_flows`           |
+  | `MoneyflowIndDc` | `stock_sector_flows`            |
+  | `MoneyflowMktDc` | `market_daily_flows`            |
+  | `MoneyflowHsgt`  | `hsgt_north_flows`              |
+  | `DailyBasic`     | `stock_daily_valuation_metrics` |
+  | `StockBasic`     | `stock_basic_profiles`          |
+  | `IndexDaily`     | `index_daily_prices`            |
+
+### 枚举参数大小写
+
+- `content_type`: 大写 `'INDUSTRY' | 'CONCEPT' | 'REGION'`（同 Prisma enum `MoneyflowContentType`）
+- `sort_by` / `order` / `period`: 小写值（如 `'desc'`、`'1m'`）
+
+### API 响应空值
+
+- 数值字段如来源数据库为 `null`，直接返回 `null`（不转为 `0`）。
+- 前端已做 null 兼容处理，不需要后端填充默认值。
+
+## 参考资料
+
+如需更精炼的偏好清单，请查看 [project-preferences](./references/project-preferences.md)。

@@ -1,20 +1,19 @@
-// 技术面因子（stk_surv 接口）
+// 机构调研（stk_surv 接口）
+// 注意：该接口按日期范围批量获取，不支持 trade_date 参数，需传 start_date/end_date
 model StkSurv {
-  tsCode        String   @map("ts_code") @db.VarChar(16)
-  tradeDate     DateTime @map("trade_date") @db.Date
-  tsName        String?  @map("ts_name") @db.VarChar(32)
-  priceTrend    Float?   @map("price_trend")
-  volTrend      Float?   @map("vol_trend")
-  priceMomentum Float?   @map("price_momentum")
-  volMomentum   Float?   @map("vol_momentum")
-  turnoverTrend Float?   @map("turnover_trend")
-  mktCapTrend   Float?   @map("mkt_cap_trend")
-  externalTrend Float?   @map("external_trend")
-  innerTrend    Float?   @map("inner_trend")
-  syncedAt      DateTime @default(now()) @map("synced_at")
+  tsCode       String   @map("ts_code") @db.VarChar(16)
+  survDate     DateTime @map("surv_date") @db.Date
+  name         String?  @map("name") @db.VarChar(64)
+  fundVisitors String?  @map("fund_visitors") @db.VarChar(256)
+  recePlace    String?  @map("rece_place") @db.VarChar(256)
+  receMode     String?  @map("rece_mode") @db.VarChar(256)
+  receOrg      String?  @map("rece_org") @db.VarChar(256)
+  orgType      String?  @map("org_type") @db.VarChar(64)
+  compRece     String?  @map("comp_rece") @db.VarChar(512)
+  syncedAt     DateTime @default(now()) @map("synced_at")
 
-  @@id([tsCode, tradeDate])
-  @@index([tradeDate])
-  @@index([tsCode, tradeDate(sort: Desc)])
+  @@id([tsCode, survDate])
+  @@index([survDate])
+  @@index([tsCode, survDate(sort: Desc)])
   @@map("stk_surv")
 }

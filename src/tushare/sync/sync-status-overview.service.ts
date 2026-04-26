@@ -115,7 +115,7 @@ const TABLE_OVERVIEW_CONFIG: TableConfig[] = [
     displayName: '个股资金流向',
     category: '资金流向',
     hasTradeDate: true,
-    task: TushareSyncTaskName.MONEYFLOW_DC,
+    task: TushareSyncTaskName.MONEYFLOW,
   },
   {
     tableName: 'sector_capital_flows',

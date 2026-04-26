@@ -155,13 +155,17 @@ describe('MarketService', () => {
   // ── getIndexQuote() ───────────────────────────────────────────────────────
 
   describe('getIndexQuote()', () => {
-    it('指定 trade_date → 返回指数行情列表', async () => {
+    it('指定 trade_date → 返回指数行情列表（含基期/基点）', async () => {
       const mockRows = [{ tsCode: '000300.SH', tradeDate: new Date('2024-01-02'), close: 3500 }]
       mockPrisma.indexDaily.findMany.mockResolvedValueOnce(mockRows)
 
       const result = await service.getIndexQuote({ trade_date: '20240102' })
 
-      expect(result).toEqual(mockRows)
+      expect(result).toHaveLength(1)
+      expect(result[0].tsCode).toBe('000300.SH')
+      expect(result[0].close).toBe(3500)
+      expect(result[0].baseDate).toBe('20041231')
+      expect(result[0].basePoint).toBe(1000)
       expect(mockPrisma.indexDaily.findMany).toHaveBeenCalledTimes(1)
     })
 

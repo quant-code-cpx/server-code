@@ -167,6 +167,8 @@ export class IndexQuoteItemDto {
   @ApiProperty({ required: false, nullable: true }) pctChg: number | null
   @ApiProperty({ required: false, nullable: true, description: '成交量（手）' }) vol: number | null
   @ApiProperty({ required: false, nullable: true, description: '成交额（千元）' }) amount: number | null
+  @ApiProperty({ description: '基期（YYYYMMDD）' }) baseDate: string
+  @ApiProperty({ description: '基点' }) basePoint: number
 }
 
 export class HsgtFlowDto {
@@ -503,6 +505,8 @@ export class IndexQuoteWithSparklineItemDto {
   @ApiProperty({ required: false, nullable: true, description: '涨跌幅（%）' }) pctChg: number | null
   @ApiProperty({ required: false, nullable: true, description: '成交量（手）' }) vol: number | null
   @ApiProperty({ required: false, nullable: true, description: '成交额（千元）' }) amount: number | null
+  @ApiProperty({ description: '基期（YYYYMMDD）' }) baseDate: string
+  @ApiProperty({ description: '基点' }) basePoint: number
   @ApiProperty({
     description: 'sparkline：近 N 交易日收盘价数组（升序），N 由 sparkline_period 决定',
     type: [Number],

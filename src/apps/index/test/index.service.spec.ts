@@ -24,6 +24,13 @@ function buildPrismaMock() {
     stockBasic: {
       findMany: jest.fn(async () => []),
     },
+    daily: {
+      findMany: jest.fn(async () => []),
+      findFirst: jest.fn(async () => null),
+    },
+    dailyBasic: {
+      findMany: jest.fn(async () => []),
+    },
   }
 }
 
@@ -124,23 +131,39 @@ describe('IndexService', () => {
       expect(result.indexCode).toBe('000300.SH')
     })
 
-    it('有权重数据 → 返回带名称的成分股列表', async () => {
+    it('有权重数据 → 返回带名称的成分股列表，行情用最新交易日', async () => {
       mockPrisma.indexWeight.findFirst.mockResolvedValueOnce({ tradeDate: '20240101' })
       mockPrisma.indexWeight.findMany.mockResolvedValueOnce([
         { conCode: '000001.SZ', weight: 5.5, tradeDate: '20240101' },
         { conCode: '000002.SZ', weight: 3.2, tradeDate: '20240101' },
       ])
+      mockPrisma.daily.findFirst.mockResolvedValueOnce({ tradeDate: new Date('2024-01-05') })
       mockPrisma.stockBasic.findMany.mockResolvedValueOnce([
-        { tsCode: '000001.SZ', name: '平安银行' },
-        { tsCode: '000002.SZ', name: '万科A' },
+        { tsCode: '000001.SZ', name: '平安银行', industry: '银行' },
+        { tsCode: '000002.SZ', name: '万科A', industry: '房地产' },
+      ])
+      mockPrisma.daily.findMany.mockResolvedValueOnce([
+        { tsCode: '000001.SZ', close: 10.5, pctChg: 1.2 },
+        { tsCode: '000002.SZ', close: 8.3, pctChg: -0.5 },
+      ])
+      mockPrisma.dailyBasic.findMany.mockResolvedValueOnce([
+        { tsCode: '000001.SZ', totalMv: 3000000, circMv: 2500000 },
+        { tsCode: '000002.SZ', totalMv: 1500000, circMv: 1200000 },
       ])
 
       const result = await service.getIndexConstituents({ index_code: '000300.SH', trade_date: '20240101' })
 
+      expect(result.tradeDate).toBe('20240101')       // 权重日期
+      expect(result.dailyTradeDate).toBe('20240105')  // 行情日期
       expect(result.total).toBe(2)
       expect(result.constituents[0].conCode).toBe('000001.SZ')
       expect(result.constituents[0].name).toBe('平安银行')
+      expect(result.constituents[0].industry).toBe('银行')
       expect(result.constituents[0].weight).toBeCloseTo(5.5)
+      expect(result.constituents[0].close).toBe(10.5)
+      expect(result.constituents[0].pctChg).toBe(1.2)
+      expect(result.constituents[0].totalMv).toBe(3000000)
+      expect(result.constituents[0].circMv).toBe(2500000)
     })
 
     it('指定 trade_date 无精确快照时，应回退到该日以前最近可用成分权重', async () => {
@@ -148,7 +171,10 @@ describe('IndexService', () => {
       mockPrisma.indexWeight.findMany.mockResolvedValueOnce([
         { conCode: '000001.SZ', weight: 5.5, tradeDate: '20260401' },
       ])
-      mockPrisma.stockBasic.findMany.mockResolvedValueOnce([{ tsCode: '000001.SZ', name: '平安银行' }])
+      mockPrisma.daily.findFirst.mockResolvedValueOnce({ tradeDate: new Date('2026-04-03') })
+      mockPrisma.stockBasic.findMany.mockResolvedValueOnce([{ tsCode: '000001.SZ', name: '平安银行', industry: '银行' }])
+      mockPrisma.daily.findMany.mockResolvedValueOnce([])
+      mockPrisma.dailyBasic.findMany.mockResolvedValueOnce([])
 
       const result = await service.getIndexConstituents({ index_code: '000300.SH', trade_date: '20260402' })
 
@@ -158,7 +184,13 @@ describe('IndexService', () => {
         select: { tradeDate: true },
       })
       expect(result.tradeDate).toBe('20260401')
+      expect(result.dailyTradeDate).toBe('20260403')
       expect(result.total).toBe(1)
+      expect(result.constituents[0].industry).toBe('银行')
+      expect(result.constituents[0].close).toBeNull()
+      expect(result.constituents[0].pctChg).toBeNull()
+      expect(result.constituents[0].totalMv).toBeNull()
+      expect(result.constituents[0].circMv).toBeNull()
     })
   })
 
@@ -171,7 +203,10 @@ describe('IndexService', () => {
       mockPrisma.indexWeight.findMany.mockResolvedValueOnce([
         { conCode: '000001.SZ', weight: 5.5, tradeDate: '20240101' },
       ])
-      mockPrisma.stockBasic.findMany.mockResolvedValueOnce([{ tsCode: '000001.SZ', name: '平安银行' }])
+      mockPrisma.daily.findFirst.mockResolvedValueOnce({ tradeDate: new Date('2024-01-05') })
+      mockPrisma.stockBasic.findMany.mockResolvedValueOnce([{ tsCode: '000001.SZ', name: '平安银行', industry: '银行' }])
+      mockPrisma.daily.findMany.mockResolvedValueOnce([])
+      mockPrisma.dailyBasic.findMany.mockResolvedValueOnce([])
 
       const result1 = await service.getIndexConstituents({ index_code: '000300.SH', trade_date: '20240101' })
       expect(result1.total).toBe(1)
@@ -186,7 +221,10 @@ describe('IndexService', () => {
     it('rememberJson 被调用时 cacheKey 应带上解析后的实际快照日期', async () => {
       mockPrisma.indexWeight.findFirst.mockResolvedValueOnce({ tradeDate: '20240101' })
       mockPrisma.indexWeight.findMany.mockResolvedValueOnce([])
+      mockPrisma.daily.findFirst.mockResolvedValueOnce({ tradeDate: new Date('20240105') })
       mockPrisma.stockBasic.findMany.mockResolvedValueOnce([])
+      mockPrisma.daily.findMany.mockResolvedValueOnce([])
+      mockPrisma.dailyBasic.findMany.mockResolvedValueOnce([])
 
       await service.getIndexConstituents({ index_code: '000300.SH' })
 

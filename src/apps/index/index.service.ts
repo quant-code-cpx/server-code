@@ -90,6 +90,7 @@ export class IndexService {
             indexCode: index_code,
             indexName: CORE_INDEX_NAME_MAP[index_code] ?? index_code,
             tradeDate: '',
+            dailyTradeDate: '',
             total: 0,
             constituents: [],
           }
@@ -101,25 +102,54 @@ export class IndexService {
           orderBy: { weight: 'desc' },
         })
 
-        // 批量获取成分股名称
         const conCodes = weights.map((w) => w.conCode)
-        const stocks = await this.prisma.stockBasic.findMany({
-          where: { tsCode: { in: conCodes } },
-          select: { tsCode: true, name: true },
-        })
-        const nameMap = new Map(stocks.map((s) => [s.tsCode, s.name]))
+
+        // 收盘价/涨跌幅/市值用最新交易日，而非权重更新日期
+        const latestDailyDate = await this.resolveLatestStockTradeDate()
+        const dailyDateObj = latestDailyDate ?? this.parseDate(resolvedTradeDate)
+
+        // 并行获取成分股基本信息、日线行情、每日基础指标
+        const [stocks, dailyRows, dailyBasicRows] = await Promise.all([
+          this.prisma.stockBasic.findMany({
+            where: { tsCode: { in: conCodes } },
+            select: { tsCode: true, name: true, industry: true },
+          }),
+          this.prisma.daily.findMany({
+            where: { tsCode: { in: conCodes }, tradeDate: dailyDateObj },
+            select: { tsCode: true, close: true, pctChg: true },
+          }),
+          this.prisma.dailyBasic.findMany({
+            where: { tsCode: { in: conCodes }, tradeDate: dailyDateObj },
+            select: { tsCode: true, totalMv: true, circMv: true },
+          }),
+        ])
+
+        const stockMap = new Map(stocks.map((s) => [s.tsCode, s]))
+        const dailyMap = new Map(dailyRows.map((d) => [d.tsCode, d]))
+        const basicMap = new Map(dailyBasicRows.map((d) => [d.tsCode, d]))
 
         return {
           indexCode: index_code,
           indexName: CORE_INDEX_NAME_MAP[index_code] ?? index_code,
           tradeDate: resolvedTradeDate,
+          dailyTradeDate: latestDailyDate ? dayjs(latestDailyDate).format('YYYYMMDD') : resolvedTradeDate,
           total: weights.length,
-          constituents: weights.map((w) => ({
-            conCode: w.conCode,
-            name: nameMap.get(w.conCode) ?? null,
-            weight: w.weight ? Number(w.weight) : null,
-            tradeDate: w.tradeDate,
-          })),
+          constituents: weights.map((w) => {
+            const stock = stockMap.get(w.conCode)
+            const daily = dailyMap.get(w.conCode)
+            const basic = basicMap.get(w.conCode)
+            return {
+              conCode: w.conCode,
+              name: stock?.name ?? null,
+              industry: stock?.industry ?? null,
+              weight: w.weight ? Number(w.weight) : null,
+              close: daily?.close ?? null,
+              pctChg: daily?.pctChg ?? null,
+              totalMv: basic?.totalMv ?? null,
+              circMv: basic?.circMv ?? null,
+              tradeDate: w.tradeDate,
+            }
+          }),
         }
       },
     })
@@ -156,6 +186,14 @@ export class IndexService {
 
   private parseDate(value: string): Date {
     return dayjs.tz(value, 'YYYYMMDD', 'Asia/Shanghai').toDate()
+  }
+
+  private async resolveLatestStockTradeDate(): Promise<Date | null> {
+    const record = await this.prisma.daily.findFirst({
+      orderBy: { tradeDate: 'desc' },
+      select: { tradeDate: true },
+    })
+    return record?.tradeDate ?? null
   }
 
   private async resolveLatestIndexTradeDate(): Promise<Date | null> {

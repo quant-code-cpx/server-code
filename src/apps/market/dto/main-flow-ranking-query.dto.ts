@@ -1,6 +1,8 @@
-import { IsEnum, IsInt, IsOptional, Matches, Max, Min } from 'class-validator'
+import { IsBoolean, IsEnum, IsInt, IsOptional, Matches, Max, Min } from 'class-validator'
 import { ApiPropertyOptional } from '@nestjs/swagger'
-import { Type } from 'class-transformer'
+import { Transform, Type } from 'class-transformer'
+
+export type MainFlowSortBy = 'main_net_inflow' | 'elg_net_inflow' | 'lg_net_inflow' | 'pct_chg'
 
 export class MainFlowRankingQueryDto {
   @ApiPropertyOptional({ description: '查询日期（YYYYMMDD），默认最新交易日', example: '20240101' })
@@ -9,13 +11,31 @@ export class MainFlowRankingQueryDto {
   trade_date?: string
 
   @ApiPropertyOptional({
-    description: '排序方向：desc=主力净流入最多，asc=主力净流出最多',
+    description: '排序维度',
+    enum: ['main_net_inflow', 'elg_net_inflow', 'lg_net_inflow', 'pct_chg'],
+    default: 'main_net_inflow',
+  })
+  @IsOptional()
+  @IsEnum(['main_net_inflow', 'elg_net_inflow', 'lg_net_inflow', 'pct_chg'])
+  sort_by?: MainFlowSortBy = 'main_net_inflow'
+
+  @ApiPropertyOptional({
+    description: '排序方向（dual=false 时生效）：desc=净流入最多，asc=净流出最多',
     enum: ['asc', 'desc'],
     default: 'desc',
   })
   @IsOptional()
   @IsEnum(['asc', 'desc'])
   order?: 'asc' | 'desc' = 'desc'
+
+  @ApiPropertyOptional({
+    description: 'true 时单次返回 topInflow（降序）+ topOutflow（升序）双榜',
+    default: false,
+  })
+  @IsOptional()
+  @Transform(({ value }) => value === true || value === 'true')
+  @IsBoolean()
+  dual?: boolean = false
 
   @ApiPropertyOptional({ description: 'Top N，默认 20', minimum: 1, maximum: 100, default: 20 })
   @IsOptional()

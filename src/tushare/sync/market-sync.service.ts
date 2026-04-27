@@ -358,6 +358,40 @@ export class MarketSyncService {
       onProgress: context?.onProgress,
     })
     await this.helper.flushValidationLogs(collector)
+    await this.upsertValuationMedians(targetTradeDate)
+  }
+
+  /** 将指定交易日的行业估值中位数写入预计算表，供估值分位接口快速查询 */
+  private async upsertValuationMedians(tradeDateStr: string): Promise<void> {
+    const tradeDate = this.helper.toDate(tradeDateStr)
+    try {
+      await this.helper.prisma.$executeRaw`
+        INSERT INTO valuation_daily_medians (trade_date, scope, pe_ttm_median, pb_median, stock_count, computed_at)
+        SELECT
+          db.trade_date,
+          sb.industry AS scope,
+          PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY db.pe_ttm) AS pe_ttm_median,
+          PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY db.pb) AS pb_median,
+          COUNT(*)::int AS stock_count,
+          NOW() AS computed_at
+        FROM stock_daily_valuation_metrics db
+        JOIN stock_basic_profiles sb ON sb.ts_code = db.ts_code
+        WHERE db.trade_date = ${tradeDate}
+          AND sb.list_status = 'L'
+          AND sb.industry IS NOT NULL AND sb.industry != ''
+          AND db.pe_ttm > 0 AND db.pe_ttm < 1000
+          AND db.pb > 0
+        GROUP BY db.trade_date, sb.industry
+        ON CONFLICT (trade_date, scope) DO UPDATE SET
+          pe_ttm_median = EXCLUDED.pe_ttm_median,
+          pb_median = EXCLUDED.pb_median,
+          stock_count = EXCLUDED.stock_count,
+          computed_at = EXCLUDED.computed_at
+      `
+      this.logger.log(`[估值中位数] ${tradeDateStr} 更新完成`)
+    } catch (error) {
+      this.logger.warn(`[估值中位数] ${tradeDateStr} 更新失败（不影响主流程）: ${(error as Error).message}`)
+    }
   }
 
   // ─── 复权因子 ──────────────────────────────────────────────────────────────

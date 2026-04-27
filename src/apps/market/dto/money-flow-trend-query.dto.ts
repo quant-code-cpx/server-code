@@ -8,11 +8,11 @@ export class MoneyFlowTrendQueryDto {
   @Matches(/^\d{8}$/, { message: 'trade_date 格式应为 YYYYMMDD，例如 20240101' })
   trade_date?: string
 
-  @ApiPropertyOptional({ description: '历史天数，默认 20，最大 60', minimum: 5, maximum: 60, default: 20 })
+  @ApiPropertyOptional({ description: '历史天数，默认 20，最大 120', minimum: 5, maximum: 120, default: 20 })
   @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(5)
-  @Max(60)
+  @Max(120)
   days?: number = 20
 }

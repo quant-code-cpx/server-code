@@ -1,4 +1,4 @@
-import { IsEnum, IsInt, IsOptional, Matches, Max, Min } from 'class-validator'
+import { IsBoolean, IsEnum, IsInt, IsOptional, Matches, Max, Min } from 'class-validator'
 import { ApiPropertyOptional } from '@nestjs/swagger'
 import { Type } from 'class-transformer'
 
@@ -38,4 +38,13 @@ export class SectorFlowRankingQueryDto {
   @Min(1)
   @Max(100)
   limit?: number = 20
+
+  @ApiPropertyOptional({
+    description:
+      '双榜模式：同时返回 topInflow（降序 Top N）与 topOutflow（升序 Top N）；响应结构变为 { topInflow, topOutflow }，sectors 字段不再返回',
+    default: false,
+  })
+  @IsOptional()
+  @IsBoolean()
+  dual?: boolean = false
 }

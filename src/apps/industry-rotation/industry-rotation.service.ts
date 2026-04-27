@@ -373,86 +373,71 @@ export class IndustryRotationService {
     })
 
     return this.rememberCache(cacheKey, EXTENDED_CACHE_TTL, async () => {
-      // Step 1: Get current day PE/PB medians per industry
-      // Use parameterized queries to prevent SQL injection on industry name
-      const industryCondition = industryFilter ? 'AND sb.industry = $2' : ''
-      const currentParams: (string | number)[] = [tradeDateStr]
-      if (industryFilter) currentParams.push(industryFilter)
-
-      const currentSql = `
-        SELECT
-          sb.industry,
-          COUNT(*)::int AS stock_count,
-          PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY db.pe_ttm) AS pe_ttm_median,
-          PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY db.pb) AS pb_median
-        FROM stock_daily_valuation_metrics db
-        JOIN stock_basic_profiles sb ON sb.ts_code = db.ts_code
-        WHERE db.trade_date = $1::date
-          AND sb.list_status = 'L'
-          AND sb.industry IS NOT NULL AND sb.industry != ''
-          AND db.pe_ttm > 0 AND db.pe_ttm < 1000
-          AND db.pb > 0
-          ${industryCondition}
-        GROUP BY sb.industry
-      `
-      const currentRows = await this.prisma.$queryRawUnsafe<RawRow[]>(currentSql, ...currentParams)
-
-      if (currentRows.length === 0) {
-        return { tradeDate: tradeDateStr, industries: [] }
-      }
-
-      // Step 2: Compute historical percentiles (1y and 3y)
       const oneYearAgo = dayjs(tradeDate).tz('Asia/Shanghai').subtract(1, 'year').format('YYYYMMDD')
       const threeYearAgo = dayjs(tradeDate).tz('Asia/Shanghai').subtract(3, 'year').format('YYYYMMDD')
 
-      const percentileSql = (startDate: string) => {
-        const pctlIndustryCondition = industryFilter ? 'AND sb.industry = $3' : ''
-        return `
-          WITH daily_medians AS (
-            SELECT
-              sb.industry,
-              db.trade_date,
-              PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY db.pe_ttm) AS pe_ttm_median,
-              PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY db.pb) AS pb_median
-            FROM stock_daily_valuation_metrics db
-            JOIN stock_basic_profiles sb ON sb.ts_code = db.ts_code
-            WHERE db.trade_date >= $1::date AND db.trade_date <= $2::date
-              AND sb.list_status = 'L'
-              AND sb.industry IS NOT NULL AND sb.industry != ''
-              AND db.pe_ttm > 0 AND db.pe_ttm < 1000
-              AND db.pb > 0
-              ${pctlIndustryCondition}
-            GROUP BY sb.industry, db.trade_date
-          ),
-          percentiles AS (
-            SELECT
-              industry,
-              trade_date,
-              pe_ttm_median,
-              pb_median,
-              PERCENT_RANK() OVER (PARTITION BY industry ORDER BY pe_ttm_median) AS pe_pctl,
-              PERCENT_RANK() OVER (PARTITION BY industry ORDER BY pb_median) AS pb_pctl
-            FROM daily_medians
-          )
-          SELECT industry, ROUND((pe_pctl * 100)::numeric, 2) AS pe_percentile, ROUND((pb_pctl * 100)::numeric, 2) AS pb_percentile
-          FROM percentiles
-          WHERE trade_date = $2::date
+      // Use pre-computed valuation_daily_medians table (populated by syncDailyBasic).
+      // Scanning ~22k pre-aggregated rows is orders of magnitude faster than the
+      // previous approach of scanning ~4M raw stock rows with PERCENTILE_CONT.
+      const industryCondition = industryFilter ? 'AND scope = $4' : ''
+      const params: (string | number)[] = [tradeDateStr, oneYearAgo, threeYearAgo]
+      if (industryFilter) params.push(industryFilter)
+
+      type PrecomputedRow = {
+        industry: string
+        stock_count: number
+        pe_ttm_median: number | null
+        pb_median: number | null
+        pe_pctl_1y: number | null
+        pb_pctl_1y: number | null
+        pe_pctl_3y: number | null
+        pb_pctl_3y: number | null
+      }
+
+      const rows = await this.prisma.$queryRawUnsafe<PrecomputedRow[]>(
         `
+        WITH medians AS (
+          SELECT scope AS industry, trade_date, pe_ttm_median, pb_median, stock_count
+          FROM valuation_daily_medians
+          WHERE scope != '__ALL__'
+            AND trade_date >= $3::date AND trade_date <= $1::date
+            ${industryCondition}
+        ),
+        pctl_1y AS (
+          SELECT
+            industry, trade_date,
+            PERCENT_RANK() OVER (PARTITION BY industry ORDER BY pe_ttm_median) AS pe_pctl,
+            PERCENT_RANK() OVER (PARTITION BY industry ORDER BY pb_median) AS pb_pctl
+          FROM medians
+          WHERE trade_date >= $2::date
+        ),
+        pctl_3y AS (
+          SELECT
+            industry, trade_date,
+            PERCENT_RANK() OVER (PARTITION BY industry ORDER BY pe_ttm_median) AS pe_pctl,
+            PERCENT_RANK() OVER (PARTITION BY industry ORDER BY pb_median) AS pb_pctl
+          FROM medians
+        )
+        SELECT
+          t.industry,
+          t.stock_count,
+          t.pe_ttm_median,
+          t.pb_median,
+          ROUND((p1.pe_pctl * 100)::numeric, 2) AS pe_pctl_1y,
+          ROUND((p1.pb_pctl * 100)::numeric, 2) AS pb_pctl_1y,
+          ROUND((p3.pe_pctl * 100)::numeric, 2) AS pe_pctl_3y,
+          ROUND((p3.pb_pctl * 100)::numeric, 2) AS pb_pctl_3y
+        FROM medians t
+        LEFT JOIN pctl_1y p1 ON p1.industry = t.industry AND p1.trade_date = $1::date
+        LEFT JOIN pctl_3y p3 ON p3.industry = t.industry AND p3.trade_date = $1::date
+        WHERE t.trade_date = $1::date
+        `,
+        ...params,
+      )
+
+      if (rows.length === 0) {
+        return { tradeDate: tradeDateStr, industries: [] }
       }
-
-      const buildPctlParams = (startDate: string): (string | number)[] => {
-        const params = [startDate, tradeDateStr]
-        if (industryFilter) params.push(industryFilter)
-        return params
-      }
-
-      const [pctl1y, pctl3y] = await Promise.all([
-        this.prisma.$queryRawUnsafe<RawRow[]>(percentileSql(oneYearAgo), ...buildPctlParams(oneYearAgo)),
-        this.prisma.$queryRawUnsafe<RawRow[]>(percentileSql(threeYearAgo), ...buildPctlParams(threeYearAgo)),
-      ])
-
-      const pctl1yMap = new Map(pctl1y.map((r) => [r.industry, r]))
-      const pctl3yMap = new Map(pctl3y.map((r) => [r.industry, r]))
 
       const sortColumnMap: Record<
         string,
@@ -470,23 +455,19 @@ export class IndustryRotationService {
       }
       const getSortVal = sortColumnMap[sortBy] ?? sortColumnMap.pe_percentile_1y
 
-      let industries = currentRows.map((r) => {
-        const p1y = pctl1yMap.get(r.industry)
-        const p3y = pctl3yMap.get(r.industry)
-        const pePctl1y = p1y ? Number(p1y.pe_percentile) : null
-
-        const result = {
-          industry: r.industry as string,
+      const industries = rows.map((r) => {
+        const pePctl1y = r.pe_pctl_1y != null ? Number(r.pe_pctl_1y) : null
+        return {
+          industry: r.industry,
           stockCount: Number(r.stock_count),
           peTtmMedian: r.pe_ttm_median != null ? Math.round(Number(r.pe_ttm_median) * 100) / 100 : null,
           pbMedian: r.pb_median != null ? Math.round(Number(r.pb_median) * 100) / 100 : null,
           peTtmPercentile1y: pePctl1y,
-          peTtmPercentile3y: p3y ? Number(p3y.pe_percentile) : null,
-          pbPercentile1y: p1y ? Number(p1y.pb_percentile) : null,
-          pbPercentile3y: p3y ? Number(p3y.pb_percentile) : null,
+          peTtmPercentile3y: r.pe_pctl_3y != null ? Number(r.pe_pctl_3y) : null,
+          pbPercentile1y: r.pb_pctl_1y != null ? Number(r.pb_pctl_1y) : null,
+          pbPercentile3y: r.pb_pctl_3y != null ? Number(r.pb_pctl_3y) : null,
           valuationLabel: this.getValuationLabel(pePctl1y),
         }
-        return result
       })
 
       industries.sort((a, b) => {

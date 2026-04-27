@@ -1,5 +1,5 @@
 import { Body, Controller, Post } from '@nestjs/common'
-import { ApiOperation, ApiTags } from '@nestjs/swagger'
+import { ApiExtraModels, ApiOperation, ApiTags, getSchemaPath } from '@nestjs/swagger'
 import { MarketService } from './market.service'
 import { MoneyFlowQueryDto } from './dto/money-flow-query.dto'
 import { SectorFlowQueryDto } from './dto/sector-flow-query.dto'
@@ -21,7 +21,7 @@ import { ConceptListDto } from './dto/concept-list.dto'
 import { ConceptMembersDto } from './dto/concept-members.dto'
 import { TopMoversQueryDto } from './dto/top-movers-query.dto'
 import { SectorTopBottomQueryDto } from './dto/sector-top-bottom-query.dto'
-import { ApiSuccessResponse } from 'src/common/decorators/api-success-response.decorator'
+import { ApiSuccessResponse, ApiSuccessRawResponse } from 'src/common/decorators/api-success-response.decorator'
 import {
   ChangeDistributionResponseDto,
   ConceptListResponseDto,
@@ -33,6 +33,7 @@ import {
   IndexQuoteItemDto,
   IndexQuoteWithSparklineResponseDto,
   IndexTrendResponseDto,
+  MainFlowRankingDualResponseDto,
   MainFlowRankingResponseDto,
   MarketMoneyFlowDto,
   MarketMoneyFlowItemDto,
@@ -40,6 +41,7 @@ import {
   MarketValuationDto,
   MoneyFlowTrendResponseDto,
   SectorFlowDataDto,
+  SectorFlowRankingDualResponseDto,
   SectorFlowRankingResponseDto,
   SectorFlowTrendResponseDto,
   SectorRankingResponseDto,
@@ -53,6 +55,12 @@ import {
 } from './dto/market-response.dto'
 
 @ApiTags('Market - 市场与行业')
+@ApiExtraModels(
+  SectorFlowRankingResponseDto,
+  SectorFlowRankingDualResponseDto,
+  MainFlowRankingResponseDto,
+  MainFlowRankingDualResponseDto,
+)
 @Controller('market')
 export class MarketController {
   constructor(private readonly marketService: MarketService) {}
@@ -156,8 +164,17 @@ export class MarketController {
   }
 
   @Post('sector-flow-ranking')
-  @ApiOperation({ summary: '获取板块资金流向排行（按类型与排序维度）' })
-  @ApiSuccessResponse(SectorFlowRankingResponseDto)
+  @ApiOperation({
+    summary: '获取板块资金流向排行（按类型与排序维度）',
+    description:
+      '当 dual=false（默认）时返回 { sectors }；当 dual=true 时同时返回 { topInflow, topOutflow } 双榜，可减少一次请求',
+  })
+  @ApiSuccessRawResponse({
+    oneOf: [
+      { $ref: getSchemaPath(SectorFlowRankingResponseDto) },
+      { $ref: getSchemaPath(SectorFlowRankingDualResponseDto) },
+    ],
+  })
   getSectorFlowRanking(@Body() query: SectorFlowRankingQueryDto) {
     return this.marketService.getSectorFlowRanking(query)
   }
@@ -177,8 +194,17 @@ export class MarketController {
   }
 
   @Post('main-flow-ranking')
-  @ApiOperation({ summary: '获取主力资金净流入 Top N 个股排行' })
-  @ApiSuccessResponse(MainFlowRankingResponseDto)
+  @ApiOperation({
+    summary: '获取主力资金净流入 Top N 个股排行',
+    description:
+      '当 dual=false（默认）时返回 { data }；当 dual=true 时同时返回 { topInflow, topOutflow } 双榜。支持 sort_by 多维度排序，响应含 mdNetInflow/smNetInflow 四档数据',
+  })
+  @ApiSuccessRawResponse({
+    oneOf: [
+      { $ref: getSchemaPath(MainFlowRankingResponseDto) },
+      { $ref: getSchemaPath(MainFlowRankingDualResponseDto) },
+    ],
+  })
   getMainFlowRanking(@Body() query: MainFlowRankingQueryDto) {
     return this.marketService.getMainFlowRanking(query)
   }

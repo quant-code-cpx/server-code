@@ -729,25 +729,49 @@ export class MarketService {
     const cacheKey = `market:mf-trend:${tradeDateStr}:${days}`
 
     return this.rememberMarketCache(cacheKey, MARKET_STANDARD_CACHE_TTL_SECONDS, async () => {
-      const rows = await this.prisma.moneyflowMktDc.findMany({
+      // 从个股 moneyflow 按交易日聚合全市场净流入，口径与 getMarketMoneyFlow 一致（全口径，非主力）
+      const rows = await this.prisma.moneyflow.groupBy({
+        by: ['tradeDate'],
         where: { tradeDate: { lte: tradeDate } },
+        _sum: {
+          netMfAmount: true,
+          buyElgAmount: true,
+          sellElgAmount: true,
+          buyLgAmount: true,
+          sellLgAmount: true,
+          buyMdAmount: true,
+          sellMdAmount: true,
+          buySmAmount: true,
+          sellSmAmount: true,
+        },
         orderBy: { tradeDate: 'desc' },
         take: days,
       })
 
       const sorted = rows.reverse()
       let cumulative = 0
+      const wan2yuan = (v: number | null | undefined) => (v != null ? Number((v * 10000).toFixed(2)) : null)
       return {
         data: sorted.map((r) => {
-          cumulative += r.netAmount ?? 0
+          // netMfAmount 单位万元，× 10000 转元，与 getMarketMoneyFlow 保持一致
+          const netAmount = r._sum.netMfAmount != null ? Number((r._sum.netMfAmount * 10000).toFixed(2)) : 0
+          cumulative += netAmount
+          const buyElg = wan2yuan(r._sum.buyElgAmount)
+          const sellElg = wan2yuan(r._sum.sellElgAmount)
+          const buyLg = wan2yuan(r._sum.buyLgAmount)
+          const sellLg = wan2yuan(r._sum.sellLgAmount)
+          const buyMd = wan2yuan(r._sum.buyMdAmount)
+          const sellMd = wan2yuan(r._sum.sellMdAmount)
+          const buySm = wan2yuan(r._sum.buySmAmount)
+          const sellSm = wan2yuan(r._sum.sellSmAmount)
           return {
             tradeDate: dayjs(r.tradeDate).format('YYYY-MM-DD'),
-            netAmount: r.netAmount,
+            netAmount,
             cumulativeNet: Number(cumulative.toFixed(2)),
-            buyElgAmount: r.buyElgAmount,
-            buyLgAmount: r.buyLgAmount,
-            buyMdAmount: r.buyMdAmount,
-            buySmAmount: r.buySmAmount,
+            buyElgAmount: buyElg != null && sellElg != null ? Number((buyElg - sellElg).toFixed(2)) : null,
+            buyLgAmount: buyLg != null && sellLg != null ? Number((buyLg - sellLg).toFixed(2)) : null,
+            buyMdAmount: buyMd != null && sellMd != null ? Number((buyMd - sellMd).toFixed(2)) : null,
+            buySmAmount: buySm != null && sellSm != null ? Number((buySm - sellSm).toFixed(2)) : null,
           }
         }),
       }
@@ -758,7 +782,14 @@ export class MarketService {
 
   async getSectorFlowRanking(query: SectorFlowRankingQueryDto) {
     const tradeDate = query.trade_date ? this.parseDate(query.trade_date) : await this.resolveLatestSectorTradeDate()
-    if (!tradeDate) return { tradeDate: null, contentType: query.content_type ?? 'INDUSTRY', sectors: [] }
+    const dual = query.dual ?? false
+
+    if (!tradeDate) {
+      const contentType = query.content_type ?? 'INDUSTRY'
+      return dual
+        ? { tradeDate: null, contentType, topInflow: [], topOutflow: [] }
+        : { tradeDate: null, contentType, sectors: [] }
+    }
 
     const contentType = (query.content_type ?? 'INDUSTRY') as MoneyflowContentType
     const sortBy = query.sort_by ?? 'net_amount'
@@ -766,6 +797,70 @@ export class MarketService {
     const limit = query.limit ?? 20
 
     const tradeDateStr = dayjs(tradeDate).format('YYYYMMDD')
+
+    if (dual) {
+      const cacheKey = `market:sector-rank:${tradeDateStr}:${contentType}:${sortBy}:dual:${limit}`
+      return this.rememberMarketCache(cacheKey, MARKET_STANDARD_CACHE_TTL_SECONDS, async () => {
+        const orderByDesc = {
+          net_amount: { netAmount: 'desc' as const },
+          pct_change: { pctChange: 'desc' as const },
+          buy_elg_amount: { buyElgAmount: 'desc' as const },
+        }
+        const orderByAsc = {
+          net_amount: { netAmount: 'asc' as const },
+          pct_change: { pctChange: 'asc' as const },
+          buy_elg_amount: { buyElgAmount: 'asc' as const },
+        }
+        const selectFields = {
+          tsCode: true,
+          name: true,
+          pctChange: true,
+          close: true,
+          netAmount: true,
+          netAmountRate: true,
+          buyElgAmount: true,
+          buyLgAmount: true,
+          buyMdAmount: true,
+          buySmAmount: true,
+        } as const
+
+        const [topInflowRows, topOutflowRows] = await Promise.all([
+          this.prisma.moneyflowIndDc.findMany({
+            where: { tradeDate, contentType },
+            orderBy: orderByDesc[sortBy],
+            take: limit,
+            select: selectFields,
+          }),
+          this.prisma.moneyflowIndDc.findMany({
+            where: { tradeDate, contentType },
+            orderBy: orderByAsc[sortBy],
+            take: limit,
+            select: selectFields,
+          }),
+        ])
+
+        const mapRow = (r: (typeof topInflowRows)[number]) => ({
+          tsCode: r.tsCode,
+          name: r.name,
+          pctChange: r.pctChange,
+          close: r.close,
+          netAmount: r.netAmount,
+          netAmountRate: r.netAmountRate,
+          buyElgAmount: r.buyElgAmount,
+          buyLgAmount: r.buyLgAmount,
+          buyMdAmount: r.buyMdAmount,
+          buySmAmount: r.buySmAmount,
+        })
+
+        return {
+          tradeDate,
+          contentType,
+          topInflow: topInflowRows.map(mapRow),
+          topOutflow: topOutflowRows.map(mapRow),
+        }
+      })
+    }
+
     const cacheKey = `market:sector-rank:${tradeDateStr}:${contentType}:${sortBy}:${order}:${limit}`
 
     return this.rememberMarketCache(cacheKey, MARKET_STANDARD_CACHE_TTL_SECONDS, async () => {
@@ -895,27 +990,41 @@ export class MarketService {
 
   async getMainFlowRanking(query: MainFlowRankingQueryDto) {
     const tradeDate = query.trade_date ? this.parseDate(query.trade_date) : await this.resolveLatestStockFlowTradeDate()
-    if (!tradeDate) return { tradeDate: null, data: [] }
+    const dual = query.dual ?? false
 
-    const order = query.order ?? 'desc'
+    if (!tradeDate) {
+      return dual ? { tradeDate: null, topInflow: [], topOutflow: [] } : { tradeDate: null, data: [] }
+    }
+
+    const sortBy = query.sort_by ?? 'main_net_inflow'
     const limit = query.limit ?? 20
 
     const tradeDateStr = dayjs(tradeDate).tz('Asia/Shanghai').format('YYYYMMDD')
-    const cacheKey = `market:main-flow-rank:${tradeDateStr}:${order}:${limit}`
+    const cacheKey = `market:main-flow-rank:${tradeDateStr}:${sortBy}:${dual ? 'dual' : (query.order ?? 'desc')}:${limit}`
 
     return this.rememberMarketCache(cacheKey, MARKET_STANDARD_CACHE_TTL_SECONDS, async () => {
-      const rows = await this.prisma.$queryRaw<
-        {
-          ts_code: string
-          name: string | null
-          industry: string | null
-          main_net_inflow: string
-          elg_net_inflow: string
-          lg_net_inflow: string
-          pct_chg: number | null
-          amount: number | null
-        }[]
-      >`
+      type RawRow = {
+        ts_code: string
+        name: string | null
+        industry: string | null
+        main_net_inflow: string
+        elg_net_inflow: string
+        lg_net_inflow: string
+        md_net_inflow: string
+        sm_net_inflow: string
+        pct_chg: number | null
+        amount: number | null
+      }
+
+      const sortColMap: Record<string, Prisma.Sql> = {
+        main_net_inflow: Prisma.sql`main_net_inflow`,
+        elg_net_inflow: Prisma.sql`elg_net_inflow`,
+        lg_net_inflow: Prisma.sql`lg_net_inflow`,
+        pct_chg: Prisma.sql`d.pct_chg`,
+      }
+      const sortCol = sortColMap[sortBy] ?? Prisma.sql`main_net_inflow`
+
+      const buildQuery = (dirSql: Prisma.Sql): Prisma.Sql => Prisma.sql`
         SELECT
           mf.ts_code,
           sb.name,
@@ -924,29 +1033,48 @@ export class MarketService {
            + COALESCE(mf.buy_lg_amount, 0)  - COALESCE(mf.sell_lg_amount, 0))  AS main_net_inflow,
           (COALESCE(mf.buy_elg_amount, 0) - COALESCE(mf.sell_elg_amount, 0))   AS elg_net_inflow,
           (COALESCE(mf.buy_lg_amount, 0)  - COALESCE(mf.sell_lg_amount, 0))    AS lg_net_inflow,
+          (COALESCE(mf.buy_md_amount, 0)  - COALESCE(mf.sell_md_amount, 0))    AS md_net_inflow,
+          (COALESCE(mf.buy_sm_amount, 0)  - COALESCE(mf.sell_sm_amount, 0))    AS sm_net_inflow,
           d.pct_chg,
           d.amount
         FROM stock_capital_flows mf
         JOIN stock_basic_profiles sb ON sb.ts_code = mf.ts_code
         LEFT JOIN stock_daily_prices d ON d.ts_code = mf.ts_code AND d.trade_date = mf.trade_date
         WHERE mf.trade_date = ${tradeDateStr}::date
-        ORDER BY main_net_inflow ${order === 'desc' ? Prisma.sql`DESC` : Prisma.sql`ASC`}
+        ORDER BY ${sortCol} ${dirSql} NULLS LAST
         LIMIT ${limit}
       `
 
-      return {
-        tradeDate,
-        data: rows.map((r) => ({
-          tsCode: r.ts_code,
-          name: r.name,
-          industry: r.industry,
-          mainNetInflow: Number(r.main_net_inflow),
-          elgNetInflow: Number(r.elg_net_inflow),
-          lgNetInflow: Number(r.lg_net_inflow),
-          pctChg: r.pct_chg !== null ? Number(r.pct_chg) : null,
-          amount: r.amount !== null ? Number(r.amount) : null,
-        })),
+      const mapRow = (r: RawRow) => ({
+        tsCode: r.ts_code,
+        name: r.name,
+        industry: r.industry,
+        mainNetInflow: Number(r.main_net_inflow),
+        elgNetInflow: Number(r.elg_net_inflow),
+        lgNetInflow: Number(r.lg_net_inflow),
+        mdNetInflow: Number(r.md_net_inflow),
+        smNetInflow: Number(r.sm_net_inflow),
+        pctChg: r.pct_chg !== null ? Number(r.pct_chg) : null,
+        amount: r.amount !== null ? Number(r.amount) : null,
+      })
+
+      if (dual) {
+        const [topInflowRows, topOutflowRows] = await Promise.all([
+          this.prisma.$queryRaw<RawRow[]>(buildQuery(Prisma.sql`DESC`)),
+          this.prisma.$queryRaw<RawRow[]>(buildQuery(Prisma.sql`ASC`)),
+        ])
+        return {
+          tradeDate,
+          topInflow: topInflowRows.map(mapRow),
+          topOutflow: topOutflowRows.map(mapRow),
+        }
       }
+
+      const order = query.order ?? 'desc'
+      const rows = await this.prisma.$queryRaw<RawRow[]>(
+        buildQuery(order === 'desc' ? Prisma.sql`DESC` : Prisma.sql`ASC`),
+      )
+      return { tradeDate, data: rows.map(mapRow) }
     })
   }
 
@@ -1003,7 +1131,9 @@ export class MarketService {
   async getConceptList(dto: { keyword?: string; page?: number; pageSize?: number }) {
     const page = dto.page ?? 1
     const pageSize = dto.pageSize ?? 50
-    const where: Record<string, unknown> = { type: 'N' }
+    // 仅返回在 ths_index_members 中有实际成员的概念板块，
+    // 避免 Tushare ths_index 元数据 count 与 ths_member 实际返回不一致导致成员列表为空
+    const where: Record<string, unknown> = { type: 'N', members: { some: {} } }
     if (dto.keyword) {
       where['name'] = { contains: dto.keyword }
     }

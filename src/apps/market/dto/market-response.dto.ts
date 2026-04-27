@@ -283,14 +283,17 @@ export class ValuationTrendResponseDto {
 
 export class MoneyFlowTrendItemDto {
   @ApiProperty({ description: '交易日期 YYYY-MM-DD' }) tradeDate: string
-  @ApiProperty({ description: '当日净流入（元，来自 moneyflow_mkt_dc）', required: false, nullable: true }) netAmount:
+  @ApiProperty({ description: '当日净流入（元，来自个股 moneyflow 聚合）', required: false, nullable: true })
+  netAmount: number | null
+  @ApiProperty({ description: '累计净流入（从序列第 1 天开始累加，元）' }) cumulativeNet: number
+  @ApiProperty({ description: '超大单净流入（元，≥100万）', required: false, nullable: true }) buyElgAmount:
     | number
     | null
-  @ApiProperty({ description: '累计净流入（从序列第 1 天开始累加，元）' }) cumulativeNet: number
-  @ApiProperty({ description: '超大单净流入（元）', required: false, nullable: true }) buyElgAmount: number | null
-  @ApiProperty({ description: '大单净流入（元）', required: false, nullable: true }) buyLgAmount: number | null
-  @ApiProperty({ description: '中单净流入（元）', required: false, nullable: true }) buyMdAmount: number | null
-  @ApiProperty({ description: '小单净流入（元）', required: false, nullable: true }) buySmAmount: number | null
+  @ApiProperty({ description: '大单净流入（元，20~100万）', required: false, nullable: true }) buyLgAmount:
+    | number
+    | null
+  @ApiProperty({ description: '中单净流入（元，5~20万）', required: false, nullable: true }) buyMdAmount: number | null
+  @ApiProperty({ description: '小单净流入（元，<5万）', required: false, nullable: true }) buySmAmount: number | null
 }
 
 export class MoneyFlowTrendResponseDto {
@@ -318,6 +321,15 @@ export class SectorFlowRankingResponseDto {
   @ApiProperty({ description: '交易日期' }) tradeDate: Date
   @ApiProperty({ description: '板块类型' }) contentType: string
   @ApiProperty({ type: [SectorFlowRankingItemDto] }) sectors: SectorFlowRankingItemDto[]
+}
+
+export class SectorFlowRankingDualResponseDto {
+  @ApiProperty({ description: '交易日期' }) tradeDate: Date
+  @ApiProperty({ description: '板块类型' }) contentType: string
+  @ApiProperty({ type: [SectorFlowRankingItemDto], description: 'sort_by 降序 Top N（净流入最强/涨幅最大等）' })
+  topInflow: SectorFlowRankingItemDto[]
+  @ApiProperty({ type: [SectorFlowRankingItemDto], description: 'sort_by 升序 Top N（净流出最多/跌幅最大等）' })
+  topOutflow: SectorFlowRankingItemDto[]
 }
 
 // ─── sector-flow-trend ────────────────────────────────────────────────────────
@@ -365,6 +377,8 @@ export class MainFlowRankingItemDto {
   @ApiProperty({ description: '主力净流入 = 超大单净 + 大单净（万元）' }) mainNetInflow: number
   @ApiProperty({ description: '超大单净流入（万元）' }) elgNetInflow: number
   @ApiProperty({ description: '大单净流入（万元）' }) lgNetInflow: number
+  @ApiProperty({ description: '中单净流入（万元）' }) mdNetInflow: number
+  @ApiProperty({ description: '小单净流入（万元）' }) smNetInflow: number
   @ApiProperty({ description: '当日涨跌幅 %', required: false, nullable: true }) pctChg: number | null
   @ApiProperty({ description: '当日成交额（千元）', required: false, nullable: true }) amount: number | null
 }
@@ -372,6 +386,12 @@ export class MainFlowRankingItemDto {
 export class MainFlowRankingResponseDto {
   @ApiProperty({ description: '交易日期' }) tradeDate: Date
   @ApiProperty({ type: [MainFlowRankingItemDto] }) data: MainFlowRankingItemDto[]
+}
+
+export class MainFlowRankingDualResponseDto {
+  @ApiProperty({ description: '交易日期' }) tradeDate: Date
+  @ApiProperty({ type: [MainFlowRankingItemDto] }) topInflow: MainFlowRankingItemDto[]
+  @ApiProperty({ type: [MainFlowRankingItemDto] }) topOutflow: MainFlowRankingItemDto[]
 }
 
 // ─── stock-flow-detail ────────────────────────────────────────────────────────

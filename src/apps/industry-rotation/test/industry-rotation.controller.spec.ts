@@ -11,7 +11,7 @@ const mockIndustryRotationService = {
   getFlowAnalysis: jest.fn(async () => []),
   getIndustryValuation: jest.fn(async () => []),
   getOverview: jest.fn(async () => ({ heatData: [], summary: {} })),
-  getDetail: jest.fn(async () => ({ industry: '银行', trend: [] })),
+  getDetail: jest.fn(async () => ({ industry: '银行', tsCode: 'BK1283.DC', returnTrend: [], flowTrend: [], valuation: null, topStocks: [] })),
   getHeatmap: jest.fn(async () => ({ matrix: [] })),
 }
 
@@ -74,13 +74,50 @@ describe('IndustryRotationController', () => {
     expect(mockIndustryRotationService.getFlowAnalysis).toHaveBeenCalledTimes(1)
   })
 
-  // IndustryDetailQueryDto.industry uses @IsString @IsNotEmpty (required)
-  it('[VAL] POST /industry-rotation/detail 缺 industry → 400', async () => {
-    await request(app.getHttpServer())
+  // tsCode 和 industry 至少传一个；都不传时 service 返回空结果
+  it('POST /industry-rotation/detail 缺 tsCode 和 industry → 201 空结果', async () => {
+    mockIndustryRotationService.getDetail.mockResolvedValueOnce({
+      industry: '',
+      tsCode: null,
+      returnTrend: [],
+      flowTrend: [],
+      valuation: null,
+      topStocks: [],
+    })
+
+    const res = await request(app.getHttpServer())
       .post('/industry-rotation/detail')
       .send({})
-      .expect(400)
-    expect(mockIndustryRotationService.getDetail).not.toHaveBeenCalled()
+      .expect(201)
+
+    expect(res.body.code).toBe(SUCCESS_CODE)
+    expect(res.body.data.returnTrend).toEqual([])
+  })
+
+  // 传 tsCode 时正常返回
+  it('POST /industry-rotation/detail 传 tsCode → 201', async () => {
+    const res = await request(app.getHttpServer())
+      .post('/industry-rotation/detail')
+      .send({ tsCode: 'BK0438.DC' })
+      .expect(201)
+
+    expect(res.body.code).toBe(SUCCESS_CODE)
+    expect(mockIndustryRotationService.getDetail).toHaveBeenCalledWith(
+      expect.objectContaining({ tsCode: 'BK0438.DC' }),
+    )
+  })
+
+  // 同时传 tsCode 和 industry 时，tsCode 优先
+  it('POST /industry-rotation/detail 同时传 tsCode 和 industry → tsCode 优先', async () => {
+    const res = await request(app.getHttpServer())
+      .post('/industry-rotation/detail')
+      .send({ tsCode: 'BK0438.DC', industry: '银行' })
+      .expect(201)
+
+    expect(res.body.code).toBe(SUCCESS_CODE)
+    expect(mockIndustryRotationService.getDetail).toHaveBeenCalledWith(
+      expect.objectContaining({ tsCode: 'BK0438.DC', industry: '银行' }),
+    )
   })
 
   // FlowAnalysisQueryDto.trade_date uses @IsOptional @Matches — hyphen format fails

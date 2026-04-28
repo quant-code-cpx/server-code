@@ -13,7 +13,11 @@ export class HeatmapService {
     let result: HeatmapItemDto[]
     switch (query.group_by ?? 'industry') {
       case 'industry':
-        result = await this.getIndustryHeatmap(tradeDate)
+        if (query.industry_source === 'sw_l1') {
+          result = await this.getSwL1Heatmap(tradeDate, query.include_mapping ?? false)
+        } else {
+          result = await this.getIndustryHeatmap(tradeDate)
+        }
         break
       case 'index':
         result = await this.getIndexHeatmap(tradeDate, query.index_code ?? '000300.SH')
@@ -84,6 +88,93 @@ export class HeatmapService {
       ORDER BY sb.industry, db.total_mv DESC NULLS LAST
     `
     return rows.map((r) => toHeatmapItem(r))
+  }
+
+  // ── 申万 L1 行业维度 ─────────────────────────────────────────────────────
+
+  /**
+   * 按申万一级行业分组，可选附带东财行业板块映射信息。
+   *
+   * SQL 逻辑：
+   *   1. 从 sw_industry_members 取当前在册成员的 L1 归属
+   *   2. 从 stock_basic_profiles + stock_daily_prices + stock_daily_valuation_metrics 取行情
+   *   3. LEFT JOIN sw_industry_members 得到 swCode / swName
+   *   4. LEFT JOIN sector_capital_flows（东财行业板块）得到 dcTsCode / dcName
+   */
+  private async getSwL1Heatmap(tradeDate: Date, includeMapping: boolean): Promise<HeatmapItemDto[]> {
+    const mappingColumns = includeMapping
+      ? `,
+        sw.l1_code      AS "swCode",
+        sw.l1_name      AS "swName",
+        dc.ts_code      AS "dcTsCode",
+        dc.board_code   AS "dcBoardCode",
+        dc.name         AS "dcName"`
+      : ''
+
+    const rawSql = `
+      WITH current_sw AS (
+        SELECT DISTINCT ON (ts_code)
+          ts_code, l1_code, l1_name
+        FROM sw_industry_members
+        WHERE is_new = 'Y'
+        ORDER BY ts_code, in_date DESC NULLS LAST
+      ),
+      latest_dc AS (
+        SELECT MAX(trade_date) AS trade_date
+        FROM sector_capital_flows
+        WHERE content_type = '行业'
+      ),
+      dc AS (
+        SELECT DISTINCT
+          ts_code,
+          regexp_replace(ts_code, '\\.DC$', '') AS board_code,
+          name
+        FROM sector_capital_flows
+        WHERE content_type = '行业'
+          AND trade_date = (SELECT trade_date FROM latest_dc)
+      )
+      SELECT
+        sb.ts_code                              AS "tsCode",
+        sb.name                                 AS "name",
+        COALESCE(sw.l1_name, '未分类')          AS "groupName",
+        d.pct_chg                               AS "pctChg",
+        db.total_mv                             AS "totalMv",
+        d.amount                                AS "amount"
+        ${mappingColumns}
+      FROM stock_basic_profiles sb
+      JOIN stock_daily_prices d
+        ON sb.ts_code = d.ts_code AND d.trade_date = $1::date
+      LEFT JOIN stock_daily_valuation_metrics db
+        ON sb.ts_code = db.ts_code AND db.trade_date = $1::date
+      LEFT JOIN current_sw sw
+        ON sw.ts_code = sb.ts_code
+      LEFT JOIN dc
+        ON dc.name = sw.l1_name
+      WHERE sb.list_status = 'L'
+      ORDER BY COALESCE(sw.l1_name, '未分类'), db.total_mv DESC NULLS LAST
+    `
+
+    const rows = await this.prisma.$queryRawUnsafe<RawSwL1HeatmapRow[]>(rawSql, tradeDate)
+
+    return rows.map((r) => {
+      const item: HeatmapItemDto = {
+        tsCode: r.tsCode,
+        name: r.name,
+        groupName: r.groupName,
+        industry: r.groupName,
+        pctChg: r.pctChg != null ? Number(r.pctChg) : null,
+        totalMv: r.totalMv != null ? Number(r.totalMv) : null,
+        amount: r.amount != null ? Number(r.amount) : null,
+      }
+      if (includeMapping) {
+        item.swCode = (r as any).swCode ?? null
+        item.swName = (r as any).swName ?? null
+        item.dcTsCode = (r as any).dcTsCode ?? null
+        item.dcBoardCode = (r as any).dcBoardCode ?? null
+        item.dcName = (r as any).dcName ?? null
+      }
+      return item
+    })
   }
 
   // ── 指数维度 ──────────────────────────────────────────────────────────────
@@ -174,6 +265,14 @@ interface RawHeatmapRow {
   pctChg: number | null
   totalMv: number | null
   amount: number | null
+}
+
+interface RawSwL1HeatmapRow extends RawHeatmapRow {
+  swCode?: string | null
+  swName?: string | null
+  dcTsCode?: string | null
+  dcBoardCode?: string | null
+  dcName?: string | null
 }
 
 interface ConceptBoardRow extends RawHeatmapRow {}

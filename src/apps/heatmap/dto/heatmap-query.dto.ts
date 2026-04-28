@@ -1,4 +1,4 @@
-import { IsIn, IsInt, IsOptional, IsString, Matches, Max, Min } from 'class-validator'
+import { IsBoolean, IsIn, IsInt, IsOptional, IsString, Matches, Max, Min } from 'class-validator'
 import { ApiPropertyOptional } from '@nestjs/swagger'
 import { Type } from 'class-transformer'
 
@@ -26,6 +26,33 @@ export class HeatmapQueryDto {
   @IsString()
   @IsIn(['industry', 'index', 'concept'])
   group_by?: 'industry' | 'index' | 'concept' = 'industry'
+
+  /**
+   * 行业数据来源：
+   * - stock_basic：使用 stock_basic_profiles.industry（默认，旧逻辑）
+   * - sw_l1：使用申万一级行业分类（新联动逻辑）
+   */
+  @ApiPropertyOptional({
+    description: '行业数据来源：stock_basic（旧逻辑）/ sw_l1（申万一级行业）',
+    enum: ['stock_basic', 'sw_l1'],
+    default: 'stock_basic',
+  })
+  @IsOptional()
+  @IsIn(['stock_basic', 'sw_l1'])
+  industry_source?: 'stock_basic' | 'sw_l1' = 'stock_basic'
+
+  /**
+   * 是否附带申万/东财映射字段（swCode, swName, dcTsCode, dcBoardCode, dcName）。
+   * 仅在 industry_source=sw_l1 时有效。
+   */
+  @ApiPropertyOptional({
+    description: '是否附带申万/东财映射字段（仅 industry_source=sw_l1 时有效）',
+    default: false,
+  })
+  @IsOptional()
+  @Type(() => Boolean)
+  @IsBoolean()
+  include_mapping?: boolean = false
 
   /**
    * 指数代码，仅在 group_by='index' 时有效。

@@ -548,18 +548,43 @@ export class IndustryRotationService {
   // ─── 3.6 单行业详情 ───────────────────────────────────────────────────────
 
   async getDetail(query: IndustryDetailQueryDto) {
-    const { industry } = query
+    const { tsCode: inputTsCode, industry } = query
     const days = query.days ?? 20
 
-    const cacheKey = this.cacheService.buildKey('ind-rotation:detail', { industry, days })
+    // tsCode 和 industry 至少传一个
+    if (!inputTsCode && !industry) {
+      return { industry: '', tsCode: null, returnTrend: [], flowTrend: [], valuation: null, topStocks: [] }
+    }
+
+    const cacheKey = this.cacheService.buildKey('ind-rotation:detail', {
+      tsCode: inputTsCode,
+      industry,
+      days,
+    })
 
     return this.rememberCache(cacheKey, STANDARD_CACHE_TTL, async () => {
-      // Step 1: Resolve sector code (parameterized to prevent SQL injection)
-      const sectorRows = await this.prisma.$queryRawUnsafe<RawRow[]>(
-        `SELECT DISTINCT ts_code, name FROM sector_capital_flows WHERE content_type = '行业' AND name = $1 LIMIT 1`,
-        industry,
-      )
-      const tsCode = sectorRows.length > 0 ? (sectorRows[0].ts_code as string) : null
+      // Step 1: Resolve sector code — tsCode 优先，其次按 industry 名称查
+      let tsCode: string | null = null
+      let resolvedIndustry = industry ?? ''
+
+      if (inputTsCode) {
+        // 直接使用 tsCode，同时尝试解析 name 用于展示
+        tsCode = inputTsCode
+        const nameRows = await this.prisma.$queryRawUnsafe<RawRow[]>(
+          `SELECT name FROM sector_capital_flows WHERE content_type = '行业' AND ts_code = $1 LIMIT 1`,
+          inputTsCode,
+        )
+        if (nameRows.length > 0 && nameRows[0].name) {
+          resolvedIndustry = nameRows[0].name as string
+        }
+      } else if (industry) {
+        // 按名称解析 tsCode（兼容旧逻辑）
+        const sectorRows = await this.prisma.$queryRawUnsafe<RawRow[]>(
+          `SELECT DISTINCT ts_code, name FROM sector_capital_flows WHERE content_type = '行业' AND name = $1 LIMIT 1`,
+          industry,
+        )
+        tsCode = sectorRows.length > 0 ? (sectorRows[0].ts_code as string) : null
+      }
 
       // Step 2: Return trend
       let returnTrend: { tradeDate: string; close: number; pctChange: number; cumulativeReturn: number }[] = []
@@ -620,7 +645,7 @@ export class IndustryRotationService {
       // Step 4: Valuation snapshot
       let valuation = null
       try {
-        const valResult = await this.getIndustryValuation({ industry, sort_by: 'pe_percentile_1y', order: 'asc' })
+        const valResult = await this.getIndustryValuation({ industry: resolvedIndustry, sort_by: 'pe_percentile_1y', order: 'asc' })
         if (valResult.industries.length > 0) {
           const v = valResult.industries[0]
           valuation = {
@@ -661,7 +686,7 @@ export class IndustryRotationService {
           LIMIT 20
         `,
           latestDateStr,
-          industry,
+          resolvedIndustry,
         )
 
         topStocks = stockRows.map((r) => ({
@@ -675,7 +700,7 @@ export class IndustryRotationService {
       }
 
       return {
-        industry,
+        industry: resolvedIndustry,
         tsCode,
         returnTrend,
         flowTrend,

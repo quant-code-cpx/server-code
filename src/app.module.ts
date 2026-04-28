@@ -25,6 +25,7 @@ import { ScreenerSubscriptionModule } from './apps/screener-subscription/screene
 import { StrategyDraftModule } from './apps/strategy-draft/strategy-draft.module'
 import { IndexModule } from './apps/index/index.module'
 import { StrategyModule } from './apps/strategy/strategy.module'
+import { IndustryModule } from './apps/industry/industry.module'
 import { IndustryRotationModule } from './apps/industry-rotation/industry-rotation.module'
 import { PortfolioModule } from './apps/portfolio/portfolio.module'
 import { EventStudyModule } from './apps/event-study/event-study.module'
@@ -87,6 +88,7 @@ import { MetricsModule } from './shared/metrics/metrics.module'
     ScreenerSubscriptionModule,
     StrategyDraftModule,
     StrategyModule,
+    IndustryModule,
     IndustryRotationModule,
     PortfolioModule,
     EventStudyModule,

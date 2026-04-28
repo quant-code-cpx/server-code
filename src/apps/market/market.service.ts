@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common'
+import { Injectable, Logger } from '@nestjs/common'
 import { MoneyflowContentType, Prisma } from '@prisma/client'
 import dayjs from 'dayjs'
 import timezone from 'dayjs/plugin/timezone'
@@ -43,6 +43,8 @@ const MARKET_EXTENDED_CACHE_TTL_SECONDS = 8 * 3600
  */
 @Injectable()
 export class MarketService {
+  private readonly logger = new Logger(MarketService.name)
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly cacheService: CacheService,
@@ -216,33 +218,78 @@ export class MarketService {
     }
 
     const tradeDateStr = dayjs(tradeDate).tz('Asia/Shanghai').format('YYYYMMDD')
+    const cacheKey = `valuation:${tradeDateStr}`
+    return this.rememberMarketCache(cacheKey, MARKET_EXTENDED_CACHE_TTL_SECONDS, async () => {
+      const fiveYearAgo = new Date(tradeDate)
+      fiveYearAgo.setFullYear(fiveYearAgo.getFullYear() - 5)
+      const oneYearAgo = new Date(tradeDate)
+      oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1)
+      const threeYearAgo = new Date(tradeDate)
+      threeYearAgo.setFullYear(threeYearAgo.getFullYear() - 3)
 
-    // 当日 PE/PB 中位数（使用 PostgreSQL percentile_cont 函数）
-    const currentMedian = await this.prisma.$queryRaw<{ pe_ttm_median: number; pb_median: number }[]>`
-      SELECT
-        PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY pe_ttm) AS pe_ttm_median,
-        PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY pb)     AS pb_median
-      FROM stock_daily_valuation_metrics
-      WHERE trade_date = ${tradeDateStr}::date
-        AND pe_ttm > 0 AND pe_ttm < 1000
-        AND pb > 0
-    `
-    const peTtmMedian = currentMedian[0]?.pe_ttm_median ?? null
-    const pbMedian = currentMedian[0]?.pb_median ?? null
+      // 单次查询：拉取 5 年内每日 PE_TTM / PB 双字段中位数，ORDER BY 保证最后一行为当日
+      const dailyMedians = await this.prisma.$queryRaw<
+        { trade_date: Date; pe_ttm_median: string; pb_median: string }[]
+      >`
+        SELECT
+          trade_date,
+          PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY pe_ttm)::text AS pe_ttm_median,
+          PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY pb)::text     AS pb_median
+        FROM stock_daily_valuation_metrics
+        WHERE trade_date >= ${fiveYearAgo} AND trade_date <= ${tradeDate}
+          AND pe_ttm > 0 AND pe_ttm < 1000
+          AND pb > 0
+        GROUP BY trade_date
+        ORDER BY trade_date
+      `
 
-    // 历史分位：取各窗口内每日中位数，再求当日分位
-    const [peTtmPercentile, pbPercentile] = await Promise.all([
-      this.computeValuationPercentile(tradeDate, 'pe_ttm'),
-      this.computeValuationPercentile(tradeDate, 'pb'),
-    ])
+      if (dailyMedians.length === 0) {
+        return {
+          tradeDate,
+          peTtmMedian: null,
+          pbMedian: null,
+          peTtmPercentile: { oneYear: null, threeYear: null, fiveYear: null },
+          pbPercentile: { oneYear: null, threeYear: null, fiveYear: null },
+        }
+      }
 
-    return {
-      tradeDate,
-      peTtmMedian: peTtmMedian !== null ? Number(Number(peTtmMedian).toFixed(2)) : null,
-      pbMedian: pbMedian !== null ? Number(Number(pbMedian).toFixed(2)) : null,
-      peTtmPercentile,
-      pbPercentile,
-    }
+      // 最后一行即当日
+      const lastRow = dailyMedians[dailyMedians.length - 1]
+      const peTtmMedianCurrent = Number(lastRow.pe_ttm_median)
+      const pbMedianCurrent = Number(lastRow.pb_median)
+
+      const oneYearAgoTs = oneYearAgo.getTime()
+      const threeYearAgoTs = threeYearAgo.getTime()
+      const oneYearRows = dailyMedians.filter((r) => new Date(r.trade_date).getTime() >= oneYearAgoTs)
+      const threeYearRows = dailyMedians.filter((r) => new Date(r.trade_date).getTime() >= threeYearAgoTs)
+
+      const computePct = (
+        rows: { pe_ttm_median: string; pb_median: string }[],
+        field: 'pe_ttm_median' | 'pb_median',
+        currentVal: number,
+      ): number | null => {
+        if (rows.length < 2) return null
+        const allVals = rows.map((r) => Number(r[field])).sort((a, b) => a - b)
+        const rank = allVals.filter((v) => v <= currentVal).length
+        return Math.round((rank / allVals.length) * 100)
+      }
+
+      return {
+        tradeDate,
+        peTtmMedian: Number(peTtmMedianCurrent.toFixed(2)),
+        pbMedian: Number(pbMedianCurrent.toFixed(2)),
+        peTtmPercentile: {
+          oneYear: computePct(oneYearRows, 'pe_ttm_median', peTtmMedianCurrent),
+          threeYear: computePct(threeYearRows, 'pe_ttm_median', peTtmMedianCurrent),
+          fiveYear: computePct(dailyMedians, 'pe_ttm_median', peTtmMedianCurrent),
+        },
+        pbPercentile: {
+          oneYear: computePct(oneYearRows, 'pb_median', pbMedianCurrent),
+          threeYear: computePct(threeYearRows, 'pb_median', pbMedianCurrent),
+          fiveYear: computePct(dailyMedians, 'pb_median', pbMedianCurrent),
+        },
+      }
+    })
   }
 
   // ─── 核心指数行情 ──────────────────────────────────────────────────────────
@@ -1164,6 +1211,9 @@ export class MarketService {
         take: pageSize,
       }),
     ])
+    if (total === 0) {
+      this.logger.warn(`[概念成分] tsCode="${tsCode}" 在 ths_index_members 中无记录，board=${board?.name ?? 'NOT_FOUND'}`)
+    }
     return { tsCode, name: board?.name ?? null, total, items }
   }
 

@@ -9,6 +9,7 @@ export const CACHE_NAMESPACE = {
   WATCHLIST: 'watchlist',
   WATCHLIST_STOCKS: 'watchlist-stocks',
   INDUSTRY_ROTATION: 'industry-rotation',
+  INDUSTRY: 'industry',
   PORTFOLIO: 'portfolio',
   TUSHARE_SYNC_OVERVIEW: 'tushare-sync-overview',
 } as const

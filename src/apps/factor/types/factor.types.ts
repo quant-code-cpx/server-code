@@ -10,6 +10,11 @@ export interface FactorItem {
   isBuiltin: boolean
   isEnabled: boolean
   sortOrder: number
+  // Enriched status (optional — present when loaded with snapshot data)
+  latestDate?: string | null
+  coverageRate?: number | null
+  staleDays?: number | null
+  status?: 'HEALTHY' | 'STALE' | 'MISSING'
 }
 
 export interface FactorCategoryGroup {

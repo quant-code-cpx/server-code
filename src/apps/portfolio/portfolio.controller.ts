@@ -163,6 +163,12 @@ export class PortfolioController {
     return this.riskService.getBetaAnalysis(body.portfolioId, user.id)
   }
 
+  @Post('risk/snapshot')
+  @ApiOperation({ summary: '风险快照（一次返回行业/持仓/市值/Beta，单维度失败不影响其他）' })
+  getRiskSnapshot(@CurrentUser() user: TokenPayload, @Body() body: { portfolioId: string }) {
+    return this.riskService.getRiskSnapshot(body.portfolioId, user.id)
+  }
+
   // ─── 风控规则管理 ─────────────────────────────────────────────────────────
 
   @Post('rule/list')

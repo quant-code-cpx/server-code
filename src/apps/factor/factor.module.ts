@@ -29,5 +29,6 @@ import { BacktestModule } from '../backtest/backtest.module'
     FactorOrthogonalService,
     FactorOptimizationService,
   ],
+  exports: [FactorScreeningService],
 })
 export class FactorModule {}

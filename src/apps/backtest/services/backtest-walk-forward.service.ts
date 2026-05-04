@@ -85,6 +85,13 @@ export class BacktestWalkForwardService {
     )
 
     this.logger.log(`Created WalkForward run id=${wfRun.id} jobId=${job.id}`)
+
+    // Persist jobId
+    await this.prisma.backtestWalkForwardRun.update({
+      where: { id: wfRun.id },
+      data: { jobId: job.id?.toString() ?? null },
+    })
+
     return { wfRunId: wfRun.id, jobId: job.id?.toString() ?? '', status: 'QUEUED' }
   }
 
@@ -552,5 +559,31 @@ export class BacktestWalkForwardService {
 
   private parseDate(dateStr: string): Date {
     return new Date(`${dateStr.slice(0, 4)}-${dateStr.slice(4, 6)}-${dateStr.slice(6, 8)}`)
+  }
+
+  async cancelWalkForwardRun(wfRunId: string) {
+    const run = await this.prisma.backtestWalkForwardRun.findUnique({ where: { id: wfRunId } })
+    if (!run || run.deletedAt) throw new NotFoundException(`WalkForwardRun ${wfRunId} not found`)
+    if (['COMPLETED', 'FAILED', 'CANCELLED'].includes(run.status)) {
+      throw new BadRequestException(`Cannot cancel run with status ${run.status}`)
+    }
+    if (run.jobId) {
+      try {
+        const job = await this.queue.getJob(run.jobId)
+        if (job) await job.remove()
+      } catch (e) {
+        this.logger.warn(`Could not remove WF job ${run.jobId}: ${e instanceof Error ? e.message : String(e)}`)
+      }
+    }
+    await this.prisma.backtestWalkForwardRun.update({ where: { id: wfRunId }, data: { status: 'CANCELLED' } })
+    return { wfRunId, status: 'CANCELLED', cancelled: true }
+  }
+
+  async deleteWalkForwardRun(wfRunId: string, userId: number) {
+    const run = await this.prisma.backtestWalkForwardRun.findUnique({ where: { id: wfRunId } })
+    if (!run || run.deletedAt || run.userId !== userId)
+      throw new NotFoundException(`WalkForwardRun ${wfRunId} not found`)
+    await this.prisma.backtestWalkForwardRun.update({ where: { id: wfRunId }, data: { deletedAt: new Date() } })
+    return { wfRunId, deleted: true }
   }
 }

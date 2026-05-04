@@ -6,6 +6,7 @@ import { PrismaService } from 'src/shared/prisma.service'
 import { FactorComputeService } from './factor-compute.service'
 import {
   FactorCorrelationDto,
+  FactorCorrelationResponseDto,
   FactorDecayAnalysisDto,
   FactorDistributionDto,
   FactorIcAnalysisDto,
@@ -437,14 +438,16 @@ export class FactorAnalysisService {
 
   // ── Correlation ──────────────────────────────────────────────────────────
 
-  async getCorrelation(dto: FactorCorrelationDto) {
+  async getCorrelation(dto: FactorCorrelationDto): Promise<FactorCorrelationResponseDto> {
     const method = dto.method ?? 'spearman'
+    // cacheKey 和 loader 都使用 sorted 顺序，保证任意输入顺序命中同一缓存且结果一致
     const sorted = [...dto.factorNames].sort()
     const cacheKey = `factor:corr:${sorted.join(',')}:${dto.tradeDate}:${dto.universe ?? 'all'}:${method}`
 
     return this.rememberFactorAnalysisCache(cacheKey, async () => {
+      // 按 sorted 顺序加载因子数据
       const factorMaps: Array<Record<string, number>> = []
-      for (const factorName of dto.factorNames) {
+      for (const factorName of sorted) {
         const vals = await this.compute.getRawFactorValuesForDate(factorName, dto.tradeDate, dto.universe)
         const map: Record<string, number> = {}
         for (const v of vals) {
@@ -453,30 +456,61 @@ export class FactorAnalysisService {
         factorMaps.push(map)
       }
 
-      const sets = factorMaps.map((m) => new Set(Object.keys(m)))
-      const commonCodes = [...sets[0]].filter((c) => sets.every((s) => s.has(c)))
+      // 查询因子显示标签（不存在时 fallback 到因子名）
+      const defRows = await this.prisma.factorDefinition.findMany({
+        where: { name: { in: sorted } },
+        select: { name: true, label: true },
+      })
+      const labelMap = new Map(defRows.map((r) => [r.name, r.label]))
 
-      const vectors = factorMaps.map((m) => commonCodes.map((c) => m[c]))
+      const nFactors = sorted.length
 
-      const nFactors = dto.factorNames.length
-      const matrix: number[][] = Array.from({ length: nFactors }, () => new Array(nFactors).fill(0))
+      // matrix: 两两独立取交集（pairwise），无法计算时为 null 而非 0
+      const matrix: (number | null)[][] = Array.from({ length: nFactors }, (_, i) =>
+        Array.from({ length: nFactors }, (_, j) => (i === j ? 1 : null)),
+      )
+      // nMatrix: 对角线为单因子有效值数量；非对角线为两两交集数
+      const nMatrix: number[][] = Array.from({ length: nFactors }, (_, i) =>
+        Array.from({ length: nFactors }, (_, j) => (i === j ? Object.keys(factorMaps[i]).length : 0)),
+      )
 
       for (let i = 0; i < nFactors; i++) {
-        matrix[i][i] = 1
         for (let j = i + 1; j < nFactors; j++) {
-          const corr =
-            method === 'spearman' ? spearmanCorr(vectors[i], vectors[j]) : pearsonCorr(vectors[i], vectors[j])
-          const val = corr != null ? Math.round(corr * 1e3) / 1e3 : 0
+          const pairCodes = Object.keys(factorMaps[i]).filter((c) => c in factorMaps[j])
+          const n = pairCodes.length
+          nMatrix[i][j] = n
+          nMatrix[j][i] = n
+
+          const vi = pairCodes.map((c) => factorMaps[i][c])
+          const vj = pairCodes.map((c) => factorMaps[j][c])
+          const corr = method === 'spearman' ? spearmanCorr(vi, vj) : pearsonCorr(vi, vj)
+          const val = corr != null ? Math.round(corr * 1e3) / 1e3 : null
           matrix[i][j] = val
           matrix[j][i] = val
         }
       }
 
+      // coverage：有效值股票数 / 所有参与因子覆盖的并集股票数
+      const allCodes = new Set<string>()
+      factorMaps.forEach((m) => Object.keys(m).forEach((c) => allCodes.add(c)))
+      const unionSize = allCodes.size
+      const coverage = factorMaps.map((m) => (unionSize > 0 ? Object.keys(m).length / unionSize : 0))
+
       return {
         tradeDate: dto.tradeDate,
         method,
-        factors: dto.factorNames,
+        factors: sorted,
+        factorLabels: sorted.map((f) => labelMap.get(f) ?? f),
         matrix,
+        nMatrix,
+        coverage,
+        meta: {
+          universe: dto.universe ?? 'all',
+          computedAt: new Date().toISOString(),
+          matrixMode: 'pairwise' as const,
+          minSampleForCorr: 3,
+          rankTiesMethod: 'ordinal',
+        },
       }
     })
   }

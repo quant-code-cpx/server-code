@@ -33,6 +33,7 @@ import {
   StockFinancialStatementsDataDto,
   StockFinancingDataDto,
   StockListDataDto,
+  StockListSummaryDataDto,
   StockMainMoneyFlowDataDto,
   StockMoneyFlowDataDto,
   StockScreenerDataDto,
@@ -74,6 +75,13 @@ export class StockController {
     return this.stockService.findAll(query)
   }
 
+  @Post('list/summary')
+  @ApiOperation({ summary: '股票列表摘要（最新交易日 / 涨跌平数 / 成交额 / 数据新鲜度）' })
+  @ApiSuccessResponse(StockListSummaryDataDto)
+  getListSummary(@Body() query: StockListQueryDto) {
+    return this.stockService.getListSummary(query)
+  }
+
   @Post('search')
   @ApiOperation({ summary: '股票搜索建议（联想词）' })
   @ApiSuccessResponse(StockSearchItemDto, { isArray: true })
@@ -89,10 +97,10 @@ export class StockController {
   }
 
   @Post('detail/overview')
-  @ApiOperation({ summary: '股票详情 - 总览（基本信息 + 公司简介 + 最新行情 + 估值）' })
+  @ApiOperation({ summary: '股票详情 - 总览（基本信息 + 公司简介 + 最新行情 + 估值 + 状态）' })
   @ApiSuccessResponse(StockDetailOverviewDataDto)
-  detailOverview(@Body() { code }: StockDetailDto) {
-    return this.stockService.getDetailOverview(code)
+  detailOverview(@Body() { code, tradeDate }: StockDetailDto) {
+    return this.stockService.getDetailOverview(code, tradeDate)
   }
 
   @Post('detail/chart')

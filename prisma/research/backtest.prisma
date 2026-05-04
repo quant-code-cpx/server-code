@@ -7,6 +7,7 @@ model BacktestRun {
   name               String?   @db.VarChar(128)
 
   strategyType       String    @map("strategy_type") @db.VarChar(64)
+  strategyId         String?   @map("strategy_id") @db.VarChar(36)
   strategyConfig     Json      @map("strategy_config")
 
   startDate          DateTime  @map("start_date") @db.Date
@@ -48,6 +49,12 @@ model BacktestRun {
   sweepId            String?   @map("sweep_id")
   sweepXIdx          Int?      @map("sweep_x_idx")
   sweepYIdx          Int?      @map("sweep_y_idx")
+
+  // ── 生命周期管理 ────────────────────────────────────────────────
+  starred            Boolean   @default(false)
+  archived           Boolean   @default(false)
+  note               String?   @db.Text
+  deletedAt          DateTime? @map("deleted_at")
 
   createdAt          DateTime  @default(now()) @map("created_at")
   startedAt          DateTime? @map("started_at")
@@ -160,6 +167,9 @@ model BacktestWalkForwardRun {
   failedReason         String?   @map("failed_reason") @db.Text
   windowCount          Int?      @map("window_count")
   completedWindows     Int?      @map("completed_windows") @default(0)
+
+  jobId                String?   @map("job_id")
+  deletedAt            DateTime? @map("deleted_at")
 
   oosAnnualizedReturn  Float?    @map("oos_annualized_return")
   oosSharpeRatio       Float?    @map("oos_sharpe_ratio")

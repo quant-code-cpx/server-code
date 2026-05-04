@@ -63,7 +63,7 @@ export class EventsGateway implements OnGatewayInit, OnGatewayConnection, OnGate
 
   handleDisconnect(client: Socket) {
     // 退出所有已加入的房间，避免长期累积空房间
-    const rooms = [...client.rooms].filter((r) => r !== client.id)
+    const rooms = client.rooms ? [...client.rooms].filter((r) => r !== client.id) : []
     for (const room of rooms) {
       client.leave(room)
     }

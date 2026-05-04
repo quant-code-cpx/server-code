@@ -70,9 +70,12 @@ describe('ScreenerSubscriptionProcessor', () => {
       prisma.screenerSubscription.findUnique.mockResolvedValue(sub as never)
       prisma.screenerSubscription.update.mockResolvedValue({} as never)
       prisma.screenerSubscriptionLog.create.mockResolvedValue({} as never)
-      stockService.screener.mockResolvedValue({ list: [{ tsCode: '000001.SZ' }, { tsCode: '000002.SZ' }] } as never)
+      stockService.screener.mockResolvedValue({ items: [{ tsCode: '000001.SZ' }, { tsCode: '000002.SZ' }] } as never)
 
-      const job = makeJob(ScreenerSubscriptionJobName.EXECUTE_SUBSCRIPTION, { subscriptionId: 1, tradeDate: '2026-04-09' })
+      const job = makeJob(ScreenerSubscriptionJobName.EXECUTE_SUBSCRIPTION, {
+        subscriptionId: 1,
+        tradeDate: '2026-04-09',
+      })
       await processor.process(job)
 
       expect(prisma.screenerSubscription.update).toHaveBeenCalledWith(
@@ -106,9 +109,12 @@ describe('ScreenerSubscriptionProcessor', () => {
       prisma.screenerSubscription.findUnique.mockResolvedValue(sub as never)
       prisma.screenerSubscription.update.mockResolvedValue({} as never)
       prisma.screenerSubscriptionLog.create.mockResolvedValue({} as never)
-      stockService.screener.mockResolvedValue({ list: [{ tsCode: '000001.SZ' }] } as never)
+      stockService.screener.mockResolvedValue({ items: [{ tsCode: '000001.SZ' }] } as never)
 
-      const job = makeJob(ScreenerSubscriptionJobName.EXECUTE_SUBSCRIPTION, { subscriptionId: 1, tradeDate: '2026-04-09' })
+      const job = makeJob(ScreenerSubscriptionJobName.EXECUTE_SUBSCRIPTION, {
+        subscriptionId: 1,
+        tradeDate: '2026-04-09',
+      })
       await processor.process(job)
 
       expect(eventsGateway.emitToUser).not.toHaveBeenCalled()
@@ -119,9 +125,12 @@ describe('ScreenerSubscriptionProcessor', () => {
       prisma.screenerSubscription.findUnique.mockResolvedValue(sub as never)
       prisma.screenerSubscription.update.mockResolvedValue({} as never)
       prisma.screenerSubscriptionLog.create.mockResolvedValue({} as never)
-      stockService.screener.mockResolvedValue({ list: [{ tsCode: '000001.SZ' }] } as never)
+      stockService.screener.mockResolvedValue({ items: [{ tsCode: '000001.SZ' }] } as never)
 
-      const job = makeJob(ScreenerSubscriptionJobName.EXECUTE_SUBSCRIPTION, { subscriptionId: 1, tradeDate: '2026-04-09' })
+      const job = makeJob(ScreenerSubscriptionJobName.EXECUTE_SUBSCRIPTION, {
+        subscriptionId: 1,
+        tradeDate: '2026-04-09',
+      })
       await processor.process(job)
 
       expect(prisma.screenerSubscriptionLog.create).toHaveBeenCalledWith(
@@ -133,14 +142,20 @@ describe('ScreenerSubscriptionProcessor', () => {
 
     it('订阅不存在 → 直接返回，不调用 screener', async () => {
       prisma.screenerSubscription.findUnique.mockResolvedValue(null)
-      const job = makeJob(ScreenerSubscriptionJobName.EXECUTE_SUBSCRIPTION, { subscriptionId: 99, tradeDate: '2026-04-09' })
+      const job = makeJob(ScreenerSubscriptionJobName.EXECUTE_SUBSCRIPTION, {
+        subscriptionId: 99,
+        tradeDate: '2026-04-09',
+      })
       await processor.process(job)
       expect(stockService.screener).not.toHaveBeenCalled()
     })
 
     it('订阅已非 ACTIVE → 直接返回', async () => {
       prisma.screenerSubscription.findUnique.mockResolvedValue(buildSub({ status: SubscriptionStatus.PAUSED }) as never)
-      const job = makeJob(ScreenerSubscriptionJobName.EXECUTE_SUBSCRIPTION, { subscriptionId: 1, tradeDate: '2026-04-09' })
+      const job = makeJob(ScreenerSubscriptionJobName.EXECUTE_SUBSCRIPTION, {
+        subscriptionId: 1,
+        tradeDate: '2026-04-09',
+      })
       await processor.process(job)
       expect(stockService.screener).not.toHaveBeenCalled()
     })
@@ -152,7 +167,10 @@ describe('ScreenerSubscriptionProcessor', () => {
       prisma.screenerSubscriptionLog.create.mockResolvedValue({} as never)
       stockService.screener.mockRejectedValue(new Error('screener failed'))
 
-      const job = makeJob(ScreenerSubscriptionJobName.EXECUTE_SUBSCRIPTION, { subscriptionId: 1, tradeDate: '2026-04-09' })
+      const job = makeJob(ScreenerSubscriptionJobName.EXECUTE_SUBSCRIPTION, {
+        subscriptionId: 1,
+        tradeDate: '2026-04-09',
+      })
       await processor.process(job)
 
       expect(prisma.screenerSubscription.update).toHaveBeenCalledWith(
@@ -174,7 +192,10 @@ describe('ScreenerSubscriptionProcessor', () => {
       prisma.screenerSubscriptionLog.create.mockResolvedValue({} as never)
       stockService.screener.mockRejectedValue(new Error('fail again'))
 
-      const job = makeJob(ScreenerSubscriptionJobName.EXECUTE_SUBSCRIPTION, { subscriptionId: 1, tradeDate: '2026-04-09' })
+      const job = makeJob(ScreenerSubscriptionJobName.EXECUTE_SUBSCRIPTION, {
+        subscriptionId: 1,
+        tradeDate: '2026-04-09',
+      })
       await processor.process(job)
 
       expect(prisma.screenerSubscription.update).toHaveBeenCalledWith(
@@ -221,9 +242,7 @@ describe('ScreenerSubscriptionProcessor', () => {
         .mockResolvedValueOnce(subs[1] as never)
       prisma.screenerSubscription.update.mockResolvedValue({} as never)
       prisma.screenerSubscriptionLog.create.mockResolvedValue({} as never)
-      stockService.screener
-        .mockRejectedValueOnce(new Error('sub1 fail'))
-        .mockResolvedValueOnce({ list: [] } as never)
+      stockService.screener.mockRejectedValueOnce(new Error('sub1 fail')).mockResolvedValueOnce({ list: [] } as never)
 
       const job = makeJob(ScreenerSubscriptionJobName.BATCH_EXECUTE, {
         frequency: SubscriptionFrequency.DAILY,

@@ -578,17 +578,32 @@ export class MarketService {
         where: { tradeDate, contentType: MoneyflowContentType.INDUSTRY },
         orderBy,
         ...(query.limit ? { take: query.limit } : {}),
-        select: { tsCode: true, name: true, pctChange: true, netAmount: true, netAmountRate: true },
+        select: {
+          tsCode: true,
+          name: true,
+          pctChange: true,
+          netAmount: true,
+          buyElgAmount: true,
+          buyLgAmount: true,
+          buyMdAmount: true,
+          buySmAmount: true,
+          buyElgAmountRate: true,
+          buyLgAmountRate: true,
+          buyMdAmountRate: true,
+          buySmAmountRate: true,
+        },
       })
 
       return {
         tradeDate,
+        // netAmount 修正：四档净流入之和
         sectors: rows.map((r) => ({
           tsCode: r.tsCode,
           name: r.name,
           pctChange: r.pctChange,
-          netAmount: r.netAmount,
-          netAmountRate: r.netAmountRate,
+          netAmount: (r.buyElgAmount ?? 0) + (r.buyLgAmount ?? 0) + (r.buyMdAmount ?? 0) + (r.buySmAmount ?? 0),
+          netAmountRate:
+            (r.buyElgAmountRate ?? 0) + (r.buyLgAmountRate ?? 0) + (r.buyMdAmountRate ?? 0) + (r.buySmAmountRate ?? 0),
         })),
       }
     })
@@ -866,9 +881,13 @@ export class MarketService {
           netAmount: true,
           netAmountRate: true,
           buyElgAmount: true,
+          buyElgAmountRate: true,
           buyLgAmount: true,
+          buyLgAmountRate: true,
           buyMdAmount: true,
+          buyMdAmountRate: true,
           buySmAmount: true,
+          buySmAmountRate: true,
         } as const
 
         const [topInflowRows, topOutflowRows] = await Promise.all([
@@ -886,13 +905,16 @@ export class MarketService {
           }),
         ])
 
+        // netAmount 修正：四档净流入之和（超大单+大单+中单+小单）
+        // 注：排序仍按 DB 存储的 netAmount（主力口径），响应值已修正为全口径
         const mapRow = (r: (typeof topInflowRows)[number]) => ({
           tsCode: r.tsCode,
           name: r.name,
           pctChange: r.pctChange,
           close: r.close,
-          netAmount: r.netAmount,
-          netAmountRate: r.netAmountRate,
+          netAmount: (r.buyElgAmount ?? 0) + (r.buyLgAmount ?? 0) + (r.buyMdAmount ?? 0) + (r.buySmAmount ?? 0),
+          netAmountRate:
+            (r.buyElgAmountRate ?? 0) + (r.buyLgAmountRate ?? 0) + (r.buyMdAmountRate ?? 0) + (r.buySmAmountRate ?? 0),
           buyElgAmount: r.buyElgAmount,
           buyLgAmount: r.buyLgAmount,
           buyMdAmount: r.buyMdAmount,
@@ -929,22 +951,28 @@ export class MarketService {
           netAmount: true,
           netAmountRate: true,
           buyElgAmount: true,
+          buyElgAmountRate: true,
           buyLgAmount: true,
+          buyLgAmountRate: true,
           buyMdAmount: true,
+          buyMdAmountRate: true,
           buySmAmount: true,
+          buySmAmountRate: true,
         },
       })
 
       return {
         tradeDate,
         contentType,
+        // netAmount 修正：四档净流入之和（超大单+大单+中单+小单）
         sectors: rows.map((r) => ({
           tsCode: r.tsCode,
           name: r.name,
           pctChange: r.pctChange,
           close: r.close,
-          netAmount: r.netAmount,
-          netAmountRate: r.netAmountRate,
+          netAmount: (r.buyElgAmount ?? 0) + (r.buyLgAmount ?? 0) + (r.buyMdAmount ?? 0) + (r.buySmAmount ?? 0),
+          netAmountRate:
+            (r.buyElgAmountRate ?? 0) + (r.buyLgAmountRate ?? 0) + (r.buyMdAmountRate ?? 0) + (r.buySmAmountRate ?? 0),
           buyElgAmount: r.buyElgAmount,
           buyLgAmount: r.buyLgAmount,
           buyMdAmount: r.buyMdAmount,
@@ -1212,7 +1240,9 @@ export class MarketService {
       }),
     ])
     if (total === 0) {
-      this.logger.warn(`[概念成分] tsCode="${tsCode}" 在 ths_index_members 中无记录，board=${board?.name ?? 'NOT_FOUND'}`)
+      this.logger.warn(
+        `[概念成分] tsCode="${tsCode}" 在 ths_index_members 中无记录，board=${board?.name ?? 'NOT_FOUND'}`,
+      )
     }
     return { tsCode, name: board?.name ?? null, total, items }
   }

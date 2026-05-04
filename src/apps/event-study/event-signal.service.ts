@@ -1,5 +1,6 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common'
 import { EventSignalRule, EventSignalRuleStatus } from '@prisma/client'
+import { formatDateToCompactTradeDate, parseCompactTradeDateToUtcDate } from 'src/common/utils/trade-date.util'
 import { PrismaService } from 'src/shared/prisma.service'
 import { EventsGateway } from 'src/websocket/events.gateway'
 import { EVENT_TYPE_CONFIGS, EventType } from './event-type.registry'
@@ -109,6 +110,56 @@ export class EventSignalService {
     return { items, total, page, pageSize }
   }
 
+  async previewRule(
+    userId: number,
+    dto: {
+      ruleId?: number
+      eventType?: EventType
+      conditions?: Record<string, unknown>
+      startDate?: string
+      endDate?: string
+      pageSize?: number
+    },
+  ) {
+    let eventType = dto.eventType
+    let conditions = dto.conditions ?? {}
+
+    if (dto.ruleId) {
+      const rule = await this.prisma.eventSignalRule.findFirst({ where: { id: dto.ruleId, userId } })
+      if (!rule) throw new NotFoundException('规则不存在或无权限操作')
+      eventType = rule.eventType as EventType
+      conditions = (rule.conditions as Record<string, unknown>) ?? {}
+    }
+
+    if (!eventType) throw new NotFoundException('缺少事件类型')
+
+    const queried = await this.eventStudyService.queryEvents({
+      eventType,
+      startDate: dto.startDate,
+      endDate: dto.endDate,
+      page: 1,
+      pageSize: Math.min(dto.pageSize ?? 200, 500),
+    })
+    const matched = (queried.items as Record<string, unknown>[]).filter((event) =>
+      this.matchConditions(event, conditions),
+    )
+    const dateField = this.eventStudyService.getEventDateField(eventType)
+    const distribution = matched.reduce<Record<string, number>>((acc, event) => {
+      const date = this.eventStudyService.formatEventDateValue(event[dateField]) ?? 'unknown'
+      acc[date] = (acc[date] ?? 0) + 1
+      return acc
+    }, {})
+
+    return {
+      eventType,
+      ruleId: dto.ruleId ?? null,
+      total: queried.total,
+      matchCount: matched.length,
+      distribution,
+      samples: matched.slice(0, 20),
+    }
+  }
+
   // ── 信号扫描 ───────────────────────────────────────────────────────────────
 
   /**
@@ -116,7 +167,7 @@ export class EventSignalService {
    * 若不传 targetDate，默认使用今日（YYYYMMDD 格式）。
    */
   async scanAndGenerate(targetDate?: string): Promise<{ signalsGenerated: number }> {
-    const dateStr = targetDate ?? new Date().toISOString().slice(0, 10).replace(/-/g, '')
+    const dateStr = targetDate ?? formatDateToCompactTradeDate(new Date())!
     this.logger.log(`开始事件信号扫描，目标日期：${dateStr}`)
 
     const rules = await this.prisma.eventSignalRule.findMany({
@@ -137,7 +188,7 @@ export class EventSignalService {
     }
 
     let signalsGenerated = 0
-    const eventDateParsed = new Date(`${dateStr.slice(0, 4)}-${dateStr.slice(4, 6)}-${dateStr.slice(6, 8)}`)
+    const eventDateParsed = parseCompactTradeDateToUtcDate(dateStr)
 
     for (const [eventTypeStr, typeRules] of rulesByType) {
       if (!Object.values(EventType).includes(eventTypeStr as EventType)) continue

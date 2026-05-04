@@ -10,6 +10,7 @@ import {
   NoteMessageResponseDto,
   ResearchNoteDto,
   ResearchNoteListResponseDto,
+  ResearchNoteSearchResponseDto,
   ResearchNotesByStockResponseDto,
   UserTagsResponseDto,
 } from './dto/research-note-response.dto'
@@ -63,9 +64,40 @@ export class ResearchNoteController {
   }
 
   @Post('delete')
-  @ApiOperation({ summary: '删除研究笔记' })
+  @ApiOperation({ summary: '软删除研究笔记（移入回收站）' })
   @ApiSuccessResponse(NoteMessageResponseDto)
   remove(@CurrentUser() user: TokenPayload, @Body() { id }: { id: number }) {
     return this.noteService.remove(user.id, id)
+  }
+
+  @Post('restore')
+  @ApiOperation({ summary: '从回收站恢复笔记' })
+  @ApiSuccessResponse(ResearchNoteDto)
+  restore(@CurrentUser() user: TokenPayload, @Body() { id }: { id: number }) {
+    return this.noteService.restore(user.id, id)
+  }
+
+  @Post('permanent-delete')
+  @ApiOperation({ summary: '永久删除笔记（不可恢复）' })
+  @ApiSuccessResponse(NoteMessageResponseDto)
+  permanentDelete(@CurrentUser() user: TokenPayload, @Body() { id }: { id: number }) {
+    return this.noteService.permanentDelete(user.id, id)
+  }
+
+  @Post('list-trash')
+  @ApiOperation({ summary: '查询回收站笔记列表' })
+  @ApiSuccessResponse(ResearchNoteListResponseDto)
+  listTrash(@CurrentUser() user: TokenPayload, @Body() { page, pageSize }: { page?: number; pageSize?: number }) {
+    return this.noteService.listTrash(user.id, page, pageSize)
+  }
+
+  @Post('search')
+  @ApiOperation({ summary: '全文搜索笔记（返回带 <mark> 高亮的片段）' })
+  @ApiSuccessResponse(ResearchNoteSearchResponseDto)
+  search(
+    @CurrentUser() user: TokenPayload,
+    @Body() { keyword, page, pageSize }: { keyword: string; page?: number; pageSize?: number },
+  ) {
+    return this.noteService.search(user.id, keyword, page, pageSize)
   }
 }

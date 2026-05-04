@@ -5,7 +5,13 @@ import { JwtAuthGuard } from 'src/lifecycle/guard/jwt-auth.guard'
 import { CurrentUser } from 'src/common/decorators/current-user.decorator'
 import { TokenPayload } from 'src/shared/token.interface'
 import { FactorService } from './factor.service'
-import { FactorDetailQueryDto, FactorLibraryQueryDto } from './dto/factor-library.dto'
+import {
+  FactorAdminJobDetailDto,
+  FactorAdminJobsQueryDto,
+  FactorDetailQueryDto,
+  FactorLibraryQueryDto,
+  FactorPrecomputeBatchDto,
+} from './dto/factor-library.dto'
 import { FactorValuesQueryDto } from './dto/factor-values.dto'
 import {
   FactorCorrelationDto,
@@ -155,6 +161,27 @@ export class FactorController {
   @ApiSuccessRawResponse({ type: 'object' })
   getPrecomputeStatus() {
     return this.factorService.getPrecomputeStatus()
+  }
+
+  @Post('admin/precompute-batch')
+  @ApiOperation({ summary: '[管理] 批量触发因子预计算（指定因子子集 + 可选交易日）' })
+  @ApiSuccessRawResponse({ type: 'object' })
+  triggerPrecomputeBatch(@Body() dto: FactorPrecomputeBatchDto) {
+    return this.factorService.triggerPrecomputeBatch(dto)
+  }
+
+  @Post('admin/jobs')
+  @ApiOperation({ summary: '[管理] 查询预计算批次历史（按交易日分组）' })
+  @ApiSuccessRawResponse({ type: 'object' })
+  listAdminJobs(@Body() dto: FactorAdminJobsQueryDto) {
+    return this.factorService.listAdminJobs(dto)
+  }
+
+  @Post('admin/jobs/detail')
+  @ApiOperation({ summary: '[管理] 查询指定交易日的预计算批次详情（逐因子状态）' })
+  @ApiSuccessRawResponse({ type: 'object' })
+  getAdminJobDetail(@Body() dto: FactorAdminJobDetailDto) {
+    return this.factorService.getAdminJobDetail(dto)
   }
 
   // ── Phase 3: Factor → Backtest full pipeline ────────────────────────────

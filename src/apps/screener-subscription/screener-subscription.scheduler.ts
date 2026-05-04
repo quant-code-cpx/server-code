@@ -3,12 +3,16 @@ import { Cron } from '@nestjs/schedule'
 import { InjectQueue } from '@nestjs/bullmq'
 import { Queue } from 'bullmq'
 import { SCREENER_SUBSCRIPTION_QUEUE, ScreenerSubscriptionJobName } from 'src/constant/queue.constant'
+import { ScreenerSubscriptionService } from './screener-subscription.service'
 
 @Injectable()
 export class ScreenerSubscriptionScheduler {
   private readonly logger = new Logger(ScreenerSubscriptionScheduler.name)
 
-  constructor(@InjectQueue(SCREENER_SUBSCRIPTION_QUEUE) private readonly queue: Queue) {}
+  constructor(
+    @InjectQueue(SCREENER_SUBSCRIPTION_QUEUE) private readonly queue: Queue,
+    private readonly subscriptionService: ScreenerSubscriptionService,
+  ) {}
 
   /**
    * 每个交易日（周一至周五）20:30 触发日频订阅。
@@ -17,9 +21,10 @@ export class ScreenerSubscriptionScheduler {
   @Cron('0 30 20 * * 1-5', { timeZone: 'Asia/Shanghai' })
   async triggerDailySubscriptions() {
     this.logger.log('Triggering DAILY screener subscriptions')
+    const tradeDate = await this.subscriptionService.getLatestTradeDateStr()
     await this.queue.add(
       ScreenerSubscriptionJobName.BATCH_EXECUTE,
-      { frequency: 'DAILY', tradeDate: this.getLatestTradeDateStr() },
+      { frequency: 'DAILY', tradeDate },
       { removeOnComplete: 100, removeOnFail: 50 },
     )
   }
@@ -28,9 +33,10 @@ export class ScreenerSubscriptionScheduler {
   @Cron('0 30 20 * * 1', { timeZone: 'Asia/Shanghai' })
   async triggerWeeklySubscriptions() {
     this.logger.log('Triggering WEEKLY screener subscriptions')
+    const tradeDate = await this.subscriptionService.getLatestTradeDateStr()
     await this.queue.add(
       ScreenerSubscriptionJobName.BATCH_EXECUTE,
-      { frequency: 'WEEKLY', tradeDate: this.getLatestTradeDateStr() },
+      { frequency: 'WEEKLY', tradeDate },
       { removeOnComplete: 100, removeOnFail: 50 },
     )
   }
@@ -39,15 +45,11 @@ export class ScreenerSubscriptionScheduler {
   @Cron('0 30 20 1 * *', { timeZone: 'Asia/Shanghai' })
   async triggerMonthlySubscriptions() {
     this.logger.log('Triggering MONTHLY screener subscriptions')
+    const tradeDate = await this.subscriptionService.getLatestTradeDateStr()
     await this.queue.add(
       ScreenerSubscriptionJobName.BATCH_EXECUTE,
-      { frequency: 'MONTHLY', tradeDate: this.getLatestTradeDateStr() },
+      { frequency: 'MONTHLY', tradeDate },
       { removeOnComplete: 100, removeOnFail: 50 },
     )
-  }
-
-  private getLatestTradeDateStr(): string {
-    const now = new Date()
-    return `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`
   }
 }

@@ -1,4 +1,4 @@
-import { ApiProperty } from '@nestjs/swagger'
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
 import { ScreenerSortBy } from './stock-screener-query.dto'
 
 export class StockListItemDto {
@@ -41,6 +41,18 @@ export class StockListDataDto {
   items: StockListItemDto[]
 }
 
+export class StockListSummaryDataDto {
+  @ApiProperty({ example: '2024-03-20', required: false, nullable: true, description: '筛选集合的最新交易日' })
+  latestTradeDate: Date | null
+  @ApiProperty({ example: 2100, description: '上涨股票数' }) upCount: number
+  @ApiProperty({ example: 1800, description: '下跌股票数' }) downCount: number
+  @ApiProperty({ example: 300, description: '平盘股票数' }) flatCount: number
+  @ApiProperty({ example: 5800000000, required: false, nullable: true, description: '总成交额（千元）' })
+  totalAmount: number | null
+  @ApiProperty({ example: 50, description: '无行情数据的股票数' }) missingQuoteCount: number
+  @ApiProperty({ example: 10, description: '行情非最新交易日的股票数（数据可能未更新）' }) staleCount: number
+}
+
 export class StockSearchItemDto {
   @ApiProperty({ example: '000001.SZ' }) tsCode: string
   @ApiProperty({ example: '000001', required: false, nullable: true }) symbol: string | null
@@ -50,17 +62,58 @@ export class StockSearchItemDto {
   @ApiProperty({ example: '银行', required: false, nullable: true }) industry: string | null
 }
 
+export class StockDetailCapabilitiesDto {
+  @ApiProperty({ description: '是否有最新行情' }) quote: boolean
+  @ApiProperty({ description: '是否有最新估值' }) valuation: boolean
+  @ApiProperty({ description: '是否有最新财务快报/业绩数据' }) financials: boolean
+  @ApiProperty({ description: '是否有公司资料' }) company: boolean
+}
+
+export class StockDetailQuoteDto {
+  @ApiPropertyOptional({ nullable: true, description: '交易日 YYYYMMDD' }) tradeDate: string | null
+  @ApiPropertyOptional({ nullable: true }) open: number | null
+  @ApiPropertyOptional({ nullable: true }) high: number | null
+  @ApiPropertyOptional({ nullable: true }) low: number | null
+  @ApiPropertyOptional({ nullable: true }) close: number | null
+  @ApiPropertyOptional({ nullable: true }) preClose: number | null
+  @ApiPropertyOptional({ nullable: true }) change: number | null
+  @ApiPropertyOptional({ nullable: true }) pctChg: number | null
+  @ApiPropertyOptional({ nullable: true }) vol: number | null
+  @ApiPropertyOptional({ nullable: true }) amount: number | null
+}
+
+export class StockDetailValuationDto {
+  @ApiPropertyOptional({ nullable: true, description: '交易日 YYYYMMDD' }) tradeDate: string | null
+  @ApiPropertyOptional({ nullable: true }) turnoverRate: number | null
+  @ApiPropertyOptional({ nullable: true }) turnoverRateF: number | null
+  @ApiPropertyOptional({ nullable: true }) volumeRatio: number | null
+  @ApiPropertyOptional({ nullable: true }) pe: number | null
+  @ApiPropertyOptional({ nullable: true }) peTtm: number | null
+  @ApiPropertyOptional({ nullable: true }) pb: number | null
+  @ApiPropertyOptional({ nullable: true }) ps: number | null
+  @ApiPropertyOptional({ nullable: true }) psTtm: number | null
+  @ApiPropertyOptional({ nullable: true }) dvRatio: number | null
+  @ApiPropertyOptional({ nullable: true }) dvTtm: number | null
+  @ApiPropertyOptional({ nullable: true }) totalShare: number | null
+  @ApiPropertyOptional({ nullable: true }) floatShare: number | null
+  @ApiPropertyOptional({ nullable: true }) freeShare: number | null
+  @ApiPropertyOptional({ nullable: true }) totalMv: number | null
+  @ApiPropertyOptional({ nullable: true }) circMv: number | null
+  @ApiPropertyOptional({ nullable: true }) limitStatus: number | null
+}
+
 export class StockDetailOverviewDataDto {
+  @ApiProperty({ enum: ['LIVE', 'STALE', 'MISSING'], description: '行情新鲜度' }) quoteStatus:
+    | 'LIVE'
+    | 'STALE'
+    | 'MISSING'
+  @ApiPropertyOptional({ nullable: true, description: '最新行情交易日 YYYYMMDD' }) latestTradeDate: string | null
+  @ApiProperty({ type: StockDetailCapabilitiesDto }) capabilities: StockDetailCapabilitiesDto
+  @ApiPropertyOptional({ nullable: true, description: '首屏一句话行情摘要' }) todayHeadline: string | null
   @ApiProperty({ type: 'object', additionalProperties: true, nullable: true }) basic: Record<string, unknown> | null
   @ApiProperty({ type: 'object', additionalProperties: true, nullable: true }) company: Record<string, unknown> | null
-  @ApiProperty({ type: 'object', additionalProperties: true, nullable: true }) latestQuote: Record<
-    string,
-    unknown
-  > | null
-  @ApiProperty({ type: 'object', additionalProperties: true, nullable: true }) latestValuation: Record<
-    string,
-    unknown
-  > | null
+  @ApiProperty({ type: StockDetailQuoteDto, nullable: true }) latestQuote: StockDetailQuoteDto | null
+  @ApiProperty({ type: StockDetailValuationDto, nullable: true }) latestValuation: StockDetailValuationDto | null
   @ApiProperty({ type: 'object', additionalProperties: true, nullable: true }) latestExpress: Record<
     string,
     unknown

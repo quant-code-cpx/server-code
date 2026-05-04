@@ -1,9 +1,24 @@
 import { Injectable, ForbiddenException, NotFoundException } from '@nestjs/common'
 import { PrismaService } from 'src/shared/prisma.service'
+import { StockListService } from 'src/apps/stock/stock-list.service'
+import { FactorScreeningService } from 'src/apps/factor/services/factor-screening.service'
+import { formatDateToCompactTradeDate, parseCompactTradeDateToUtcDate } from 'src/common/utils/trade-date.util'
+import {
+  DEFAULT_STOCK_LIST_COLUMNS,
+  ExportAlertAnomaliesDto,
+  ExportFactorScreeningDto,
+  ExportStockListDto,
+  StockListColumn,
+} from './dto/export.dto'
+import dayjs from 'dayjs'
 
 @Injectable()
 export class ExportService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly stockListService: StockListService,
+    private readonly factorScreeningService: FactorScreeningService,
+  ) {}
 
   /**
    * 将列名和行数据转换为 CSV 字符串。
@@ -135,10 +150,7 @@ export class ExportService {
    * 导出投资组合当前持仓为 CSV。
    * 验证投资组合属于当前用户。
    */
-  async exportPortfolioHoldings(
-    portfolioId: string,
-    userId: number,
-  ): Promise<{ filename: string; csv: string }> {
+  async exportPortfolioHoldings(portfolioId: string, userId: number): Promise<{ filename: string; csv: string }> {
     const portfolio = await this.prisma.portfolio.findUnique({
       where: { id: portfolioId },
       select: { id: true, userId: true, name: true },
@@ -169,6 +181,146 @@ export class ExportService {
     const safeName = (portfolio.name ?? 'portfolio').replace(/[^a-zA-Z0-9_\u4e00-\u9fff-]/g, '_')
     const filename = `portfolio_holdings_${safeName}.csv`
 
+    return { filename, csv }
+  }
+
+  /**
+   * 导出股票列表为 CSV。
+   * 支持与 /api/stock/list 相同的筛选条件，可自定义导出列。
+   */
+  async exportStockList(dto: ExportStockListDto): Promise<{ filename: string; csv: string }> {
+    const query = dto.filters ?? {}
+    const selectedCols: StockListColumn[] =
+      dto.columns && dto.columns.length > 0 ? dto.columns : DEFAULT_STOCK_LIST_COLUMNS
+
+    const items = await this.stockListService.findAllForExport(
+      query as Parameters<typeof this.stockListService.findAllForExport>[0],
+    )
+
+    // 列头中文映射
+    const COL_LABEL: Record<StockListColumn, string> = {
+      tsCode: '股票代码',
+      symbol: '股票简码',
+      name: '名称',
+      fullname: '全名',
+      exchange: '交易所',
+      market: '板块',
+      industry: '行业',
+      area: '地域',
+      listStatus: '上市状态',
+      listDate: '上市日期',
+      latestTradeDate: '最新交易日',
+      peTtm: 'PE_TTM',
+      pb: 'PB',
+      dvTtm: '股息率TTM(%)',
+      totalMv: '总市值(万)',
+      circMv: '流通市值(万)',
+      turnoverRate: '换手率(%)',
+      pctChg: '涨跌幅(%)',
+      amount: '成交额(千)',
+      close: '收盘价',
+      vol: '成交量',
+    }
+
+    const headerRow = Object.fromEntries(selectedCols.map((c) => [c, COL_LABEL[c]])) as Record<string, unknown>
+    const dataRows = items.map((item) =>
+      Object.fromEntries(
+        selectedCols.map((col) => {
+          const v = item[col as keyof typeof item]
+          if (v instanceof Date) return [col, v.toISOString().slice(0, 10)]
+          return [col, v]
+        }),
+      ),
+    )
+
+    // 用中文列名作为首行
+    const csvRows = dataRows.map((row) => Object.fromEntries(selectedCols.map((c) => [COL_LABEL[c], row[c]])))
+    const csv = this.generateCsv(
+      selectedCols.map((c) => COL_LABEL[c]),
+      csvRows,
+    )
+
+    const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '')
+    const scopePart = dto.scope ? `_${dto.scope.replace(/[^a-zA-Z0-9_\u4e00-\u9fff]/g, '_')}` : ''
+    const filename = `stock_list${scopePart}_${dateStr}.csv`
+
+    return { filename, csv }
+  }
+
+  /**
+   * 导出指定交易日的异动监控记录为 CSV。
+   * 不传 tradeDate 则取数据库中最新的交易日。
+   */
+  async exportAlertAnomalies(dto: ExportAlertAnomaliesDto): Promise<{ filename: string; csv: string }> {
+    let tradeDate: Date | undefined
+    if (dto.tradeDate) {
+      tradeDate = parseCompactTradeDateToUtcDate(dto.tradeDate)
+    } else {
+      const latest = await this.prisma.marketAnomaly.findFirst({
+        orderBy: { tradeDate: 'desc' },
+        select: { tradeDate: true },
+      })
+      if (!latest) {
+        return {
+          filename: 'alert_anomalies_empty.csv',
+          csv: 'tradeDate,tsCode,stockName,anomalyType,value,threshold,strength,scannedAt\r\n',
+        }
+      }
+      tradeDate = latest.tradeDate
+    }
+
+    const rows = await this.prisma.marketAnomaly.findMany({
+      where: { tradeDate },
+      orderBy: [{ anomalyType: 'asc' }, { value: 'desc' }],
+    })
+
+    const columns = ['tradeDate', 'tsCode', 'stockName', 'anomalyType', 'value', 'threshold', 'strength', 'scannedAt']
+    const columnLabels = ['交易日', '代码', '名称', '异动类型', '指标值', '触发阈值', '强度', '扫描时间']
+
+    const dataRows = rows.map((r) => ({
+      交易日: dayjs(r.tradeDate).format('YYYYMMDD'),
+      代码: r.tsCode,
+      名称: r.stockName ?? '',
+      异动类型: r.anomalyType,
+      指标值: r.value,
+      触发阈值: r.threshold,
+      强度: r.threshold > 0 ? (r.value / r.threshold).toFixed(4) : r.value.toString(),
+      扫描时间: dayjs(r.scannedAt).format('YYYY-MM-DD HH:mm:ss'),
+    }))
+
+    const csv = this.generateCsv(columnLabels, dataRows)
+    const tradeDateStr = dto.tradeDate ?? formatDateToCompactTradeDate(tradeDate) ?? 'unknown'
+    const filename = `alert_anomalies_${tradeDateStr}.csv`
+
+    return { filename, csv }
+  }
+
+  /** 导出多因子筛选结果。 */
+  async exportFactorScreening(dto: ExportFactorScreeningDto): Promise<{ filename: string; csv: string }> {
+    const factorNames = [...new Set([...dto.conditions.map((c) => c.factorName), ...(dto.sortBy ? [dto.sortBy] : [])])]
+    const selectedColumns = dto.columns?.length ? dto.columns : ['tsCode', 'name', 'industry', ...factorNames]
+
+    const first = await this.factorScreeningService.screening({ ...dto, page: 1, pageSize: 200 })
+    const allItems = [...first.items]
+    const pageCount = Math.ceil(first.total / 200)
+    for (let page = 2; page <= pageCount; page++) {
+      const next = await this.factorScreeningService.screening({ ...dto, page, pageSize: 200 })
+      allItems.push(...next.items)
+    }
+
+    const labelMap: Record<string, string> = { tsCode: '代码', name: '名称', industry: '行业' }
+    const headerLabels = selectedColumns.map((c) => labelMap[c] ?? c)
+    const csvRows = allItems.map((item) => {
+      const row: Record<string, unknown> = {}
+      for (const col of selectedColumns) {
+        const label = labelMap[col] ?? col
+        row[label] = col in item ? item[col as keyof typeof item] : item.factors[col]
+      }
+      return row
+    })
+
+    const csv = this.generateCsv(headerLabels, csvRows)
+    const filename = `factor_screening_${dto.tradeDate}_${first.requestHash.slice(0, 8)}.csv`
     return { filename, csv }
   }
 }

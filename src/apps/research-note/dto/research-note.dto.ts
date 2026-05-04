@@ -124,4 +124,29 @@ export class ResearchNoteQueryDto {
   @IsOptional()
   @IsIn(['asc', 'desc'])
   sortOrder?: string = 'desc'
+
+  @ApiPropertyOptional({ description: '只看置顶笔记' })
+  @IsOptional()
+  @IsBoolean()
+  pinnedOnly?: boolean
+
+  @ApiPropertyOptional({ description: '只看关联了股票的笔记' })
+  @IsOptional()
+  @IsBoolean()
+  hasStock?: boolean
+
+  @ApiPropertyOptional({ description: '包含已软删的笔记（管理用）' })
+  @IsOptional()
+  @IsBoolean()
+  includeDeleted?: boolean
+
+  @ApiPropertyOptional({ description: '创建日期起 YYYYMMDD', example: '20260101' })
+  @IsOptional()
+  @Matches(/^\d{8}$/)
+  since?: string
+
+  @ApiPropertyOptional({ description: '创建日期止 YYYYMMDD', example: '20261231' })
+  @IsOptional()
+  @Matches(/^\d{8}$/)
+  until?: string
 }

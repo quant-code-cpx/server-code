@@ -1,11 +1,18 @@
 import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common'
 import { Cron } from '@nestjs/schedule'
-import { NotificationType, PriceAlertRule, PriceAlertRuleStatus, PriceAlertRuleType } from '@prisma/client'
+import { NotificationType, PriceAlertRule, PriceAlertRuleStatus, PriceAlertRuleType, Prisma } from '@prisma/client'
 import dayjs from 'dayjs'
+import { randomUUID } from 'crypto'
+import { formatDateToCompactTradeDate } from 'src/common/utils/trade-date.util'
 import { PrismaService } from 'src/shared/prisma.service'
 import { EventsGateway } from 'src/websocket/events.gateway'
 import { NotificationService } from 'src/apps/notification/notification.service'
-import { CreatePriceAlertRuleDto, UpdatePriceAlertRuleDto } from './dto/price-alert-rule.dto'
+import {
+  CreatePriceAlertRuleDto,
+  ListPriceAlertHistoryDto,
+  ListPriceAlertRulesDto,
+  UpdatePriceAlertRuleDto,
+} from './dto/price-alert-rule.dto'
 
 interface PriceAlertPayload {
   ruleId: number
@@ -87,11 +94,104 @@ export class PriceAlertService {
     })
   }
 
-  async listRules(userId: number) {
-    return this.prisma.priceAlertRule.findMany({
-      where: { userId, status: { not: PriceAlertRuleStatus.DELETED } },
-      orderBy: { createdAt: 'desc' },
-    })
+  async listRules(userId: number, dto: ListPriceAlertRulesDto = {}) {
+    const page = dto.page ?? 1
+    const pageSize = dto.pageSize ?? 20
+    const sortBy = dto.sortBy ?? 'createdAt'
+    const sortOrder = (dto.sortOrder ?? 'desc') as 'asc' | 'desc'
+
+    const where: Prisma.PriceAlertRuleWhereInput = {
+      userId,
+      status: dto.status ?? { not: PriceAlertRuleStatus.DELETED },
+    }
+    if (dto.ruleTypes?.length) where.ruleType = { in: dto.ruleTypes }
+    if (dto.sourceType === 'SINGLE_STOCK') where.tsCode = { not: null }
+    if (dto.sourceType === 'WATCHLIST') where.watchlistId = { not: null }
+    if (dto.sourceType === 'PORTFOLIO') where.portfolioId = { not: null }
+    if (dto.triggeredFrom || dto.triggeredTo) {
+      where.lastTriggeredAt = {
+        ...(dto.triggeredFrom ? { gte: new Date(dto.triggeredFrom) } : {}),
+        ...(dto.triggeredTo ? { lte: new Date(dto.triggeredTo) } : {}),
+      }
+    }
+    if (dto.keyword) {
+      where.OR = [
+        { tsCode: { contains: dto.keyword, mode: 'insensitive' } },
+        { stockName: { contains: dto.keyword, mode: 'insensitive' } },
+        { memo: { contains: dto.keyword, mode: 'insensitive' } },
+      ]
+    }
+
+    const validSortBy = ['createdAt', 'lastTriggeredAt', 'triggerCount'].includes(sortBy) ? sortBy : 'createdAt'
+    const [total, items] = await Promise.all([
+      this.prisma.priceAlertRule.count({ where }),
+      this.prisma.priceAlertRule.findMany({
+        where,
+        orderBy: { [validSortBy]: sortOrder },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+    ])
+
+    return { total, page, pageSize, items }
+  }
+
+  async listHistory(userId: number, dto: ListPriceAlertHistoryDto) {
+    const page = dto.page ?? 1
+    const pageSize = dto.pageSize ?? 20
+
+    type WhereType = { userId: number; ruleId?: number; triggeredAt?: { gte?: Date; lte?: Date } }
+    const where: WhereType = { userId }
+    if (dto.ruleId) where.ruleId = dto.ruleId
+    if (dto.triggeredFrom || dto.triggeredTo) {
+      where.triggeredAt = {
+        ...(dto.triggeredFrom ? { gte: new Date(dto.triggeredFrom) } : {}),
+        ...(dto.triggeredTo ? { lte: new Date(dto.triggeredTo) } : {}),
+      }
+    }
+
+    const [total, items] = await Promise.all([
+      this.prisma.priceAlertTriggerHistory.count({ where }),
+      this.prisma.priceAlertTriggerHistory.findMany({
+        where,
+        orderBy: { [dto.sortBy ?? 'triggeredAt']: dto.sortOrder ?? 'desc' },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+    ])
+
+    return { total, page, pageSize, items }
+  }
+
+  async scanStatus(userId: number) {
+    const [lastTrigger, ruleStats, latestDaily] = await Promise.all([
+      this.prisma.priceAlertTriggerHistory.findFirst({
+        where: { userId },
+        orderBy: { triggeredAt: 'desc' },
+        select: { triggeredAt: true, tradeDate: true, scanBatchId: true },
+      }),
+      this.prisma.priceAlertRule.groupBy({
+        by: ['status'],
+        where: { userId, status: { not: PriceAlertRuleStatus.DELETED } },
+        _count: { _all: true },
+      }),
+      this.prisma.daily.findFirst({ orderBy: { tradeDate: 'desc' }, select: { tradeDate: true } }),
+    ])
+
+    const statsMap = Object.fromEntries(ruleStats.map((r) => [r.status, r._count._all]))
+    return {
+      lastScanAt: lastTrigger?.triggeredAt?.toISOString() ?? null,
+      lastTradeDate: lastTrigger?.tradeDate ?? null,
+      lastScanBatchId: lastTrigger?.scanBatchId ?? null,
+      activeRules: statsMap[PriceAlertRuleStatus.ACTIVE] ?? 0,
+      pausedRules: statsMap[PriceAlertRuleStatus.PAUSED] ?? 0,
+      latestMarketTradeDate: formatDateToCompactTradeDate(latestDaily?.tradeDate),
+      coverage: {
+        hasMarketData: Boolean(latestDaily),
+        hasTriggeredHistory: Boolean(lastTrigger),
+      },
+      lastFailure: null,
+    }
   }
 
   async updateRule(userId: number, id: number, dto: UpdatePriceAlertRuleDto) {
@@ -173,7 +273,7 @@ export class PriceAlertService {
     }
 
     const latestTradeDate = latestDaily.tradeDate
-    const tradeDateStr = dayjs(latestTradeDate).format('YYYYMMDD')
+    const tradeDateStr = formatDateToCompactTradeDate(latestTradeDate) ?? ''
 
     // 批量加载当日行情
     const dailyRows = await this.prisma.daily.findMany({
@@ -205,6 +305,7 @@ export class PriceAlertService {
 
     const triggeredRuleIds = new Set<number>()
     const updateOps: Promise<unknown>[] = []
+    const scanBatchId = randomUUID()
 
     for (const { rule, tsCode, stockName, source } of entries) {
       const daily = dailyMap.get(tsCode)
@@ -268,6 +369,29 @@ export class PriceAlertService {
             }),
           )
         }
+
+        // Persist trigger history
+        const closeNum = close != null ? Number(close) : null
+        const pctChgNum = pctChg != null ? Number(pctChg) : null
+        updateOps.push(
+          this.prisma.priceAlertTriggerHistory.create({
+            data: {
+              ruleId: rule.id,
+              userId: rule.userId,
+              tsCode,
+              stockName: stockName ?? null,
+              ruleType: rule.ruleType,
+              threshold: rule.threshold,
+              actualValue,
+              closePrice: closeNum,
+              pctChg: pctChgNum,
+              tradeDate: tradeDateStr,
+              sourceType: source?.type ?? null,
+              sourceName: source?.name ?? null,
+              scanBatchId,
+            },
+          }),
+        )
 
         const payload: PriceAlertPayload = {
           ruleId: rule.id,

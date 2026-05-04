@@ -27,6 +27,12 @@ function buildPrismaMock() {
       findFirst: jest.fn(async () => null),
       update: jest.fn(async () => ({})),
     },
+    priceAlertTriggerHistory: {
+      create: jest.fn(async () => ({})),
+      findFirst: jest.fn(async () => null),
+      count: jest.fn(async () => 0),
+      findMany: jest.fn(async () => []),
+    },
     watchlistStock: { findMany: jest.fn(async () => []) },
     portfolioHolding: { findMany: jest.fn(async () => []) },
     daily: {

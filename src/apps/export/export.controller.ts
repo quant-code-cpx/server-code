@@ -7,9 +7,12 @@ import { CurrentUser } from 'src/common/decorators/current-user.decorator'
 import { TokenPayload } from 'src/shared/token.interface'
 import { ExportService } from './export.service'
 import {
+  ExportAlertAnomaliesDto,
   ExportBacktestTradesDto,
+  ExportFactorScreeningDto,
   ExportFactorValuesDto,
   ExportPortfolioHoldingsDto,
+  ExportStockListDto,
 } from './dto/export.dto'
 
 @ApiTags('export')
@@ -63,6 +66,36 @@ export class ExportController {
     const { filename, csv } = await this.exportService.exportPortfolioHoldings(dto.portfolioId, user.id)
     res.setHeader('Content-Type', 'text/csv; charset=utf-8')
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`)
+    return csv
+  }
+
+  @Post('stock-list')
+  @ApiOperation({ summary: '导出股票列表 CSV（支持筛选条件 + 自定义列）' })
+  @ApiSuccessRawResponse({ type: 'null', nullable: true })
+  async exportStockList(@Body() dto: ExportStockListDto, @Res({ passthrough: true }) res: Response) {
+    const { filename, csv } = await this.exportService.exportStockList(dto)
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8')
+    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`)
+    return csv
+  }
+
+  @Post('alert-anomalies')
+  @ApiOperation({ summary: '导出异动监控记录 CSV（可指定交易日，不传则取最新）' })
+  @ApiSuccessRawResponse({ type: 'null', nullable: true })
+  async exportAlertAnomalies(@Body() dto: ExportAlertAnomaliesDto, @Res({ passthrough: true }) res: Response) {
+    const { filename, csv } = await this.exportService.exportAlertAnomalies(dto)
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8')
+    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`)
+    return csv
+  }
+
+  @Post('factor-screening')
+  @ApiOperation({ summary: '导出多因子筛选结果 CSV（支持自定义列）' })
+  @ApiSuccessRawResponse({ type: 'null', nullable: true })
+  async exportFactorScreening(@Body() dto: ExportFactorScreeningDto, @Res({ passthrough: true }) res: Response) {
+    const { filename, csv } = await this.exportService.exportFactorScreening(dto)
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8')
+    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`)
     return csv
   }
 }

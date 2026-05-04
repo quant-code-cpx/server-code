@@ -45,12 +45,19 @@ export class PortfolioService {
         name: true,
         description: true,
         initialCash: true,
+        kind: true,
+        isArchived: true,
         createdAt: true,
         updatedAt: true,
         _count: { select: { holdings: true } },
       },
     })
-    return portfolios.map((p) => ({ ...p, holdingCount: p._count.holdings, _count: undefined }))
+    return portfolios.map((p) => ({
+      ...p,
+      holdingCount: p._count.holdings,
+      lastUpdated: p.updatedAt.toISOString(),
+      _count: undefined,
+    }))
   }
 
   async detail(portfolioId: string, userId: number) {
@@ -217,7 +224,16 @@ export class PortfolioService {
 
   // ─── 私有方法 ─────────────────────────────────────────────────────────────
 
-  private async buildDetail(portfolio: { id: string; initialCash: Decimal }) {
+  private async buildDetail(portfolio: {
+    id: string
+    initialCash: Decimal
+    kind: string
+    isArchived: boolean
+    name: string
+    description: string | null
+    createdAt: Date
+    updatedAt: Date
+  }) {
     const latestDate = await this.getLatestTradeDate()
 
     const holdings = await this.prisma.portfolioHolding.findMany({
@@ -227,7 +243,7 @@ export class PortfolioService {
 
     if (!holdings.length) {
       return {
-        portfolio,
+        portfolio: { ...portfolio, lastUpdated: portfolio.updatedAt.toISOString() },
         holdings: [],
         summary: {
           totalCost: 0,
@@ -235,6 +251,8 @@ export class PortfolioService {
           totalUnrealizedPnl: 0,
           totalPnlPct: 0,
           cashBalance: Number(portfolio.initialCash),
+          isTradingDay: !!latestDate,
+          lastUpdated: portfolio.updatedAt.toISOString(),
         },
       }
     }
@@ -302,7 +320,7 @@ export class PortfolioService {
     // totalUnrealizedPnl 只对有价格的持仓求和，避免部分缺价导致 PnL 错误
     const totalUnrealizedPnl = totalMarketValue - totalCostWithPrice
     return {
-      portfolio,
+      portfolio: { ...portfolio, lastUpdated: portfolio.updatedAt.toISOString() },
       holdings: holdingDetails,
       summary: {
         totalCost,
@@ -310,6 +328,8 @@ export class PortfolioService {
         totalUnrealizedPnl,
         totalPnlPct: totalCostWithPrice > 0 ? totalUnrealizedPnl / totalCostWithPrice : 0,
         cashBalance: Number(portfolio.initialCash) - totalCost,
+        isTradingDay: !!latestDate,
+        lastUpdated: portfolio.updatedAt.toISOString(),
       },
     }
   }

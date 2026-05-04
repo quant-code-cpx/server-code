@@ -59,11 +59,41 @@ model PriceAlertRule {
   watchlist Watchlist? @relation(fields: [watchlistId], references: [id], onDelete: SetNull)
   portfolio Portfolio? @relation(fields: [portfolioId], references: [id], onDelete: SetNull)
 
+  triggerHistory PriceAlertTriggerHistory[]
+
   @@index([userId, status])
   @@index([tsCode, status])
   @@index([watchlistId])
   @@index([portfolioId])
   @@map("price_alert_rules")
+}
+
+// ── 价格预警触发历史 ─────────────────────────────────────────────────────────
+
+/// 每次扫描触发快照，用于历史查询
+model PriceAlertTriggerHistory {
+  id          Int      @id @default(autoincrement())
+  ruleId      Int      @map("rule_id")
+  userId      Int      @map("user_id")
+  tsCode      String   @map("ts_code") @db.VarChar(16)
+  stockName   String?  @map("stock_name") @db.VarChar(64)
+  ruleType    PriceAlertRuleType @map("rule_type")
+  threshold   Float?
+  actualValue Float    @map("actual_value")
+  closePrice  Float?   @map("close_price")
+  pctChg      Float?   @map("pct_chg")
+  tradeDate   String   @map("trade_date") @db.VarChar(8)  // YYYYMMDD
+  sourceType  String?  @map("source_type") @db.VarChar(32)
+  sourceName  String?  @map("source_name") @db.VarChar(100)
+  scanBatchId String?  @map("scan_batch_id") @db.VarChar(36)
+  triggeredAt DateTime @default(now()) @map("triggered_at")
+
+  rule PriceAlertRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+
+  @@index([userId, triggeredAt(sort: Desc)])
+  @@index([ruleId, triggeredAt(sort: Desc)])
+  @@index([tradeDate])
+  @@map("price_alert_trigger_history")
 }
 
 // ── 盘后异动监控记录 ─────────────────────────────────────────────────────────

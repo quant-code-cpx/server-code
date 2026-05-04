@@ -35,7 +35,22 @@ function buildPrismaMock() {
       findMany: jest.fn(async () => []),
       findFirst: jest.fn(async () => null),
     },
-    moneyflow: { findFirst: jest.fn(async () => null) },
+    moneyflow: {
+      findFirst: jest.fn(async () => null),
+      aggregate: jest.fn(async () => ({
+        _sum: {
+          buyElgAmount: null,
+          sellElgAmount: null,
+          buyLgAmount: null,
+          sellLgAmount: null,
+          buyMdAmount: null,
+          sellMdAmount: null,
+          buySmAmount: null,
+          sellSmAmount: null,
+          netMfAmount: null,
+        },
+      })),
+    },
   }
 }
 
@@ -61,34 +76,44 @@ describe('MarketService', () => {
   // ── getMarketMoneyFlow() ──────────────────────────────────────────────────
 
   describe('getMarketMoneyFlow()', () => {
-    it('指定 trade_date → 调用 moneyflowMktDc.findMany 并返回结果', async () => {
-      const mockRows = [{ tradeDate: new Date('2024-01-02'), netMfAmount: 100 }]
-      mockPrisma.moneyflowMktDc.findMany.mockResolvedValueOnce(mockRows)
+    it('指定 trade_date → 汇总 moneyflow 并返回大盘资金结构', async () => {
+      mockPrisma.moneyflow.aggregate.mockResolvedValueOnce({
+        _sum: {
+          buyElgAmount: 10,
+          sellElgAmount: 3,
+          buyLgAmount: 5,
+          sellLgAmount: 2,
+          buyMdAmount: 4,
+          sellMdAmount: 6,
+          buySmAmount: 1,
+          sellSmAmount: 2,
+          netMfAmount: 7,
+        },
+      })
 
       const result = await service.getMarketMoneyFlow({ trade_date: '20240102' })
 
-      expect(result).toEqual(mockRows)
-      expect(mockPrisma.moneyflowMktDc.findMany).toHaveBeenCalledTimes(1)
+      expect(result).toMatchObject({ netMfAmount: 70000, totalAmount: 200000 })
+      expect(mockPrisma.moneyflow.aggregate).toHaveBeenCalledTimes(1)
     })
 
     it('无 trade_date 且数据库无数据 → 返回空数组', async () => {
-      mockPrisma.moneyflowMktDc.findFirst.mockResolvedValueOnce(null) // resolveLatestMarketTradeDate → null
+      mockPrisma.moneyflow.findFirst.mockResolvedValueOnce(null) // resolveLatestStockFlowTradeDate → null
 
       const result = await service.getMarketMoneyFlow({})
 
       expect(result).toEqual([])
-      expect(mockPrisma.moneyflowMktDc.findMany).not.toHaveBeenCalled()
+      expect(mockPrisma.moneyflow.aggregate).not.toHaveBeenCalled()
     })
 
-    it('有最新交易日 → 调用 findMany 查询该日数据', async () => {
+    it('有最新交易日 → 调用 aggregate 汇总该日数据', async () => {
       const tradeDate = new Date('2024-01-02')
-      mockPrisma.moneyflowMktDc.findFirst.mockResolvedValueOnce({ tradeDate })
-      mockPrisma.moneyflowMktDc.findMany.mockResolvedValueOnce([{ tradeDate, netMfAmount: 200 }])
+      mockPrisma.moneyflow.findFirst.mockResolvedValueOnce({ tradeDate })
 
       const result = await service.getMarketMoneyFlow({})
 
-      expect(Array.isArray(result)).toBe(true)
-      expect(mockPrisma.moneyflowMktDc.findMany).toHaveBeenCalledTimes(1)
+      expect(result).toHaveProperty('tradeDate')
+      expect(mockPrisma.moneyflow.aggregate).toHaveBeenCalledTimes(1)
     })
   })
 

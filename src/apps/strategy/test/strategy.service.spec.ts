@@ -53,7 +53,12 @@ function buildPrismaMock() {
     },
     backtestRun: {
       findFirst: jest.fn(async () => null),
+      count: jest.fn(async () => 0),
     },
+    tradingSignal: {
+      count: jest.fn(async () => 0),
+    },
+    $queryRaw: jest.fn(async () => []),
     $transaction: jest.fn(async (fn: (tx: unknown) => unknown) => fn(mock)),
   }
   return mock

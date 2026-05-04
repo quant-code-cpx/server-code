@@ -6,6 +6,11 @@ import { CACHE_KEY_PREFIX, CACHE_NAMESPACE, CACHE_TTL_SECONDS } from 'src/consta
 import { ErrorEnum } from 'src/constant/response-code.constant'
 import { CacheService } from 'src/shared/cache.service'
 import { PrismaService } from 'src/shared/prisma.service'
+import {
+  diffCompactTradeDateFromShanghaiToday,
+  formatDateToCompactTradeDate,
+  parseCompactTradeDateToUtcDate,
+} from 'src/common/utils/trade-date.util'
 import { StockDetailChartDto, AdjustType, ChartPeriod } from './dto/stock-detail-chart.dto'
 
 const MAX_CHART_RANGE_DAYS = 3650
@@ -33,23 +38,69 @@ export class StockDetailService {
     private readonly cacheService: CacheService,
   ) {}
 
-  async getDetailOverview(tsCode: string) {
+  async getDetailOverview(tsCode: string, tradeDate?: string) {
+    const cacheKey = this.cacheService.buildKey(CACHE_KEY_PREFIX.STOCK_OVERVIEW, { tsCode, tradeDate: tradeDate ?? '' })
     return this.cacheService.rememberJson({
       namespace: CACHE_NAMESPACE.STOCK_OVERVIEW,
-      key: this.cacheService.buildKey(CACHE_KEY_PREFIX.STOCK_OVERVIEW, { tsCode }),
+      key: cacheKey,
       ttlSeconds: CACHE_TTL_SECONDS.STOCK_OVERVIEW,
       loader: async () => {
+        // Resolve target trade date
+        let targetDate: Date | undefined
+        if (tradeDate) {
+          targetDate = parseCompactTradeDateToUtcDate(tradeDate)
+        }
+
         const [basic, company, latestDaily, latestValuation, latestExpress] = await Promise.all([
           this.prisma.stockBasic.findUnique({ where: { tsCode } }),
           this.prisma.stockCompany.findUnique({ where: { tsCode } }),
-          this.prisma.daily.findFirst({ where: { tsCode }, orderBy: { tradeDate: 'desc' } }),
-          this.prisma.dailyBasic.findFirst({ where: { tsCode }, orderBy: { tradeDate: 'desc' } }),
+          this.prisma.daily.findFirst({
+            where: { tsCode, ...(targetDate ? { tradeDate: { lte: targetDate } } : {}) },
+            orderBy: { tradeDate: 'desc' },
+          }),
+          this.prisma.dailyBasic.findFirst({
+            where: { tsCode, ...(targetDate ? { tradeDate: { lte: targetDate } } : {}) },
+            orderBy: { tradeDate: 'desc' },
+          }),
           this.prisma.express.findFirst({ where: { tsCode }, orderBy: { annDate: 'desc' } }),
         ])
 
         if (!basic) return null
 
+        // Compute quoteStatus: LIVE (<= 5 calendar days old), STALE, or MISSING
+        let quoteStatus: 'LIVE' | 'STALE' | 'MISSING' = 'MISSING'
+        let latestTradeDate: string | null = null
+        if (latestDaily?.tradeDate) {
+          latestTradeDate = formatDateToCompactTradeDate(latestDaily.tradeDate)
+          const daysAgo = diffCompactTradeDateFromShanghaiToday(latestTradeDate)
+          quoteStatus = daysAgo != null && daysAgo <= 5 ? 'LIVE' : 'STALE'
+        }
+
+        // Compute todayHeadline
+        let todayHeadline: string | null = null
+        if (latestDaily) {
+          const pctChgNum = latestDaily.pctChg != null ? Number(latestDaily.pctChg) : null
+          const amountNum = latestDaily.amount != null ? Number(latestDaily.amount) : null
+          const sign = pctChgNum != null ? (pctChgNum >= 0 ? '+' : '') : ''
+          const pctStr = pctChgNum != null ? `涨幅 ${sign}${pctChgNum.toFixed(2)}%` : null
+          const amtStr = amountNum != null ? `成交额 ${(amountNum / 100000).toFixed(1)}亿` : null
+          const peTtm = latestValuation?.peTtm != null ? `PE-TTM ${Number(latestValuation.peTtm).toFixed(1)}x` : null
+          todayHeadline = [pctStr, amtStr, peTtm].filter(Boolean).join('，') || null
+        }
+
+        // Compute capabilities
+        const capabilities = {
+          quote: !!latestDaily,
+          valuation: !!latestValuation,
+          financials: !!latestExpress,
+          company: !!company,
+        }
+
         return {
+          quoteStatus,
+          latestTradeDate,
+          capabilities,
+          todayHeadline,
           basic: {
             tsCode: basic.tsCode,
             symbol: basic.symbol,
@@ -77,36 +128,36 @@ export class StockDetailService {
             : null,
           latestQuote: latestDaily
             ? {
-                tradeDate: latestDaily.tradeDate,
-                open: latestDaily.open,
-                high: latestDaily.high,
-                low: latestDaily.low,
-                close: latestDaily.close,
-                preClose: latestDaily.preClose,
-                change: latestDaily.change,
-                pctChg: latestDaily.pctChg,
-                vol: latestDaily.vol,
-                amount: latestDaily.amount,
+                tradeDate: latestTradeDate,
+                open: latestDaily.open != null ? Number(latestDaily.open) : null,
+                high: latestDaily.high != null ? Number(latestDaily.high) : null,
+                low: latestDaily.low != null ? Number(latestDaily.low) : null,
+                close: latestDaily.close != null ? Number(latestDaily.close) : null,
+                preClose: latestDaily.preClose != null ? Number(latestDaily.preClose) : null,
+                change: latestDaily.change != null ? Number(latestDaily.change) : null,
+                pctChg: latestDaily.pctChg != null ? Number(latestDaily.pctChg) : null,
+                vol: latestDaily.vol != null ? Number(latestDaily.vol) : null,
+                amount: latestDaily.amount != null ? Number(latestDaily.amount) : null,
               }
             : null,
           latestValuation: latestValuation
             ? {
-                tradeDate: latestValuation.tradeDate,
-                turnoverRate: latestValuation.turnoverRate,
-                turnoverRateF: latestValuation.turnoverRateF,
-                volumeRatio: latestValuation.volumeRatio,
-                pe: latestValuation.pe,
-                peTtm: latestValuation.peTtm,
-                pb: latestValuation.pb,
-                ps: latestValuation.ps,
-                psTtm: latestValuation.psTtm,
-                dvRatio: latestValuation.dvRatio,
-                dvTtm: latestValuation.dvTtm,
-                totalShare: latestValuation.totalShare,
-                floatShare: latestValuation.floatShare,
-                freeShare: latestValuation.freeShare,
-                totalMv: latestValuation.totalMv,
-                circMv: latestValuation.circMv,
+                tradeDate: formatDateToCompactTradeDate(latestValuation.tradeDate),
+                turnoverRate: latestValuation.turnoverRate != null ? Number(latestValuation.turnoverRate) : null,
+                turnoverRateF: latestValuation.turnoverRateF != null ? Number(latestValuation.turnoverRateF) : null,
+                volumeRatio: latestValuation.volumeRatio != null ? Number(latestValuation.volumeRatio) : null,
+                pe: latestValuation.pe != null ? Number(latestValuation.pe) : null,
+                peTtm: latestValuation.peTtm != null ? Number(latestValuation.peTtm) : null,
+                pb: latestValuation.pb != null ? Number(latestValuation.pb) : null,
+                ps: latestValuation.ps != null ? Number(latestValuation.ps) : null,
+                psTtm: latestValuation.psTtm != null ? Number(latestValuation.psTtm) : null,
+                dvRatio: latestValuation.dvRatio != null ? Number(latestValuation.dvRatio) : null,
+                dvTtm: latestValuation.dvTtm != null ? Number(latestValuation.dvTtm) : null,
+                totalShare: latestValuation.totalShare != null ? Number(latestValuation.totalShare) : null,
+                floatShare: latestValuation.floatShare != null ? Number(latestValuation.floatShare) : null,
+                freeShare: latestValuation.freeShare != null ? Number(latestValuation.freeShare) : null,
+                totalMv: latestValuation.totalMv != null ? Number(latestValuation.totalMv) : null,
+                circMv: latestValuation.circMv != null ? Number(latestValuation.circMv) : null,
                 limitStatus: latestValuation.limitStatus,
               }
             : null,
@@ -114,13 +165,13 @@ export class StockDetailService {
             ? {
                 annDate: latestExpress.annDate,
                 endDate: latestExpress.endDate,
-                revenue: latestExpress.revenue,
-                nIncome: latestExpress.nIncome,
-                totalAssets: latestExpress.totalAssets,
-                dilutedEps: latestExpress.dilutedEps,
-                dilutedRoe: latestExpress.dilutedRoe,
-                yoyNetProfit: latestExpress.yoyNetProfit,
-                yoySales: latestExpress.yoySales,
+                revenue: latestExpress.revenue != null ? Number(latestExpress.revenue) : null,
+                nIncome: latestExpress.nIncome != null ? Number(latestExpress.nIncome) : null,
+                totalAssets: latestExpress.totalAssets != null ? Number(latestExpress.totalAssets) : null,
+                dilutedEps: latestExpress.dilutedEps != null ? Number(latestExpress.dilutedEps) : null,
+                dilutedRoe: latestExpress.dilutedRoe != null ? Number(latestExpress.dilutedRoe) : null,
+                yoyNetProfit: latestExpress.yoyNetProfit != null ? Number(latestExpress.yoyNetProfit) : null,
+                yoySales: latestExpress.yoySales != null ? Number(latestExpress.yoySales) : null,
               }
             : null,
         }

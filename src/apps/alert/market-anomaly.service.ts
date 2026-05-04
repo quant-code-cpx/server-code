@@ -1,10 +1,17 @@
 import { Injectable, Logger } from '@nestjs/common'
 import { Cron } from '@nestjs/schedule'
-import { MarketAnomalyType } from '@prisma/client'
+import { MarketAnomalyType, Prisma } from '@prisma/client'
 import dayjs from 'dayjs'
+import { formatDateToCompactTradeDate, parseCompactTradeDateToUtcDate } from 'src/common/utils/trade-date.util'
 import { PrismaService } from 'src/shared/prisma.service'
 import { EventsGateway } from 'src/websocket/events.gateway'
-import { MarketAnomalyDto, MarketAnomalyQueryDto } from './dto/market-anomaly.dto'
+import {
+  AnomalySortField,
+  MarketAnomalyDetailDto,
+  MarketAnomalyDto,
+  MarketAnomalyListResponseDto,
+  MarketAnomalyQueryDto,
+} from './dto/market-anomaly.dto'
 
 const VOLUME_SURGE_MULTIPLIER = 3.0
 const CONSECUTIVE_LIMIT_MIN = 2
@@ -19,54 +26,192 @@ export class MarketAnomalyService {
     private readonly eventsGateway: EventsGateway,
   ) {}
 
-  // ── 查询接口 ────────────────────────────────────────────────────────────────
+  // ── 统计聚合（standalone，不依赖分页） ──────────────────────────────────────
 
-  async queryAnomalies(query: MarketAnomalyQueryDto) {
-    const page = query.page ?? 1
-    const pageSize = query.pageSize ?? 20
-
-    // 解析 tradeDate：不传则取最新
-    let tradeDate: Date | undefined
-    if (query.tradeDate) {
-      tradeDate = dayjs(query.tradeDate, 'YYYYMMDD').toDate()
+  async getSummary(tradeDate?: string) {
+    let parsedDate: Date | undefined
+    if (tradeDate) {
+      parsedDate = parseCompactTradeDateToUtcDate(tradeDate)
     } else {
       const latest = await this.prisma.marketAnomaly.findFirst({
         orderBy: { tradeDate: 'desc' },
         select: { tradeDate: true },
       })
-      if (!latest) return { page, pageSize, total: 0, items: [] as MarketAnomalyDto[] }
-      tradeDate = latest.tradeDate
+      if (!latest) return { tradeDate: null, byType: {}, total: 0, latestScanAt: null }
+      parsedDate = latest.tradeDate
     }
 
-    const where = {
-      tradeDate,
-      ...(query.type ? { anomalyType: query.type } : {}),
-      ...(query.tsCode ? { tsCode: query.tsCode } : {}),
-    }
-
-    const [total, rows] = await Promise.all([
-      this.prisma.marketAnomaly.count({ where }),
-      this.prisma.marketAnomaly.findMany({
-        where,
-        orderBy: [{ anomalyType: 'asc' }, { value: 'desc' }],
-        skip: (page - 1) * pageSize,
-        take: pageSize,
+    const [typeCountRows, latestScan] = await Promise.all([
+      this.prisma.marketAnomaly.groupBy({
+        by: ['anomalyType'],
+        where: { tradeDate: parsedDate },
+        _count: { _all: true },
+      }),
+      this.prisma.marketAnomaly.findFirst({
+        where: { tradeDate: parsedDate },
+        orderBy: { scannedAt: 'desc' },
+        select: { scannedAt: true },
       }),
     ])
 
+    const byType = Object.fromEntries(typeCountRows.map((r) => [r.anomalyType, r._count._all]))
+    const total = typeCountRows.reduce((s, r) => s + r._count._all, 0)
+
+    return {
+      tradeDate: formatDateToCompactTradeDate(parsedDate),
+      byType,
+      total,
+      latestScanAt: latestScan?.scannedAt?.toISOString() ?? null,
+    }
+  }
+
+  // ── 单条异动详情 ────────────────────────────────────────────────────────────
+
+  async getDetail(id: number) {
+    const row = await this.prisma.marketAnomaly.findUnique({ where: { id } })
+    if (!row) return null
+
+    const strength = row.threshold > 0 ? row.value / row.threshold : row.value
+
+    // Enrich with stock name from stockBasic if missing
+    let stockName = row.stockName
+    if (!stockName) {
+      const stock = await this.prisma.stockBasic.findFirst({
+        where: { tsCode: row.tsCode },
+        select: { name: true },
+      })
+      stockName = stock?.name ?? null
+    }
+
+    return {
+      id: row.id,
+      tradeDate: formatDateToCompactTradeDate(row.tradeDate),
+      tsCode: row.tsCode,
+      stockName,
+      anomalyType: row.anomalyType,
+      value: row.value,
+      threshold: row.threshold,
+      strength,
+      detail: row.detail as MarketAnomalyDetailDto | null,
+      metrics: row.detail ?? { value: row.value, threshold: row.threshold },
+      unit: this.getUnit(row.anomalyType),
+      reason: this.getReason(row.anomalyType),
+      sourceTables: this.getSourceTables(row.anomalyType),
+      relatedAnomalies: await this.findRelatedAnomalies(row.tsCode, row.id, row.tradeDate),
+      history: await this.findAnomalyHistory(row.tsCode, row.anomalyType),
+      scannedAt: row.scannedAt,
+    }
+  }
+
+  // ── 查询接口 ────────────────────────────────────────────────────────────────
+
+  async queryAnomalies(query: MarketAnomalyQueryDto): Promise<MarketAnomalyListResponseDto> {
+    const page = query.page ?? 1
+    const pageSize = query.pageSize ?? 20
+    const sortBy: AnomalySortField = query.sortBy ?? 'strength'
+    const sortOrder = query.sortOrder ?? 'desc'
+
+    // 解析 tradeDate：不传则取最新
+    let tradeDate: Date | undefined
+    if (query.tradeDate) {
+      tradeDate = parseCompactTradeDateToUtcDate(query.tradeDate)
+    } else {
+      const latest = await this.prisma.marketAnomaly.findFirst({
+        orderBy: { tradeDate: 'desc' },
+        select: { tradeDate: true },
+      })
+      if (!latest) {
+        return { page, pageSize, total: 0, items: [], stats: { byType: {}, total: 0 } }
+      }
+      tradeDate = latest.tradeDate
+    }
+
+    const typeFilter = query.types?.length ? { in: query.types } : query.type
+    const where: Prisma.MarketAnomalyWhereInput = {
+      tradeDate,
+      ...(typeFilter ? { anomalyType: typeFilter } : {}),
+      ...(query.tsCode ? { tsCode: query.tsCode } : {}),
+      ...(query.keyword
+        ? {
+            OR: [
+              { tsCode: { contains: query.keyword, mode: 'insensitive' } },
+              { stockName: { contains: query.keyword, mode: 'insensitive' } },
+            ],
+          }
+        : {}),
+    }
+
+    // 全量数据（per-tradeDate 数量有限，可安全全量取，后续在内存中做强度过滤/多类型过滤）
+    const allRows = await this.prisma.marketAnomaly.findMany({ where })
+
+    // 强度 = value / threshold（用于跨类型规范化排序）
+    let withStrength = allRows.map((r) => ({ ...r, strength: r.threshold > 0 ? r.value / r.threshold : r.value }))
+    if (query.severity) {
+      withStrength = withStrength.filter((r) => this.matchSeverity(r.strength, query.severity!))
+    }
+    if (query.multiTypeOnly) {
+      const typeCounts = new Map<string, Set<string>>()
+      for (const row of withStrength) {
+        const set = typeCounts.get(row.tsCode) ?? new Set<string>()
+        set.add(row.anomalyType)
+        typeCounts.set(row.tsCode, set)
+      }
+      withStrength = withStrength.filter((r) => (typeCounts.get(r.tsCode)?.size ?? 0) > 1)
+    }
+    if (query.isNewOnly) {
+      const latestScanAt = withStrength.reduce<Date | null>(
+        (latest, r) => (!latest || r.scannedAt > latest ? r.scannedAt : latest),
+        null,
+      )
+      if (latestScanAt)
+        withStrength = withStrength.filter((r) => Math.abs(r.scannedAt.getTime() - latestScanAt.getTime()) <= 60_000)
+    }
+
+    const total = withStrength.length
+    const byType = withStrength.reduce<Record<string, number>>((acc, r) => {
+      acc[r.anomalyType] = (acc[r.anomalyType] ?? 0) + 1
+      return acc
+    }, {})
+
+    // 排序
+    withStrength.sort((a, b) => {
+      let cmp = 0
+      if (sortBy === 'strength') cmp = a.strength - b.strength
+      else if (sortBy === 'value') cmp = a.value - b.value
+      else if (sortBy === 'scannedAt') cmp = a.scannedAt.getTime() - b.scannedAt.getTime()
+      else if (sortBy === 'tsCode') cmp = a.tsCode.localeCompare(b.tsCode)
+      else if (sortBy === 'anomalyType') cmp = a.anomalyType.localeCompare(b.anomalyType)
+
+      if (cmp !== 0) return sortOrder === 'asc' ? cmp : -cmp
+      // 稳定次级排序：strength desc → value desc → id desc
+      if (sortBy !== 'strength') {
+        const strengthDiff = b.strength - a.strength
+        if (strengthDiff !== 0) return strengthDiff
+      }
+      if (sortBy !== 'value') {
+        const valueDiff = b.value - a.value
+        if (valueDiff !== 0) return valueDiff
+      }
+      return b.id - a.id
+    })
+
+    // 分页
+    const rows = withStrength.slice((page - 1) * pageSize, page * pageSize)
+
     const items: MarketAnomalyDto[] = rows.map((r) => ({
       id: r.id,
-      tradeDate: dayjs(r.tradeDate).format('YYYYMMDD'),
+      tradeDate: formatDateToCompactTradeDate(r.tradeDate) ?? '',
       tsCode: r.tsCode,
       stockName: r.stockName,
       anomalyType: r.anomalyType,
       value: r.value,
       threshold: r.threshold,
-      detail: r.detail,
+      strength: r.strength,
+      detail: r.detail as MarketAnomalyDetailDto | null,
       scannedAt: r.scannedAt,
     }))
 
-    return { page, pageSize, total, items }
+    return { page, pageSize, total, items, stats: { byType, total } }
   }
 
   // ── 盘后扫描 ────────────────────────────────────────────────────────────────
@@ -103,7 +248,7 @@ export class MarketAnomalyService {
     }
 
     const latestTradeDate = latestDaily.tradeDate
-    const tradeDateStr = dayjs(latestTradeDate).format('YYYYMMDD')
+    const tradeDateStr = formatDateToCompactTradeDate(latestTradeDate) ?? ''
 
     const [volumeSurgeCount, limitUpCount, largeInflowCount] = await Promise.all([
       this.scanVolumeSurge(latestTradeDate, tradeDateStr),
@@ -217,7 +362,7 @@ export class MarketAnomalyService {
       this.prisma.stkLimit.findMany({
         where: {
           tradeDate: {
-            gte: dayjs(cutoff).format('YYYYMMDD'),
+            gte: formatDateToCompactTradeDate(cutoff) ?? '',
             lte: tradeDateStr,
           },
         },
@@ -255,7 +400,7 @@ export class MarketAnomalyService {
       let consecutiveDays = 0
       for (let i = sorted.length - 1; i >= 0; i--) {
         const rec = sorted[i]
-        const tradeDateKey = dayjs(rec.tradeDate).format('YYYYMMDD')
+        const tradeDateKey = formatDateToCompactTradeDate(rec.tradeDate) ?? ''
         const upLimit = limitMap.get(`${tsCode}|${tradeDateKey}`)
         if (rec.close != null && upLimit != null && rec.close >= upLimit) {
           consecutiveDays++
@@ -379,6 +524,82 @@ export class MarketAnomalyService {
   }
 
   // ── helper ─────────────────────────────────────────────────────────────────
+
+  private matchSeverity(strength: number, severity: 'LOW' | 'MEDIUM' | 'HIGH'): boolean {
+    if (severity === 'HIGH') return strength >= 3
+    if (severity === 'MEDIUM') return strength >= 1.5 && strength < 3
+    return strength < 1.5
+  }
+
+  private getUnit(type: MarketAnomalyType): string {
+    switch (type) {
+      case MarketAnomalyType.VOLUME_SURGE:
+        return '倍'
+      case MarketAnomalyType.CONSECUTIVE_LIMIT_UP:
+        return '天'
+      case MarketAnomalyType.LARGE_NET_INFLOW:
+        return '占成交额比例'
+      default:
+        return ''
+    }
+  }
+
+  private getReason(type: MarketAnomalyType): string {
+    switch (type) {
+      case MarketAnomalyType.VOLUME_SURGE:
+        return '当日成交量显著高于近 20 日均量'
+      case MarketAnomalyType.CONSECUTIVE_LIMIT_UP:
+        return '连续涨停天数达到阈值'
+      case MarketAnomalyType.LARGE_NET_INFLOW:
+        return '超大单净流入占成交额比例达到阈值'
+      default:
+        return '触发异动监控规则'
+    }
+  }
+
+  private getSourceTables(type: MarketAnomalyType): string[] {
+    switch (type) {
+      case MarketAnomalyType.VOLUME_SURGE:
+        return ['daily_prices']
+      case MarketAnomalyType.CONSECUTIVE_LIMIT_UP:
+        return ['daily_prices', 'stock_limit_prices']
+      case MarketAnomalyType.LARGE_NET_INFLOW:
+        return ['moneyflow', 'daily_prices']
+      default:
+        return ['market_anomalies']
+    }
+  }
+
+  private async findRelatedAnomalies(tsCode: string, id: number, tradeDate: Date) {
+    const rows = await this.prisma.marketAnomaly.findMany({
+      where: { tsCode, tradeDate, id: { not: id } },
+      orderBy: { anomalyType: 'asc' },
+      take: 20,
+    })
+    return rows.map((r) => ({
+      id: r.id,
+      anomalyType: r.anomalyType,
+      value: r.value,
+      threshold: r.threshold,
+      strength: r.threshold > 0 ? r.value / r.threshold : r.value,
+    }))
+  }
+
+  private async findAnomalyHistory(tsCode: string, anomalyType: MarketAnomalyType) {
+    const rows = await this.prisma.marketAnomaly.findMany({
+      where: { tsCode, anomalyType },
+      orderBy: { tradeDate: 'desc' },
+      take: 20,
+    })
+    return rows.map((r) => ({
+      id: r.id,
+      tradeDate: formatDateToCompactTradeDate(r.tradeDate),
+      value: r.value,
+      threshold: r.threshold,
+      strength: r.threshold > 0 ? r.value / r.threshold : r.value,
+      scannedAt: r.scannedAt,
+    }))
+  }
 
   private async fetchStockNames(tsCodes: string[]): Promise<Map<string, string>> {
     if (tsCodes.length === 0) return new Map()

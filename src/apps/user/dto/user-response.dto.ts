@@ -1,5 +1,6 @@
 import { UserRole, UserStatus } from '@prisma/client'
 import { ApiProperty } from '@nestjs/swagger'
+import { ApiPropertyOptional } from '@nestjs/swagger'
 
 export class UserSafeDto {
   @ApiProperty() id: number
@@ -32,4 +33,32 @@ export class UserListDataDto {
 export class ResetPasswordDataDto {
   @ApiProperty()
   newPassword: string
+}
+
+export class UserPreferencesDataDto {
+  @ApiProperty({
+    type: 'object',
+    additionalProperties: true,
+    description: '用户偏好键值对（如 stockListColumns 等）',
+  })
+  preferences: Record<string, unknown>
+}
+
+export class UserStatsDataDto {
+  @ApiProperty({ description: '有效用户总数（不含已注销）' }) total: number
+  @ApiProperty({ description: '今日新增用户数' }) todayNew: number
+  @ApiProperty({ description: '近30天活跃用户数（最后登录时间在30天内）' }) active30d: number
+  @ApiProperty({ description: '当前禁用用户数' }) deactivated: number
+}
+
+export class UserSearchItemDto {
+  @ApiProperty() id: number
+  @ApiProperty() account: string
+  @ApiPropertyOptional({ nullable: true }) nickname: string | null
+  @ApiProperty({ enum: UserRole }) role: UserRole
+}
+
+export class UserSearchDataDto {
+  @ApiProperty({ type: [UserSearchItemDto] })
+  items: UserSearchItemDto[]
 }

@@ -9,8 +9,8 @@ describe('buildPrismaDatasourceUrl()', () => {
 
     expect(result).toBeDefined()
     const url = new URL(result!)
-    // 默认值：connection_limit=15, pool_timeout=20, connect_timeout=10
-    expect(url.searchParams.get('connection_limit')).toBe('15')
+    // 默认值：connection_limit=30, pool_timeout=20, connect_timeout=10
+    expect(url.searchParams.get('connection_limit')).toBe('30')
     expect(url.searchParams.get('pool_timeout')).toBe('20')
     expect(url.searchParams.get('connect_timeout')).toBe('10')
   })

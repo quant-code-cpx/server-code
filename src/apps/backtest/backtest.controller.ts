@@ -33,7 +33,11 @@ import { BrinsonAttributionDto, BrinsonAttributionResponseDto } from './dto/brin
 import { BacktestAttributionService } from './services/backtest-attribution.service'
 import { CostSensitivityDto, CostSensitivityResponseDto } from './dto/cost-sensitivity.dto'
 import { BacktestCostSensitivityService } from './services/backtest-cost-sensitivity.service'
-import { ParamSensitivityDto, ParamSensitivityResultDto, ParamSensitivityCreateResponseDto } from './dto/param-sensitivity.dto'
+import {
+  ParamSensitivityDto,
+  ParamSensitivityResultDto,
+  ParamSensitivityCreateResponseDto,
+} from './dto/param-sensitivity.dto'
 import { BacktestParamSensitivityService } from './services/backtest-param-sensitivity.service'
 import {
   BacktestEquityResponseDto,
@@ -238,5 +242,68 @@ export class BacktestController {
       rebalanceFrequency: dto.rebalanceFrequency,
     }
     return this.walkForwardService.createWalkForwardRun(wfDto, user.id)
+  }
+
+  // ── Run lifecycle ────────────────────────────────────────────────────────────
+
+  @Post('runs/rename')
+  @ApiOperation({ summary: '重命名回测任务' })
+  renameRun(@Body() { runId, name }: { runId: string; name: string }, @CurrentUser() user: TokenPayload) {
+    return this.runService.renameRun(runId, name, user.id)
+  }
+
+  @Post('runs/archive')
+  @ApiOperation({ summary: '归档 / 取消归档' })
+  archiveRun(@Body() { runId, archived }: { runId: string; archived: boolean }, @CurrentUser() user: TokenPayload) {
+    return this.runService.archiveRun(runId, archived ?? true, user.id)
+  }
+
+  @Post('runs/delete')
+  @ApiOperation({ summary: '软删除回测任务' })
+  deleteRun(@Body() { runId }: { runId: string }, @CurrentUser() user: TokenPayload) {
+    return this.runService.deleteRun(runId, user.id)
+  }
+
+  @Post('runs/star')
+  @ApiOperation({ summary: '标星 / 取消标星' })
+  starRun(@Body() { runId, starred }: { runId: string; starred: boolean }, @CurrentUser() user: TokenPayload) {
+    return this.runService.starRun(runId, starred ?? true, user.id)
+  }
+
+  @Post('runs/retry')
+  @ApiOperation({ summary: '重试失败/取消的任务' })
+  retryRun(@Body() { runId }: { runId: string }, @CurrentUser() user: TokenPayload) {
+    return this.runService.retryRun(runId, user.id)
+  }
+
+  @Post('runs/stats')
+  @ApiOperation({ summary: '回测任务汇总统计' })
+  getRunStats(@CurrentUser() user: TokenPayload) {
+    return this.runService.getStats(user.id)
+  }
+
+  // ── Walk-Forward lifecycle ────────────────────────────────────────────────────
+
+  @Post('walk-forward/runs/cancel')
+  @ApiOperation({ summary: '取消 Walk-Forward 任务' })
+  cancelWalkForwardRun(@Body() { wfRunId }: { wfRunId: string }) {
+    return this.walkForwardService.cancelWalkForwardRun(wfRunId)
+  }
+
+  @Post('walk-forward/runs/delete')
+  @ApiOperation({ summary: '软删除 Walk-Forward 任务' })
+  deleteWalkForwardRun(@Body() { wfRunId }: { wfRunId: string }, @CurrentUser() user: TokenPayload) {
+    return this.walkForwardService.deleteWalkForwardRun(wfRunId, user.id)
+  }
+
+  // ── Comparison list ──────────────────────────────────────────────────────────
+
+  @Post('comparisons/list')
+  @ApiOperation({ summary: '多策略对比历史列表' })
+  listComparisons(
+    @Body() dto: { page?: number; pageSize?: number; status?: string; keyword?: string },
+    @CurrentUser() user: TokenPayload,
+  ) {
+    return this.comparisonService.listComparisons(dto, user.id)
   }
 }

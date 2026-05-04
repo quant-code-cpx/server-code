@@ -5,7 +5,7 @@ describe('ExportService — generateCsv', () => {
 
   beforeEach(() => {
     // generateCsv 是纯函数，不依赖 Prisma，直接实例化即可
-    service = new ExportService(null as any)
+    service = new ExportService(null as any, null as any, null as any)
   })
 
   it('简单数据生成正确的 CSV', () => {

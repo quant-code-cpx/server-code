@@ -47,6 +47,7 @@ export class BacktestRunService {
         userId,
         name: dto.name ?? null,
         strategyType: dto.strategyType,
+        strategyId: dto.strategyId ?? null,
         strategyConfig: strategyConfig as unknown as Prisma.InputJsonValue,
         startDate,
         endDate,
@@ -97,10 +98,23 @@ export class BacktestRunService {
     const pageSize = dto.pageSize ?? 20
     const skip = (page - 1) * pageSize
 
-    const where: Record<string, unknown> = { userId }
-    if (dto.status) where.status = dto.status
+    const where: Record<string, unknown> = { userId, deletedAt: null }
+    // status: single (legacy) or multiple
+    if (dto.statuses && dto.statuses.length > 0) {
+      where.status = { in: dto.statuses }
+    } else if (dto.status) {
+      where.status = dto.status
+    }
     if (dto.strategyType) where.strategyType = dto.strategyType
+    if (dto.strategyId) where.strategyId = dto.strategyId
     if (dto.keyword) where.name = { contains: dto.keyword, mode: 'insensitive' }
+    if (dto.starred !== undefined) where.starred = dto.starred
+    if (dto.archived !== undefined) where.archived = dto.archived
+    if (dto.createdStart || dto.createdEnd) {
+      const gte = dto.createdStart ? new Date(dto.createdStart) : undefined
+      const lte = dto.createdEnd ? new Date(dto.createdEnd) : undefined
+      where.createdAt = { ...(gte ? { gte } : {}), ...(lte ? { lte } : {}) }
+    }
 
     const [total, items] = await Promise.all([
       this.prisma.backtestRun.count({ where }),
@@ -112,6 +126,7 @@ export class BacktestRunService {
         select: {
           id: true,
           name: true,
+          jobId: true,
           strategyType: true,
           status: true,
           startDate: true,
@@ -121,8 +136,12 @@ export class BacktestRunService {
           annualizedReturn: true,
           maxDrawdown: true,
           sharpeRatio: true,
+          failedReason: true,
+          starred: true,
+          archived: true,
           progress: true,
           createdAt: true,
+          startedAt: true,
           completedAt: true,
         },
       }),
@@ -135,6 +154,7 @@ export class BacktestRunService {
       items: items.map((r) => ({
         runId: r.id,
         name: r.name,
+        jobId: r.jobId,
         strategyType: r.strategyType,
         status: r.status,
         startDate: r.startDate.toISOString().slice(0, 10),
@@ -144,8 +164,12 @@ export class BacktestRunService {
         annualizedReturn: r.annualizedReturn,
         maxDrawdown: r.maxDrawdown,
         sharpeRatio: r.sharpeRatio,
+        failedReason: r.failedReason,
+        starred: r.starred,
+        archived: r.archived,
         progress: r.progress,
         createdAt: r.createdAt.toISOString(),
+        startedAt: r.startedAt?.toISOString() ?? null,
         completedAt: r.completedAt?.toISOString() ?? null,
       })),
     }
@@ -370,6 +394,79 @@ export class BacktestRunService {
       enableT1Restriction: true,
       partialFillEnabled: true,
     }
+  }
+
+  /** 重命名回测 */
+  async renameRun(runId: string, name: string, userId: number) {
+    const run = await this.prisma.backtestRun.findUnique({ where: { id: runId } })
+    if (!run || run.deletedAt || run.userId !== userId) throw new NotFoundException(`BacktestRun ${runId} not found`)
+    await this.prisma.backtestRun.update({ where: { id: runId }, data: { name } })
+    return { runId, name }
+  }
+
+  /** 归档 / 取消归档 */
+  async archiveRun(runId: string, archived: boolean, userId: number) {
+    const run = await this.prisma.backtestRun.findUnique({ where: { id: runId } })
+    if (!run || run.deletedAt || run.userId !== userId) throw new NotFoundException(`BacktestRun ${runId} not found`)
+    await this.prisma.backtestRun.update({ where: { id: runId }, data: { archived } })
+    return { runId, archived }
+  }
+
+  /** 软删除（设置 deletedAt） */
+  async deleteRun(runId: string, userId: number) {
+    const run = await this.prisma.backtestRun.findUnique({ where: { id: runId } })
+    if (!run || run.deletedAt || run.userId !== userId) throw new NotFoundException(`BacktestRun ${runId} not found`)
+    await this.prisma.backtestRun.update({ where: { id: runId }, data: { deletedAt: new Date() } })
+    return { runId, deleted: true }
+  }
+
+  /** 标星 / 取消标星 */
+  async starRun(runId: string, starred: boolean, userId: number) {
+    const run = await this.prisma.backtestRun.findUnique({ where: { id: runId } })
+    if (!run || run.deletedAt || run.userId !== userId) throw new NotFoundException(`BacktestRun ${runId} not found`)
+    await this.prisma.backtestRun.update({ where: { id: runId }, data: { starred } })
+    return { runId, starred }
+  }
+
+  /** 重试失败任务（重新入队） */
+  async retryRun(runId: string, userId: number) {
+    const run = await this.prisma.backtestRun.findUnique({ where: { id: runId } })
+    if (!run || run.deletedAt || run.userId !== userId) throw new NotFoundException(`BacktestRun ${runId} not found`)
+    if (run.status !== 'FAILED' && run.status !== 'CANCELLED') {
+      throw new BadRequestException(`Only FAILED or CANCELLED runs can be retried, current status: ${run.status}`)
+    }
+
+    await this.prisma.backtestRun.update({
+      where: { id: runId },
+      data: { status: 'QUEUED', progress: 0, failedReason: null, startedAt: null, completedAt: null },
+    })
+
+    const job = await this.backtestingQueue.add(
+      BacktestingJobName.RUN_BACKTEST,
+      { runId, userId },
+      {
+        attempts: 2,
+        backoff: { type: 'exponential', delay: 10000 },
+        removeOnComplete: { count: 50 },
+        removeOnFail: { count: 30 },
+      },
+    )
+
+    await this.prisma.backtestRun.update({ where: { id: runId }, data: { jobId: job.id?.toString() } })
+
+    return { runId, status: 'QUEUED', jobId: job.id?.toString() ?? '' }
+  }
+
+  /** 汇总统计（当前用户全量） */
+  async getStats(userId: number) {
+    const base = { userId, deletedAt: null }
+    const [total, completed, failed, running] = await Promise.all([
+      this.prisma.backtestRun.count({ where: base }),
+      this.prisma.backtestRun.count({ where: { ...base, status: 'COMPLETED' } }),
+      this.prisma.backtestRun.count({ where: { ...base, status: 'FAILED' } }),
+      this.prisma.backtestRun.count({ where: { ...base, status: { in: ['QUEUED', 'RUNNING'] } } }),
+    ])
+    return { total, completed, failed, running, archived: 0 }
   }
 
   private assertValidDateRange(startDateStr: string, endDateStr: string) {

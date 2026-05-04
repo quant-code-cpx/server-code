@@ -29,7 +29,7 @@ function buildPrismaMock() {
       count: jest.fn(),
     },
     watchlistStock: {
-      findMany: jest.fn(),
+      findMany: jest.fn(async () => []),
       findFirst: jest.fn(),
       create: jest.fn(),
       createMany: jest.fn(),
@@ -44,6 +44,7 @@ function buildPrismaMock() {
     },
     stockBasic: {
       findFirst: jest.fn(),
+      findMany: jest.fn(async () => []),
     },
     $queryRaw: jest.fn(async () => []),
     $transaction: jest.fn(async (ops: unknown) => {
@@ -66,7 +67,17 @@ function createService(prismaMock = buildPrismaMock(), cacheMock = buildCacheMoc
 }
 
 function buildWatchlist(overrides: Record<string, unknown> = {}) {
-  return { id: 1, userId: 10, name: '我的自选', description: null, isDefault: false, sortOrder: 0, createdAt: new Date(), updatedAt: new Date(), ...overrides }
+  return {
+    id: 1,
+    userId: 10,
+    name: '我的自选',
+    description: null,
+    isDefault: false,
+    sortOrder: 0,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    ...overrides,
+  }
 }
 
 function buildUser(overrides: Record<string, unknown> = {}) {
@@ -74,7 +85,17 @@ function buildUser(overrides: Record<string, unknown> = {}) {
 }
 
 function buildWatchlistStock(overrides: Record<string, unknown> = {}) {
-  return { id: 100, watchlistId: 1, tsCode: '000001.SZ', notes: null, tags: [], targetPrice: null, sortOrder: 0, addedAt: new Date(), ...overrides }
+  return {
+    id: 100,
+    watchlistId: 1,
+    tsCode: '000001.SZ',
+    notes: null,
+    tags: [],
+    targetPrice: null,
+    sortOrder: 0,
+    addedAt: new Date(),
+    ...overrides,
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -246,7 +267,9 @@ describe('WatchlistService', () => {
       prisma.watchlistStock.createMany.mockResolvedValue({ count: 2 })
       const svc = createService(prisma)
 
-      const result = await svc.batchAddStocks(10, 1, { stocks: [{ tsCode: '000001.SZ' }, { tsCode: '000002.SZ' }, { tsCode: '000001.SZ' }] })
+      const result = await svc.batchAddStocks(10, 1, {
+        stocks: [{ tsCode: '000001.SZ' }, { tsCode: '000002.SZ' }, { tsCode: '000001.SZ' }],
+      })
 
       expect(result.added).toBe(2)
       expect(result.skipped).toBe(1)
@@ -389,8 +412,28 @@ describe('WatchlistService', () => {
       prisma.watchlistStock.findMany.mockResolvedValue(stocks)
       // 模拟 $queryRaw 返回行情
       prisma.$queryRaw.mockResolvedValue([
-        { ts_code: '000001.SZ', close: 10, pct_chg: 2.5, vol: 1000, amount: 10000, pe_ttm: 15, pb: 2, total_mv: 50000, trade_date: new Date('2024-10-30') },
-        { ts_code: '000002.SZ', close: 20, pct_chg: 1.2, vol: 500, amount: 10000, pe_ttm: 20, pb: 3, total_mv: 100000, trade_date: new Date('2024-10-30') },
+        {
+          ts_code: '000001.SZ',
+          close: 10,
+          pct_chg: 2.5,
+          vol: 1000,
+          amount: 10000,
+          pe_ttm: 15,
+          pb: 2,
+          total_mv: 50000,
+          trade_date: new Date('2024-10-30'),
+        },
+        {
+          ts_code: '000002.SZ',
+          close: 20,
+          pct_chg: 1.2,
+          vol: 500,
+          amount: 10000,
+          pe_ttm: 20,
+          pb: 3,
+          total_mv: 100000,
+          trade_date: new Date('2024-10-30'),
+        },
       ])
       const svc = createService(prisma)
 
@@ -413,10 +456,50 @@ describe('WatchlistService', () => {
       ]
       prisma.watchlistStock.findMany.mockResolvedValue(stocks)
       prisma.$queryRaw.mockResolvedValue([
-        { ts_code: '000001.SZ', close: 10, pct_chg: 3.0, vol: 1000, amount: 10000, pe_ttm: 15, pb: 2, total_mv: 50000, trade_date: new Date() },
-        { ts_code: '000002.SZ', close: 10, pct_chg: -1.5, vol: 1000, amount: 10000, pe_ttm: 15, pb: 2, total_mv: 50000, trade_date: new Date() },
-        { ts_code: '000003.SZ', close: 10, pct_chg: 0, vol: 1000, amount: 10000, pe_ttm: 15, pb: 2, total_mv: 50000, trade_date: new Date() },
-        { ts_code: '000004.SZ', close: 10, pct_chg: 2.0, vol: 1000, amount: 10000, pe_ttm: 15, pb: 2, total_mv: 50000, trade_date: new Date() },
+        {
+          ts_code: '000001.SZ',
+          close: 10,
+          pct_chg: 3.0,
+          vol: 1000,
+          amount: 10000,
+          pe_ttm: 15,
+          pb: 2,
+          total_mv: 50000,
+          trade_date: new Date(),
+        },
+        {
+          ts_code: '000002.SZ',
+          close: 10,
+          pct_chg: -1.5,
+          vol: 1000,
+          amount: 10000,
+          pe_ttm: 15,
+          pb: 2,
+          total_mv: 50000,
+          trade_date: new Date(),
+        },
+        {
+          ts_code: '000003.SZ',
+          close: 10,
+          pct_chg: 0,
+          vol: 1000,
+          amount: 10000,
+          pe_ttm: 15,
+          pb: 2,
+          total_mv: 50000,
+          trade_date: new Date(),
+        },
+        {
+          ts_code: '000004.SZ',
+          close: 10,
+          pct_chg: 2.0,
+          vol: 1000,
+          amount: 10000,
+          pe_ttm: 15,
+          pb: 2,
+          total_mv: 50000,
+          trade_date: new Date(),
+        },
       ])
       const svc = createService(prisma)
 
@@ -437,8 +520,28 @@ describe('WatchlistService', () => {
       ]
       prisma.watchlistStock.findMany.mockResolvedValue(stocks)
       prisma.$queryRaw.mockResolvedValue([
-        { ts_code: '000001.SZ', close: 10, pct_chg: 1, vol: 1000, amount: 10000, pe_ttm: null, pb: null, total_mv: 30000, trade_date: new Date() },
-        { ts_code: '000002.SZ', close: 10, pct_chg: 1, vol: 1000, amount: 10000, pe_ttm: null, pb: null, total_mv: 70000, trade_date: new Date() },
+        {
+          ts_code: '000001.SZ',
+          close: 10,
+          pct_chg: 1,
+          vol: 1000,
+          amount: 10000,
+          pe_ttm: null,
+          pb: null,
+          total_mv: 30000,
+          trade_date: new Date(),
+        },
+        {
+          ts_code: '000002.SZ',
+          close: 10,
+          pct_chg: 1,
+          vol: 1000,
+          amount: 10000,
+          pe_ttm: null,
+          pb: null,
+          total_mv: 70000,
+          trade_date: new Date(),
+        },
       ])
       const svc = createService(prisma)
 

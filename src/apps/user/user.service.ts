@@ -1,5 +1,5 @@
 import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common'
-import { AuditAction, UserRole, UserStatus } from '@prisma/client'
+import { AuditAction, Prisma, UserRole, UserStatus } from '@prisma/client'
 import * as bcrypt from 'bcrypt'
 import { PrismaService } from 'src/shared/prisma.service'
 import { TokenPayload } from 'src/shared/token.interface'
@@ -15,6 +15,8 @@ import { AdminUpdateUserDto } from './dto/admin-update-user.dto'
 import { ResetPasswordDto } from './dto/reset-password.dto'
 import { AuditLogService } from './audit-log.service'
 import { AuditLogQueryDto } from './dto/audit-log-query.dto'
+import { UpdateRoleDto } from './dto/update-role.dto'
+import { UserSearchQueryDto } from './dto/user-search-query.dto'
 
 /** 用户基础信息（不含密码）— 用于列表和详情响应 */
 const USER_SAFE_SELECT = {
@@ -294,10 +296,128 @@ export class UserService implements OnApplicationBootstrap {
     await this.prisma.user.update({ where: { id }, data: { lastLoginAt: new Date() } })
   }
 
+  // ── 修改用户角色（仅 SUPER_ADMIN）──────────────────────────────────────────
+
+  async updateRole(dto: UpdateRoleDto, operator: TokenPayload) {
+    const target = await this.findOne(dto.id)
+    this.assertNotSuperAdmin(target.role)
+    this.assertHigherRole(operator, target.role, dto.id)
+
+    if (dto.role === UserRole.SUPER_ADMIN) {
+      throw new BusinessException(ErrorEnum.SUPER_ADMIN_UNIQUE)
+    }
+    if (!this.hasHigherRole(operator.role, dto.role)) {
+      throw new BusinessException(ErrorEnum.CANNOT_OPERATE_HIGHER_ROLE)
+    }
+
+    const updated = await this.prisma.user.update({
+      where: { id: dto.id },
+      data: { role: dto.role },
+      select: USER_SAFE_SELECT,
+    })
+
+    this.auditLogService.record({
+      operatorId: operator.id,
+      operatorAccount: operator.account,
+      action: AuditAction.USER_UPDATE_ROLE,
+      targetId: dto.id,
+      targetAccount: target.account,
+      details: { from: target.role, to: dto.role, reason: dto.reason ?? null },
+    })
+
+    return updated
+  }
+
+  // ── 恢复已注销用户（仅 SUPER_ADMIN）───────────────────────────────────────
+
+  async restore(id: number, operator: TokenPayload) {
+    const target = await this.prisma.user.findFirst({
+      where: { id, status: UserStatus.DELETED },
+      select: USER_SAFE_SELECT,
+    })
+    if (!target) throw new BusinessException(ErrorEnum.USER_NOT_FOUND)
+
+    const restored = await this.prisma.user.update({
+      where: { id },
+      data: { status: UserStatus.ACTIVE },
+      select: USER_SAFE_SELECT,
+    })
+
+    this.auditLogService.record({
+      operatorId: operator.id,
+      operatorAccount: operator.account,
+      action: AuditAction.USER_RESTORE,
+      targetId: id,
+      targetAccount: target.account,
+      details: {},
+    })
+
+    return restored
+  }
+
+  // ── 用户统计（仅管理员以上）───────────────────────────────────────────────
+
+  async getStats() {
+    const now = new Date()
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+    const thirtyDaysAgo = new Date(now)
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
+
+    const [total, todayNew, active30d, deactivated] = await Promise.all([
+      this.prisma.user.count({ where: { NOT: { status: UserStatus.DELETED } } }),
+      this.prisma.user.count({ where: { createdAt: { gte: todayStart } } }),
+      this.prisma.user.count({
+        where: { status: UserStatus.ACTIVE, lastLoginAt: { gte: thirtyDaysAgo } },
+      }),
+      this.prisma.user.count({ where: { status: UserStatus.DEACTIVATED } }),
+    ])
+
+    return { total, todayNew, active30d, deactivated }
+  }
+
+  // ── 用户快速搜索（管理员以上，用于下拉选择等场景）────────────────────────
+
+  async search(dto: UserSearchQueryDto) {
+    const keyword = dto.keyword.trim()
+    const items = await this.prisma.user.findMany({
+      where: {
+        NOT: { status: UserStatus.DELETED },
+        OR: [
+          { account: { contains: keyword, mode: 'insensitive' } },
+          { nickname: { contains: keyword, mode: 'insensitive' } },
+        ],
+      },
+      take: dto.limit ?? 20,
+      select: { id: true, account: true, nickname: true, role: true },
+      orderBy: { createdAt: 'asc' },
+    })
+    return { items }
+  }
+
   // ── 审计日志查询 ──────────────────────────────────────────────────────────
 
   async listAuditLog(query: AuditLogQueryDto) {
     return this.auditLogService.findAll(query)
+  }
+
+  // ── 用户偏好 ─────────────────────────────────────────────────────────────
+
+  async getPreferences(userId: number): Promise<Record<string, unknown>> {
+    const user = await this.prisma.user.findUniqueOrThrow({
+      where: { id: userId },
+      select: { preferences: true },
+    })
+    return (user.preferences as Record<string, unknown>) ?? {}
+  }
+
+  async updatePreferences(userId: number, key: string, value: unknown): Promise<Record<string, unknown>> {
+    const current = await this.getPreferences(userId)
+    const updated = { ...current, [key]: value }
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { preferences: updated as Prisma.InputJsonValue },
+    })
+    return updated
   }
 
   // ── 工具方法 ─────────────────────────────────────────────────────────────

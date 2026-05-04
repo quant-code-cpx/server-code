@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException } from '@nestjs/common'
 import { SchedulerRegistry } from '@nestjs/schedule'
 import { CronJob } from 'cron'
+import dayjs from 'dayjs'
 import { TushareSyncTaskName } from 'src/constant/tushare.constant'
 import { EventsGateway } from 'src/websocket/events.gateway'
 import { TushareSyncRegistryService } from '../sync-registry.service'
@@ -43,6 +44,7 @@ function buildSharedMocks() {
     helper: {
       isTodayTradingDay: jest.fn(async () => true),
       resolveLatestCompletedTradeDate: jest.fn(async () => '20260327'),
+      getCurrentShanghaiNow: jest.fn(() => dayjs('2026-03-27T20:00:00+08:00')),
     },
     schedulerRegistry: {
       doesExist: jest.fn(() => false),

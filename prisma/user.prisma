@@ -33,6 +33,7 @@ model User {
   lastLoginAt    DateTime?                             // 最后登录时间
   backtestQuota  Int        @default(3)               // 回测任务数量限制（管理员以上可修改）
   watchlistLimit Int        @default(10)              // 监控股票数量限制（管理员以上不受限制）
+  preferences    Json       @default("{}")           // 用户界面偏好（如列配置）
   screenerStrategies ScreenerStrategy[]               // 用户自定义选股策略
   watchlists         Watchlist[]                       // 自选股组
   researchNotes      ResearchNote[]                    // 研究笔记

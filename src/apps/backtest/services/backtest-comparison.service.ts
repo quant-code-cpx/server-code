@@ -227,6 +227,53 @@ export class BacktestComparisonService {
     return { series }
   }
 
+  async listComparisons(dto: { page?: number; pageSize?: number; status?: string; keyword?: string }, userId: number) {
+    const page = dto.page ?? 1
+    const pageSize = dto.pageSize ?? 20
+    const skip = (page - 1) * pageSize
+    const where: Record<string, unknown> = { userId }
+    if (dto.status) where.status = dto.status
+    if (dto.keyword) where.name = { contains: dto.keyword, mode: 'insensitive' }
+
+    const [total, items] = await Promise.all([
+      this.prisma.backtestComparisonGroup.count({ where }),
+      this.prisma.backtestComparisonGroup.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: pageSize,
+        select: {
+          id: true,
+          name: true,
+          status: true,
+          startDate: true,
+          endDate: true,
+          benchmarkTsCode: true,
+          runIds: true,
+          createdAt: true,
+          completedAt: true,
+        },
+      }),
+    ])
+
+    return {
+      page,
+      pageSize,
+      total,
+      items: items.map((g) => ({
+        groupId: g.id,
+        name: g.name,
+        status: g.status,
+        strategyCount: Array.isArray(g.runIds) ? (g.runIds as string[]).length : 0,
+        startDate: g.startDate.toISOString().slice(0, 10),
+        endDate: g.endDate.toISOString().slice(0, 10),
+        benchmarkTsCode: g.benchmarkTsCode,
+        createdAt: g.createdAt.toISOString(),
+        completedAt: g.completedAt?.toISOString() ?? null,
+      })),
+    }
+  }
+
   private parseDate(dateStr: string): Date {
     return new Date(`${dateStr.slice(0, 4)}-${dateStr.slice(4, 6)}-${dateStr.slice(6, 8)}`)
   }

@@ -1,5 +1,11 @@
 import { Injectable, NotFoundException } from '@nestjs/common'
-import { FactorLibraryQueryDto, FactorDetailQueryDto } from './dto/factor-library.dto'
+import {
+  FactorAdminJobDetailDto,
+  FactorAdminJobsQueryDto,
+  FactorDetailQueryDto,
+  FactorLibraryQueryDto,
+  FactorPrecomputeBatchDto,
+} from './dto/factor-library.dto'
 import { FactorValuesQueryDto } from './dto/factor-values.dto'
 import {
   FactorCorrelationDto,
@@ -130,6 +136,20 @@ export class FactorService {
 
   getPrecomputeStatus() {
     return this.precompute.getPrecomputeStatus()
+  }
+
+  async triggerPrecomputeBatch(dto: FactorPrecomputeBatchDto) {
+    const context = await this.library.precomputeBatch(dto)
+    const result = await this.precompute.precomputeAllFactors(context.tradeDate, context.factorNames)
+    return { ...context, result }
+  }
+
+  listAdminJobs(dto: FactorAdminJobsQueryDto) {
+    return this.library.listAdminJobs(dto)
+  }
+
+  getAdminJobDetail(dto: FactorAdminJobDetailDto) {
+    return this.library.getAdminJobDetail(dto)
   }
 
   // ── Phase 3: Factor → Backtest ────────────────────────────────────────────

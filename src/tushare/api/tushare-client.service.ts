@@ -26,11 +26,14 @@ interface ApiChannel {
  *
  * 职责：
  * - 统一发起 HTTP 请求，附带 token
- * - 请求节流（避免触发频控）：每个 API 名称使用独立通道，
- *   同一 API 串行（350ms 间隔），不同 API 可并行
+ * - 请求节流：仅对 Tushare 文档中明确标注了调用频率限制的接口做最小间隔控制，
+ *   其余接口不施加人工节流，由 40203 重试机制兜底
  * - 全局最大并发数限制，防止瞬间打满带宽
  * - 频控 40203 自动重试
  * - 将 { fields, items } 格式解析为对象数组
+ *
+ * 接口最小间隔来源：Tushare 官方文档标注的「每分钟最多 N 次」换算
+ * 未在文档中标注限速的接口默认间隔为 0ms
  */
 @Injectable()
 export class TushareClient {
@@ -38,11 +41,21 @@ export class TushareClient {
   private readonly token: string
   private readonly baseUrl: string
   private readonly timeout: number
-  private readonly requestIntervalMs: number
   private readonly rateLimitRetryDelayMs: number
   private readonly maxRetries: number
   /** 全局最大并发请求数（跨所有 API） */
   private readonly globalMaxConcurrency = 5
+
+  /**
+   * 有文档化频率限制的接口 → 最小调用间隔（ms）
+   * 换算规则：每分钟 N 次 → Math.ceil(60000 / N) ms
+   * 未列出的接口无文档化限速，间隔默认为 0ms
+   *
+   * 文档来源：https://tushare.pro/document/2
+   */
+  private static readonly DOCUMENTED_RATE_LIMIT_MS = new Map<string, number>([
+    ['daily', 120], // doc_id=27：每分钟最多 500 次 → 120ms
+  ])
   private globalConcurrentCount = 0
   /** 每个 API 名称的独立节流通道 */
   private readonly apiChannels = new Map<string, ApiChannel>()
@@ -55,7 +68,6 @@ export class TushareClient {
     this.token = cfg.token
     this.baseUrl = cfg.baseUrl
     this.timeout = cfg.timeout
-    this.requestIntervalMs = cfg.requestIntervalMs
     this.rateLimitRetryDelayMs = cfg.rateLimitRetryDelayMs
     this.maxRetries = cfg.maxRetries
   }
@@ -128,8 +140,8 @@ export class TushareClient {
     const channel = this.apiChannels.get(apiName)!
 
     const queuedTask = async (): Promise<T> => {
-      // 在本 API 通道内等待节流间隔
-      await this.waitForRequestSlot(channel)
+      // 在本 API 通道内等待节流间隔（仅文档化限速接口有等待）
+      await this.waitForRequestSlot(channel, apiName)
       // 等待全局并发槽位
       await this.acquireGlobalSlot()
       try {
@@ -147,10 +159,13 @@ export class TushareClient {
     return result
   }
 
-  private async waitForRequestSlot(channel: ApiChannel) {
-    const now = Date.now()
-    const waitMs = Math.max(0, this.requestIntervalMs - (now - channel.lastRequestAt))
-    if (waitMs > 0) await this.sleep(waitMs)
+  private async waitForRequestSlot(channel: ApiChannel, apiName: string) {
+    const intervalMs = TushareClient.DOCUMENTED_RATE_LIMIT_MS.get(apiName) ?? 0
+    if (intervalMs > 0) {
+      const now = Date.now()
+      const waitMs = Math.max(0, intervalMs - (now - channel.lastRequestAt))
+      if (waitMs > 0) await this.sleep(waitMs)
+    }
     channel.lastRequestAt = Date.now()
   }
 

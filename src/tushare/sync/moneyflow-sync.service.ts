@@ -53,7 +53,7 @@ export class MoneyflowSyncService {
   }
 
   getSyncPlans(): TushareSyncPlan[] {
-    return [
+    const plans: TushareSyncPlan[] = [
       {
         task: TushareSyncTaskName.MONEYFLOW,
         label: '个股资金流',
@@ -140,6 +140,7 @@ export class MoneyflowSyncService {
         execute: ({ mode, targetTradeDate }) => this.syncGgtDaily(this.requireTradeDate(targetTradeDate), mode),
       },
     ]
+    return plans.sort((a, b) => a.order - b.order)
   }
 
   // ─── 个股资金流 ────────────────────────────────────────────────────────────

@@ -21,6 +21,6 @@ import { TushareModule } from 'src/tushare/tushare.module'
     StockFinancialService,
     StockScreenerService,
   ],
-  exports: [StockService],
+  exports: [StockService, StockListService],
 })
 export class StockModule {}

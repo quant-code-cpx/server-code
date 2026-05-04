@@ -11,14 +11,25 @@ import { UserListQueryDto } from './dto/user-list-query.dto'
 import { AdminUpdateUserDto } from './dto/admin-update-user.dto'
 import { UserIdDto } from './dto/user-id.dto'
 import { ResetPasswordDto } from './dto/reset-password.dto'
+import { UpdateRoleDto } from './dto/update-role.dto'
+import { UserSearchQueryDto } from './dto/user-search-query.dto'
 import { CurrentUser } from 'src/common/decorators/current-user.decorator'
 import { Roles } from 'src/common/decorators/roles.decorator'
 import { RolesGuard } from 'src/lifecycle/guard/roles.guard'
 import { TokenPayload } from 'src/shared/token.interface'
 import { ApiSuccessRawResponse, ApiSuccessResponse } from 'src/common/decorators/api-success-response.decorator'
-import { CreatedUserDto, ResetPasswordDataDto, UserListDataDto, UserSafeDto } from './dto/user-response.dto'
+import {
+  CreatedUserDto,
+  ResetPasswordDataDto,
+  UserListDataDto,
+  UserPreferencesDataDto,
+  UserSafeDto,
+  UserStatsDataDto,
+  UserSearchDataDto,
+} from './dto/user-response.dto'
 import { AuditLogListDataDto } from './dto/audit-log-response.dto'
 import { AuditLogQueryDto } from './dto/audit-log-query.dto'
+import { GetPreferencesDto, UpdatePreferenceDto } from './dto/user-preferences.dto'
 
 @ApiBearerAuth()
 @ApiTags('User - 用户')
@@ -149,5 +160,72 @@ export class UserController {
   @ApiSuccessResponse(AuditLogListDataDto)
   async listAuditLog(@Body() query: AuditLogQueryDto) {
     return this.userService.listAuditLog(query)
+  }
+
+  /**
+   * 获取当前用户偏好（全部或指定 key）
+   */
+  @Post('preferences/get')
+  @ApiOperation({ summary: '获取用户界面偏好（可选按 key 获取）' })
+  @ApiSuccessResponse(UserPreferencesDataDto)
+  async getPreferences(@Body() dto: GetPreferencesDto, @CurrentUser() currentUser: TokenPayload) {
+    const all = await this.userService.getPreferences(currentUser.id)
+    if (dto.key) return { preferences: { [dto.key]: all[dto.key] ?? null } }
+    return { preferences: all }
+  }
+
+  /**
+   * 更新当前用户的某个偏好 key
+   */
+  @Post('preferences/update')
+  @ApiOperation({ summary: '更新用户界面偏好（按 key 更新）' })
+  @ApiSuccessResponse(UserPreferencesDataDto)
+  async updatePreference(@Body() dto: UpdatePreferenceDto, @CurrentUser() currentUser: TokenPayload) {
+    const updated = await this.userService.updatePreferences(currentUser.id, dto.key, dto.value)
+    return { preferences: updated }
+  }
+
+  /**
+   * 修改用户角色（仅 SUPER_ADMIN）
+   */
+  @Post('update-role')
+  @Roles(UserRole.SUPER_ADMIN)
+  @ApiOperation({ summary: '修改用户角色（仅超级管理员，不可设为 SUPER_ADMIN）' })
+  @ApiSuccessResponse(UserSafeDto)
+  async updateRole(@Body() dto: UpdateRoleDto, @CurrentUser() currentUser: TokenPayload) {
+    return this.userService.updateRole(dto, currentUser)
+  }
+
+  /**
+   * 恢复已注销用户（仅 SUPER_ADMIN）
+   */
+  @Post('restore')
+  @Roles(UserRole.SUPER_ADMIN)
+  @ApiOperation({ summary: '恢复已注销用户（仅超级管理员）' })
+  @ApiSuccessResponse(UserSafeDto)
+  async restore(@Body() { id }: UserIdDto, @CurrentUser() currentUser: TokenPayload) {
+    return this.userService.restore(id, currentUser)
+  }
+
+  /**
+   * 用户 KPI 统计（管理员以上）
+   */
+  @Post('stats')
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: '用户 KPI 统计（管理员以上）' })
+  @ApiSuccessResponse(UserStatsDataDto)
+  async getStats() {
+    return this.userService.getStats()
+  }
+
+  /**
+   * 用户快速搜索（管理员以上，用于下拉选择）
+   */
+  @Post('search')
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: '用户快速搜索（按账号/昵称，管理员以上）' })
+  @ApiSuccessResponse(UserSearchDataDto)
+  async search(@Body() dto: UserSearchQueryDto) {
+    return this.userService.search(dto)
   }
 }

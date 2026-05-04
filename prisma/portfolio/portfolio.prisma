@@ -23,6 +23,8 @@ model Portfolio {
   name        String   @db.VarChar(100)
   description String?  @db.VarChar(500)
   initialCash Decimal  @db.Decimal(18, 4) /// 初始本金（元）
+  kind        String   @default("PAPER") @db.VarChar(20) /// 组合类型：PAPER/LIVE
+  isArchived  Boolean  @default(false) @map("is_archived")
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 

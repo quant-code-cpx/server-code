@@ -19,10 +19,11 @@ import {
   BatchRemoveResponseDto,
   WatchlistDto,
   WatchlistMessageResponseDto,
+  WatchlistOverviewItemDto,
   WatchlistOverviewResponseDto,
+  WatchlistOverviewSummaryDto,
   WatchlistStockDto,
   WatchlistStocksResponseDto,
-  WatchlistSummaryDto,
 } from './dto/watchlist-response.dto'
 
 @ApiTags('Watchlist - 自选股')
@@ -131,7 +132,7 @@ export class WatchlistController {
 
   @Post('summary')
   @ApiOperation({ summary: '获取自选组行情汇总（涨跌统计 + 平均涨幅）' })
-  @ApiSuccessResponse(WatchlistSummaryDto)
+  @ApiSuccessResponse(WatchlistOverviewSummaryDto)
   getWatchlistSummary(@CurrentUser() user: TokenPayload, @Body() { id }: { id: number }) {
     return this.watchlistService.getWatchlistSummary(user.id, id)
   }

@@ -21,6 +21,11 @@ export class CreateBacktestRunDto {
   @IsString()
   name?: string
 
+  @ApiPropertyOptional({ description: '关联策略 ID（从策略模块发起回测时传入）' })
+  @IsOptional()
+  @IsString()
+  strategyId?: string
+
   @ApiProperty({ enum: ['MA_CROSS_SINGLE', 'SCREENING_ROTATION', 'FACTOR_RANKING', 'CUSTOM_POOL_REBALANCE'] })
   @IsEnum(['MA_CROSS_SINGLE', 'SCREENING_ROTATION', 'FACTOR_RANKING', 'CUSTOM_POOL_REBALANCE'])
   strategyType: BacktestStrategyType

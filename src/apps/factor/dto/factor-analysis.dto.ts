@@ -164,3 +164,53 @@ export class FactorCorrelationDto {
   @IsEnum(['spearman', 'pearson'])
   method?: 'spearman' | 'pearson' = 'spearman'
 }
+
+export class FactorCorrelationMetaDto {
+  @ApiProperty({ description: '股票池（all 表示全量）' })
+  universe: string
+
+  @ApiProperty({ description: '计算完成时间（ISO 8601）' })
+  computedAt: string
+
+  @ApiProperty({ description: '矩阵计算模式：pairwise = 每对因子独立取交集' })
+  matrixMode: 'pairwise'
+
+  @ApiProperty({ description: '触发 null 的最小有效样本阈值' })
+  minSampleForCorr: number
+
+  @ApiProperty({ description: 'Spearman 并列秩处理方式' })
+  rankTiesMethod: string
+}
+
+export class FactorCorrelationResponseDto {
+  @ApiProperty({ description: '计算日期 YYYYMMDD' })
+  tradeDate: string
+
+  @ApiProperty({ enum: ['spearman', 'pearson'] })
+  method: string
+
+  /**
+   * 实际返回的因子顺序（按字母升序排列，与 matrix/nMatrix/factorLabels/coverage 行列顺序一致）。
+   * 当用户传入 [pe_ttm, pb] 时，factors 返回 ['pb', 'pe_ttm']。
+   */
+  @ApiProperty({ type: [String], description: '实际返回的因子名称列表（已排序，与矩阵轴顺序一致）' })
+  factors: string[]
+
+  @ApiProperty({ type: [String], description: '因子显示标签（与 factors 一一对应，fallback 为因子名）' })
+  factorLabels: string[]
+
+  @ApiProperty({ description: '相关系数矩阵（对角线=1；样本不足或常数序列时为 null）' })
+  matrix: (number | null)[][]
+
+  @ApiProperty({ description: '每对因子计算时的有效交集股票数（pairwise，对角线为单因子有效值数量）' })
+  nMatrix: number[][]
+
+  @ApiProperty({
+    description: '每个因子的覆盖率（有效值股票数 / 所有参与因子覆盖股票的并集数，0~1）',
+    type: [Number],
+  })
+  coverage: number[]
+
+  @ApiProperty({ type: FactorCorrelationMetaDto })
+  meta: FactorCorrelationMetaDto
+}

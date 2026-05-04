@@ -72,7 +72,7 @@ export class ScreenerSubscriptionProcessor extends WorkerHost {
         pageSize: 500,
       } as Parameters<typeof this.stockService.screener>[0])
 
-      const currentCodes: string[] = (result as { list?: Array<{ tsCode: string }> }).list?.map((s) => s.tsCode) ?? []
+      const currentCodes: string[] = (result as { items?: Array<{ tsCode: string }> }).items?.map((s) => s.tsCode) ?? []
       const previousCodesSet = new Set(sub.lastMatchCodes)
 
       const newEntryCodes = currentCodes.filter((c) => !previousCodesSet.has(c))
@@ -137,6 +137,13 @@ export class ScreenerSubscriptionProcessor extends WorkerHost {
           success: false,
           errorMessage: (err as Error).message,
         },
+      })
+
+      // 推送执行失败通知
+      this.eventsGateway.emitToUser(sub.userId, 'screener_subscription_failed', {
+        subscriptionId: sub.id,
+        error: (err as Error).message,
+        consecutiveFails: newFails,
       })
     }
   }

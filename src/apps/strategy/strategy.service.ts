@@ -9,7 +9,13 @@ import { UpdateStrategyDto } from './dto/update-strategy.dto'
 import { QueryStrategyDto } from './dto/query-strategy.dto'
 import { RunStrategyDto } from './dto/run-strategy.dto'
 import { StrategySchemaValidatorService } from './strategy-schema-validator.service'
-import { CompareVersionsDto, CompareVersionsResponseDto, ConfigDiffItem, StrategyVersionItemDto, VersionMetrics } from './dto/strategy-version.dto'
+import {
+  CompareVersionsDto,
+  CompareVersionsResponseDto,
+  ConfigDiffItem,
+  StrategyVersionItemDto,
+  VersionMetrics,
+} from './dto/strategy-version.dto'
 
 /** 每用户最大策略数量 */
 const MAX_STRATEGIES_PER_USER = 50
@@ -94,7 +100,65 @@ export class StrategyService {
       this.prisma.strategy.count({ where }),
     ])
 
-    return { strategies, total, page, pageSize }
+    // Enrich with latest backtest run per strategy (requires strategy_id FK on backtest_runs)
+    const strategyIds = strategies.map((s) => s.id)
+    let runMap = new Map<
+      string,
+      {
+        runId: string
+        status: string
+        totalReturn: number | null
+        annualizedReturn: number | null
+        sharpeRatio: number | null
+        maxDrawdown: number | null
+        completedAt: string | null
+      }
+    >()
+
+    if (strategyIds.length > 0) {
+      const latestRuns = await this.prisma.$queryRaw<
+        Array<{
+          sid: string
+          rid: string
+          status: string
+          total_return: number | null
+          annualized_return: number | null
+          sharpe_ratio: number | null
+          max_drawdown: number | null
+          completed_at: Date | null
+        }>
+      >`
+        SELECT DISTINCT ON (strategy_id)
+          strategy_id AS sid, id AS rid,
+          status, total_return, annualized_return, sharpe_ratio, max_drawdown, completed_at
+        FROM backtest_runs
+        WHERE user_id = ${userId}
+          AND deleted_at IS NULL
+          AND strategy_id = ANY(${strategyIds}::text[])
+        ORDER BY strategy_id, created_at DESC
+      `
+      runMap = new Map(
+        latestRuns.map((r) => [
+          r.sid,
+          {
+            runId: r.rid,
+            status: r.status,
+            totalReturn: r.total_return,
+            annualizedReturn: r.annualized_return,
+            sharpeRatio: r.sharpe_ratio,
+            maxDrawdown: r.max_drawdown,
+            completedAt: r.completed_at?.toISOString() ?? null,
+          },
+        ]),
+      )
+    }
+
+    const items = strategies.map((s) => ({
+      ...s,
+      lastRunSummary: runMap.get(s.id) ?? null,
+    }))
+
+    return { strategies: items, total, page, pageSize }
   }
 
   async detail(userId: number, id: string) {
@@ -130,7 +194,9 @@ export class StrategyService {
               strategyId: strategy.id,
               version: strategy.version,
               strategyConfig: strategy.strategyConfig as Prisma.InputJsonValue,
-              backtestDefaults: strategy.backtestDefaults ? (strategy.backtestDefaults as Prisma.InputJsonValue) : undefined,
+              backtestDefaults: strategy.backtestDefaults
+                ? (strategy.backtestDefaults as Prisma.InputJsonValue)
+                : undefined,
             },
           })
         }
@@ -157,9 +223,26 @@ export class StrategyService {
     }
   }
 
-  async delete(userId: number, id: string) {
+  async delete(userId: number, id: string, force = false) {
     const strategy = await this.prisma.strategy.findFirst({ where: { id, userId } })
     if (!strategy) throw new BusinessException(ErrorEnum.STRATEGY_NOT_FOUND)
+
+    const [runCount, signalCount] = await Promise.all([
+      this.prisma.backtestRun.count({ where: { userId, strategyId: id, deletedAt: null } }),
+      this.prisma.tradingSignal.count({ where: { strategyId: id } }),
+    ])
+
+    const hasRefs = runCount > 0 || signalCount > 0
+    if (hasRefs && !force) {
+      return {
+        blocked: true,
+        references: {
+          backtestRuns: runCount,
+          tradingSignals: signalCount,
+        },
+        message: '该策略存在关联数据，请使用 force=true 强制删除',
+      }
+    }
 
     await this.prisma.strategy.delete({ where: { id } })
     return { message: '删除成功' }
@@ -211,6 +294,7 @@ export class StrategyService {
     return this.backtestRunService.createRun(
       {
         name: dto.name ?? `${strategy.name} 回测`,
+        strategyId: strategy.id,
         strategyType: strategy.strategyType as RunParams['strategyType'],
         strategyConfig: strategy.strategyConfig as Record<string, unknown>,
         startDate: dto.startDate,

@@ -19,21 +19,31 @@ import { AlertController } from '../alert.controller'
 import { AlertCalendarService } from '../alert-calendar.service'
 import { PriceAlertService } from '../price-alert.service'
 import { MarketAnomalyService } from '../market-anomaly.service'
+import { AlertLimitService } from '../alert-limit.service'
 
 const mockCalendarService = { getCalendar: jest.fn() }
 const mockPriceAlertService = {
   createRule: jest.fn(),
   listRules: jest.fn(),
+  listHistory: jest.fn(),
+  scanStatus: jest.fn(),
   updateRule: jest.fn(),
   deleteRule: jest.fn(),
   runScan: jest.fn(),
 }
-const mockAnomalyService = { queryAnomalies: jest.fn(), runScan: jest.fn() }
+const mockAnomalyService = {
+  queryAnomalies: jest.fn(),
+  getSummary: jest.fn(),
+  getDetail: jest.fn(),
+  runScan: jest.fn(),
+}
+const mockLimitService = { list: jest.fn(), summary: jest.fn(), nextDayPerf: jest.fn() }
 
 const allProviders = [
   { provide: AlertCalendarService, useValue: mockCalendarService },
   { provide: PriceAlertService, useValue: mockPriceAlertService },
   { provide: MarketAnomalyService, useValue: mockAnomalyService },
+  { provide: AlertLimitService, useValue: mockLimitService },
 ]
 
 /** 构建带 RolesGuard 覆盖的测试应用（模拟用户注入 + 角色检查） */

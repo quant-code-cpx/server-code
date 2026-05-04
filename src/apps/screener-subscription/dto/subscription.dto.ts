@@ -47,6 +47,43 @@ export class UpdateSubscriptionDto {
   @IsOptional()
   @IsEnum(SubscriptionFrequency)
   frequency?: SubscriptionFrequency
+
+  @ApiPropertyOptional({ description: '更新关联策略 ID（传 null 取消关联）' })
+  @IsOptional()
+  @IsInt()
+  strategyId?: number | null
+
+  @ApiPropertyOptional({ description: '更新选股条件' })
+  @IsOptional()
+  @IsObject()
+  filters?: Record<string, unknown>
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  sortBy?: string | null
+
+  @ApiPropertyOptional({ enum: ['asc', 'desc'], nullable: true })
+  @IsOptional()
+  @IsIn(['asc', 'desc'])
+  sortOrder?: string | null
+}
+
+export class ValidateSubscriptionDto {
+  @ApiPropertyOptional({ description: '当前订阅 ID（编辑时传入，排除自身）' })
+  @IsOptional()
+  @IsInt()
+  id?: number
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsObject()
+  filters?: Record<string, unknown>
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsInt()
+  strategyId?: number
 }
 
 export class SubscriptionLogsQueryDto {

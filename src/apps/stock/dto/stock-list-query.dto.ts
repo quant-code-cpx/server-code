@@ -1,4 +1,16 @@
-import { IsEnum, IsIn, IsInt, IsNumber, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator'
+import {
+  IsArray,
+  IsEnum,
+  IsIn,
+  IsInt,
+  IsNumber,
+  IsOptional,
+  IsString,
+  Max,
+  MaxLength,
+  Min,
+  ArrayMaxSize,
+} from 'class-validator'
 import { ApiPropertyOptional } from '@nestjs/swagger'
 import { Type } from 'class-transformer'
 
@@ -54,11 +66,25 @@ export class StockListQueryDto {
   @MaxLength(50)
   industry?: string
 
+  @ApiPropertyOptional({ description: '行业（多选精确匹配，与 industry 单选互斥，优先生效）', type: [String] })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(30)
+  @IsString({ each: true })
+  industries?: string[]
+
   @ApiPropertyOptional({ description: '地域（模糊匹配，如：广东、上海）' })
   @IsOptional()
   @IsString()
   @MaxLength(50)
   area?: string
+
+  @ApiPropertyOptional({ description: '地域（多选精确匹配，与 area 单选互斥，优先生效）', type: [String] })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(30)
+  @IsString({ each: true })
+  areas?: string[]
 
   @ApiPropertyOptional({ description: '市场板块（主板 / 创业板 / 科创板 等，模糊匹配）' })
   @IsOptional()
@@ -71,6 +97,13 @@ export class StockListQueryDto {
   @IsString()
   @IsIn(['N', 'H', 'S'])
   isHs?: string
+
+  @ApiPropertyOptional({ description: '概念板块代码（多选，从 /stock/screener/concepts 获取）', type: [String] })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(20)
+  @IsString({ each: true })
+  conceptCodes?: string[]
 
   @ApiPropertyOptional({ description: '最小总市值（万元）' })
   @IsOptional()
@@ -85,6 +118,12 @@ export class StockListQueryDto {
   @IsNumber()
   @Min(0)
   maxTotalMv?: number
+
+  @ApiPropertyOptional({ description: '最小市盈率 TTM' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  minPeTtm?: number
 
   @ApiPropertyOptional({ description: '最大市盈率 TTM' })
   @IsOptional()

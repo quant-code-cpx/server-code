@@ -37,6 +37,10 @@ export class StockService {
     return this.stockListService.findAll(query)
   }
 
+  getListSummary(query: StockListQueryDto) {
+    return this.stockListService.getListSummary(query)
+  }
+
   search(dto: StockSearchDto) {
     return this.stockListService.search(dto)
   }
@@ -47,8 +51,8 @@ export class StockService {
 
   // ─── 股票详情 ─────────────────────────────────────────────────────────────────
 
-  getDetailOverview(tsCode: string) {
-    return this.stockDetailService.getDetailOverview(tsCode)
+  getDetailOverview(tsCode: string, tradeDate?: string) {
+    return this.stockDetailService.getDetailOverview(tsCode, tradeDate)
   }
 
   getDetailChart(dto: StockDetailChartDto) {

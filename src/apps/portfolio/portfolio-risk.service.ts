@@ -385,6 +385,42 @@ export class PortfolioRiskService {
     return `${y}${m}${d}`
   }
 
+  /** 聚合快照 — 单次返回行业、持仓、市值、Beta，单维度失败不影响其他维度 */
+  async getRiskSnapshot(portfolioId: string, userId: number) {
+    await this.portfolioService.assertOwner(portfolioId, userId)
+    const lastUpdated = new Date().toISOString()
+    const latestDate = await this.portfolioService.getLatestTradeDate()
+    const isTradingDay = !!latestDate
+
+    const settle = <T>(p: Promise<T>) =>
+      p
+        .then((v) => ({ ok: true as const, value: v }))
+        .catch((e: unknown) => ({ ok: false as const, error: e instanceof Error ? e.message : String(e) }))
+
+    const [indResult, posResult, capResult, betaResult] = await Promise.all([
+      settle(this.calcIndustryDistribution(portfolioId)),
+      settle(this.calcPositionConcentration(portfolioId)),
+      settle(this.calcMarketCapDistribution(portfolioId)),
+      settle(this.calcBetaAnalysis(portfolioId)),
+    ])
+
+    const errors: Record<string, string> = {}
+    if (!indResult.ok) errors['industry'] = 'error' in indResult ? (indResult.error as string) : 'unknown'
+    if (!posResult.ok) errors['position'] = 'error' in posResult ? (posResult.error as string) : 'unknown'
+    if (!capResult.ok) errors['marketCap'] = 'error' in capResult ? (capResult.error as string) : 'unknown'
+    if (!betaResult.ok) errors['beta'] = 'error' in betaResult ? (betaResult.error as string) : 'unknown'
+
+    return {
+      industry: indResult.ok ? indResult.value : null,
+      position: posResult.ok ? posResult.value : null,
+      marketCap: capResult.ok ? capResult.value : null,
+      beta: betaResult.ok ? betaResult.value : null,
+      lastUpdated,
+      isTradingDay,
+      errors: Object.keys(errors).length > 0 ? errors : undefined,
+    }
+  }
+
   private rememberCache<T>(key: string, ttlSeconds: number, loader: () => Promise<T>) {
     return this.cacheService.rememberJson({
       namespace: CACHE_NAMESPACE.PORTFOLIO,

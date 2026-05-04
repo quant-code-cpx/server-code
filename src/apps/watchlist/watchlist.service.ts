@@ -3,6 +3,7 @@ import type { Prisma } from '@prisma/client'
 import { PrismaService } from 'src/shared/prisma.service'
 import { CacheService } from 'src/shared/cache.service'
 import { ADMIN_WATCHLIST_UNLIMITED } from 'src/constant/user.constant'
+import { diffCompactTradeDateFromShanghaiToday, formatDateToCompactTradeDate } from 'src/common/utils/trade-date.util'
 import {
   AddWatchlistStockDto,
   BatchAddStocksDto,
@@ -135,8 +136,31 @@ export class WatchlistService {
 
     if (stocks.length === 0) return { stocks: [] }
 
-    const quotes = await this.getLatestQuotes(stocks.map((s) => s.tsCode))
-    return { stocks: stocks.map((s) => ({ ...s, quote: quotes.get(s.tsCode) ?? null })) }
+    const tsCodes = stocks.map((s) => s.tsCode)
+    const [quotes, basics] = await Promise.all([
+      this.getLatestQuotes(tsCodes),
+      this.prisma.stockBasic.findMany({
+        where: { tsCode: { in: tsCodes } },
+        select: { tsCode: true, name: true, industry: true, area: true },
+      }),
+    ])
+
+    const basicMap = new Map(basics.map((b) => [b.tsCode, b]))
+    return {
+      stocks: stocks.map((s) => {
+        const basic = basicMap.get(s.tsCode)
+        const quote = quotes.get(s.tsCode) ?? null
+        const daysAgo = diffCompactTradeDateFromShanghaiToday(quote?.tradeDate)
+        const quoteStatus = quote?.tradeDate ? (daysAgo != null && daysAgo <= 5 ? 'LIVE' : 'STALE') : 'MISSING'
+        return {
+          ...s,
+          stockName: basic?.name ?? null,
+          industry: basic?.industry ?? null,
+          area: basic?.area ?? null,
+          quote: quote ? { ...quote, quoteStatus } : null,
+        }
+      }),
+    }
   }
 
   async addStock(userId: number, watchlistId: number, dto: AddWatchlistStockDto) {
@@ -181,8 +205,30 @@ export class WatchlistService {
       )
     }
 
+    // 查询已存在的代码，便于返回 skippedCodes
+    const incomingCodes = dto.stocks.map((s) => s.tsCode)
+    const seenIncoming = new Set<string>()
+    const duplicatedIncoming = new Set<string>()
+    for (const code of incomingCodes) {
+      if (seenIncoming.has(code)) duplicatedIncoming.add(code)
+      seenIncoming.add(code)
+    }
+    const existing = await this.prisma.watchlistStock.findMany({
+      where: { watchlistId, tsCode: { in: incomingCodes } },
+      select: { tsCode: true },
+    })
+    const existingSet = new Set(existing.map((e) => e.tsCode))
+    const createSeen = new Set<string>()
+    const createStocks = dto.stocks.filter((s) => {
+      if (existingSet.has(s.tsCode)) return false
+      if (createSeen.has(s.tsCode)) return false
+      createSeen.add(s.tsCode)
+      return true
+    })
+    const skippedCodes = [...new Set(incomingCodes.filter((c) => existingSet.has(c) || duplicatedIncoming.has(c)))]
+
     const result = await this.prisma.watchlistStock.createMany({
-      data: dto.stocks.map((s) => ({
+      data: createStocks.map((s) => ({
         watchlistId,
         tsCode: s.tsCode,
         notes: s.notes ?? null,
@@ -193,7 +239,7 @@ export class WatchlistService {
     })
 
     await this.invalidateWatchlistCache(userId, watchlistId)
-    return { added: result.count, skipped: dto.stocks.length - result.count }
+    return { added: result.count, skipped: incomingCodes.length - result.count, skippedCodes }
   }
 
   async updateStock(userId: number, watchlistId: number, stockId: number, dto: UpdateWatchlistStockDto) {
@@ -278,7 +324,84 @@ export class WatchlistService {
       orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }],
       include: { _count: { select: { stocks: true } } },
     })
-    return { watchlists }
+
+    if (watchlists.length === 0) return { watchlists: [] }
+
+    // Gather all tsCodes across all watchlists
+    const allStockRows = await this.prisma.watchlistStock.findMany({
+      where: { watchlistId: { in: watchlists.map((w) => w.id) } },
+      select: { watchlistId: true, tsCode: true },
+    })
+
+    const allTsCodes = [...new Set(allStockRows.map((r) => r.tsCode))]
+    const quotes = allTsCodes.length > 0 ? await this.getLatestQuotes(allTsCodes) : new Map<string, StockQuote>()
+
+    // Build per-watchlist summary
+    const stocksByWatchlist = new Map<number, string[]>()
+    for (const row of allStockRows) {
+      const list = stocksByWatchlist.get(row.watchlistId) ?? []
+      list.push(row.tsCode)
+      stocksByWatchlist.set(row.watchlistId, list)
+    }
+
+    const enriched = watchlists.map((w) => {
+      const tsCodes = stocksByWatchlist.get(w.id) ?? []
+      const stockCount = tsCodes.length
+
+      let upCount = 0
+      let downCount = 0
+      let flatCount = 0
+      let staleCount = 0
+      let totalMv = 0
+      let pctChgSum = 0
+      let pctChgCount = 0
+      let latestTradeDate: string | null = null
+
+      for (const tsCode of tsCodes) {
+        const q = quotes.get(tsCode)
+        if (!q || !q.tradeDate) {
+          staleCount++
+          continue
+        }
+
+        const daysAgo = diffCompactTradeDateFromShanghaiToday(q.tradeDate)
+        if (daysAgo != null && daysAgo > 5) {
+          staleCount++
+        }
+
+        if (!latestTradeDate || q.tradeDate > latestTradeDate) latestTradeDate = q.tradeDate
+
+        if (q.pctChg != null) {
+          pctChgSum += q.pctChg
+          pctChgCount++
+          if (q.pctChg > 0) upCount++
+          else if (q.pctChg < 0) downCount++
+          else flatCount++
+        }
+        if (q.totalMv != null) totalMv += q.totalMv
+      }
+
+      return {
+        id: w.id,
+        name: w.name,
+        description: w.description,
+        isDefault: w.isDefault,
+        sortOrder: w.sortOrder,
+        stockCount,
+        summary: {
+          stockCount,
+          upCount,
+          downCount,
+          flatCount,
+          avgPctChg: pctChgCount > 0 ? Math.round((pctChgSum / pctChgCount) * 100) / 100 : null,
+          totalMv: totalMv > 0 ? totalMv : null,
+          latestTradeDate,
+          staleCount,
+        },
+      }
+    })
+
+    return { watchlists: enriched }
   }
 
   // ── Private helpers ───────────────────────────────────────────────────────
@@ -330,9 +453,7 @@ export class WatchlistService {
           pe: r.pe_ttm,
           pb: r.pb,
           totalMv: r.total_mv,
-          tradeDate: d
-            ? `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`
-            : null,
+          tradeDate: formatDateToCompactTradeDate(d),
         })
       }
     } catch (err) {

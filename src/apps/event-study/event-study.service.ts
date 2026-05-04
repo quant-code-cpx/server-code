@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common'
 import { StockExchange } from '@prisma/client'
+import { formatDateToCompactTradeDate, parseCompactTradeDateToUtcDate } from 'src/common/utils/trade-date.util'
 import { PrismaService } from 'src/shared/prisma.service'
 import { EVENT_TYPE_CONFIGS, EventType, EventTypeConfig } from './event-type.registry'
 import { EventStudyAnalyzeDto } from './dto/event-study-analyze.dto'
@@ -15,7 +16,7 @@ function toDateStr(d: Date): string {
 
 /** 'YYYYMMDD' → Date */
 function parseYMD(s: string): Date {
-  return new Date(`${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`)
+  return parseCompactTradeDateToUtcDate(s)
 }
 
 /** Calendar date + n days */
@@ -64,6 +65,58 @@ export class EventStudyService {
 
   getEventTypes(): EventTypeConfig[] {
     return Object.values(EVENT_TYPE_CONFIGS)
+  }
+
+  getEventSchema(eventType: EventType) {
+    const config = EVENT_TYPE_CONFIGS[eventType]
+    const fieldMap: Record<EventType, Array<{ name: string; label: string; type: string; operators: string[] }>> = {
+      [EventType.FORECAST]: [
+        { name: 'annDate', label: '公告日期', type: 'date', operators: ['gte', 'lte'] },
+        { name: 'type', label: '预告类型', type: 'string', operators: ['eq', 'in'] },
+        { name: 'pChangeMin', label: '净利润变动下限(%)', type: 'number', operators: ['gte', 'lte', 'gt', 'lt'] },
+        { name: 'pChangeMax', label: '净利润变动上限(%)', type: 'number', operators: ['gte', 'lte', 'gt', 'lt'] },
+      ],
+      [EventType.DIVIDEND_EX]: [
+        { name: 'exDate', label: '除权除息日', type: 'date', operators: ['gte', 'lte'] },
+        { name: 'stkDiv', label: '送转股比例', type: 'number', operators: ['gte', 'lte', 'gt', 'lt'] },
+        { name: 'cashDivTax', label: '税前现金分红', type: 'number', operators: ['gte', 'lte', 'gt', 'lt'] },
+      ],
+      [EventType.HOLDER_INCREASE]: [
+        { name: 'annDate', label: '公告日期', type: 'date', operators: ['gte', 'lte'] },
+        { name: 'changeVol', label: '变动数量', type: 'number', operators: ['gte', 'lte', 'gt', 'lt'] },
+        { name: 'changeRatio', label: '变动比例', type: 'number', operators: ['gte', 'lte', 'gt', 'lt'] },
+      ],
+      [EventType.HOLDER_DECREASE]: [
+        { name: 'annDate', label: '公告日期', type: 'date', operators: ['gte', 'lte'] },
+        { name: 'changeVol', label: '变动数量', type: 'number', operators: ['gte', 'lte', 'gt', 'lt'] },
+        { name: 'changeRatio', label: '变动比例', type: 'number', operators: ['gte', 'lte', 'gt', 'lt'] },
+      ],
+      [EventType.SHARE_FLOAT]: [
+        { name: 'floatDate', label: '解禁日期', type: 'date', operators: ['gte', 'lte'] },
+        { name: 'floatRatio', label: '解禁比例', type: 'number', operators: ['gte', 'lte', 'gt', 'lt'] },
+      ],
+      [EventType.REPURCHASE]: [
+        { name: 'annDate', label: '公告日期', type: 'date', operators: ['gte', 'lte'] },
+        { name: 'amount', label: '回购金额', type: 'number', operators: ['gte', 'lte', 'gt', 'lt'] },
+      ],
+      [EventType.AUDIT_QUALIFIED]: [
+        { name: 'annDate', label: '公告日期', type: 'date', operators: ['gte', 'lte'] },
+        { name: 'auditResult', label: '审计意见', type: 'string', operators: ['eq', 'in'] },
+      ],
+      [EventType.DISCLOSURE]: [
+        { name: 'actualDate', label: '实际披露日', type: 'date', operators: ['gte', 'lte'] },
+        { name: 'period', label: '报告期', type: 'string', operators: ['eq', 'in'] },
+      ],
+    }
+
+    return {
+      eventType,
+      label: config.label,
+      description: config.description,
+      dateField: this.getEventDateField(eventType),
+      stockField: 'tsCode',
+      fields: fieldMap[eventType],
+    }
   }
 
   async queryEvents(dto: EventStudyEventsQueryDto): Promise<{ total: number; items: unknown[] }> {
@@ -332,6 +385,25 @@ export class EventStudyService {
           .map((r) => ({ tsCode: r.tsCode, eventDate: toDateStr(r.actualDate!) }))
       }
     }
+  }
+
+  getEventDateField(eventType: EventType): string {
+    switch (eventType) {
+      case EventType.DIVIDEND_EX:
+        return 'exDate'
+      case EventType.SHARE_FLOAT:
+        return 'floatDate'
+      case EventType.DISCLOSURE:
+        return 'actualDate'
+      default:
+        return 'annDate'
+    }
+  }
+
+  formatEventDateValue(value: unknown): string | null {
+    if (value instanceof Date) return formatDateToCompactTradeDate(value)
+    if (typeof value === 'string') return value.replace(/-/g, '').slice(0, 8)
+    return null
   }
 
   // ── Private: Data loading ─────────────────────────────────────────────────

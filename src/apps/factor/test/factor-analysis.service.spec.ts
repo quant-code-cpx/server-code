@@ -10,12 +10,21 @@
  */
 import { NotFoundException } from '@nestjs/common'
 import { FactorAnalysisService } from '../services/factor-analysis.service'
-import { FactorIcAnalysisDto, FactorQuantileAnalysisDto, FactorDistributionDto, FactorCorrelationDto, FactorDecayAnalysisDto } from '../dto/factor-analysis.dto'
+import {
+  FactorIcAnalysisDto,
+  FactorQuantileAnalysisDto,
+  FactorDistributionDto,
+  FactorCorrelationDto,
+  FactorDecayAnalysisDto,
+} from '../dto/factor-analysis.dto'
 
 // ── Mock 工厂 ─────────────────────────────────────────────────────────────────
 
 function buildPrismaMock() {
-  return { $queryRaw: jest.fn(async () => []) }
+  return {
+    $queryRaw: jest.fn(async () => []),
+    factorDefinition: { findMany: jest.fn(async () => []) },
+  }
 }
 
 function buildComputeMock() {
@@ -265,7 +274,7 @@ describe('FactorAnalysisService', () => {
       expect(result.matrix[1][0]).toBeCloseTo(1.0, 2)
     })
 
-    it('公共股票数 < 3 → 相关系数矩阵非对角线为 0', async () => {
+    it('公共股票数 < 3 → 相关系数矩阵非对角线为 null（样本不足无法计算）', async () => {
       const twoStocks = [
         { tsCode: '000001.SZ', factorValue: 1 },
         { tsCode: '000002.SZ', factorValue: 2 },
@@ -275,18 +284,85 @@ describe('FactorAnalysisService', () => {
       const result = await service.getCorrelation(baseDto)
 
       expect(result.matrix[0][0]).toBe(1)
-      expect(result.matrix[0][1]).toBe(0) // null → 0
-      expect(result.matrix[1][0]).toBe(0)
+      expect(result.matrix[0][1]).toBeNull()
+      expect(result.matrix[1][0]).toBeNull()
     })
 
-    it('返回正确的元数据', async () => {
+    it('返回正确的元数据，factors 按字母升序排列', async () => {
       mockCompute.getRawFactorValuesForDate.mockResolvedValue([])
 
       const result = await service.getCorrelation(baseDto)
 
       expect(result.tradeDate).toBe('20240101')
       expect(result.method).toBe('spearman')
-      expect(result.factors).toEqual(['pe', 'pb'])
+      // factorNames=['pe','pb'] → sorted → ['pb','pe']
+      expect(result.factors).toEqual(['pb', 'pe'])
+    })
+
+    it('返回 factorLabels（fallback 到因子名）', async () => {
+      mockCompute.getRawFactorValuesForDate.mockResolvedValue([])
+      // factorDefinition.findMany 返回 pb 有 label，pe 没有
+      mockPrisma.factorDefinition.findMany.mockResolvedValue([{ name: 'pb', label: '市净率' }])
+
+      const result = await service.getCorrelation(baseDto)
+
+      // sorted: ['pb','pe'] → labels: ['市净率', 'pe']
+      expect(result.factorLabels).toEqual(['市净率', 'pe'])
+    })
+
+    it('返回 nMatrix（对角线为单因子有效值数，非对角线为两两交集数）', async () => {
+      const factor1 = [
+        { tsCode: '000001.SZ', factorValue: 1 },
+        { tsCode: '000002.SZ', factorValue: 2 },
+        { tsCode: '000003.SZ', factorValue: 3 },
+        { tsCode: '000004.SZ', factorValue: 4 },
+      ]
+      const factor2 = [
+        { tsCode: '000001.SZ', factorValue: 10 },
+        { tsCode: '000002.SZ', factorValue: 20 },
+        { tsCode: '000003.SZ', factorValue: 30 },
+      ]
+      // sorted: ['pb','pe'] — pb=factor1(4 stocks), pe=factor2(3 stocks)
+      mockCompute.getRawFactorValuesForDate
+        .mockResolvedValueOnce(factor1) // pb
+        .mockResolvedValueOnce(factor2) // pe
+
+      const result = await service.getCorrelation(baseDto)
+
+      // nMatrix[0][0]=4(pb), nMatrix[1][1]=3(pe), nMatrix[0][1]=nMatrix[1][0]=3(intersection)
+      expect(result.nMatrix[0][0]).toBe(4)
+      expect(result.nMatrix[1][1]).toBe(3)
+      expect(result.nMatrix[0][1]).toBe(3)
+      expect(result.nMatrix[1][0]).toBe(3)
+    })
+
+    it('返回 coverage（有效值 / 并集大小）', async () => {
+      const factor1 = [
+        { tsCode: '000001.SZ', factorValue: 1 },
+        { tsCode: '000002.SZ', factorValue: 2 },
+      ]
+      const factor2 = [
+        { tsCode: '000002.SZ', factorValue: 10 },
+        { tsCode: '000003.SZ', factorValue: 20 },
+      ]
+      // union = 3 stocks; pb has 2 → 2/3, pe has 2 → 2/3
+      mockCompute.getRawFactorValuesForDate.mockResolvedValueOnce(factor1).mockResolvedValueOnce(factor2)
+
+      const result = await service.getCorrelation(baseDto)
+
+      expect(result.coverage[0]).toBeCloseTo(2 / 3, 5)
+      expect(result.coverage[1]).toBeCloseTo(2 / 3, 5)
+    })
+
+    it('返回 meta 字段', async () => {
+      mockCompute.getRawFactorValuesForDate.mockResolvedValue([])
+
+      const result = await service.getCorrelation(baseDto)
+
+      expect(result.meta.matrixMode).toBe('pairwise')
+      expect(result.meta.minSampleForCorr).toBe(3)
+      expect(result.meta.universe).toBe('all')
+      expect(result.meta.computedAt).toBeTruthy()
     })
   })
 })

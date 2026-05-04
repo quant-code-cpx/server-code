@@ -47,10 +47,10 @@ export class StrategyController {
   }
 
   @Post('delete')
-  @ApiOperation({ summary: '删除策略' })
+  @ApiOperation({ summary: '删除策略（有关联数据时需传 force=true 强制删除）' })
   @ApiSuccessRawResponse({ type: 'null', nullable: true })
-  delete(@CurrentUser() user: TokenPayload, @Body() { id }: { id: string }) {
-    return this.strategyService.delete(user.id, id)
+  delete(@CurrentUser() user: TokenPayload, @Body() { id, force }: { id: string; force?: boolean }) {
+    return this.strategyService.delete(user.id, id, force)
   }
 
   @Post('clone')

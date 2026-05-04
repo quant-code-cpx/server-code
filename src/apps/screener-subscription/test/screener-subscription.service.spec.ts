@@ -32,26 +32,28 @@ describe('ScreenerSubscriptionService', () => {
 
   // ── findAll ───────────────────────────────────────────────────────────────
 
-  it('findAll — 返回用户所有订阅', async () => {
-    const subscriptions = [{ id: 1 }, { id: 2 }]
+  it('findAll — 返回用户所有订阅（含策略信息）', async () => {
+    const subscriptions = [
+      { id: 1, strategyId: null },
+      { id: 2, strategyId: null },
+    ]
     prisma.screenerSubscription.findMany.mockResolvedValue(subscriptions as never)
 
     const result = await service.findAll(1)
-    expect(result).toEqual({ subscriptions })
-    expect(prisma.screenerSubscription.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { userId: 1 } }),
-    )
+    expect(result.subscriptions).toHaveLength(2)
+    expect(result.subscriptions[0]).toMatchObject({ id: 1, strategyName: null, strategyStatus: null })
+    expect(prisma.screenerSubscription.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { userId: 1 } }))
   })
 
   // ── create ────────────────────────────────────────────────────────────────
 
   it('create — 用 filters → 直接创建订阅', async () => {
     prisma.screenerSubscription.count.mockResolvedValue(0)
-    const created = { id: 1 }
+    const created = { id: 1, strategyId: null }
     prisma.screenerSubscription.create.mockResolvedValue(created as never)
 
     const result = await service.create(1, { name: '订阅1', filters: { minPe: 10 } })
-    expect(result).toBe(created)
+    expect(result).toMatchObject({ id: 1, strategyName: null })
   })
 
   it('create — 用 strategyId → 取策略 filters', async () => {
@@ -87,13 +89,13 @@ describe('ScreenerSubscriptionService', () => {
 
   // ── update ────────────────────────────────────────────────────────────────
 
-  it('update — 存在 → 更新并返回', async () => {
+  it('update — 存在 → 更新并返回（含策略信息）', async () => {
     prisma.screenerSubscription.findFirst.mockResolvedValue({ id: 1 } as never)
-    const updated = { id: 1, name: '新名称' }
+    const updated = { id: 1, name: '新名称', strategyId: null }
     prisma.screenerSubscription.update.mockResolvedValue(updated as never)
 
     const result = await service.update(1, 1, { name: '新名称' })
-    expect(result).toBe(updated)
+    expect(result).toMatchObject({ id: 1, name: '新名称' })
   })
 
   it('update — 不存在 → NotFoundException', async () => {
@@ -118,12 +120,13 @@ describe('ScreenerSubscriptionService', () => {
 
   // ── pause / resume ────────────────────────────────────────────────────────
 
-  it('pause — 存在 → 更新状态为 PAUSED', async () => {
+  it('pause — 存在 → 更新状态为 PAUSED 并返回订阅', async () => {
+    const updated = { id: 1, status: SubscriptionStatus.PAUSED }
     prisma.screenerSubscription.findFirst.mockResolvedValue({ id: 1 } as never)
-    prisma.screenerSubscription.update.mockResolvedValue({} as never)
+    prisma.screenerSubscription.update.mockResolvedValue(updated as never)
 
     const result = await service.pause(1, 1)
-    expect(result.message).toBeDefined()
+    expect(result).toMatchObject({ id: 1 })
     expect(prisma.screenerSubscription.update).toHaveBeenCalledWith(
       expect.objectContaining({ data: { status: SubscriptionStatus.PAUSED } }),
     )
@@ -134,12 +137,13 @@ describe('ScreenerSubscriptionService', () => {
     await expect(service.pause(1, 99)).rejects.toThrow(NotFoundException)
   })
 
-  it('resume — 存在 → 更新状态为 ACTIVE，consecutiveFails 清零', async () => {
+  it('resume — 存在 → 更新状态为 ACTIVE，consecutiveFails 清零并返回订阅', async () => {
+    const updated = { id: 1, status: SubscriptionStatus.ACTIVE, consecutiveFails: 0 }
     prisma.screenerSubscription.findFirst.mockResolvedValue({ id: 1 } as never)
-    prisma.screenerSubscription.update.mockResolvedValue({} as never)
+    prisma.screenerSubscription.update.mockResolvedValue(updated as never)
 
     const result = await service.resume(1, 1)
-    expect(result.message).toBeDefined()
+    expect(result).toMatchObject({ id: 1 })
     expect(prisma.screenerSubscription.update).toHaveBeenCalledWith(
       expect.objectContaining({
         data: { status: SubscriptionStatus.ACTIVE, consecutiveFails: 0 },
@@ -170,11 +174,13 @@ describe('ScreenerSubscriptionService', () => {
     expect(result.jobId).toBeDefined()
   })
 
-  it('manualRun — 冷却期内 → BadRequestException', async () => {
+  it('manualRun — 冷却期内 → HttpException (COOLDOWN)', async () => {
     const lastRunAt = new Date(Date.now() - 10_000) // 10s ago, < 5 min cooldown
     prisma.screenerSubscription.findFirst.mockResolvedValue({ id: 1, lastRunAt } as never)
 
-    await expect(service.manualRun(1, 1)).rejects.toThrow(BadRequestException)
+    await expect(service.manualRun(1, 1)).rejects.toMatchObject({
+      response: expect.objectContaining({ code: 'COOLDOWN' }),
+    })
     expect(queue.add).not.toHaveBeenCalled()
   })
 
@@ -185,14 +191,21 @@ describe('ScreenerSubscriptionService', () => {
 
   // ── getLogs ───────────────────────────────────────────────────────────────
 
-  it('getLogs — 返回分页日志', async () => {
+  it('getLogs — 返回分页日志（含股票元数据）', async () => {
     prisma.screenerSubscription.findFirst.mockResolvedValue({ id: 1 } as never)
-    const logs = [{ id: 1 }, { id: 2 }]
+    const logs = [
+      { id: 1, newEntryCodes: [], exitCodes: [] },
+      { id: 2, newEntryCodes: [], exitCodes: [] },
+    ]
     prisma.screenerSubscriptionLog.findMany.mockResolvedValue(logs as never)
     prisma.screenerSubscriptionLog.count.mockResolvedValue(2)
 
     const result = await service.getLogs(1, 1, { page: 1, pageSize: 20 })
-    expect(result).toEqual({ logs, total: 2, page: 1, pageSize: 20 })
+    expect(result.total).toBe(2)
+    expect(result.page).toBe(1)
+    expect(result.pageSize).toBe(20)
+    expect(result.logs).toHaveLength(2)
+    expect(result.logs[0]).toMatchObject({ id: 1, newEntries: [], exits: [] })
   })
 
   it('getLogs — 订阅不存在 → NotFoundException', async () => {

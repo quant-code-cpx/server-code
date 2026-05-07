@@ -965,7 +965,9 @@ export class FinancialSyncService {
   private async incrementalDividendSync(startedAt: Date): Promise<void> {
     const latestDate = await this.helper.getLatestDateString('dividend', 'annDate')
     const rangeEnd = this.helper.getCurrentShanghaiDateString()
-    const rangeStart = latestDate ? this.helper.addDays(latestDate, 1) : this.helper.syncStartDate
+    // annDate 在历史数据中大量为空，MAX(ann_date) 可能返回 null；此时兜底回退 365 天而非从 syncStartDate（19900101）开始
+    const fallbackStart = this.helper.addDays(rangeEnd, -365)
+    const rangeStart = latestDate ? this.helper.addDays(latestDate, 1) : fallbackStart
 
     if (this.helper.compareDateString(rangeStart, rangeEnd) > 0) {
       this.logger.log(`[分红数据] 已是最新（最新公告日: ${latestDate}）`)

@@ -904,10 +904,17 @@ export class MarketSyncService {
           ctx?.onProgress?.(i + 1, tsCodes.length, tsCode)
           this.logger.log(`[筹码分布] 进度 ${i + 1}/${tsCodes.length}，累计 ${totalRows} 条`)
         }
+
+        // cyq_chips 限频 200次/分钟，每次调用后至少等待 300ms
+        await new Promise((resolve) => setTimeout(resolve, 300))
       } catch (error) {
         const msg = (error as Error).message
         this.logger.error(`[筹码分布] ${tsCode} 同步失败: ${msg}`)
         failed.push({ tsCode, error: msg })
+        // 频控错误时等待更长时间再继续
+        if (msg.includes('40203') || msg.includes('频率超限')) {
+          await new Promise((resolve) => setTimeout(resolve, 60_000))
+        }
       }
     }
 

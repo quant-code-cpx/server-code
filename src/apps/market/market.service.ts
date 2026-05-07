@@ -863,12 +863,12 @@ export class MarketService {
     if (dual) {
       const cacheKey = `market:sector-rank:${tradeDateStr}:${contentType}:${sortBy}:dual:${limit}`
       return this.rememberMarketCache(cacheKey, MARKET_STANDARD_CACHE_TTL_SECONDS, async () => {
-        const orderByDesc = {
+        const orderByDescMap = {
           net_amount: { netAmount: 'desc' as const },
           pct_change: { pctChange: 'desc' as const },
           buy_elg_amount: { buyElgAmount: 'desc' as const },
         }
-        const orderByAsc = {
+        const orderByAscMap = {
           net_amount: { netAmount: 'asc' as const },
           pct_change: { pctChange: 'asc' as const },
           buy_elg_amount: { buyElgAmount: 'asc' as const },
@@ -881,40 +881,33 @@ export class MarketService {
           netAmount: true,
           netAmountRate: true,
           buyElgAmount: true,
-          buyElgAmountRate: true,
           buyLgAmount: true,
-          buyLgAmountRate: true,
           buyMdAmount: true,
-          buyMdAmountRate: true,
           buySmAmount: true,
-          buySmAmountRate: true,
         } as const
 
         const [topInflowRows, topOutflowRows] = await Promise.all([
           this.prisma.moneyflowIndDc.findMany({
             where: { tradeDate, contentType },
-            orderBy: orderByDesc[sortBy],
+            orderBy: orderByDescMap[sortBy],
             take: limit,
             select: selectFields,
           }),
           this.prisma.moneyflowIndDc.findMany({
             where: { tradeDate, contentType },
-            orderBy: orderByAsc[sortBy],
+            orderBy: orderByAscMap[sortBy],
             take: limit,
             select: selectFields,
           }),
         ])
 
-        // netAmount 修正：四档净流入之和（超大单+大单+中单+小单）
-        // 注：排序仍按 DB 存储的 netAmount（主力口径），响应值已修正为全口径
         const mapRow = (r: (typeof topInflowRows)[number]) => ({
           tsCode: r.tsCode,
           name: r.name,
           pctChange: r.pctChange,
           close: r.close,
-          netAmount: (r.buyElgAmount ?? 0) + (r.buyLgAmount ?? 0) + (r.buyMdAmount ?? 0) + (r.buySmAmount ?? 0),
-          netAmountRate:
-            (r.buyElgAmountRate ?? 0) + (r.buyLgAmountRate ?? 0) + (r.buyMdAmountRate ?? 0) + (r.buySmAmountRate ?? 0),
+          netAmount: r.netAmount,
+          netAmountRate: r.netAmountRate,
           buyElgAmount: r.buyElgAmount,
           buyLgAmount: r.buyLgAmount,
           buyMdAmount: r.buyMdAmount,
@@ -951,28 +944,22 @@ export class MarketService {
           netAmount: true,
           netAmountRate: true,
           buyElgAmount: true,
-          buyElgAmountRate: true,
           buyLgAmount: true,
-          buyLgAmountRate: true,
           buyMdAmount: true,
-          buyMdAmountRate: true,
           buySmAmount: true,
-          buySmAmountRate: true,
         },
       })
 
       return {
         tradeDate,
         contentType,
-        // netAmount 修正：四档净流入之和（超大单+大单+中单+小单）
         sectors: rows.map((r) => ({
           tsCode: r.tsCode,
           name: r.name,
           pctChange: r.pctChange,
           close: r.close,
-          netAmount: (r.buyElgAmount ?? 0) + (r.buyLgAmount ?? 0) + (r.buyMdAmount ?? 0) + (r.buySmAmount ?? 0),
-          netAmountRate:
-            (r.buyElgAmountRate ?? 0) + (r.buyLgAmountRate ?? 0) + (r.buyMdAmountRate ?? 0) + (r.buySmAmountRate ?? 0),
+          netAmount: r.netAmount,
+          netAmountRate: r.netAmountRate,
           buyElgAmount: r.buyElgAmount,
           buyLgAmount: r.buyLgAmount,
           buyMdAmount: r.buyMdAmount,

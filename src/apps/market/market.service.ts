@@ -306,7 +306,6 @@ export class MarketService {
       where: { tradeDate, ...(tsCodeFilter ? { tsCode: tsCodeFilter } : {}) },
       orderBy: { tsCode: 'asc' },
     })
-    console.log(rows, rows[0].tsCode, CORE_INDEX_BASE_MAP[rows[0].tsCode], CORE_INDEX_NAME_MAP[rows[0].tsCode])
 
     return rows.map((r) => {
       const base = CORE_INDEX_BASE_MAP[r.tsCode]
@@ -1666,7 +1665,7 @@ export class MarketService {
   }
 
   private parseDate(value: string) {
-    return dayjs.tz(value, 'YYYYMMDD', 'Asia/Shanghai').toDate()
+    return dayjs.utc(value, 'YYYYMMDD').toDate()
   }
 
   private rememberMarketCache<T>(

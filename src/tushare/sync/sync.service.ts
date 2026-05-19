@@ -60,6 +60,9 @@ export interface RunPlansResult {
 /** 进度节流：最少间隔毫秒数，防止 WebSocket 洪泛 */
 const PROGRESS_THROTTLE_MS = 2000
 
+/** catch-up 两次调用之间的最小间隔（10 分钟），防止任务失败时形成紧密重试循环 */
+const CATCHUP_MIN_INTERVAL_MS = 10 * 60_000
+
 @Injectable()
 export class TushareSyncService implements OnApplicationBootstrap {
   private readonly logger = new Logger(TushareSyncService.name)
@@ -68,6 +71,8 @@ export class TushareSyncService implements OnApplicationBootstrap {
   private readonly syncConcurrency: number
   private readonly bootstrapOnStart: boolean
   private running = false
+  /** 上次 catch-up 检查实际执行的时间戳（0 = 从未执行） */
+  private lastCatchupAtMs = 0
 
   constructor(
     private readonly configService: ConfigService,
@@ -105,9 +110,7 @@ export class TushareSyncService implements OnApplicationBootstrap {
     this.registerSyncJobs()
 
     if (!this.bootstrapOnStart) {
-      this.logger.log(
-        'Bootstrap 同步已关闭（开发模式 / TUSHARE_BOOTSTRAP_ON_START=false），仅注册定时任务',
-      )
+      this.logger.log('Bootstrap 同步已关闭（开发模式 / TUSHARE_BOOTSTRAP_ON_START=false），仅注册定时任务')
       // 开发模式仍做一次 catch-up，方便联调盘后数据
       void this.checkAndCatchUpMissedSchedules()
       return
@@ -136,9 +139,7 @@ export class TushareSyncService implements OnApplicationBootstrap {
     if (stalePlans.length === 0) {
       this.logger.log('✅ 所有 bootstrap 任务数据已是最新，跳过启动同步')
     } else {
-      this.logger.log(
-        `启动同步：${stalePlans.length} / ${bootstrapPlans.length} 个任务需要同步（数据陈旧或未初始化）`,
-      )
+      this.logger.log(`启动同步：${stalePlans.length} / ${bootstrapPlans.length} 个任务需要同步（数据陈旧或未初始化）`)
       await this.runPlans({ trigger: 'bootstrap', mode: 'incremental', plans: stalePlans })
     }
 
@@ -161,10 +162,11 @@ export class TushareSyncService implements OnApplicationBootstrap {
    *   3. 今天尚未成功同步该任务
    */
   private async checkAndCatchUpMissedSchedules() {
-    const now = this.helper.getCurrentShanghaiNow()
+    const nowMs = Date.now()
+    if (nowMs - this.lastCatchupAtMs < CATCHUP_MIN_INTERVAL_MS) return
+    this.lastCatchupAtMs = nowMs
 
-    // 18:30 之前不可能有盘后任务到期，提前退出节省 DB 查询
-    if (now.hour() < 18 || (now.hour() === 18 && now.minute() < 30)) return
+    const now = this.helper.getCurrentShanghaiNow()
 
     let isTradingDay: boolean
     let latestTradeDate: string | null
@@ -215,19 +217,84 @@ export class TushareSyncService implements OnApplicationBootstrap {
 
   /**
    * 解析 6 段 cron 表达式（秒 分 时 日 月 周），判断今天该 cron 的触发时刻是否已过。
-   * 仅解析固定的 hour/minute 值（含通配 *）；范围/步进等复杂表达式视为「已过」（保守补跑）。
+   *
+   * 实现要点：
+   * - 先校验「今天」是否在 day-of-month / month / day-of-week 允许集合内，不在则返回 false（不应在今天补跑）。
+   * - 对 minute / hour 解析允许集合，取**今天该 cron 最后一次触发时刻**与当前时间比较：
+   *   - 任意位置已存在一个 ≤ now 的触发时刻 → 已过。
+   * - 支持 `*` / `数字` / `a,b,c` / `a-b` / `* /n` / `a-b/n`（步进语法，去除空格即可）。
+   * - 解析失败时保守返回 true，避免漏掉应跑任务。
    */
   private hasCronPassedToday(cronStr: string, now: dayjs.Dayjs): boolean {
-    const parts = cronStr.split(' ')
+    const parts = cronStr.trim().split(/\s+/)
     if (parts.length < 6) return false
-    const minutePart = parts[1]
-    const hourPart = parts[2]
-    // 通配符（*）视为「任意时刻，已过」
-    if (hourPart === '*') return true
-    const hour = parseInt(hourPart, 10)
-    const minute = minutePart === '*' ? 0 : parseInt(minutePart, 10)
-    if (isNaN(hour) || isNaN(minute)) return true
-    return now.hour() > hour || (now.hour() === hour && now.minute() >= minute)
+    const [, minutePart, hourPart, domPart, monthPart, dowPart] = parts
+
+    const parseField = (expr: string, min: number, max: number): Set<number> | null => {
+      if (expr === '*') {
+        const all = new Set<number>()
+        for (let i = min; i <= max; i++) all.add(i)
+        return all
+      }
+      const set = new Set<number>()
+      for (const piece of expr.split(',')) {
+        const [rangePart, stepPart] = piece.split('/')
+        const step = stepPart ? parseInt(stepPart, 10) : 1
+        if (isNaN(step) || step <= 0) return null
+        let lo: number
+        let hi: number
+        if (rangePart === '*') {
+          lo = min
+          hi = max
+        } else if (rangePart.includes('-')) {
+          const [a, b] = rangePart.split('-').map((s) => parseInt(s, 10))
+          if (isNaN(a) || isNaN(b)) return null
+          lo = a
+          hi = b
+        } else {
+          const v = parseInt(rangePart, 10)
+          if (isNaN(v)) return null
+          lo = v
+          hi = v
+        }
+        for (let i = lo; i <= hi; i += step) {
+          if (i >= min && i <= max) set.add(i)
+        }
+      }
+      return set.size > 0 ? set : null
+    }
+
+    const minutes = parseField(minutePart, 0, 59)
+    const hours = parseField(hourPart, 0, 23)
+    const doms = parseField(domPart, 1, 31)
+    const months = parseField(monthPart, 1, 12)
+    // cron 周字段：0 或 7 = 周日；dayjs.day() 返回 0=周日
+    let dows = parseField(dowPart, 0, 7)
+    if (dows && dows.has(7)) dows.add(0)
+    if (!minutes || !hours || !doms || !months || !dows) {
+      // 解析失败，保守视为已过
+      return true
+    }
+
+    // 是否覆盖「今天」
+    if (!months.has(now.month() + 1)) return false
+    // cron 规范：当 dom 或 dow 任一为 '*' 时取另一个；都不是 '*' 时取并集
+    const domIsStar = domPart === '*'
+    const dowIsStar = dowPart === '*'
+    const matchDom = doms.has(now.date())
+    const matchDow = dows.has(now.day())
+    const todayMatches =
+      domIsStar && dowIsStar ? true : domIsStar ? matchDow : dowIsStar ? matchDom : matchDom || matchDow
+    if (!todayMatches) return false
+
+    // 取今天 cron 最早 ≤ now 的触发时刻 → 已过
+    const nowMinutes = now.hour() * 60 + now.minute()
+    for (const h of hours) {
+      for (const m of minutes) {
+        if (h * 60 + m <= nowMinutes) return true
+      }
+    }
+    return false
   }
 
   getAvailableSyncPlans() {
@@ -370,7 +437,8 @@ export class TushareSyncService implements OnApplicationBootstrap {
     }
 
     if (this.running) {
-      const message = `上一轮同步仍在执行，跳过本次 ${trigger} 触发`
+      const taskNames = plans.map((p) => p.task).join(', ')
+      const message = `上一轮同步仍在执行，跳过本次 ${trigger} 触发（${taskNames}）`
       if (trigger === 'manual') {
         throw new ConflictException(message)
       }
@@ -624,6 +692,8 @@ export class TushareSyncService implements OnApplicationBootstrap {
       this.syncRoundTasksGauge.set({ trigger, mode, status: 'executed' }, executedTasks.length)
       this.syncRoundTasksGauge.set({ trigger, mode, status: 'failed' }, failedTasks.length)
       this.syncRoundTasksGauge.set({ trigger, mode, status: 'skipped' }, skippedTasks.length)
+      // 本轮结束后立即补跑：若本批次执行期间有定时任务因全局锁冲突被跳过，无需等到下一个整点
+      void this.checkAndCatchUpMissedSchedules()
     }
   }
 
@@ -704,9 +774,7 @@ export class TushareSyncService implements OnApplicationBootstrap {
    * 仅在有行情类任务执行成功后触发。
    */
   private triggerHeatmapSnapshotAsync(result: RunPlansResult): void {
-    if (result.executedTasks.length === 0) {
-      return
-    }
+    if (!this.hasExecutedCategory(result, ['market'])) return
     void this.heatmapSnapshotService.aggregateSnapshot(result.targetTradeDate ?? undefined).catch((err) => {
       this.logger.warn(`热力图快照聚合失败（不影响主同步流程）：${(err as Error).message}`)
     })
@@ -716,10 +784,21 @@ export class TushareSyncService implements OnApplicationBootstrap {
    * 异步触发盘后信号生成（不阻塞同步完成流程）。
    */
   private triggerSignalGenerationAsync(result: RunPlansResult): void {
-    if (result.executedTasks.length === 0) return
+    if (!this.hasExecutedCategory(result, ['market', 'moneyflow', 'factor'])) return
     void this.signalGenerationService.generateAllSignals(result.targetTradeDate ?? undefined).catch((err) => {
       this.logger.warn(`信号生成失败（不影响主同步流程）：${(err as Error).message}`)
     })
+  }
+
+  /** 判断本轮执行的任务中是否包含指定 category 的 plan */
+  private hasExecutedCategory(result: RunPlansResult, categories: TushareSyncCategory[]): boolean {
+    if (result.executedTasks.length === 0) return false
+    const wanted = new Set<TushareSyncCategory>(categories)
+    for (const task of result.executedTasks) {
+      const plan = this.registry.getPlan(task)
+      if (plan && wanted.has(plan.category)) return true
+    }
+    return false
   }
 
   private triggerDataQualityCheckAsync(result: RunPlansResult): void {

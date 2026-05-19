@@ -34,6 +34,15 @@ export class FinancialApiService {
     })
   }
 
+  /** 按股票和报告期获取利润表 */
+  getIncomeByTsCodeAndPeriod(tsCode: string, period: string) {
+    return this.client.call({
+      api_name: TushareApiName.INCOME,
+      params: { ts_code: tsCode, period },
+      fields: [...TUSHARE_INCOME_FIELDS],
+    })
+  }
+
   /** 按日期区间获取业绩快报 */
   getExpress(startDate: string, endDate: string) {
     return this.client.call({
@@ -133,11 +142,38 @@ export class FinancialApiService {
     })
   }
 
+  /** 按股票和报告期获取资产负债表 */
+  getBalanceSheetByTsCodeAndPeriod(tsCode: string, period: string) {
+    return this.client.call({
+      api_name: TushareApiName.BALANCE_SHEET,
+      params: { ts_code: tsCode, period },
+      fields: [...TUSHARE_BALANCE_SHEET_FIELDS],
+    })
+  }
+
+  /** 按报告期获取全市场资产负债表（balancesheet_vip，需 5000+ 积分） */
+  getBalanceSheetByPeriod(period: string) {
+    return this.client.call({
+      api_name: TushareApiName.BALANCE_SHEET_VIP,
+      params: { period },
+      fields: [...TUSHARE_BALANCE_SHEET_FIELDS],
+    })
+  }
+
   /** 获取指定股票的全部现金流量表历史 */
   getCashflowByTsCode(tsCode: string) {
     return this.client.call({
       api_name: TushareApiName.CASHFLOW,
       params: { ts_code: tsCode },
+      fields: [...TUSHARE_CASHFLOW_FIELDS],
+    })
+  }
+
+  /** 按股票和报告期获取现金流量表 */
+  getCashflowByTsCodeAndPeriod(tsCode: string, period: string) {
+    return this.client.call({
+      api_name: TushareApiName.CASHFLOW,
+      params: { ts_code: tsCode, period },
       fields: [...TUSHARE_CASHFLOW_FIELDS],
     })
   }

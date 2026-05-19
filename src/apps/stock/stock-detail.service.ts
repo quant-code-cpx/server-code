@@ -203,12 +203,15 @@ export class StockDetailService {
     }
 
     let rows: ChartRow[]
+    // limit 模式下保存含预热数据的全量行，用于 MA 计算
+    let maSourceRows: ChartRow[] | null = null
 
     if (dto.limit) {
-      // 分页模式：按 tradeDate 倒序取最新 N 条，再翻转为升序供 MA 计算
+      // 分页模式：多取 MA_WARMUP 条用于预热 MA 计算，只返回用户要求的 limit 条
+      const MA_WARMUP = 60
       const cutoff = dto.endDate ? this.parseCompactDate(dto.endDate, 'endDate') : new Date()
       const lim = dto.limit
-      rows = (
+      const allRows = (
         await this.prisma.$queryRaw<ChartRow[]>`
           SELECT
             t.trade_date  AS "tradeDate",
@@ -221,9 +224,12 @@ export class StockDetailService {
           WHERE t.ts_code = ${tsCode}
             AND t.trade_date <= ${cutoff}
           ORDER BY t.trade_date DESC
-          LIMIT ${lim}
+          LIMIT ${lim + MA_WARMUP}
         `
       ).reverse()
+      // maSourceRows 含预热数据；rows 是最终返回的实际数据
+      maSourceRows = allRows
+      rows = allRows.slice(-lim)
     } else {
       // 范围模式：指定起止日期（默认最近 2 年/5 年）
       const { startDate, endDate } = this.resolveChartDateRange(dto, period)
@@ -248,10 +254,13 @@ export class StockDetailService {
     }
 
     // 计算复权价格（rows 此时为升序）
-    const latestAdj = rows[rows.length - 1]?.adjFactor ?? 1
+    // 用最近一条非 null 的 adj_factor 作为 qfq 基准：
+    // 当天若除权因子尚未入库（adj_factor=null），说明无新除权事件，因子与上一已知值相同
+    const latestAdj = [...rows].reverse().find((r) => r.adjFactor !== null)?.adjFactor ?? 1
 
-    const items = rows.map((row) => {
-      const factor = row.adjFactor ?? 1
+    const toItem = (row: ChartRow) => {
+      // null adj_factor 视为与最近已知因子相同（无除权），而非错误地回退到 1
+      const factor = row.adjFactor ?? latestAdj
       let adjMultiplier = 1
 
       if (adjustType === AdjustType.QFQ) {
@@ -272,16 +281,21 @@ export class StockDetailService {
         amount: row.amount,
         pctChg: row.pctChg,
       }
-    })
+    }
 
-    // 计算 MA 指标（close 不足时返回 null）
-    const closes = items.map((r) => r.close)
+    // limit 模式：用含预热数据的 maSourceRows 计算 MA，只输出 rows 对应部分
+    const allItems = (maSourceRows ?? rows).map(toItem)
+    const warmupCount = maSourceRows ? maSourceRows.length - rows.length : 0
+    const items = warmupCount > 0 ? allItems.slice(warmupCount) : allItems
+
+    // 计算 MA 指标（利用预热数据，返回数据中 MA 不再有前置 null）
+    const allCloses = allItems.map((r) => r.close)
     const seriesWithMa = items.map((row, i) => ({
       ...row,
-      ma5: calcMa(closes, i, 5),
-      ma10: calcMa(closes, i, 10),
-      ma20: calcMa(closes, i, 20),
-      ma60: calcMa(closes, i, 60),
+      ma5: calcMa(allCloses, warmupCount + i, 5),
+      ma10: calcMa(allCloses, warmupCount + i, 10),
+      ma20: calcMa(allCloses, warmupCount + i, 20),
+      ma60: calcMa(allCloses, warmupCount + i, 60),
     }))
 
     // 判断是否还有更早的历史数据

@@ -21,6 +21,7 @@ dayjs.extend(timezone)
 
 const STANDARD_CACHE_TTL = 4 * 3600
 const EXTENDED_CACHE_TTL = 8 * 3600
+const DETAIL_CACHE_VERSION = 2
 
 @Injectable()
 export class IndustryRotationService {
@@ -355,14 +356,13 @@ export class IndustryRotationService {
   // ─── 3.4 行业估值分位 ─────────────────────────────────────────────────────
 
   async getIndustryValuation(query: IndustryValuationQueryDto) {
-    const tradeDate = query.trade_date
-      ? this.parseDate(query.trade_date)
-      : await this.resolveLatestDailyBasicTradeDate()
+    const requestedTradeDate = query.trade_date ? this.parseDate(query.trade_date) : undefined
+    const industryFilter = query.industry
+    const tradeDate = await this.resolveLatestValuationMedianTradeDate(requestedTradeDate, industryFilter)
     if (!tradeDate) return { tradeDate: '', industries: [] }
 
     const sortBy = query.sort_by ?? 'pe_percentile_1y'
     const order = query.order ?? 'asc'
-    const industryFilter = query.industry
     const tradeDateStr = this.formatDateStr(tradeDate)
 
     const cacheKey = this.cacheService.buildKey('ind-rotation:val', {
@@ -557,6 +557,7 @@ export class IndustryRotationService {
     }
 
     const cacheKey = this.cacheService.buildKey('ind-rotation:detail', {
+      version: DETAIL_CACHE_VERSION,
       tsCode: inputTsCode,
       industry,
       days,
@@ -645,7 +646,11 @@ export class IndustryRotationService {
       // Step 4: Valuation snapshot
       let valuation = null
       try {
-        const valResult = await this.getIndustryValuation({ industry: resolvedIndustry, sort_by: 'pe_percentile_1y', order: 'asc' })
+        const valResult = await this.getIndustryValuation({
+          industry: resolvedIndustry,
+          sort_by: 'pe_percentile_1y',
+          order: 'asc',
+        })
         if (valResult.industries.length > 0) {
           const v = valResult.industries[0]
           valuation = {
@@ -674,15 +679,54 @@ export class IndustryRotationService {
         const latestDateStr = this.formatDateStr(latestTradeDate)
         const stockRows = await this.prisma.$queryRawUnsafe<RawRow[]>(
           `
+          WITH sw_candidates AS (
+            SELECT DISTINCT ON (sw.ts_code)
+              sw.ts_code,
+              sw.name,
+              CASE
+                WHEN sw.l3_name = $2 THEN 1
+                WHEN sw.l2_name = $2 THEN 2
+                WHEN sw.l1_name = $2 THEN 3
+                ELSE 9
+              END AS source_rank
+            FROM sw_industry_members sw
+            JOIN stock_basic_profiles sb ON sb.ts_code = sw.ts_code AND sb.list_status = 'L'
+            WHERE sw.is_new = 'Y'
+              AND (sw.l3_name = $2 OR sw.l2_name = $2 OR sw.l1_name = $2)
+            ORDER BY sw.ts_code, source_rank, sw.in_date DESC NULLS LAST
+          ),
+          profile_candidates AS (
+            SELECT sb.ts_code, sb.name, 5 AS source_rank
+            FROM stock_basic_profiles sb
+            WHERE sb.industry = $2 AND sb.list_status = 'L'
+          ),
+          ths_candidates AS (
+            SELECT m.con_code AS ts_code, COALESCE(m.con_name, sb.name) AS name, 4 AS source_rank
+            FROM ths_index_boards b
+            JOIN ths_index_members m ON m.ts_code = b.ts_code AND COALESCE(m.is_new, 'Y') = 'Y'
+            JOIN stock_basic_profiles sb ON sb.ts_code = m.con_code AND sb.list_status = 'L'
+            WHERE b.name = $2
+          ),
+          candidates AS (
+            SELECT * FROM sw_candidates
+            UNION ALL
+            SELECT * FROM ths_candidates
+            UNION ALL
+            SELECT * FROM profile_candidates
+          ),
+          dedup_candidates AS (
+            SELECT DISTINCT ON (ts_code) ts_code, name, source_rank
+            FROM candidates
+            ORDER BY ts_code, source_rank
+          )
           SELECT
-            sb.ts_code, sb.name,
+            c.ts_code, c.name,
             d.pct_chg,
             db.pe_ttm, db.pb, db.total_mv
-          FROM stock_basic_profiles sb
-          LEFT JOIN stock_daily_prices d ON d.ts_code = sb.ts_code AND d.trade_date = $1::date
-          LEFT JOIN stock_daily_valuation_metrics db ON db.ts_code = sb.ts_code AND db.trade_date = $1::date
-          WHERE sb.industry = $2 AND sb.list_status = 'L'
-          ORDER BY db.total_mv DESC NULLS LAST
+          FROM dedup_candidates c
+          LEFT JOIN stock_daily_prices d ON d.ts_code = c.ts_code AND d.trade_date = $1::date
+          LEFT JOIN stock_daily_valuation_metrics db ON db.ts_code = c.ts_code AND db.trade_date = $1::date
+          ORDER BY c.source_rank ASC, db.total_mv DESC NULLS LAST, c.ts_code
           LIMIT 20
         `,
           latestDateStr,
@@ -691,7 +735,7 @@ export class IndustryRotationService {
 
         topStocks = stockRows.map((r) => ({
           tsCode: r.ts_code as string,
-          name: r.name as string | null,
+          name: (r.name as string | null) ?? (r.ts_code as string),
           pctChg: r.pct_chg != null ? Number(r.pct_chg) : null,
           peTtm: r.pe_ttm != null ? Number(r.pe_ttm) : null,
           pb: r.pb != null ? Number(r.pb) : null,
@@ -756,6 +800,29 @@ export class IndustryRotationService {
       select: { tradeDate: true },
     })
     return record?.tradeDate ?? null
+  }
+
+  private async resolveLatestValuationMedianTradeDate(requestedTradeDate?: Date, industry?: string) {
+    const where: string[] = ["scope != '__ALL__'"]
+    const params: (string | number)[] = []
+
+    if (requestedTradeDate) {
+      params.push(this.formatDateStr(requestedTradeDate))
+      where.push(`trade_date <= $${params.length}::date`)
+    }
+
+    if (industry) {
+      params.push(industry)
+      where.push(`scope = $${params.length}`)
+    }
+
+    const rows = await this.prisma.$queryRawUnsafe<RawRow[]>(
+      `SELECT MAX(trade_date) AS trade_date FROM valuation_daily_medians WHERE ${where.join(' AND ')}`,
+      ...params,
+    )
+
+    const tradeDate = rows[0]?.trade_date
+    return tradeDate instanceof Date ? tradeDate : null
   }
 
   private getValuationLabel(percentile: number | null): string {

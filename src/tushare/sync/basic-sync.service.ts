@@ -484,7 +484,7 @@ export class BasicSyncService {
         const result = await this.helper.prisma.thsMember.createMany({ data: mapped, skipDuplicates: true })
         totalRows += result.count
       }
-      await new Promise((resolve) => setTimeout(resolve, 300))
+      // 节流统一由 TushareClient.DOCUMENTED_RATE_LIMIT_MS('ths_member') 处理
     }
 
     await this.helper.flushValidationLogs(collector)

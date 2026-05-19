@@ -7,11 +7,12 @@
  * - syncForecast: 单报告期失败不阻断后续报告期（错误容忍）
  * - syncIncome: full 模式 → 触发 rebuildIncomeRecentYears（income.deleteMany 被调用）
  * - syncIncome: incremental + 空表 → 也触发重建
- * - syncIncome: incremental + 非空表 → 不触发重建
+ * - syncIncome: incremental + 非空表 → 按披露计划补齐缺失报告期
  */
 
-import { TushareSyncTaskName } from 'src/constant/tushare.constant'
+import { TushareApiName, TushareSyncTaskName } from 'src/constant/tushare.constant'
 import { FinancialApiService } from '../../api/financial-api.service'
+import { TushareApiError } from '../../api/tushare-client.service'
 import { FinancialSyncService } from '../financial-sync.service'
 import { SyncHelperService } from '../sync-helper.service'
 
@@ -22,17 +23,29 @@ function buildPrismaMock() {
     stockBasic: {
       findMany: jest.fn(async () => [] as { tsCode: string }[]),
     },
+    disclosureDate: {
+      findMany: jest.fn(async () => [] as { tsCode: string; endDate: Date }[]),
+    },
     income: {
+      findMany: jest.fn(async () => []),
       deleteMany: jest.fn(async () => ({})),
       createMany: jest.fn(async () => ({ count: 0 })),
       count: jest.fn(async () => 0),
     },
     balanceSheet: {
+      findMany: jest.fn(async () => []),
       deleteMany: jest.fn(async () => ({})),
       createMany: jest.fn(async () => ({ count: 0 })),
       count: jest.fn(async () => 0),
     },
     cashflow: {
+      findMany: jest.fn(async () => []),
+      deleteMany: jest.fn(async () => ({})),
+      createMany: jest.fn(async () => ({ count: 0 })),
+      count: jest.fn(async () => 0),
+    },
+    finaIndicator: {
+      findMany: jest.fn(async () => []),
       deleteMany: jest.fn(async () => ({})),
       createMany: jest.fn(async () => ({ count: 0 })),
       count: jest.fn(async () => 0),
@@ -65,6 +78,12 @@ function buildMockHelper(prismaMock = buildPrismaMock()) {
         add: jest.fn(() => ({ format: jest.fn(() => '20270101') })),
       })),
       toDate: jest.fn((s: string) => new Date(s.replace(/(\d{4})(\d{2})(\d{2})/, '$1-$2-$3'))),
+      formatDate: jest.fn((date: Date) => {
+        const y = date.getUTCFullYear()
+        const m = String(date.getUTCMonth() + 1).padStart(2, '0')
+        const d = String(date.getUTCDate()).padStart(2, '0')
+        return `${y}${m}${d}`
+      }),
       addDays: jest.fn((_date: string, _n: number) => '20260101'),
       flushValidationLogs: jest.fn(async () => undefined),
     },
@@ -76,11 +95,16 @@ function buildMockApi() {
   return {
     getForecastByPeriod: jest.fn(async () => []),
     getIncomeByTsCode: jest.fn(async () => []),
+    getIncomeByTsCodeAndPeriod: jest.fn(async () => []),
     getBalanceSheetByTsCode: jest.fn(async () => []),
+    getBalanceSheetByTsCodeAndPeriod: jest.fn(async () => []),
+    getBalanceSheetByPeriod: jest.fn(async () => []),
     getCashflowByTsCode: jest.fn(async () => []),
+    getCashflowByTsCodeAndPeriod: jest.fn(async () => []),
     getExpressByDateRange: jest.fn(async () => []),
     getDividendByTsCode: jest.fn(async () => []),
     getFinaIndicatorByTsCode: jest.fn(async () => []),
+    getFinaIndicatorByTsCodeAndPeriod: jest.fn(async () => []),
     getTop10HoldersByTsCodeAndPeriod: jest.fn(async () => []),
     getTop10FloatHoldersByTsCodeAndPeriod: jest.fn(async () => []),
     getStkHolderNumberByDateRange: jest.fn(async () => []),
@@ -246,6 +270,46 @@ describe('FinancialSyncService', () => {
       expect(prismaMock.income.deleteMany).not.toHaveBeenCalled()
     })
 
+    it('incremental + 非空表 + 披露计划有缺口时应按股票和报告期补齐', async () => {
+      const prismaMock = buildPrismaMock()
+      prismaMock.income.count.mockResolvedValue(10_000) // 非空表，不应走重建
+      prismaMock.disclosureDate.findMany.mockResolvedValue([
+        { tsCode: '688525.SH', endDate: new Date(Date.UTC(2026, 2, 31)) },
+      ])
+      prismaMock.income.findMany.mockResolvedValue([]) // 目标表缺少 688525.SH 2026Q1
+      ;(prismaMock.income.createMany as jest.Mock).mockImplementation(async (args: { data?: unknown[] }) => ({
+        count: args.data?.length ?? 0,
+      }))
+
+      const helper = buildMockHelper(prismaMock)
+      helper.buildRecentQuarterPeriods.mockReturnValue(['20260331'])
+      const api = buildMockApi()
+      api.getIncomeByTsCodeAndPeriod.mockResolvedValue([
+        {
+          ts_code: '688525.SH',
+          ann_date: '20260416',
+          f_ann_date: '20260416',
+          end_date: '20260331',
+          report_type: '1',
+          comp_type: '1',
+          end_type: '1',
+          total_revenue: 6814251870.63,
+        },
+      ])
+
+      const service = createService(api, helper)
+      await service.syncIncome('incremental')
+
+      expect(api.getIncomeByTsCodeAndPeriod).toHaveBeenCalledWith('688525.SH', '20260331')
+      expect(prismaMock.income.deleteMany).toHaveBeenCalledWith({
+        where: { tsCode: '688525.SH', endDate: expect.any(Date) },
+      })
+      expect(prismaMock.income.createMany).toHaveBeenCalledWith({
+        data: [expect.objectContaining({ tsCode: '688525.SH', totalRevenue: 6814251870.63 })],
+        skipDuplicates: true,
+      })
+    })
+
     it('incremental + 已同步今日时不触发任何操作', async () => {
       const prismaMock = buildPrismaMock()
       prismaMock.income.count.mockResolvedValue(50_000) // 非空表
@@ -257,6 +321,117 @@ describe('FinancialSyncService', () => {
       await service.syncIncome('incremental')
 
       expect(prismaMock.income.deleteMany).not.toHaveBeenCalled()
+    })
+  })
+
+  // ── syncBalanceSheet() ───────────────────────────────────────────────────
+
+  describe('syncBalanceSheet()', () => {
+    it('full 模式应优先按报告期调用 balancesheet_vip 重建', async () => {
+      const prismaMock = buildPrismaMock()
+      ;(prismaMock.balanceSheet.createMany as jest.Mock).mockImplementation(async (args: { data?: unknown[] }) => ({
+        count: args.data?.length ?? 0,
+      }))
+
+      const helper = buildMockHelper(prismaMock)
+      helper.buildRecentQuarterPeriods.mockReturnValue(['20260331'])
+      const api = buildMockApi()
+      api.getBalanceSheetByPeriod.mockResolvedValue([
+        {
+          ts_code: '688525.SH',
+          ann_date: '20260416',
+          f_ann_date: '20260416',
+          end_date: '20260331',
+          report_type: '1',
+          comp_type: '1',
+          end_type: '1',
+          total_assets: 12_345,
+        },
+      ])
+
+      const service = createService(api, helper)
+      await service.syncBalanceSheet('full')
+
+      expect(api.getBalanceSheetByPeriod).toHaveBeenCalledWith('20260331')
+      expect(api.getBalanceSheetByTsCode).not.toHaveBeenCalled()
+      expect(prismaMock.balanceSheet.deleteMany).toHaveBeenCalledWith({})
+      expect(prismaMock.balanceSheet.createMany).toHaveBeenCalledWith({
+        data: [expect.objectContaining({ tsCode: '688525.SH', totalAssets: 12_345 })],
+        skipDuplicates: true,
+      })
+    })
+
+    it('balancesheet_vip 权限不足时应降级为 balancesheet 按股票重建', async () => {
+      const prismaMock = buildPrismaMock()
+      prismaMock.stockBasic.findMany.mockResolvedValue([{ tsCode: '688525.SH' }] as never)
+      ;(prismaMock.balanceSheet.createMany as jest.Mock).mockImplementation(async (args: { data?: unknown[] }) => ({
+        count: args.data?.length ?? 0,
+      }))
+
+      const helper = buildMockHelper(prismaMock)
+      helper.buildRecentQuarterPeriods.mockReturnValue(['20260331'])
+      const api = buildMockApi()
+      api.getBalanceSheetByPeriod.mockRejectedValue(
+        new TushareApiError(TushareApiName.BALANCE_SHEET_VIP, -2001, 'Tushare error: 抱歉，您没有访问该接口的权限'),
+      )
+      api.getBalanceSheetByTsCode.mockResolvedValue([
+        {
+          ts_code: '688525.SH',
+          end_date: '20260331',
+          total_assets: 12_345,
+        },
+      ])
+
+      const service = createService(api, helper)
+      await service.syncBalanceSheet('full')
+
+      expect(api.getBalanceSheetByPeriod).toHaveBeenCalledWith('20260331')
+      expect(api.getBalanceSheetByTsCode).toHaveBeenCalledWith('688525.SH')
+      expect(prismaMock.balanceSheet.createMany).toHaveBeenCalledWith({
+        data: [expect.objectContaining({ tsCode: '688525.SH', totalAssets: 12_345 })],
+        skipDuplicates: true,
+      })
+    })
+
+    it('incremental + 非空表 + 披露计划有缺口时应按报告期优先使用 balancesheet_vip', async () => {
+      const prismaMock = buildPrismaMock()
+      prismaMock.balanceSheet.count.mockResolvedValue(10_000)
+      prismaMock.disclosureDate.findMany.mockResolvedValue([
+        { tsCode: '688525.SH', endDate: new Date(Date.UTC(2026, 2, 31)) },
+      ])
+      prismaMock.balanceSheet.findMany.mockResolvedValue([])
+      ;(prismaMock.balanceSheet.createMany as jest.Mock).mockImplementation(async (args: { data?: unknown[] }) => ({
+        count: args.data?.length ?? 0,
+      }))
+
+      const helper = buildMockHelper(prismaMock)
+      helper.buildRecentQuarterPeriods.mockReturnValue(['20260331'])
+      const api = buildMockApi()
+      api.getBalanceSheetByPeriod.mockResolvedValue([
+        {
+          ts_code: '688525.SH',
+          ann_date: '20260416',
+          f_ann_date: '20260416',
+          end_date: '20260331',
+          report_type: '1',
+          comp_type: '1',
+          end_type: '1',
+          total_assets: 12_345,
+        },
+      ])
+
+      const service = createService(api, helper)
+      await service.syncBalanceSheet('incremental')
+
+      expect(api.getBalanceSheetByPeriod).toHaveBeenCalledWith('20260331')
+      expect(api.getBalanceSheetByTsCodeAndPeriod).not.toHaveBeenCalled()
+      expect(prismaMock.balanceSheet.deleteMany).toHaveBeenCalledWith({
+        where: { endDate: expect.any(Date), tsCode: { in: ['688525.SH'] } },
+      })
+      expect(prismaMock.balanceSheet.createMany).toHaveBeenCalledWith({
+        data: [expect.objectContaining({ tsCode: '688525.SH', totalAssets: 12_345 })],
+        skipDuplicates: true,
+      })
     })
   })
 })

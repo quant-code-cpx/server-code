@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common'
 import { Prisma } from '@prisma/client'
-import { TushareSyncExecutionStatus, TushareSyncTaskName } from 'src/constant/tushare.constant'
+import { TushareApiName, TushareSyncExecutionStatus, TushareSyncTaskName } from 'src/constant/tushare.constant'
 
 type AnyModelDelegate = {
   findFirst(args?: Record<string, unknown>): Promise<Record<string, unknown> | null>
@@ -8,6 +8,22 @@ type AnyModelDelegate = {
   createMany(args: Record<string, unknown>): Prisma.PrismaPromise<{ count: number }>
   deleteMany(args?: Record<string, unknown>): Prisma.PrismaPromise<{ count: number }>
   count(args?: Record<string, unknown>): Prisma.PrismaPromise<number>
+}
+
+type FinancialReportModelName = 'income' | 'balanceSheet' | 'cashflow' | 'finaIndicator'
+
+interface FinancialReportCandidate {
+  tsCode: string
+  period: string
+}
+
+interface FinancialReportIncrementalOptions {
+  task: TushareSyncTaskName
+  label: string
+  modelName: FinancialReportModelName
+  fetchRows: (tsCode: string, period: string) => Promise<Record<string, unknown>[]>
+  mapRecord: (record: Record<string, unknown>, collector?: ValidationCollector) => unknown | null | undefined
+  lookbackYears?: number
 }
 import { FinancialApiService } from '../api/financial-api.service'
 import {
@@ -28,6 +44,7 @@ import {
   mapTop10FloatHoldersRecord,
   mapTop10HoldersRecord,
 } from '../tushare-sync.mapper'
+import { TushareApiError } from '../api/tushare-client.service'
 import { SyncHelperService } from './sync-helper.service'
 import { TushareSyncMode, TushareSyncPlan } from './sync-plan.types'
 import { ValidationCollector } from './quality/validation-collector'
@@ -47,6 +64,8 @@ import { ValidationCollector } from './quality/validation-collector'
 export class FinancialSyncService {
   private readonly logger = new Logger(FinancialSyncService.name)
   private readonly recentFinancialRebuildYears = 15
+  private readonly balanceSheetCreateManyChunkSize = 200
+  private balanceSheetVipAvailable: boolean | null = null
 
   constructor(
     private readonly api: FinancialApiService,
@@ -225,7 +244,7 @@ export class FinancialSyncService {
         supportsFullSync: true,
         requiresTradeDate: false,
         schedule: {
-          cron: '0 0 21 * * *',
+          cron: '0 15 21 * * *',
           timeZone: this.helper.syncTimeZone,
           description: '每日晚间同步股东增减持公告',
         },
@@ -305,9 +324,9 @@ export class FinancialSyncService {
         supportsFullSync: true,
         requiresTradeDate: false,
         schedule: {
-          cron: '0 30 21 * * *',
+          cron: '0 35 21 * * *',
           timeZone: this.helper.syncTimeZone,
-          description: '每日差收盘同步回购公告',
+          description: '每日盘后同步回购公告',
         },
         execute: ({ mode }) => this.syncRepurchase(mode),
       },
@@ -332,7 +351,13 @@ export class FinancialSyncService {
       return
     }
 
-    this.logger.log('[利润表] 当前自动同步仅在空表时触发近15年重建；现有数据非空，跳过本轮')
+    await this.syncFinancialReportsByDisclosure({
+      task: TushareSyncTaskName.INCOME,
+      label: '利润表',
+      modelName: 'income',
+      fetchRows: (tsCode, period) => this.api.getIncomeByTsCodeAndPeriod(tsCode, period),
+      mapRecord: mapIncomeRecord,
+    })
   }
 
   // ─── 利润表全量重建（最近 N 年） ──────────────────────────────────────────
@@ -417,6 +442,8 @@ export class FinancialSyncService {
   // ─── 资产负债表 ────────────────────────────────────────────────────────────
 
   async syncBalanceSheet(mode: TushareSyncMode = 'incremental'): Promise<void> {
+    this.balanceSheetVipAvailable = null
+
     if (mode === 'full') {
       await this.rebuildBalanceSheetRecentYears(this.recentFinancialRebuildYears)
       return
@@ -432,13 +459,37 @@ export class FinancialSyncService {
       return
     }
 
-    this.logger.log('[资产负债表] 当前自动同步仅在空表时触发近15年重建；现有数据非空，跳过本轮')
+    await this.syncBalanceSheetByDisclosure()
   }
 
   async rebuildBalanceSheetRecentYears(years = 15): Promise<void> {
+    this.balanceSheetVipAvailable = null
+
     const startedAt = new Date()
     const periods = this.helper.buildRecentQuarterPeriods(years)
     const periodSet = new Set(periods)
+
+    const vipCollector = new ValidationCollector(TushareSyncTaskName.BALANCE_SHEET)
+    const vipRowCount = await this.rebuildBalanceSheetRecentYearsByVip(periods, vipCollector, years)
+    if (vipRowCount !== null) {
+      await this.helper.flushValidationLogs(vipCollector)
+      await this.helper.writeSyncLog(
+        TushareSyncTaskName.BALANCE_SHEET,
+        {
+          status: TushareSyncExecutionStatus.SUCCESS,
+          message: `资产负债表重建完成，最近 ${years} 年，共 ${vipRowCount} 条（balancesheet_vip）`,
+          payload: {
+            years,
+            periodCount: periods.length,
+            rowCount: vipRowCount,
+            sourceApi: TushareApiName.BALANCE_SHEET_VIP,
+          },
+        },
+        startedAt,
+      )
+      return
+    }
+
     const stocks = await this.getAllStockCodes()
 
     if (!stocks.length) {
@@ -447,7 +498,7 @@ export class FinancialSyncService {
     }
 
     await this.helper.prisma.balanceSheet.deleteMany({})
-    this.logger.log(`[资产负债表] 已清空旧数据，开始按股票重建最近 ${years} 年（${stocks.length} 只股票）`)
+    this.logger.log(`[资产负债表] balancesheet_vip 不可用，降级按股票重建最近 ${years} 年（${stocks.length} 只股票）`)
 
     let totalRows = 0
     const failedStocks: string[] = []
@@ -516,6 +567,260 @@ export class FinancialSyncService {
     )
   }
 
+  private async rebuildBalanceSheetRecentYearsByVip(
+    periods: string[],
+    collector: ValidationCollector,
+    years: number,
+  ): Promise<number | null> {
+    let totalRows = 0
+    let tableCleared = false
+
+    for (const [i, period] of periods.entries()) {
+      const rows = await this.tryGetBalanceSheetRowsByPeriod(period)
+      if (rows === null) {
+        if (tableCleared) {
+          await this.helper.prisma.balanceSheet.deleteMany({})
+        }
+        return null
+      }
+
+      if (!tableCleared) {
+        await this.helper.prisma.balanceSheet.deleteMany({})
+        this.logger.log(
+          `[资产负债表] balancesheet_vip 可用，已清空旧数据，开始按报告期重建最近 ${years} 年（${periods.length} 个报告期）`,
+        )
+        tableCleared = true
+      }
+
+      const mapped = this.mapBalanceSheetRows(rows, collector, new Set([period]))
+      totalRows += await this.createBalanceSheetRows(mapped)
+
+      if (i === 0 || (i + 1) % 10 === 0 || i === periods.length - 1) {
+        this.logger.log(`[资产负债表] VIP 进度 ${i + 1}/${periods.length}，报告期 ${period}，累计 ${totalRows} 条`)
+      }
+    }
+
+    return totalRows
+  }
+
+  private async syncBalanceSheetByDisclosure(): Promise<void> {
+    const startedAt = new Date()
+    const lookbackYears = 2
+    const periods = this.helper.buildRecentQuarterPeriods(lookbackYears)
+    const candidates = await this.findMissingFinancialReportCandidates('balanceSheet', periods)
+
+    if (!candidates.length) {
+      this.logger.log(`[资产负债表] 近 ${lookbackYears} 年已披露报告均已入库，无需增量补齐`)
+      await this.helper.writeSyncLog(
+        TushareSyncTaskName.BALANCE_SHEET,
+        {
+          status: TushareSyncExecutionStatus.SUCCESS,
+          message: '资产负债表增量检查完成，无缺失',
+          payload: { lookbackYears, periodCount: periods.length, candidateCount: 0, rowCount: 0 },
+        },
+        startedAt,
+      )
+      return
+    }
+
+    this.logger.log(
+      `[资产负债表] 发现 ${candidates.length} 个已披露但未入库的股票/报告期，优先按报告期调用 balancesheet_vip`,
+    )
+
+    const collector = new ValidationCollector(TushareSyncTaskName.BALANCE_SHEET)
+    const grouped = this.groupFinancialReportCandidatesByPeriod(candidates)
+    const failed: Array<{ tsCode: string; period: string; error: string }> = []
+    let totalRows = 0
+    let emptyRows = 0
+    let vipPeriodCount = 0
+    let fallbackCandidateCount = 0
+
+    for (const [periodIndex, [period, periodCandidates]] of Array.from(grouped.entries()).entries()) {
+      const vipRows = await this.tryGetBalanceSheetRowsByPeriod(period)
+
+      if (vipRows === null) {
+        fallbackCandidateCount += periodCandidates.length
+        const fallbackResult = await this.syncBalanceSheetCandidatesOneByOne(periodCandidates, collector)
+        totalRows += fallbackResult.totalRows
+        emptyRows += fallbackResult.emptyRows
+        failed.push(...fallbackResult.failed)
+      } else {
+        vipPeriodCount++
+        const candidateKeys = new Set(periodCandidates.map((candidate) => `${candidate.tsCode}:${candidate.period}`))
+        const mapped = this.mapBalanceSheetRows(vipRows, collector, new Set([period]), candidateKeys)
+        const coveredKeys = new Set(
+          mapped
+            .map((row) => (typeof row.tsCode === 'string' ? `${row.tsCode}:${period}` : null))
+            .filter((key): key is string => Boolean(key)),
+        )
+
+        if (!mapped.length) {
+          emptyRows += periodCandidates.length
+        } else {
+          const tsCodes = Array.from(new Set(periodCandidates.map((candidate) => candidate.tsCode)))
+          await this.helper.prisma.balanceSheet.deleteMany({
+            where: {
+              endDate: this.helper.toDate(period),
+              tsCode: { in: tsCodes },
+            },
+          })
+          totalRows += await this.createBalanceSheetRows(mapped)
+          emptyRows += periodCandidates.filter(
+            (candidate) => !coveredKeys.has(`${candidate.tsCode}:${candidate.period}`),
+          ).length
+        }
+      }
+
+      this.logger.log(
+        `[资产负债表] 进度 ${periodIndex + 1}/${grouped.size}，报告期 ${period}，候选 ${periodCandidates.length} 个，累计 ${totalRows} 条`,
+      )
+    }
+
+    await this.helper.flushValidationLogs(collector)
+    await this.helper.writeSyncLog(
+      TushareSyncTaskName.BALANCE_SHEET,
+      {
+        status: TushareSyncExecutionStatus.SUCCESS,
+        message: `资产负债表增量补齐完成，候选 ${candidates.length} 个，写入 ${totalRows} 条`,
+        payload: {
+          lookbackYears,
+          periodCount: periods.length,
+          candidateCount: candidates.length,
+          rowCount: totalRows,
+          emptyCount: emptyRows,
+          failedCount: failed.length,
+          failed: failed.slice(0, 50),
+          vipPeriodCount,
+          fallbackCandidateCount,
+          sourceApi:
+            vipPeriodCount > 0
+              ? fallbackCandidateCount > 0
+                ? `${TushareApiName.BALANCE_SHEET_VIP}+${TushareApiName.BALANCE_SHEET}`
+                : TushareApiName.BALANCE_SHEET_VIP
+              : TushareApiName.BALANCE_SHEET,
+        },
+      },
+      startedAt,
+    )
+  }
+
+  private groupFinancialReportCandidatesByPeriod(candidates: FinancialReportCandidate[]) {
+    const grouped = new Map<string, FinancialReportCandidate[]>()
+    for (const candidate of candidates) {
+      const periodCandidates = grouped.get(candidate.period) ?? []
+      periodCandidates.push(candidate)
+      grouped.set(candidate.period, periodCandidates)
+    }
+    return grouped
+  }
+
+  private async syncBalanceSheetCandidatesOneByOne(
+    candidates: FinancialReportCandidate[],
+    collector: ValidationCollector,
+  ): Promise<{
+    totalRows: number
+    emptyRows: number
+    failed: Array<{ tsCode: string; period: string; error: string }>
+  }> {
+    let totalRows = 0
+    let emptyRows = 0
+    const failed: Array<{ tsCode: string; period: string; error: string }> = []
+
+    for (const [i, candidate] of candidates.entries()) {
+      try {
+        const rows = await this.api.getBalanceSheetByTsCodeAndPeriod(candidate.tsCode, candidate.period)
+        const mapped = this.mapBalanceSheetRows(
+          rows,
+          collector,
+          new Set([candidate.period]),
+          new Set([`${candidate.tsCode}:${candidate.period}`]),
+        )
+
+        if (!mapped.length) {
+          emptyRows++
+        } else {
+          await this.helper.prisma.balanceSheet.deleteMany({
+            where: {
+              tsCode: candidate.tsCode,
+              endDate: this.helper.toDate(candidate.period),
+            },
+          })
+          totalRows += await this.createBalanceSheetRows(mapped)
+        }
+
+        if (i === 0 || (i + 1) % 200 === 0 || i === candidates.length - 1) {
+          this.logger.log(
+            `[资产负债表] 降级逐股进度 ${i + 1}/${candidates.length}，当前 ${candidate.tsCode} ${candidate.period}，累计 ${totalRows} 条`,
+          )
+        }
+      } catch (error) {
+        const msg = (error as Error).message
+        this.logger.error(`[资产负债表] ${candidate.tsCode} ${candidate.period} 失败: ${msg}`)
+        failed.push({ ...candidate, error: msg })
+      }
+    }
+
+    return { totalRows, emptyRows, failed }
+  }
+
+  private mapBalanceSheetRows(
+    rows: Record<string, unknown>[],
+    collector: ValidationCollector,
+    periodSet: Set<string>,
+    candidateKeys?: Set<string>,
+  ): NonNullable<ReturnType<typeof mapBalanceSheetRecord>>[] {
+    return rows
+      .map((r) => mapBalanceSheetRecord(r, collector))
+      .filter((row): row is NonNullable<ReturnType<typeof mapBalanceSheetRecord>> => Boolean(row))
+      .filter((row) => {
+        const endDateKey = this.normalizeDateKey(row.endDate)
+        if (!endDateKey || !periodSet.has(endDateKey)) return false
+        if (!candidateKeys) return true
+        return candidateKeys.has(`${row.tsCode}:${endDateKey}`)
+      })
+  }
+
+  private async createBalanceSheetRows(rows: NonNullable<ReturnType<typeof mapBalanceSheetRecord>>[]): Promise<number> {
+    let totalRows = 0
+    for (let i = 0; i < rows.length; i += this.balanceSheetCreateManyChunkSize) {
+      const chunk = rows.slice(i, i + this.balanceSheetCreateManyChunkSize)
+      if (!chunk.length) continue
+      const result = await this.helper.prisma.balanceSheet.createMany({ data: chunk, skipDuplicates: true })
+      totalRows += result.count
+    }
+    return totalRows
+  }
+
+  private async tryGetBalanceSheetRowsByPeriod(period: string): Promise<Record<string, unknown>[] | null> {
+    if (this.balanceSheetVipAvailable === false) return null
+
+    try {
+      const rows = await this.api.getBalanceSheetByPeriod(period)
+      if (this.balanceSheetVipAvailable !== true) {
+        this.logger.log('[资产负债表] balancesheet_vip 调用成功，将优先按报告期批量同步')
+      }
+      this.balanceSheetVipAvailable = true
+      return rows
+    } catch (error) {
+      if (this.isBalanceSheetVipFallbackError(error)) {
+        const message = error instanceof Error ? error.message : String(error)
+        const reason = error instanceof TushareApiError ? `code=${error.code}, ${message}` : message
+        this.logger.warn(`[资产负债表] balancesheet_vip 暂不可用（${reason}），自动降级到 balancesheet`)
+        this.balanceSheetVipAvailable = false
+        return null
+      }
+
+      throw error
+    }
+  }
+
+  private isBalanceSheetVipFallbackError(error: unknown): boolean {
+    if (!(error instanceof TushareApiError)) return false
+    if (error.apiName !== TushareApiName.BALANCE_SHEET_VIP) return false
+    if (error.code === 40203) return true
+    return /权限|积分|没有访问|未开通|permission|access|quota|频控|频率|最多访问|超限/i.test(error.message)
+  }
+
   // ─── 现金流量表 ────────────────────────────────────────────────────────────
 
   async syncCashflow(mode: TushareSyncMode = 'incremental'): Promise<void> {
@@ -534,7 +839,13 @@ export class FinancialSyncService {
       return
     }
 
-    this.logger.log('[现金流量表] 当前自动同步仅在空表时触发近15年重建；现有数据非空，跳过本轮')
+    await this.syncFinancialReportsByDisclosure({
+      task: TushareSyncTaskName.CASHFLOW,
+      label: '现金流量表',
+      modelName: 'cashflow',
+      fetchRows: (tsCode, period) => this.api.getCashflowByTsCodeAndPeriod(tsCode, period),
+      mapRecord: mapCashflowRecord,
+    })
   }
 
   async rebuildCashflowRecentYears(years = 15): Promise<void> {
@@ -1033,108 +1344,13 @@ export class FinancialSyncService {
       return
     }
 
-    const startedAt = new Date()
-    const latestDate = await this.helper.getLatestDateString('finaIndicator', 'endDate')
-    const periods = this.helper.buildPendingQuarterPeriods(latestDate)
-
-    if (!periods.length) {
-      this.logger.log(`[财务指标] 已是最新（最新报告期: ${latestDate}）`)
-      return
-    }
-
-    // 获取全部上市股票
-    const stocks = await this.helper.prisma.stockBasic.findMany({
-      where: { listStatus: 'L' },
-      select: { tsCode: true },
-      orderBy: { tsCode: 'asc' },
+    await this.syncFinancialReportsByDisclosure({
+      task: TushareSyncTaskName.FINA_INDICATOR,
+      label: '财务指标',
+      modelName: 'finaIndicator',
+      fetchRows: (tsCode, period) => this.api.getFinaIndicatorByTsCodeAndPeriod(tsCode, period),
+      mapRecord: mapFinaIndicatorRecord,
     })
-
-    if (!stocks.length) {
-      this.logger.warn('[财务指标] 未找到上市股票，跳过')
-      return
-    }
-
-    this.logger.log(`[财务指标] 开始同步 ${stocks.length} 只股票 × ${periods.length} 个报告期`)
-    let totalRows = 0
-    let totalSuccess = 0
-    let totalFailed = 0
-    const collector = new ValidationCollector(TushareSyncTaskName.FINA_INDICATOR)
-
-    for (const [si, stock] of stocks.entries()) {
-      const failedPeriods: string[] = []
-
-      for (const [pi, period] of periods.entries()) {
-        try {
-          const rows = await this.api.getFinaIndicatorByTsCodeAndPeriod(stock.tsCode, period)
-          const mapped = rows
-            .map((r) => mapFinaIndicatorRecord(r, collector))
-            .filter((r): r is NonNullable<typeof r> => Boolean(r))
-
-          if (mapped.length > 0) {
-            // 幂等：先删除该股票该报告期旧数据，再插入
-            await this.helper.prisma.finaIndicator.deleteMany({
-              where: {
-                tsCode: stock.tsCode,
-                endDate: this.helper.toDate(period),
-              },
-            })
-            const result = await this.helper.prisma.finaIndicator.createMany({ data: mapped, skipDuplicates: true })
-            totalRows += result.count
-            totalSuccess++
-          }
-        } catch (error) {
-          const msg = (error as Error).message
-          this.logger.warn(`[财务指标] ${stock.tsCode} ${period} 失败: ${msg}`)
-          failedPeriods.push(period)
-        }
-      }
-
-      // 兜底重试失败的报告期
-      if (failedPeriods.length > 0) {
-        for (const period of failedPeriods) {
-          try {
-            const rows = await this.api.getFinaIndicatorByTsCodeAndPeriod(stock.tsCode, period)
-            const mapped = rows
-              .map((r) => mapFinaIndicatorRecord(r, collector))
-              .filter((r): r is NonNullable<typeof r> => Boolean(r))
-            if (mapped.length > 0) {
-              await this.helper.prisma.finaIndicator.deleteMany({
-                where: {
-                  tsCode: stock.tsCode,
-                  endDate: this.helper.toDate(period),
-                },
-              })
-              const result = await this.helper.prisma.finaIndicator.createMany({ data: mapped, skipDuplicates: true })
-              totalRows += result.count
-              totalSuccess++
-            }
-            failedPeriods.splice(failedPeriods.indexOf(period), 1)
-          } catch (error) {
-            totalFailed++
-            this.logger.error(`[财务指标] ${stock.tsCode} ${period} 重试仍失败: ${(error as Error).message}`)
-          }
-        }
-      }
-
-      const progress = Math.round(((si + 1) / stocks.length) * 100)
-      this.logger.log(
-        `[财务指标] 进度 ${si + 1}/${stocks.length} (${progress}%), 成功 ${totalSuccess}, 失败 ${totalFailed}, 累计 ${totalRows} 条`,
-      )
-    }
-
-    this.logger.log(
-      `[财务指标] 同步完成，${stocks.length} × ${periods.length} = ${totalSuccess + totalFailed} 个查询，${totalRows} 条数据`,
-    )
-    await this.helper.flushValidationLogs(collector)
-    await this.helper.writeSyncLog(
-      TushareSyncTaskName.FINA_INDICATOR,
-      {
-        status: TushareSyncExecutionStatus.SUCCESS,
-        message: `财务指标同步完成，${stocks.length} × ${periods.length}，成功 ${totalSuccess} 失败 ${totalFailed}，${totalRows} 条`,
-        payload: { stockCount: stocks.length, periodCount: periods.length, rowCount: totalRows },
-      },
-      startedAt,
-    )
   }
 
   // ─── 前十大股东 ────────────────────────────────────────────────────────────
@@ -1286,6 +1502,137 @@ export class FinancialSyncService {
 
     this.logger.log(`[${label}] 检测到空表，将按股票重建最近 ${this.recentFinancialRebuildYears} 年季度数据`)
     return true
+  }
+
+  /**
+   * 基于财报披露计划增量补齐财务报表。
+   *
+   * Tushare 非 VIP 财报接口只能按单只股票拉取历史或指定报告期；
+   * 不能用“全表最大 endDate”判断同步完成，否则同一报告期里晚披露的股票会被漏掉。
+   */
+  private async syncFinancialReportsByDisclosure(opts: FinancialReportIncrementalOptions): Promise<void> {
+    const startedAt = new Date()
+    const lookbackYears = opts.lookbackYears ?? 2
+    const periods = this.helper.buildRecentQuarterPeriods(lookbackYears)
+    const candidates = await this.findMissingFinancialReportCandidates(opts.modelName, periods)
+
+    if (!candidates.length) {
+      this.logger.log(`[${opts.label}] 近 ${lookbackYears} 年已披露报告均已入库，无需增量补齐`)
+      await this.helper.writeSyncLog(
+        opts.task,
+        {
+          status: TushareSyncExecutionStatus.SUCCESS,
+          message: `${opts.label}增量检查完成，无缺失`,
+          payload: { lookbackYears, periodCount: periods.length, candidateCount: 0, rowCount: 0 },
+        },
+        startedAt,
+      )
+      return
+    }
+
+    this.logger.log(`[${opts.label}] 发现 ${candidates.length} 个已披露但未入库的股票/报告期，开始按股票补齐`)
+
+    const model = (this.helper.prisma as unknown as Record<string, AnyModelDelegate>)[opts.modelName]
+    const collector = new ValidationCollector(opts.task)
+    const failed: Array<{ tsCode: string; period: string; error: string }> = []
+    let totalRows = 0
+    let emptyRows = 0
+
+    for (const [i, candidate] of candidates.entries()) {
+      try {
+        const rows = await opts.fetchRows(candidate.tsCode, candidate.period)
+        const mapped = rows
+          .map((r) => opts.mapRecord(r, collector))
+          .filter((row): row is { endDate?: Date | string | null } & Record<string, unknown> => Boolean(row))
+          .filter((row) => this.normalizeDateKey(row.endDate) === candidate.period)
+
+        if (!mapped.length) {
+          emptyRows++
+        } else {
+          await model.deleteMany({
+            where: {
+              tsCode: candidate.tsCode,
+              endDate: this.helper.toDate(candidate.period),
+            },
+          })
+          const result = await model.createMany({ data: mapped, skipDuplicates: true })
+          totalRows += result.count
+        }
+
+        if (i === 0 || (i + 1) % 200 === 0 || i === candidates.length - 1) {
+          this.logger.log(
+            `[${opts.label}] 进度 ${i + 1}/${candidates.length}，当前 ${candidate.tsCode} ${candidate.period}，累计 ${totalRows} 条`,
+          )
+        }
+      } catch (error) {
+        const msg = (error as Error).message
+        this.logger.error(`[${opts.label}] ${candidate.tsCode} ${candidate.period} 失败: ${msg}`)
+        failed.push({ ...candidate, error: msg })
+      }
+    }
+
+    await this.helper.flushValidationLogs(collector)
+    await this.helper.writeSyncLog(
+      opts.task,
+      {
+        status: TushareSyncExecutionStatus.SUCCESS,
+        message: `${opts.label}增量补齐完成，候选 ${candidates.length} 个，写入 ${totalRows} 条`,
+        payload: {
+          lookbackYears,
+          periodCount: periods.length,
+          candidateCount: candidates.length,
+          rowCount: totalRows,
+          emptyCount: emptyRows,
+          failedCount: failed.length,
+          failed: failed.slice(0, 50),
+        },
+      },
+      startedAt,
+    )
+  }
+
+  private async findMissingFinancialReportCandidates(
+    modelName: FinancialReportModelName,
+    periods: string[],
+  ): Promise<FinancialReportCandidate[]> {
+    if (!periods.length) return []
+
+    const periodDates = periods.map((period) => this.helper.toDate(period))
+    const today = this.helper.toDate(this.helper.getCurrentShanghaiDateString())
+
+    const disclosures = await this.helper.prisma.disclosureDate.findMany({
+      where: {
+        endDate: { in: periodDates },
+        actualDate: { not: null, lte: today },
+      },
+      select: { tsCode: true, endDate: true },
+      orderBy: [{ endDate: 'asc' }, { tsCode: 'asc' }],
+    })
+
+    if (!disclosures.length) return []
+
+    const tsCodes = Array.from(new Set(disclosures.map((d) => d.tsCode)))
+    const model = (this.helper.prisma as unknown as Record<string, AnyModelDelegate>)[modelName]
+    const existingRows = await model.findMany({
+      where: {
+        tsCode: { in: tsCodes },
+        endDate: { in: periodDates },
+      },
+      select: { tsCode: true, endDate: true },
+    })
+    const existingKeys = new Set(
+      existingRows
+        .map((row) => {
+          const tsCode = typeof row.tsCode === 'string' ? row.tsCode : null
+          const period = this.normalizeDateKey(row.endDate as Date | string | null | undefined)
+          return tsCode && period ? `${tsCode}:${period}` : null
+        })
+        .filter((key): key is string => Boolean(key)),
+    )
+
+    return disclosures
+      .map((row) => ({ tsCode: row.tsCode, period: this.helper.formatDate(row.endDate) }))
+      .filter((row) => !existingKeys.has(`${row.tsCode}:${row.period}`))
   }
 
   private async rebuildShareholdersRecentYears(opts: {

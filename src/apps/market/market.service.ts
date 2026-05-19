@@ -1211,15 +1211,26 @@ export class MarketService {
     return { total, page, pageSize, items }
   }
 
-  async getConceptMembers(dto: { tsCode: string; page?: number; pageSize?: number }) {
+  async getConceptMembers(dto: { tsCode: string; name?: string; page?: number; pageSize?: number }) {
     const page = dto.page ?? 1
     const pageSize = dto.pageSize ?? 100
-    const { tsCode } = dto
+    const { tsCode: requestedCode, name: hintName } = dto
+
+    // DC→TI fallback: 东财代码（BK*.DC）无法直接查同花顺成分股表，尝试按名称映射
+    let queryCode = requestedCode
+    if (hintName && requestedCode.endsWith('.DC')) {
+      const tiBoard = await this.prisma.thsIndex.findFirst({
+        where: { name: hintName },
+        select: { tsCode: true },
+      })
+      if (tiBoard) queryCode = tiBoard.tsCode
+    }
+
     const [board, total, items] = await Promise.all([
-      this.prisma.thsIndex.findUnique({ where: { tsCode }, select: { name: true } }),
-      this.prisma.thsMember.count({ where: { tsCode } }),
+      this.prisma.thsIndex.findUnique({ where: { tsCode: queryCode }, select: { name: true } }),
+      this.prisma.thsMember.count({ where: { tsCode: queryCode } }),
       this.prisma.thsMember.findMany({
-        where: { tsCode },
+        where: { tsCode: queryCode },
         select: { conCode: true, conName: true },
         skip: (page - 1) * pageSize,
         take: pageSize,
@@ -1227,10 +1238,10 @@ export class MarketService {
     ])
     if (total === 0) {
       this.logger.warn(
-        `[概念成分] tsCode="${tsCode}" 在 ths_index_members 中无记录，board=${board?.name ?? 'NOT_FOUND'}`,
+        `[概念成分] tsCode="${requestedCode}" name="${hintName ?? '-'}" 在 ths_index_members 中无记录，board=${board?.name ?? 'NOT_FOUND'}`,
       )
     }
-    return { tsCode, name: board?.name ?? null, total, items }
+    return { tsCode: requestedCode, name: board?.name ?? null, total, items }
   }
 
   // ─── 日度叙事（P0）──────────────────────────────────────────────────────────

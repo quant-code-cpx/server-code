@@ -230,9 +230,20 @@ describe('IndustryRotationService', () => {
 
     it('正常返回估值数据及标签', async () => {
       const prisma = buildPrismaMock()
-      prisma.$queryRawUnsafe.mockResolvedValueOnce([
-        { industry: '银行', stock_count: 42, pe_ttm_median: 6.5, pb_median: 0.6, pe_pctl_1y: 15, pb_pctl_1y: 20, pe_pctl_3y: 10, pb_pctl_3y: 18 },
-      ])
+      prisma.$queryRawUnsafe
+        .mockResolvedValueOnce([{ trade_date: new Date('2024-06-28T00:00:00.000Z') }])
+        .mockResolvedValueOnce([
+          {
+            industry: '银行',
+            stock_count: 42,
+            pe_ttm_median: 6.5,
+            pb_median: 0.6,
+            pe_pctl_1y: 15,
+            pb_pctl_1y: 20,
+            pe_pctl_3y: 10,
+            pb_pctl_3y: 18,
+          },
+        ])
       const svc = createService({ prisma })
 
       const result = await svc.getIndustryValuation({ trade_date: '20240628' })
@@ -244,11 +255,51 @@ describe('IndustryRotationService', () => {
       expect(result.industries[0].valuationLabel).toBe('低估')
     })
 
+    it('请求日期晚于预计算估值日期时回退到最近可用日期', async () => {
+      const prisma = buildPrismaMock()
+      prisma.$queryRawUnsafe
+        .mockResolvedValueOnce([{ trade_date: new Date('2024-06-21T00:00:00.000Z') }])
+        .mockResolvedValueOnce([
+          {
+            industry: '银行',
+            stock_count: 42,
+            pe_ttm_median: 6.5,
+            pb_median: 0.6,
+            pe_pctl_1y: 15,
+            pb_pctl_1y: 20,
+            pe_pctl_3y: 10,
+            pb_pctl_3y: 18,
+          },
+        ])
+      const svc = createService({ prisma })
+
+      const result = await svc.getIndustryValuation({ trade_date: '20240628' })
+
+      expect(result.tradeDate).toBe('20240621')
+      expect(result.industries).toHaveLength(1)
+      expect(prisma.$queryRawUnsafe).toHaveBeenNthCalledWith(
+        1,
+        "SELECT MAX(trade_date) AS trade_date FROM valuation_daily_medians WHERE scope != '__ALL__' AND trade_date <= $1::date",
+        '20240628',
+      )
+    })
+
     it('PE 百分位 > 75 标为高估', async () => {
       const prisma = buildPrismaMock()
-      prisma.$queryRawUnsafe.mockResolvedValueOnce([
-        { industry: '白酒', stock_count: 20, pe_ttm_median: 45, pb_median: 8, pe_pctl_1y: 85, pb_pctl_1y: 90, pe_pctl_3y: 80, pb_pctl_3y: 88 },
-      ])
+      prisma.$queryRawUnsafe
+        .mockResolvedValueOnce([{ trade_date: new Date('2024-06-28T00:00:00.000Z') }])
+        .mockResolvedValueOnce([
+          {
+            industry: '白酒',
+            stock_count: 20,
+            pe_ttm_median: 45,
+            pb_median: 8,
+            pe_pctl_1y: 85,
+            pb_pctl_1y: 90,
+            pe_pctl_3y: 80,
+            pb_pctl_3y: 88,
+          },
+        ])
       const svc = createService({ prisma })
 
       const result = await svc.getIndustryValuation({ trade_date: '20240628' })
@@ -336,7 +387,19 @@ describe('IndustryRotationService', () => {
           { trade_date: new Date('2024-06-27'), net_amount: 5000, buy_elg_amount: 3000, buy_lg_amount: 2000 },
           { trade_date: new Date('2024-06-28'), net_amount: 6000, buy_elg_amount: 4000, buy_lg_amount: 2000 },
         ]) // flow trend
-        .mockResolvedValueOnce([{ industry: '银行', stock_count: 42, pe_ttm_median: 6.5, pb_median: 0.6, pe_pctl_1y: 15, pb_pctl_1y: 20, pe_pctl_3y: 10, pb_pctl_3y: 18 }]) // valuation
+        .mockResolvedValueOnce([{ trade_date: new Date('2024-06-28T00:00:00.000Z') }]) // valuation latest date
+        .mockResolvedValueOnce([
+          {
+            industry: '银行',
+            stock_count: 42,
+            pe_ttm_median: 6.5,
+            pb_median: 0.6,
+            pe_pctl_1y: 15,
+            pb_pctl_1y: 20,
+            pe_pctl_3y: 10,
+            pb_pctl_3y: 18,
+          },
+        ]) // valuation
         .mockResolvedValueOnce([
           { ts_code: '601398.SH', name: '工商银行', pct_chg: 1.5, pe_ttm: 5.2, pb: 0.5, total_mv: 1_800_000 },
         ]) // top stocks
@@ -351,17 +414,71 @@ describe('IndustryRotationService', () => {
       expect(result.topStocks[0].tsCode).toBe('601398.SH')
     })
 
+    it('成分股使用申万 L1/L2/L3 成员表匹配细分行业名称', async () => {
+      const prisma = buildPrismaMock()
+      prisma.$queryRawUnsafe
+        .mockResolvedValueOnce([{ ts_code: 'BK1326.DC', name: '半导体设备' }]) // sector lookup
+        .mockResolvedValueOnce([]) // return trend
+        .mockResolvedValueOnce([]) // flow trend
+        .mockResolvedValueOnce([]) // valuation latest date: no valuation data for this scope
+        .mockResolvedValueOnce([
+          { ts_code: '688012.SH', name: '中微公司', pct_chg: 3.2, pe_ttm: 88.5, pb: 9.1, total_mv: 120000 },
+        ]) // top stocks from sw_industry_members
+      const svc = createService({ prisma })
+
+      const result = await svc.getDetail({ industry: '半导体设备', days: 5 })
+
+      const queryCalls = prisma.$queryRawUnsafe.mock.calls as unknown[][]
+      const topStocksSql = queryCalls[queryCalls.length - 1][0] as string
+      expect(topStocksSql).toContain('sw_industry_members')
+      expect(topStocksSql).toContain('sw.l3_name = $2 OR sw.l2_name = $2 OR sw.l1_name = $2')
+      expect(result.topStocks).toHaveLength(1)
+      expect(result.topStocks[0]).toMatchObject({ tsCode: '688012.SH', name: '中微公司' })
+    })
+
+    it('成分股使用同花顺板块成员表兜底匹配概念型行业名称', async () => {
+      const prisma = buildPrismaMock()
+      prisma.$queryRawUnsafe
+        .mockResolvedValueOnce([{ ts_code: 'BK1324.DC', name: '储能' }]) // sector lookup
+        .mockResolvedValueOnce([]) // return trend
+        .mockResolvedValueOnce([]) // flow trend
+        .mockResolvedValueOnce([]) // valuation latest date: no valuation data for this scope
+        .mockResolvedValueOnce([
+          { ts_code: '300750.SZ', name: '宁德时代', pct_chg: 2.1, pe_ttm: 24.5, pb: 4.2, total_mv: 9800000 },
+        ]) // top stocks from ths_index_members fallback
+      const svc = createService({ prisma })
+
+      const result = await svc.getDetail({ industry: '储能', days: 5 })
+
+      const queryCalls = prisma.$queryRawUnsafe.mock.calls as unknown[][]
+      const topStocksSql = queryCalls[queryCalls.length - 1][0] as string
+      expect(topStocksSql).toContain('ths_index_members')
+      expect(topStocksSql).toContain('ths_index_boards')
+      expect(result.topStocks).toHaveLength(1)
+      expect(result.topStocks[0]).toMatchObject({ tsCode: '300750.SZ', name: '宁德时代' })
+    })
+
     it('tsCode 参数直接使用，跳过名称解析', async () => {
       const prisma = buildPrismaMock()
       prisma.$queryRawUnsafe
         .mockResolvedValueOnce([{ name: '银行' }]) // name lookup by tsCode
-        .mockResolvedValueOnce([
-          { trade_date: new Date('2024-06-28'), close: 102, pct_change: 2 },
-        ]) // return trend
+        .mockResolvedValueOnce([{ trade_date: new Date('2024-06-28'), close: 102, pct_change: 2 }]) // return trend
         .mockResolvedValueOnce([
           { trade_date: new Date('2024-06-28'), net_amount: 6000, buy_elg_amount: 4000, buy_lg_amount: 2000 },
         ]) // flow trend
-        .mockResolvedValueOnce([{ industry: '银行', stock_count: 42, pe_ttm_median: 6.5, pb_median: 0.6, pe_pctl_1y: 15, pb_pctl_1y: 20, pe_pctl_3y: 10, pb_pctl_3y: 18 }]) // valuation
+        .mockResolvedValueOnce([{ trade_date: new Date('2024-06-28T00:00:00.000Z') }]) // valuation latest date
+        .mockResolvedValueOnce([
+          {
+            industry: '银行',
+            stock_count: 42,
+            pe_ttm_median: 6.5,
+            pb_median: 0.6,
+            pe_pctl_1y: 15,
+            pb_pctl_1y: 20,
+            pe_pctl_3y: 10,
+            pb_pctl_3y: 18,
+          },
+        ]) // valuation
         .mockResolvedValueOnce([
           { ts_code: '601398.SH', name: '工商银行', pct_chg: 1.5, pe_ttm: 5.2, pb: 0.5, total_mv: 1_800_000 },
         ]) // top stocks

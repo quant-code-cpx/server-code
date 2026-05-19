@@ -327,9 +327,12 @@ export class SyncHelperService {
 
     // 排除进行中的当前周/月，避免将未结束的周期末日期误报为数据缺失
     // （例如：周三时本周还未产生周线收盘数据，不应将本周期纳入完整性检查）
+    // 例外：盘后（hasPassedSyncCutoff=true）表示当日收盘数据已就绪，当前周/月已结束，应包含
     const today = this.getCurrentShanghaiDay(this.getCurrentShanghaiDateString())
     const currentPeriodKey = unit === 'week' ? `${today.isoWeekYear()}-${today.isoWeek()}` : today.format('YYYY-MM')
-    grouped.delete(currentPeriodKey)
+    if (!this.hasPassedSyncCutoff()) {
+      grouped.delete(currentPeriodKey)
+    }
 
     return Array.from(grouped.values())
   }

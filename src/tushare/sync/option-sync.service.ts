@@ -41,7 +41,7 @@ export class OptionSyncService {
         supportsFullSync: true,
         requiresTradeDate: false,
         schedule: {
-          cron: '0 0 9 * * 1',
+          cron: '0 5 9 * * 1',
           timeZone: this.helper.syncTimeZone,
           description: '每周一刷新期权合约列表',
         },

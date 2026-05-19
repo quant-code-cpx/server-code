@@ -15,6 +15,7 @@ export enum TushareApiName {
   MONEYFLOW_HSGT = 'moneyflow_hsgt',
   INCOME = 'income',
   BALANCE_SHEET = 'balancesheet',
+  BALANCE_SHEET_VIP = 'balancesheet_vip',
   CASHFLOW = 'cashflow',
   EXPRESS = 'express',
   FINA_INDICATOR = 'fina_indicator',

@@ -55,6 +55,8 @@ export class TushareClient {
    */
   private static readonly DOCUMENTED_RATE_LIMIT_MS = new Map<string, number>([
     ['daily', 120], // doc_id=27：每分钟最多 500 次 → 120ms
+    ['cyq_chips', 350], // 文档限制 200次/分钟 → ceil(60000/200)=300ms，加安全余量取 350ms
+    ['ths_member', 200], // 同花顺成分股按板块循环时统一节流
   ])
   private globalConcurrentCount = 0
   /** 每个 API 名称的独立节流通道 */
@@ -181,7 +183,7 @@ export class TushareClient {
   }
 
   private isRetryableRateLimitError(json: TushareResponse) {
-    return json.code === 40203 && /每分钟最多访问该接口/.test(json.msg)
+    return json.code === 40203 && /每分钟最多访问该接口|频率超限/.test(json.msg)
   }
 
   /**

@@ -905,8 +905,7 @@ export class MarketSyncService {
           this.logger.log(`[筹码分布] 进度 ${i + 1}/${tsCodes.length}，累计 ${totalRows} 条`)
         }
 
-        // cyq_chips 限频 200次/分钟，每次调用后至少等待 300ms
-        await new Promise((resolve) => setTimeout(resolve, 300))
+        // 节流由 TushareClient.DOCUMENTED_RATE_LIMIT_MS('cyq_chips') 统一处理
       } catch (error) {
         const msg = (error as Error).message
         this.logger.error(`[筹码分布] ${tsCode} 同步失败: ${msg}`)

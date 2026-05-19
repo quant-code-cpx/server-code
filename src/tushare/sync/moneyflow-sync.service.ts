@@ -64,7 +64,7 @@ export class MoneyflowSyncService {
         supportsFullSync: true,
         requiresTradeDate: true,
         schedule: {
-          cron: '0 5 19 * * 1-5',
+          cron: '0 8 19 * * 1-5',
           timeZone: this.helper.syncTimeZone,
           description: '交易日盘后同步个股资金流',
           tradingDayOnly: true,
@@ -269,6 +269,7 @@ export class MoneyflowSyncService {
     this.logger.log(`[${label}] 开始同步 ${tradeDates.length} 个交易日`)
     let totalRows = 0
     const failed: Array<{ date: string; error: string }> = []
+    let quotaExceeded = false
 
     for (const [i, td] of tradeDates.entries()) {
       try {
@@ -280,8 +281,17 @@ export class MoneyflowSyncService {
         }
       } catch (error) {
         if (this.isDailyQuotaExceeded(error)) {
-          this.logger.warn(`[${label}] 触发每日配额限制，已同步 ${i} 个交易日，剩余跳过`)
+          this.logger.warn(
+            `[${label}] 触发每日配额限制，已同步 ${i} 个交易日，剩余 ${tradeDates.length - i} 天入队等待重试`,
+          )
           this.logger.warn(`[${label}] 提示: 升级积分后可设置 TUSHARE_MONEYFLOW_FULL_HISTORY=true 获取全量数据`)
+          quotaExceeded = true
+          // 把剩余交易日入队等待重试（包含当前失败的 td 与之后所有未尝试的）
+          for (let j = i; j < tradeDates.length; j++) {
+            await this.helper
+              .enqueueRetry(task, tradeDates[j], '40203 daily quota exceeded')
+              .catch((e) => this.logger.warn(`[${label}] 入队 ${tradeDates[j]} 失败: ${(e as Error).message}`))
+          }
           break
         }
         const msg = (error as Error).message
@@ -290,15 +300,19 @@ export class MoneyflowSyncService {
       }
     }
 
-    // 清理超出保留窗口的旧数据
-    if (retentionCutoff) {
+    // 配额耗尽时，跳过 retentionCutoff 删除，等下一轮补完再清理
+    if (retentionCutoff && !quotaExceeded) {
       const deleted = await this.helper.deleteRowsBeforeDate(modelName, 'tradeDate', retentionCutoff)
       if (deleted > 0) {
         this.logger.log(`[${label}] 已清理 ${deleted} 条超出保留窗口的旧数据`)
       }
+    } else if (retentionCutoff && quotaExceeded) {
+      this.logger.warn(`[${label}] 配额耗尽，跳过本轮保留窗口清理`)
     }
 
-    this.logger.log(`[${label}] 同步完成，${totalRows} 条${failed.length ? `，${failed.length} 个日期失败` : ''}`)
+    this.logger.log(
+      `[${label}] 同步完成，${totalRows} 条${failed.length ? `，${failed.length} 个日期失败` : ''}${quotaExceeded ? '（配额耗尽，部分日期入队待重试）' : ''}`,
+    )
     await this.helper.writeSyncLog(
       task,
       {
@@ -310,6 +324,8 @@ export class MoneyflowSyncService {
           dateCount: tradeDates.length,
           fullHistory: useFullHistory,
           failedDates: failed.length > 0 ? failed : undefined,
+          failedCount: failed.length,
+          quotaExceeded: quotaExceeded || undefined,
         },
       },
       startedAt,

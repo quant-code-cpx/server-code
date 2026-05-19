@@ -113,6 +113,7 @@ export class StockMoneyFlowService {
     interface MainFlowRow {
       tradeDate: Date
       close: number | null
+      pctChg: number | null
       buyElgAmount: number | null
       sellElgAmount: number | null
       buyLgAmount: number | null
@@ -127,6 +128,7 @@ export class StockMoneyFlowService {
       SELECT
         mf.trade_date        AS "tradeDate",
         d.close,
+        d.pct_chg            AS "pctChg",
         mf.buy_elg_amount    AS "buyElgAmount",
         mf.sell_elg_amount   AS "sellElgAmount",
         mf.buy_lg_amount     AS "buyLgAmount",
@@ -143,39 +145,50 @@ export class StockMoneyFlowService {
       LIMIT ${days}
     `
 
-    // 主力 = 特大单 + 大单；散户 = 中单 + 小单
+    const r2 = (v: number) => Math.round(v * 100) / 100
+
+    // 主力 = 特大单 + 大单
     const calcMainNet = (r: MainFlowRow) =>
       (r.buyElgAmount ?? 0) + (r.buyLgAmount ?? 0) - (r.sellElgAmount ?? 0) - (r.sellLgAmount ?? 0)
-    const calcRetailNet = (r: MainFlowRow) =>
-      (r.buyMdAmount ?? 0) + (r.buySmAmount ?? 0) - (r.sellMdAmount ?? 0) - (r.sellSmAmount ?? 0)
 
-    const calculateMainNetFlowSum = (n: number) =>
-      Math.round(records.slice(0, n).reduce((acc, r) => acc + calcMainNet(r), 0) * 100) / 100
+    const calculateMainNetFlowSum = (n: number) => r2(records.slice(0, n).reduce((acc, r) => acc + calcMainNet(r), 0))
 
-    const items = [...records].reverse().map((r) => {
-      const mainNetAmount = calcMainNet(r)
-      const retailNetAmount = calcRetailNet(r)
+    const formatDate = (d: Date): string => {
+      const y = d.getFullYear()
+      const m = String(d.getMonth() + 1).padStart(2, '0')
+      const day = String(d.getDate()).padStart(2, '0')
+      return `${y}${m}${day}`
+    }
+
+    const history = [...records].reverse().map((r) => {
+      const mainNetInflow = calcMainNet(r)
+      const superLargeNetInflow = (r.buyElgAmount ?? 0) - (r.sellElgAmount ?? 0)
+      const largeNetInflow = (r.buyLgAmount ?? 0) - (r.sellLgAmount ?? 0)
       const mainBuy = (r.buyElgAmount ?? 0) + (r.buyLgAmount ?? 0)
       const mainSell = (r.sellElgAmount ?? 0) + (r.sellLgAmount ?? 0)
       const mainTotal = mainBuy + mainSell
-      const mainNetAmountRate = mainTotal > 0 ? Math.round((mainNetAmount / mainTotal) * 10000) / 100 : null
+      const mainNetInflowRate = mainTotal > 0 ? r2((mainNetInflow / mainTotal) * 100) : null
       return {
-        tradeDate: r.tradeDate,
+        tradeDate: formatDate(r.tradeDate),
         close: r.close,
-        mainNetAmount: Math.round(mainNetAmount * 100) / 100,
-        mainNetAmountRate,
-        retailNetAmount: Math.round(retailNetAmount * 100) / 100,
+        pctChg: r.pctChg,
+        mainNetInflow: r2(mainNetInflow),
+        superLargeNetInflow: r2(superLargeNetInflow),
+        largeNetInflow: r2(largeNetInflow),
+        mainNetInflowRate,
       }
     })
 
     return {
       tsCode,
       summary: {
-        mainNetAmount5d: calculateMainNetFlowSum(Math.min(5, records.length)),
-        mainNetAmount10d: calculateMainNetFlowSum(Math.min(10, records.length)),
-        mainNetAmount20d: calculateMainNetFlowSum(Math.min(20, records.length)),
+        mainNetInflow5d: calculateMainNetFlowSum(Math.min(5, records.length)),
+        mainNetInflow10d: calculateMainNetFlowSum(Math.min(10, records.length)),
+        mainNetInflow20d: calculateMainNetFlowSum(Math.min(20, records.length)),
+        controlDegree: null,
+        trend: null,
       },
-      items,
+      history,
     }
   }
 }

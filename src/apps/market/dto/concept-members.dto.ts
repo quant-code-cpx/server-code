@@ -22,4 +22,9 @@ export class ConceptMembersDto {
   @Min(1)
   @Max(200)
   pageSize?: number = 100
+
+  @ApiPropertyOptional({ description: '板块名称（可选，用于东财 DC 代码转同花顺 TI 代码的兜底查找）' })
+  @IsOptional()
+  @IsString()
+  name?: string
 }

@@ -6,12 +6,14 @@
 
 - `.agents/skills/quant-server-collaboration-style/SKILL.md`
 - `.agents/skills/nestjs-best-practices/SKILL.md`
+- `.agents/skills/business-api-test-workflow/SKILL.md`
 - `docs/待办清单.md`
 
 ## 开发与验证原则
 
 - 优先自动化完成常规开发步骤，尽量减少让用户手动跑终端。
 - 做出有意义的改动后，优先执行真实验证，而不是只停留在静态分析。
+- 当用户要求测试某个模块/接口时，使用 `.agents/skills/business-api-test-workflow/SKILL.md`，默认按全新测试任务处理：先基于业务场景和接口契约重新设计测试，不受现有 spec 干扰。
 - 涉及容器、启动流程、外部 API 或数据同步时，要通过日志、编译结果和运行表现确认改动生效。
 - 总结时明确说明：改了什么、如何验证、还需要注意什么。
 

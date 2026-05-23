@@ -275,7 +275,11 @@ export class FactorLibraryService implements OnModuleInit {
       const tradeDate = formatDateToCompactTradeDate(r.trade_date) ?? ''
       const staleDays = diffCompactTradeDateFromShanghaiToday(tradeDate) ?? 999
       return {
+        jobId: tradeDate,
         tradeDate,
+        type: 'FACTOR_PRECOMPUTE',
+        operator: 'system',
+        createdAt: r.latest_synced_at?.toISOString() ?? null,
         factorCount: fc,
         totalStocks: ts,
         missingStocks: ms,

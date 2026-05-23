@@ -460,13 +460,71 @@ export class BacktestRunService {
   /** 汇总统计（当前用户全量） */
   async getStats(userId: number) {
     const base = { userId, deletedAt: null }
-    const [total, completed, failed, running] = await Promise.all([
+    const [totalCount, completedCount, failedCount, runningCount, queuedCount] = await Promise.all([
       this.prisma.backtestRun.count({ where: base }),
       this.prisma.backtestRun.count({ where: { ...base, status: 'COMPLETED' } }),
       this.prisma.backtestRun.count({ where: { ...base, status: 'FAILED' } }),
-      this.prisma.backtestRun.count({ where: { ...base, status: { in: ['QUEUED', 'RUNNING'] } } }),
+      this.prisma.backtestRun.count({ where: { ...base, status: 'RUNNING' } }),
+      this.prisma.backtestRun.count({ where: { ...base, status: 'QUEUED' } }),
     ])
-    return { total, completed, failed, running, archived: 0 }
+
+    const completedRate = totalCount > 0 ? Math.round((completedCount / totalCount) * 10000) / 10000 : 0
+
+    // 平均耗时（秒）：仅对 startedAt + completedAt 均有值的记录计算
+    const durRows = await this.prisma.backtestRun.findMany({
+      where: { ...base, status: 'COMPLETED', startedAt: { not: null }, completedAt: { not: null } },
+      select: { startedAt: true, completedAt: true },
+    })
+    const durations = durRows
+      .map((r) => (r.completedAt!.getTime() - r.startedAt!.getTime()) / 1000)
+      .filter((d) => d >= 0)
+    const avgDurationSeconds =
+      durations.length > 0 ? Math.round((durations.reduce((a, b) => a + b, 0) / durations.length) * 10) / 10 : null
+
+    // 失败原因 Top3
+    const failedRows = await this.prisma.backtestRun.findMany({
+      where: { ...base, status: 'FAILED' },
+      select: { failedReason: true },
+    })
+    const reasonMap = new Map<string, number>()
+    for (const r of failedRows) {
+      const code = r.failedReason ?? 'UNKNOWN'
+      reasonMap.set(code, (reasonMap.get(code) ?? 0) + 1)
+    }
+    const failedReasonTop3 = [...reasonMap.entries()]
+      .sort(([, a], [, b]) => b - a)
+      .slice(0, 3)
+      .map(([code, count]) => ({ code, label: code, count }))
+
+    return {
+      totalCount,
+      completedCount,
+      failedCount,
+      runningCount,
+      queuedCount,
+      completedRate,
+      avgDurationSeconds,
+      failedReasonTop3,
+    }
+  }
+
+  async getRebalanceLogs(runId: string) {
+    const rows = await this.prisma.backtestRebalanceLog.findMany({
+      where: { runId },
+      orderBy: { signalDate: 'asc' },
+    })
+    return {
+      items: rows.map((r) => ({
+        signalDate: r.signalDate.toISOString().slice(0, 10).replace(/-/g, ''),
+        executeDate: r.executeDate.toISOString().slice(0, 10).replace(/-/g, ''),
+        targetCount: r.targetCount ?? null,
+        actualBuy: r.executedBuyCount ?? null,
+        actualSell: r.executedSellCount ?? null,
+        skippedLimitUp: r.skippedLimitCount ?? null,
+        skippedSuspend: r.skippedSuspendCount ?? null,
+        remark: r.message ?? null,
+      })),
+    }
   }
 
   private assertValidDateRange(startDateStr: string, endDateStr: string) {

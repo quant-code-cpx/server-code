@@ -41,10 +41,26 @@ export class EventStudyController {
   }
 
   @Post('events')
-  @ApiOperation({ summary: '分页查询指定类型的事件记录' })
+  @ApiOperation({ summary: '分页查询指定类型的事件记录（含股票名称）' })
   @ApiSuccessRawResponse({ type: 'object' })
   queryEvents(@Body() dto: EventStudyEventsQueryDto) {
-    return this.eventStudyService.queryEvents(dto)
+    return this.eventStudyService.queryEventsWithNames(dto)
+  }
+
+  @Post('events/calendar')
+  @ApiOperation({ summary: '查询事件日历热力图（按 date+eventType 分组聚合）' })
+  @ApiSuccessRawResponse({ type: 'object' })
+  eventsCalendar(
+    @Body()
+    dto: {
+      eventType?: EventType
+      eventTypes?: EventType[]
+      startDate: string
+      endDate: string
+      tsCode?: string
+    },
+  ) {
+    return this.eventStudyService.eventsCalendar(dto)
   }
 
   @Post('analyze')

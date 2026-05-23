@@ -147,6 +147,15 @@ export class MarketAnomalyStatsDto {
 
   @ApiProperty()
   total: number
+
+  @ApiProperty({ description: '最新扫描中新增的异动数', required: false })
+  newCount?: number
+
+  @ApiProperty({ description: '触发 ≥2 种异动类型的股票数', required: false })
+  multiTypeStockCount?: number
+
+  @ApiProperty({ description: '用户自选股中命中异动的股票数', required: false })
+  watchlistCount?: number
 }
 
 export class MarketAnomalyListResponseDto {

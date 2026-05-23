@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common'
 import { WebsocketModule } from 'src/websocket/websocket.module'
 import { NotificationModule } from 'src/apps/notification/notification.module'
+import { EventStudyModule } from 'src/apps/event-study/event-study.module'
 import { AlertController } from './alert.controller'
 import { AlertCalendarService } from './alert-calendar.service'
 import { PriceAlertService } from './price-alert.service'
@@ -8,7 +9,7 @@ import { MarketAnomalyService } from './market-anomaly.service'
 import { AlertLimitService } from './alert-limit.service'
 
 @Module({
-  imports: [WebsocketModule, NotificationModule],
+  imports: [WebsocketModule, NotificationModule, EventStudyModule],
   controllers: [AlertController],
   providers: [AlertCalendarService, PriceAlertService, MarketAnomalyService, AlertLimitService],
 })

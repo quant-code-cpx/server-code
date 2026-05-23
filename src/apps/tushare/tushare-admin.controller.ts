@@ -271,9 +271,46 @@ export class TushareAdminController {
   })
   @ApiSuccessRawResponse({ type: 'object' })
   async getSyncStatusOverview(@Body() dto: { refresh?: boolean }) {
-    if (dto.refresh) {
-      return this.syncStatusOverviewService.refresh()
+    const overview = dto.refresh
+      ? await this.syncStatusOverviewService.refresh()
+      : await this.syncStatusOverviewService.getOverview()
+
+    // 派生前端所需字段
+    const totalItems = overview.categories.reduce((s, c) => s + c.items.length, 0)
+    const healthyItems = overview.categories.reduce(
+      (s, c) => s + c.items.filter((i) => (i.missingDays ?? 0) === 0 && (i.consecutiveFailures ?? 0) === 0).length,
+      0,
+    )
+    const healthStatus =
+      overview.totalMissingDays === 0 ? 'HEALTHY' : overview.totalMissingDays < 50 ? 'DEGRADED' : 'UNHEALTHY'
+
+    const categoriesEnriched = overview.categories.map((cat) => ({
+      ...cat,
+      freshness: cat.items.reduce(
+        (latest, i) => {
+          if (!i.maxDate) return latest
+          return !latest || i.maxDate > latest ? i.maxDate : latest
+        },
+        null as string | null,
+      ),
+      items: cat.items.map((item) => ({
+        ...item,
+        freshness: item.maxDate,
+        lastSyncedAt: item.lastSyncAt?.toISOString?.() ?? item.lastSyncAt ?? null,
+      })),
+    }))
+
+    return {
+      ...overview,
+      healthStatus,
+      health: { status: healthStatus },
+      syncStats: {
+        totalTables: totalItems,
+        healthyTables: healthyItems,
+        totalRows: overview.totalRows,
+        totalMissingDays: overview.totalMissingDays,
+      },
+      categories: categoriesEnriched,
     }
-    return this.syncStatusOverviewService.getOverview()
   }
 }

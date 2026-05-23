@@ -15,6 +15,12 @@ import { GlobalExceptionsFilter } from './lifecycle/filters/global.exception'
 import { REFRESH_TOKEN_COOKIE } from './constant/auth.constant'
 
 async function bootstrap() {
+  // BigInt 无法被 JSON.stringify 原生序列化，统一转为 Number
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ;(BigInt.prototype as any).toJSON = function () {
+    return Number(this)
+  }
+
   const app = await NestFactory.create(AppModule, { bufferLogs: true })
 
   const configService = app.get(ConfigService)

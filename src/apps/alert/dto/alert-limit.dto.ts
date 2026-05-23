@@ -62,6 +62,14 @@ export class AlertLimitSummaryDto {
   @IsOptional()
   @Matches(/^\d{8}$/)
   tradeDate?: string
+
+  @ApiPropertyOptional({ description: '查询最近 N 个交易日（默认 1）', default: 1 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(30)
+  range?: number = 1
 }
 
 export class AlertLimitNextDayPerfDto {

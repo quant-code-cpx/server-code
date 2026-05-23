@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsInt, Min, IsDateString } from 'class-validator'
+import { IsString, IsOptional, IsInt, Min, Matches } from 'class-validator'
 import { Type } from 'class-transformer'
 
 export class TradeLogQueryDto {
@@ -6,11 +6,11 @@ export class TradeLogQueryDto {
   portfolioId: string
 
   @IsOptional()
-  @IsDateString()
+  @Matches(/^\d{8}$/, { message: 'startDate 格式应为 YYYYMMDD' })
   startDate?: string
 
   @IsOptional()
-  @IsDateString()
+  @Matches(/^\d{8}$/, { message: 'endDate 格式应为 YYYYMMDD' })
   endDate?: string
 
   @IsOptional()
@@ -43,10 +43,10 @@ export class TradeLogSummaryDto {
   portfolioId: string
 
   @IsOptional()
-  @IsDateString()
+  @Matches(/^\d{8}$/, { message: 'startDate 格式应为 YYYYMMDD' })
   startDate?: string
 
   @IsOptional()
-  @IsDateString()
+  @Matches(/^\d{8}$/, { message: 'endDate 格式应为 YYYYMMDD' })
   endDate?: string
 }

@@ -27,6 +27,11 @@ export class QueryCalendarDto {
   @IsArray()
   @IsString({ each: true })
   tsCodes?: string[]
+
+  @ApiPropertyOptional({ description: '股票名称/代码关键词搜索', example: '平安' })
+  @IsOptional()
+  @IsString()
+  keyword?: string
 }
 
 export class QueryUpcomingDto {

@@ -28,7 +28,7 @@ export class MarketAnomalyService {
 
   // ── 统计聚合（standalone，不依赖分页） ──────────────────────────────────────
 
-  async getSummary(tradeDate?: string) {
+  async getSummary(tradeDate?: string, userId?: number) {
     let parsedDate: Date | undefined
     if (tradeDate) {
       parsedDate = parseCompactTradeDateToUtcDate(tradeDate)
@@ -37,11 +37,20 @@ export class MarketAnomalyService {
         orderBy: { tradeDate: 'desc' },
         select: { tradeDate: true },
       })
-      if (!latest) return { tradeDate: null, byType: {}, total: 0, latestScanAt: null }
+      if (!latest)
+        return {
+          tradeDate: null,
+          byType: {},
+          total: 0,
+          newCount: 0,
+          multiTypeStockCount: 0,
+          watchlistCount: 0,
+          latestScanAt: null,
+        }
       parsedDate = latest.tradeDate
     }
 
-    const [typeCountRows, latestScan] = await Promise.all([
+    const [typeCountRows, latestScan, allRows] = await Promise.all([
       this.prisma.marketAnomaly.groupBy({
         by: ['anomalyType'],
         where: { tradeDate: parsedDate },
@@ -52,16 +61,50 @@ export class MarketAnomalyService {
         orderBy: { scannedAt: 'desc' },
         select: { scannedAt: true },
       }),
+      this.prisma.marketAnomaly.findMany({
+        where: { tradeDate: parsedDate },
+        select: { tsCode: true, anomalyType: true, scannedAt: true },
+      }),
     ])
 
     const byType = Object.fromEntries(typeCountRows.map((r) => [r.anomalyType, r._count._all]))
     const total = typeCountRows.reduce((s, r) => s + r._count._all, 0)
 
+    // multiTypeStockCount: 同一交易日出现多种异动类型的股票数
+    const stockTypeMap = new Map<string, Set<string>>()
+    for (const r of allRows) {
+      const set = stockTypeMap.get(r.tsCode) ?? new Set<string>()
+      set.add(r.anomalyType)
+      stockTypeMap.set(r.tsCode, set)
+    }
+    const multiTypeStockCount = [...stockTypeMap.values()].filter((s) => s.size > 1).length
+
+    // newCount: 最近一次扫描中新增的异动数
+    const latestScanAt = latestScan?.scannedAt ?? null
+    const newCount = latestScanAt
+      ? allRows.filter((r) => r.scannedAt && r.scannedAt.getTime() === latestScanAt.getTime()).length
+      : 0
+
+    // watchlistCount: 异动股中属于用户自选股的数量
+    let watchlistCount = 0
+    if (userId != null && allRows.length > 0) {
+      const anomalyTsCodes = [...new Set(allRows.map((r) => r.tsCode))]
+      const watchlists = await this.prisma.watchlist.findMany({
+        where: { userId },
+        select: { stocks: { select: { tsCode: true } } },
+      })
+      const watchlistTsCodes = new Set(watchlists.flatMap((w) => w.stocks.map((s) => s.tsCode)))
+      watchlistCount = anomalyTsCodes.filter((tc) => watchlistTsCodes.has(tc)).length
+    }
+
     return {
       tradeDate: formatDateToCompactTradeDate(parsedDate),
       byType,
       total,
-      latestScanAt: latestScan?.scannedAt?.toISOString() ?? null,
+      newCount,
+      multiTypeStockCount,
+      watchlistCount,
+      latestScanAt: latestScanAt?.toISOString() ?? null,
     }
   }
 
@@ -105,7 +148,7 @@ export class MarketAnomalyService {
 
   // ── 查询接口 ────────────────────────────────────────────────────────────────
 
-  async queryAnomalies(query: MarketAnomalyQueryDto): Promise<MarketAnomalyListResponseDto> {
+  async queryAnomalies(query: MarketAnomalyQueryDto, userId?: number): Promise<MarketAnomalyListResponseDto> {
     const page = query.page ?? 1
     const pageSize = query.pageSize ?? 20
     const sortBy: AnomalySortField = query.sortBy ?? 'strength'
@@ -121,7 +164,13 @@ export class MarketAnomalyService {
         select: { tradeDate: true },
       })
       if (!latest) {
-        return { page, pageSize, total: 0, items: [], stats: { byType: {}, total: 0 } }
+        return {
+          page,
+          pageSize,
+          total: 0,
+          items: [],
+          stats: { byType: {}, total: 0, newCount: 0, multiTypeStockCount: 0, watchlistCount: 0 },
+        }
       }
       tradeDate = latest.tradeDate
     }
@@ -211,7 +260,37 @@ export class MarketAnomalyService {
       scannedAt: r.scannedAt,
     }))
 
-    return { page, pageSize, total, items, stats: { byType, total } }
+    // multiTypeStockCount: 出现 ≥2 种异动类型的股票数（基于 allRows，非过滤后）
+    const stockTypeMap2 = new Map<string, Set<string>>()
+    for (const r of allRows) {
+      const s = stockTypeMap2.get(r.tsCode) ?? new Set<string>()
+      s.add(r.anomalyType)
+      stockTypeMap2.set(r.tsCode, s)
+    }
+    const multiTypeStockCount = [...stockTypeMap2.values()].filter((s) => s.size > 1).length
+
+    // newCount: 最近一次扫描时间窗口内新增的异动数（基于 allRows）
+    const latestScanAt2 = allRows.reduce<Date | null>(
+      (latest, r) => (!latest || r.scannedAt > latest ? r.scannedAt : latest),
+      null,
+    )
+    const newCount = latestScanAt2
+      ? allRows.filter((r) => Math.abs(r.scannedAt.getTime() - latestScanAt2.getTime()) <= 60_000).length
+      : 0
+
+    // watchlistCount: 异动股中属于用户自选股的数量
+    let watchlistCount = 0
+    if (userId != null && allRows.length > 0) {
+      const anomalyTsCodes = [...new Set(allRows.map((r) => r.tsCode))]
+      const watchlists = await this.prisma.watchlist.findMany({
+        where: { userId },
+        select: { stocks: { select: { tsCode: true } } },
+      })
+      const watchlistSet = new Set(watchlists.flatMap((w) => w.stocks.map((s) => s.tsCode)))
+      watchlistCount = anomalyTsCodes.filter((tc) => watchlistSet.has(tc)).length
+    }
+
+    return { page, pageSize, total, items, stats: { byType, total, newCount, multiTypeStockCount, watchlistCount } }
   }
 
   // ── 盘后扫描 ────────────────────────────────────────────────────────────────
@@ -594,6 +673,7 @@ export class MarketAnomalyService {
     return rows.map((r) => ({
       id: r.id,
       tradeDate: formatDateToCompactTradeDate(r.tradeDate),
+      anomalyType: r.anomalyType,
       value: r.value,
       threshold: r.threshold,
       strength: r.threshold > 0 ? r.value / r.threshold : r.value,

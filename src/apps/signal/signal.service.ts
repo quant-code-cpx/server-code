@@ -295,6 +295,56 @@ export class SignalService {
     }
   }
 
+  async compareHistories(userId: number, dto: { strategyIds: string[]; startDate?: string; endDate?: string }) {
+    const { strategyIds, startDate, endDate } = dto
+    if (!strategyIds?.length) return []
+
+    const strategies = await this.prisma.strategy.findMany({
+      where: { id: { in: strategyIds }, userId },
+      select: { id: true, name: true, strategyType: true },
+    })
+    const strategyMap = new Map(strategies.map((s) => [s.id, s]))
+
+    const tradeDateFilter: Prisma.TradingSignalWhereInput['tradeDate'] = {}
+    if (startDate) tradeDateFilter.gte = this.parseDateStr(startDate)
+    if (endDate) tradeDateFilter.lte = this.parseDateStr(endDate)
+
+    return Promise.all(
+      strategyIds.map(async (strategyId) => {
+        const strategy = strategyMap.get(strategyId)
+        const signals = await this.prisma.tradingSignal.findMany({
+          where: {
+            userId,
+            strategyId,
+            ...(Object.keys(tradeDateFilter).length ? { tradeDate: tradeDateFilter } : {}),
+          },
+          orderBy: { tradeDate: 'asc' },
+        })
+
+        const tsCodes = [...new Set(signals.map((s) => s.tsCode))]
+        const stockRows = await this.prisma.stockBasic.findMany({
+          where: { tsCode: { in: tsCodes } },
+          select: { tsCode: true, name: true },
+        })
+        const stockNameMap = new Map(stockRows.map((r) => [r.tsCode, r.name]))
+
+        const items = signals.map((s) => this.toSignalItem(s, stockNameMap.get(s.tsCode) ?? s.tsCode))
+        const tradeDates = [...new Set(signals.map((s) => formatDateToCompactTradeDate(s.tradeDate)).filter(Boolean))]
+        const latestTradeDate = tradeDates.length ? tradeDates[tradeDates.length - 1] : null
+
+        return {
+          strategyId,
+          strategyName: strategy?.name ?? strategyId,
+          strategyType: strategy?.strategyType ?? null,
+          signalCount: signals.length,
+          tradeDateCount: tradeDates.length,
+          latestTradeDate,
+          aggregateStats: this.buildAggregateStats(items),
+        }
+      }),
+    )
+  }
+
   // ── 工具方法 ──────────────────────────────────────────────────────────────
 
   private async computeForwardMetrics(

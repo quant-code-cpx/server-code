@@ -2,7 +2,7 @@ import { Body, Controller, Post, UseGuards } from '@nestjs/common'
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger'
 import { JwtAuthGuard } from 'src/lifecycle/guard/jwt-auth.guard'
 import { CurrentUser } from 'src/common/decorators/current-user.decorator'
-import { ApiSuccessResponse } from 'src/common/decorators/api-success-response.decorator'
+import { ApiSuccessResponse, ApiSuccessRawResponse } from 'src/common/decorators/api-success-response.decorator'
 import { TokenPayload } from 'src/shared/token.interface'
 import { SignalService } from './signal.service'
 import {
@@ -55,5 +55,15 @@ export class SignalController {
   @ApiSuccessResponse(SignalHistoryResponseDto)
   getSignalHistory(@CurrentUser() user: TokenPayload, @Body() dto: SignalHistoryQueryDto) {
     return this.signalService.getSignalHistory(dto, user.id)
+  }
+
+  @Post('history/compare')
+  @ApiOperation({ summary: '多策略信号历史对比（并列显示各策略汇总统计）' })
+  @ApiSuccessRawResponse({ type: 'array' })
+  compareHistories(
+    @CurrentUser() user: TokenPayload,
+    @Body() dto: { strategyIds: string[]; startDate?: string; endDate?: string },
+  ) {
+    return this.signalService.compareHistories(user.id, dto)
   }
 }

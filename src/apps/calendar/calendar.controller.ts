@@ -2,6 +2,8 @@ import { Controller, Post, Body, UseGuards } from '@nestjs/common'
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger'
 import { JwtAuthGuard } from 'src/lifecycle/guard/jwt-auth.guard'
 import { ApiSuccessRawResponse } from 'src/common/decorators/api-success-response.decorator'
+import { CurrentUser } from 'src/common/decorators/current-user.decorator'
+import { TokenPayload } from 'src/shared/token.interface'
 import { CalendarService } from './calendar.service'
 import { QueryCalendarDto, QueryUpcomingDto } from './dto/calendar.dto'
 
@@ -15,8 +17,15 @@ export class CalendarController {
   @Post('range')
   @ApiOperation({ summary: '按日期范围查询事件日历' })
   @ApiSuccessRawResponse({ type: 'object' })
-  async getEventsByRange(@Body() dto: QueryCalendarDto) {
-    return this.calendarService.getEventsByDateRange(dto.startDate, dto.endDate, dto.types, dto.tsCodes)
+  async getEventsByRange(@CurrentUser() user: TokenPayload, @Body() dto: QueryCalendarDto) {
+    return this.calendarService.getEventsByDateRange(
+      dto.startDate,
+      dto.endDate,
+      dto.types,
+      dto.tsCodes,
+      user.id,
+      dto.keyword,
+    )
   }
 
   @Post('upcoming')

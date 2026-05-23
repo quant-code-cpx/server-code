@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common'
+import { parseCompactTradeDateToUtcDate } from 'src/common/utils/trade-date.util'
 import { PrismaService } from 'src/shared/prisma.service'
 import { TradeLogQueryDto, TradeLogSummaryDto } from '../dto/trade-log.dto'
 
@@ -46,8 +47,8 @@ export class PortfolioTradeLogService {
     if (reason) where.reason = reason
     if (startDate || endDate) {
       where.createdAt = {
-        ...(startDate ? { gte: new Date(startDate) } : {}),
-        ...(endDate ? { lte: new Date(endDate + 'T23:59:59.999Z') } : {}),
+        ...(startDate ? { gte: parseCompactTradeDateToUtcDate(startDate) } : {}),
+        ...(endDate ? { lte: new Date(parseCompactTradeDateToUtcDate(endDate).getTime() + 86399999) } : {}),
       }
     }
 
@@ -73,8 +74,8 @@ export class PortfolioTradeLogService {
     const where: Record<string, unknown> = { portfolioId }
     if (startDate || endDate) {
       where.createdAt = {
-        ...(startDate ? { gte: new Date(startDate) } : {}),
-        ...(endDate ? { lte: new Date(endDate + 'T23:59:59.999Z') } : {}),
+        ...(startDate ? { gte: parseCompactTradeDateToUtcDate(startDate) } : {}),
+        ...(endDate ? { lte: new Date(parseCompactTradeDateToUtcDate(endDate).getTime() + 86399999) } : {}),
       }
     }
 

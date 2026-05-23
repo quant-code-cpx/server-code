@@ -46,35 +46,41 @@ export class AlertLimitService {
   }
 
   async summary(dto: AlertLimitSummaryDto) {
-    const { actualDate, meta } = await this.resolveTradeDate(dto.tradeDate)
-    if (!actualDate) return { meta, total: 0, byLimitType: {}, byIndustry: [], topStreaks: [] }
+    const range = Math.max(1, dto.range ?? 1)
 
-    const rows = await this.prisma.limitListD.findMany({
-      where: { tradeDate: parseCompactTradeDateToUtcDate(actualDate) },
+    // 找到最近 range 个交易日
+    const { actualDate } = await this.resolveTradeDate(dto.tradeDate)
+    if (!actualDate) return []
+
+    const anchorDate = parseCompactTradeDateToUtcDate(actualDate)
+    const tradeDates = await this.prisma.limitListD.findMany({
+      where: { tradeDate: { lte: anchorDate } },
+      select: { tradeDate: true },
+      distinct: ['tradeDate'],
+      orderBy: { tradeDate: 'desc' },
+      take: range,
     })
-    const byLimitType = rows.reduce<Record<string, number>>((acc, r) => {
-      const key = this.normalizeLimitType(r.limit)
-      acc[key] = (acc[key] ?? 0) + 1
-      return acc
-    }, {})
-    const byIndustryMap = new Map<string, number>()
-    for (const row of rows)
-      byIndustryMap.set(row.industry ?? '未分类', (byIndustryMap.get(row.industry ?? '未分类') ?? 0) + 1)
-    const byIndustry = [...byIndustryMap.entries()]
-      .map(([industry, count]) => ({ industry, count }))
-      .sort((a, b) => b.count - a.count)
 
-    const topStreaks = rows
-      .map((r) => ({
-        tsCode: r.tsCode,
-        name: r.name,
-        streakDays: this.getStreakDays(r),
-        limitType: this.normalizeLimitType(r.limit),
-      }))
-      .sort((a, b) => b.streakDays - a.streakDays)
-      .slice(0, 20)
+    if (!tradeDates.length) return []
 
-    return { meta, total: rows.length, byLimitType, byIndustry, topStreaks }
+    const result = await Promise.all(
+      tradeDates.map(async ({ tradeDate }) => {
+        const rows = await this.prisma.limitListD.findMany({
+          where: { tradeDate },
+          select: { limit: true, limitTimes: true, upStat: true },
+        })
+        const date = formatDateToCompactTradeDate(tradeDate) ?? ''
+        const limitUp = rows.filter((r) => r.limit === 'U').length
+        const limitDown = rows.filter((r) => r.limit === 'D').length
+        const maxStreak = rows.reduce((max, r) => {
+          const streak = r.limitTimes ?? (r.upStat ? Number(r.upStat.match(/(\d+)/)?.[1] ?? 1) : 1)
+          return Math.max(max, streak)
+        }, 0)
+        return { date, limitUp, limitDown, maxStreak, sealRate: null, promoteRate: null, failRate: null }
+      }),
+    )
+
+    return result.sort((a, b) => a.date.localeCompare(b.date))
   }
 
   async nextDayPerf(dto: AlertLimitNextDayPerfDto) {
@@ -160,10 +166,16 @@ export class AlertLimitService {
   private mapLimitRow(row: Awaited<ReturnType<PrismaService['limitListD']['findMany']>>[number], concepts: string[]) {
     const streakDays = this.getStreakDays(row)
     const sealRatio = row.amount && row.fdAmount ? Number(row.fdAmount) / Number(row.amount) : null
+    // fdPercent: 封单金额(万元) / 流通市值(亿元*10000) × 100，即封单占流通市值百分比
+    const fdPercent =
+      row.floatMv && row.fdAmount
+        ? Math.round((Number(row.fdAmount) / (Number(row.floatMv) * 10000)) * 100 * 10000) / 10000
+        : null
     return {
       tradeDate: formatDateToCompactTradeDate(row.tradeDate),
       tsCode: row.tsCode,
       name: row.name,
+      stockName: row.name,
       industry: row.industry ?? null,
       concepts,
       close: row.close,
@@ -174,11 +186,14 @@ export class AlertLimitService {
       turnoverRatio: row.turnoverRatio,
       firstTime: row.firstTime,
       lastTime: row.lastTime,
+      firstSealTime: row.firstTime,
+      lastSealTime: row.lastTime,
       openTimes: row.openTimes,
       limitType: this.normalizeLimitType(row.limit),
       pctChgLimit: row.pctChg,
       sealPattern: this.getSealPattern(row.firstTime, row.openTimes),
       sealRatio: sealRatio == null ? null : Math.round(sealRatio * 10000) / 10000,
+      fdPercent,
       streakDays,
       streakStatus: this.normalizeLimitType(row.limit) === 'DOWN' ? `${streakDays}连跌停` : `${streakDays}连板`,
       upStat: row.upStat,

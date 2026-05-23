@@ -3,7 +3,7 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger'
 import { JwtAuthGuard } from 'src/lifecycle/guard/jwt-auth.guard'
 import { CurrentUser } from 'src/common/decorators/current-user.decorator'
 import { TokenPayload } from 'src/shared/token.interface'
-import { ApiSuccessResponse } from 'src/common/decorators/api-success-response.decorator'
+import { ApiSuccessRawResponse, ApiSuccessResponse } from 'src/common/decorators/api-success-response.decorator'
 import { BacktestRunService } from './services/backtest-run.service'
 import { BacktestStrategyRegistryService } from './services/backtest-strategy-registry.service'
 import { BacktestWalkForwardService } from './services/backtest-walk-forward.service'
@@ -280,6 +280,13 @@ export class BacktestController {
   @ApiOperation({ summary: '回测任务汇总统计' })
   getRunStats(@CurrentUser() user: TokenPayload) {
     return this.runService.getStats(user.id)
+  }
+
+  @Post('runs/rebalance-logs')
+  @ApiOperation({ summary: '查询调仓日志列表' })
+  @ApiSuccessRawResponse({ type: 'object' })
+  getRebalanceLogs(@Body() dto: { runId: string }) {
+    return this.runService.getRebalanceLogs(dto.runId)
   }
 
   // ── Walk-Forward lifecycle ────────────────────────────────────────────────────

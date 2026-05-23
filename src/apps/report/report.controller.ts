@@ -1,6 +1,6 @@
 import { Body, Controller, Post, UseGuards } from '@nestjs/common'
 import { ApiOperation, ApiTags } from '@nestjs/swagger'
-
+import { ApiSuccessRawResponse } from 'src/common/decorators/api-success-response.decorator'
 import { CurrentUser } from 'src/common/decorators/current-user.decorator'
 import { JwtAuthGuard } from 'src/lifecycle/guard/jwt-auth.guard'
 import { TokenPayload } from 'src/shared/token.interface'
@@ -59,5 +59,12 @@ export class ReportController {
   @ApiOperation({ summary: '删除报告' })
   deleteReport(@CurrentUser() user: TokenPayload, @Body() body: { reportId: string }) {
     return this.reportService.deleteReport(body.reportId, user.id)
+  }
+
+  @Post('schedules/list')
+  @ApiOperation({ summary: '查询报告定时任务列表（功能待实现）' })
+  @ApiSuccessRawResponse({ type: 'object' })
+  listSchedules() {
+    return { items: [], total: 0 }
   }
 }

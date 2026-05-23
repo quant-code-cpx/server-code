@@ -206,6 +206,32 @@ export class EventStudyService {
     }
   }
 
+  private async enrichItemsWithStockName(total: number, items: Array<Record<string, unknown> & { tsCode: string }>) {
+    if (items.length === 0) return { total, items }
+    const tsCodes = [...new Set(items.map((i) => i.tsCode))]
+    const stocks = await this.prisma.stockBasic.findMany({
+      where: { tsCode: { in: tsCodes } },
+      select: { tsCode: true, name: true },
+    })
+    const nameMap = new Map(stocks.map((s) => [s.tsCode, s.name]))
+    return {
+      total,
+      items: items.map((i) => ({
+        ...i,
+        name: nameMap.get(i.tsCode) ?? null,
+        stockName: nameMap.get(i.tsCode) ?? null,
+      })),
+    }
+  }
+
+  async queryEventsWithNames(dto: EventStudyEventsQueryDto) {
+    const result = await this.queryEvents(dto)
+    return this.enrichItemsWithStockName(
+      result.total,
+      result.items as Array<Record<string, unknown> & { tsCode: string }>,
+    )
+  }
+
   async analyze(dto: EventStudyAnalyzeDto): Promise<EventStudyResultDto> {
     const config = EVENT_TYPE_CONFIGS[dto.eventType]
     const preDays = dto.preDays ?? 5
@@ -520,6 +546,53 @@ export class EventStudyService {
     const pValue = 2 * (1 - normalCDF(Math.abs(tStat)))
 
     return { tStatistic: round(tStat, 4), pValue: round(pValue, 6) }
+  }
+
+  async eventsCalendar(dto: {
+    eventType?: EventType
+    eventTypes?: EventType[]
+    startDate: string
+    endDate: string
+    tsCode?: string
+  }) {
+    const { startDate, endDate, tsCode } = dto
+    // 支持 eventTypes（数组）和 eventType（单值）两种传参方式
+    const types: EventType[] = dto.eventTypes?.length
+      ? dto.eventTypes
+      : dto.eventType
+        ? [dto.eventType]
+        : (Object.values(EventType) as EventType[])
+
+    // 按 (date, eventType) 聚合为 cell
+    const cellMap = new Map<string, { count: number }>()
+    for (const eventType of types) {
+      let result: { total: number; items: unknown[] } | undefined
+      try {
+        result = await this.queryEvents({ eventType, startDate, endDate, tsCode, page: 1, pageSize: 2000 })
+      } catch {
+        continue
+      }
+      if (!result?.items) continue
+      const dateField = this.getEventDateField(eventType)
+      for (const item of result.items as Record<string, unknown>[]) {
+        const raw = item[dateField]
+        const dateStr = this.formatEventDateValue(raw)
+        if (!dateStr) continue
+        const key = `${dateStr}__${eventType}`
+        const cell = cellMap.get(key) ?? { count: 0 }
+        cell.count++
+        cellMap.set(key, cell)
+      }
+    }
+
+    const cells = Array.from(cellMap.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([key, cell]) => {
+        const [date, eventType] = key.split('__') as [string, EventType]
+        return { date, eventType, count: cell.count, significantCount: cell.count }
+      })
+
+    return { cells }
   }
 
   private buildEmptyResult(

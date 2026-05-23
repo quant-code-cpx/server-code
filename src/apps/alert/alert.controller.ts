@@ -7,10 +7,11 @@ import { RolesGuard } from 'src/lifecycle/guard/roles.guard'
 import { TokenPayload } from 'src/shared/token.interface'
 import { ApiSuccessRawResponse, ApiSuccessResponse } from 'src/common/decorators/api-success-response.decorator'
 import { AlertCalendarService } from './alert-calendar.service'
+import { CalendarHistoryTrendDto } from './dto/calendar-response.dto'
 import { AlertLimitService } from './alert-limit.service'
 import { MarketAnomalyService } from './market-anomaly.service'
 import { PriceAlertService } from './price-alert.service'
-import { CalendarQueryDto } from './dto/calendar-query.dto'
+import { CalendarHistoryTrendQueryDto, CalendarQueryDto } from './dto/calendar-query.dto'
 import { AlertLimitListDto, AlertLimitNextDayPerfDto, AlertLimitSummaryDto } from './dto/alert-limit.dto'
 import {
   CreatePriceAlertRuleDto,
@@ -37,8 +38,15 @@ export class AlertController {
   @ApiOperation({ summary: '查询事件日历（财报披露/限售解禁/除权除息/业绩预告）' })
   @ApiSuccessRawResponse({ type: 'array', items: { type: 'object' } })
   @Post('calendar/list')
-  getCalendar(@Body() query: CalendarQueryDto) {
-    return this.calendarService.getCalendar(query)
+  getCalendar(@CurrentUser() user: TokenPayload, @Body() query: CalendarQueryDto) {
+    return this.calendarService.getCalendar(query, user.id)
+  }
+
+  @ApiOperation({ summary: '查询历史同类事件收益参考（事件详情抽屉）' })
+  @ApiSuccessResponse(CalendarHistoryTrendDto)
+  @Post('calendar/history-trend')
+  getCalendarHistoryTrend(@Body() dto: CalendarHistoryTrendQueryDto) {
+    return this.calendarService.getHistoryTrend(dto)
   }
 
   // ── 价格预警规则 ──────────────────────────────────────────────────────────
@@ -98,22 +106,22 @@ export class AlertController {
   @ApiOperation({ summary: '查询异动监控记录（含统计聚合与排序）' })
   @ApiSuccessResponse(MarketAnomalyListResponseDto)
   @Post('anomalies/list')
-  getAnomalies(@Body() query: MarketAnomalyQueryDto) {
-    return this.marketAnomalyService.queryAnomalies(query)
+  getAnomalies(@CurrentUser() user: TokenPayload, @Body() query: MarketAnomalyQueryDto) {
+    return this.marketAnomalyService.queryAnomalies(query, user.id)
   }
 
   @ApiOperation({ summary: '异动监控统计聚合（各类型数量、最近扫描时间）' })
   @ApiSuccessRawResponse({ type: 'object' })
   @Post('anomalies/summary')
-  getAnomalySummary(@Body() body: { tradeDate?: string }) {
-    return this.marketAnomalyService.getSummary(body.tradeDate)
+  getAnomalySummary(@CurrentUser() user: TokenPayload, @Body() body: { tradeDate?: string }) {
+    return this.marketAnomalyService.getSummary(body.tradeDate, user.id)
   }
 
   @ApiOperation({ summary: '单条异动详情（含股票名称、结构化 detail）' })
   @ApiSuccessRawResponse({ type: 'object', nullable: true })
   @Post('anomalies/detail')
-  getAnomalyDetail(@Body() body: { id: number }) {
-    return this.marketAnomalyService.getDetail(body.id)
+  getAnomalyDetail(@Body() body: { anomalyId: number }) {
+    return this.marketAnomalyService.getDetail(body.anomalyId)
   }
 
   @ApiOperation({ summary: '手动触发异动监控扫描（管理员）' })

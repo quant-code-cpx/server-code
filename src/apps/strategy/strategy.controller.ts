@@ -87,4 +87,18 @@ export class StrategyController {
   compareVersions(@CurrentUser() user: TokenPayload, @Body() dto: CompareVersionsDto) {
     return this.strategyService.compareVersions(user.id, dto)
   }
+
+  @Post('summary')
+  @ApiOperation({ summary: '策略汇总：按类型分组统计 + 末次回测摘要' })
+  @ApiSuccessRawResponse({ type: 'object' })
+  summary(@CurrentUser() user: TokenPayload) {
+    return this.strategyService.summary(user.id)
+  }
+
+  @Post('performance')
+  @ApiOperation({ summary: '查询策略历史回测业绩（支持按策略 ID 过滤）' })
+  @ApiSuccessRawResponse({ type: 'object' })
+  performance(@CurrentUser() user: TokenPayload, @Body() dto: { strategyId?: string; limit?: number }) {
+    return this.strategyService.performance(user.id, dto)
+  }
 }

@@ -184,6 +184,20 @@ export class FactorController {
     return this.factorService.getAdminJobDetail(dto)
   }
 
+  @Post('admin/schedule')
+  @ApiOperation({ summary: '[管理] 查询因子调度配置（功能待实现）' })
+  @ApiSuccessRawResponse({ type: 'object' })
+  listAdminSchedule() {
+    return { items: [], total: 0 }
+  }
+
+  @Post('admin/audit')
+  @ApiOperation({ summary: '[管理] 查询因子操作审计日志（功能待实现）' })
+  @ApiSuccessRawResponse({ type: 'object' })
+  listAdminAudit() {
+    return { items: [], total: 0 }
+  }
+
   // ── Phase 3: Factor → Backtest full pipeline ────────────────────────────
 
   @Post('backtest/submit')

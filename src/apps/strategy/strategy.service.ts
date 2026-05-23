@@ -433,4 +433,89 @@ export class StrategyService {
   getSchemas() {
     return this.schemaValidator.getAllSchemas()
   }
+
+  async summary(userId: number) {
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
+
+    const [totalCount, activeSignalCount, recent7dRuns] = await Promise.all([
+      this.prisma.strategy.count({ where: { userId } }),
+      // activeSignalCount: 近 90 天内产生过信号的策略数量（无信号表则返回 0）
+      this.prisma.backtestRun
+        .findMany({
+          where: { userId, deletedAt: null, status: 'COMPLETED', completedAt: { gte: sevenDaysAgo } },
+          select: { strategyId: true },
+          distinct: ['strategyId'],
+        })
+        .then((rows) => rows.filter((r) => r.strategyId).length),
+      this.prisma.backtestRun.findMany({
+        where: { userId, deletedAt: null, status: 'COMPLETED', completedAt: { gte: sevenDaysAgo } },
+        select: { totalReturn: true },
+      }),
+    ])
+
+    const returns = recent7dRuns.map((r) => r.totalReturn).filter((v): v is number => v != null)
+    const recent7dRunCount = recent7dRuns.length
+    const recent7dBestReturn = returns.length ? Math.max(...returns) : null
+    const recent7dWorstReturn = returns.length ? Math.min(...returns) : null
+
+    return {
+      totalCount,
+      activeSignalCount,
+      recent7dRunCount,
+      recent7dBestReturn: recent7dBestReturn != null ? Math.round(recent7dBestReturn * 10000) / 10000 : null,
+      recent7dWorstReturn: recent7dWorstReturn != null ? Math.round(recent7dWorstReturn * 10000) / 10000 : null,
+    }
+  }
+
+  async performance(userId: number, dto: { strategyId?: string; limit?: number }) {
+    if (!dto.strategyId) {
+      return {
+        totalReturn: null,
+        annualizedReturn: null,
+        sharpeRatio: null,
+        maxDrawdown: null,
+        navSeries: [],
+        baseline: null,
+      }
+    }
+
+    // 取该策略最新一次已完成的回测
+    const run = await this.prisma.backtestRun.findFirst({
+      where: { userId, deletedAt: null, status: 'COMPLETED', strategyId: dto.strategyId },
+      orderBy: { completedAt: 'desc' },
+    })
+
+    if (!run) {
+      return {
+        totalReturn: null,
+        annualizedReturn: null,
+        sharpeRatio: null,
+        maxDrawdown: null,
+        navSeries: [],
+        baseline: null,
+      }
+    }
+
+    const navRows = await this.prisma.backtestDailyNav.findMany({
+      where: { runId: run.id },
+      orderBy: { tradeDate: 'asc' },
+    })
+
+    const navSeries = navRows.map((r) => ({ date: r.tradeDate.toISOString().slice(0, 10), nav: Number(r.nav) }))
+    const baselineNavSeries = navRows
+      .filter((r) => r.benchmarkNav != null)
+      .map((r) => ({ date: r.tradeDate.toISOString().slice(0, 10), nav: Number(r.benchmarkNav) }))
+
+    return {
+      totalReturn: run.totalReturn ?? null,
+      annualizedReturn: run.annualizedReturn ?? null,
+      sharpeRatio: run.sharpeRatio ?? null,
+      maxDrawdown: run.maxDrawdown ?? null,
+      navSeries,
+      baseline: {
+        totalReturn: run.benchmarkReturn ?? null,
+        navSeries: baselineNavSeries,
+      },
+    }
+  }
 }

@@ -155,6 +155,80 @@ describe('TushareAdminController', () => {
       })
   })
 
+  // ── 补充：缺失端点冒烟 ──────────────────────────────────────────────
+  const eps: Array<[string, keyof typeof mockDataQualityService | keyof typeof mockSyncLogService | keyof typeof mockTushareSyncService | keyof typeof mockCrossTableCheckService | keyof typeof mockAutoRepairService, Record<string,unknown>]> = [
+    ['/tushare/admin/quality/report', 'getRecentChecks', {}],
+    ['/tushare/admin/quality/gaps', 'getDataGaps', { dataSet: 'daily' }],
+    ['/tushare/admin/quality/cross-check', 'runAllCrossChecks', {}],
+    ['/tushare/admin/quality/repair', 'analyzeAndRepair', {}],
+    ['/tushare/admin/validation-logs', 'getValidationLogs', {}],
+    ['/tushare/admin/sync-logs', 'queryLogs', {}],
+    ['/tushare/admin/sync-logs/summary', 'summarizeLogs', {}],
+  ]
+
+  // Map service key to mock
+  const qualityMocks: Record<string, jest.Mock> = {
+    getRecentChecks: mockDataQualityService.getRecentChecks,
+    getDataGaps: mockDataQualityService.getDataGaps,
+    getValidationLogs: mockDataQualityService.getValidationLogs,
+    runAllCrossChecks: mockCrossTableCheckService.runAllCrossChecks,
+    analyzeAndRepair: mockAutoRepairService.analyzeAndRepair,
+    queryLogs: mockSyncLogService.queryLogs,
+    summarizeLogs: mockSyncLogService.summarizeLogs,
+  }
+
+  eps.forEach(([path, svcKey]) => {
+    it(`[BIZ] POST ${path} → 200/202`, async () => {
+      const mockFn = qualityMocks[svcKey as string]
+      if (mockFn) mockFn.mockResolvedValueOnce(svcKey === 'summarizeLogs' || svcKey === 'getDataGaps' || svcKey === 'getRecentChecks' ? [] : {})
+      const body = svcKey === 'getDataGaps' ? { dataSet: 'daily' } : {}
+      const res = await request(app.getHttpServer()).post(path).send(body)
+      expect(res.status).toBeGreaterThanOrEqual(200)
+      expect(res.status).toBeLessThan(400)
+    })
+  })
+
+  // quality/repair-status, quality/summary, quality/health use prisma directly
+  it('[BIZ] POST /tushare/admin/quality/repair-status → 200', async () => {
+    mockPrismaService.tushareSyncRetryQueue.count.mockResolvedValue(0)
+    const res = await request(app.getHttpServer()).post('/tushare/admin/quality/repair-status').send({})
+    expect(res.status).toBeGreaterThanOrEqual(200)
+    expect(res.status).toBeLessThan(400)
+  })
+
+  it('[BIZ] POST /tushare/admin/quality/summary → 200', async () => {
+    mockPrismaService.dataQualityCheck.findMany.mockResolvedValueOnce([])
+    const res = await request(app.getHttpServer()).post('/tushare/admin/quality/summary').send({})
+    expect(res.status).toBeGreaterThanOrEqual(200)
+    expect(res.status).toBeLessThan(400)
+  })
+
+  it('[BIZ] POST /tushare/admin/quality/health → 200', async () => {
+    mockPrismaService.dataQualityCheck.findMany.mockResolvedValueOnce([])
+    mockPrismaService.tushareSyncRetryQueue.count.mockResolvedValue(0)
+    const res = await request(app.getHttpServer()).post('/tushare/admin/quality/health').send({})
+    expect(res.status).toBeGreaterThanOrEqual(200)
+    expect(res.status).toBeLessThan(400)
+  })
+
+  it('[BIZ] POST /tushare/admin/retry-queue → 200', async () => {
+    mockPrismaService.tushareSyncRetryQueue.count.mockResolvedValue(0)
+    mockPrismaService.tushareSyncRetryQueue.findMany.mockResolvedValueOnce([])
+    const res = await request(app.getHttpServer()).post('/tushare/admin/retry-queue').send({})
+    expect(res.status).toBeGreaterThanOrEqual(200)
+    expect(res.status).toBeLessThan(400)
+  })
+
+  // DTO 校验
+  it('[VAL] POST /tushare/admin/sync mode 非法枚举 → 400', async () => {
+    await request(app.getHttpServer()).post('/tushare/admin/sync').send({ mode: 'INVALID' }).expect(400)
+  })
+
+  it('[VAL] POST /tushare/admin/sync-logs 缺 filter → DTO 放行', async () => {
+    mockSyncLogService.queryLogs.mockResolvedValueOnce({ items: [], total: 0 })
+    await request(app.getHttpServer()).post('/tushare/admin/sync-logs').send({}).expect(201)
+  })
+
   // Controller has class-level @UseGuards(RolesGuard) @Roles(SUPER_ADMIN)
   // mockRolesGuard returning false → NestJS throws ForbiddenException → 403
   it('[AUTH] 非 SUPER_ADMIN 访问 → 403', async () => {

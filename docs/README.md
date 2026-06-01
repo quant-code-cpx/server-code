@@ -55,6 +55,39 @@ docs/
 | [Phase4-Controller测试重构-详细设计](design/Phase4-Controller测试重构-详细设计.md) | Phase 4 Controller 层测试详细设计（DTO 校验 / 异常透传 / 权限边界，21 个 Controller ~120 新增用例）                            | 📋 需求稿 |
 | [Phase5-Lifecycle测试重构-详细设计](design/Phase5-Lifecycle测试重构-详细设计.md)   | Phase 5 Lifecycle 基础设施测试详细设计（Guard / Interceptor / Filter / Gateway / Processor / Health，16 个 Bug，~75 新增用例） | 📋 需求稿 |
 | [测试重构Phase6-E2E测试详细设计](design/测试重构Phase6-E2E测试详细设计.md)         | Phase 6 E2E 测试详细设计（6 条核心业务链路 / E2E 基础设施 / 6 个跨模块 Bug / CI 集成方案，~30 用例）                           | 📋 需求稿 |
+| [factor模块测试方案-20260523](design/factor模块测试方案-20260523.md)                | Factor 模块业务测试方案（23 端点 · DTO 校验 / 安全 / 管理端点 · 83 新增用例 · 2 发现）                                         | ✅ 已回归 |
+
+### 2026-05-24 全模块 API 测试方案
+
+| 文档 | 说明 | 用例数 | 通过率 |
+| ---- | ---- | ------ | ------ |
+| [auth测试方案](design/auth测试方案-20260524.md) | Auth 模块（验证码/登录/刷新/登出） | 15 | 100% |
+| [alert测试方案](design/alert测试方案-20260524.md) | Alert 模块（预警规则/异动监控/日历） | 18 | 100% |
+| [backtest测试方案](design/backtest测试方案-20260524.md) | Backtest 模块（策略回测/结果/对比） | 45 | 100% |
+| [calendar测试方案](design/calendar测试方案-20260524.md) | Calendar 模块（事件日历） | 24 | 100% |
+| [event-study测试方案](design/event-study测试方案-20260524.md) | Event-study 模块（事件驱动研究） | 22 | 100% |
+| [export测试方案](design/export测试方案-20260524.md) | Export 模块（CSV 导出） | 32 | 100% |
+| [factor测试方案](design/factor测试方案-20260524.md) | Factor 模块（因子市场/分析/自定义） | 68 | 98.5% |
+| [fund测试方案](design/fund测试方案-20260524.md) | Fund 模块（基金持仓/ETF 流） | 23 | 100% |
+| [heatmap测试方案](design/heatmap测试方案-20260524.md) | Heatmap 模块（热力图/快照） | 27 | 100% |
+| [index测试方案](design/index测试方案-20260524.md) | Index 模块（指数列表/日线/成分） | 16 | 100% |
+| [industry测试方案](design/industry测试方案-20260524.md) | Industry 模块（行业字典映射） | 11 | 100% |
+| [industry-rotation测试方案](design/industry-rotation测试方案-20260524.md) | Industry-rotation 模块（行业轮动） | 40 | 100% |
+| [market测试方案](design/market测试方案-20260524.md) | Market 模块（市场概览/资金流/情绪） | 80 | 100% |
+| [notification测试方案](design/notification测试方案-20260524.md) | Notification 模块（站内通知） | 22 | 100% |
+| [pattern测试方案](design/pattern测试方案-20260524.md) | Pattern 模块（K 线形态匹配） | 31 | 100% |
+| [portfolio测试方案](design/portfolio测试方案-20260524.md) | Portfolio 模块（组合管理/风控） | 73 | 100% |
+| [report测试方案](design/report测试方案-20260524.md) | Report 模块（量化报告生成） | 34 | 100% |
+| [research-note测试方案](design/research-note测试方案-20260524.md) | Research-note 模块（研究笔记） | 43 | 100% |
+| [screener-subscription测试方案](design/screener-subscription测试方案-20260524.md) | Screener-subscription 模块（条件订阅） | 37 | 100% |
+| [signal测试方案](design/signal测试方案-20260524.md) | Signal 模块（信号引擎） | 21 | 100% |
+| [stock测试方案](design/stock测试方案-20260524.md) | Stock 模块（股票数据/选股） | 54 | 100% |
+| [strategy测试方案](design/strategy测试方案-20260524.md) | Strategy 模块（策略管理） | 36 | 100% |
+| [strategy-draft测试方案](design/strategy-draft测试方案-20260524.md) | Strategy-draft 模块（策略草稿） | 28 | 100% |
+| [tushare测试方案](design/tushare测试方案-20260524.md) | Tushare 模块（数据同步管理） | 38 | 100% |
+| [user测试方案](design/user测试方案-20260524.md) | User 模块（用户管理/偏好） | 50 | 100% |
+| [watchlist测试方案](design/watchlist测试方案-20260524.md) | Watchlist 模块（自选股管理） | 39 | 100% |
+| [四模块API测试方案V2](design/四模块API测试方案-20260524-v2.md) | Auth / Event-study / Alert / Calendar 全新重测（不继承旧 spec 结论） | 15（执行） | 80%（12/15） |
 
 ---
 
@@ -65,6 +98,7 @@ docs/
 | [待办清单](待办清单.md)                                       | 统一 TODO List（功能 + 工程质量 + 产品痛点），按优先级 P0-P3 组织          | 持续更新  |
 | [测试待办清单](测试待办清单.md)                               | 测试体系规划（P0-P6 分阶段，覆盖单元 / 集成 / E2E）                        | 持续更新  |
 | [测试重构总纲](测试重构总纲.md)                               | 测试用例重构计划（基于业务理解、以发现 Bug 为目的的测试重设计）            | 📋 需求稿 |
+| [apps模块循环测试执行报告-20260524](apps模块循环测试执行报告-20260524.md) | 按 `src/apps` 目录逐模块执行闭环测试的进度与缺陷汇总                       | 🔧 执行中 |
 | [后端功能盘点](后端功能盘点.md)                               | 全部 147 个 API 端点 · 14 个模块 · 异步任务 · WebSocket · Tushare 同步清单 | 按需更新  |
 | [代码审查与优化建议-20260416](代码审查与优化建议-20260416.md) | 全仓库代码审查：性能优化 · Tushare 数据挖掘 · 功能缺失 · 安全加固建议      | 📋 需求稿 |
 
@@ -75,6 +109,18 @@ docs/
 | 文档                                       | 说明                 |
 | ------------------------------------------ | -------------------- |
 | [生产环境部署](operations/生产环境部署.md) | 生产环境部署分析报告 |
+
+---
+
+## 🧪 测试分层命令（CI 对齐）
+
+- `pnpm run test:unit`：单测/控制器/服务层（排除 API 套件、fresh 套件、integration 套件）
+- `pnpm run test:api`：模块 API 套件 + `test/fresh/*`
+- `pnpm run test:integration`：`src/apps/*/test/*.integration.spec.ts`
+- `pnpm run test:integration:redis`：Auth 真实 Redis 集成（默认通过 `RUN_REDIS_INTEGRATION=true` 启用）
+- `pnpm run test:all`：全量 `jest --runInBand`
+
+> 说明：`auth.integration` 已支持环境感知。仅在需要真实 Redis 联调时显式开启 `RUN_REDIS_INTEGRATION=true`。
 
 ---
 

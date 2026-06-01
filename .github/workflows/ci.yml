@@ -164,6 +164,18 @@ jobs:
           pnpm exec jest --findRelatedTests ${{ steps.changed.outputs.files }} \
             --passWithNoTests --forceExit
 
-      - name: Test (full — main / PR / new branch)
+      - name: Test (unit lane — main / PR / new branch)
         if: steps.changed.outputs.mode != 'incremental'
-        run: pnpm test --passWithNoTests
+        run: pnpm run test:unit --passWithNoTests
+
+      - name: Test (api lane — main / PR / new branch)
+        if: steps.changed.outputs.mode != 'incremental'
+        run: pnpm run test:api --passWithNoTests
+
+      - name: Test (integration lane — main / PR / new branch)
+        if: steps.changed.outputs.mode != 'incremental'
+        run: pnpm run test:integration --passWithNoTests
+
+      - name: Test (integration lane — real redis auth)
+        if: steps.changed.outputs.mode != 'incremental'
+        run: pnpm run test:integration:redis --passWithNoTests

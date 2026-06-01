@@ -46,6 +46,8 @@ const mockStockService = {
   getStockConcepts: jest.fn(async () => []),
   screener: jest.fn(async () => ({ items: [], total: 0 })),
   getScreenerPresets: jest.fn(async () => []),
+  getScreenerConcepts: jest.fn(async () => []),
+  getListSummary: jest.fn(async () => ({})),
   getStrategies: jest.fn(async () => []),
   createStrategy: jest.fn(async () => ({ id: 1 })),
   updateStrategy: jest.fn(async () => ({ id: 1 })),
@@ -196,5 +198,37 @@ describe('StockController (integration)', () => {
   it('[VAL] POST /stock/detail/analysis/factors/latest 缺 tsCode → 400', async () => {
     await request(app.getHttpServer()).post('/stock/detail/analysis/factors/latest').send({}).expect(400)
     expect(mockStockAnalysisService.getLatestFactors).not.toHaveBeenCalled()
+  })
+
+  // ── 补充剩余端点冒烟 ───────────────────────────────────────────────────
+  const detailEndpoints: Array<[string, jest.Mock, Record<string, unknown>]> = [
+    ['/stock/list/summary', mockStockService.getListSummary as jest.Mock, {}],
+    ['/stock/detail/overview', mockStockService.getDetailOverview as jest.Mock, { code: '000001.SZ' }],
+    ['/stock/detail/chart', mockStockService.getDetailChart as jest.Mock, { tsCode: '000001.SZ' }],
+    ['/stock/detail/money-flow', mockStockService.getDetailMoneyFlow as jest.Mock, { tsCode: '000001.SZ' }],
+    ['/stock/detail/shareholders', mockStockService.getDetailShareholders as jest.Mock, { tsCode: '000001.SZ' }],
+    ['/stock/detail/main-money-flow', mockStockService.getDetailMainMoneyFlow as jest.Mock, { tsCode: '000001.SZ' }],
+    ['/stock/detail/share-capital', mockStockService.getDetailShareCapital as jest.Mock, { tsCode: '000001.SZ' }],
+    ['/stock/detail/financing', mockStockService.getDetailFinancing as jest.Mock, { tsCode: '000001.SZ' }],
+    ['/stock/detail/today-flow', mockStockService.getDetailTodayFlow as jest.Mock, { code: '000001.SZ' }],
+    ['/stock/detail/financial-statements', mockStockService.getDetailFinancialStatements as jest.Mock, { tsCode: '000001.SZ' }],
+    ['/stock/detail/concepts', mockStockService.getStockConcepts as jest.Mock, { tsCode: '000001.SZ' }],
+    ['/stock/detail/analysis/technical', mockStockAnalysisService.getTechnicalIndicators as jest.Mock, { tsCode: '000001.SZ' }],
+    ['/stock/detail/analysis/timing-signals', mockStockAnalysisService.getTimingSignals as jest.Mock, { tsCode: '000001.SZ' }],
+    ['/stock/detail/analysis/chip-distribution', mockStockAnalysisService.getChipDistribution as jest.Mock, { tsCode: '000001.SZ' }],
+    ['/stock/detail/analysis/margin', mockStockAnalysisService.getMarginData as jest.Mock, { tsCode: '000001.SZ' }],
+    ['/stock/detail/analysis/relative-strength', mockStockAnalysisService.getRelativeStrength as jest.Mock, { tsCode: '000001.SZ', benchmarkCode: '000300.SH' }],
+    ['/stock/screener/presets', mockStockService.getScreenerPresets as jest.Mock, {}],
+    ['/stock/screener/concepts', mockStockService.getScreenerConcepts as jest.Mock, {}],
+    ['/stock/areas', mockStockService.getAreas as jest.Mock, {}],
+  ]
+
+  detailEndpoints.forEach(([path, svcMock, body]) => {
+    it(`[BIZ] POST ${path} → 201`, async () => {
+      svcMock.mockResolvedValueOnce(svcMock === mockStockService.getAreas ? [] : {})
+      await request(app.getHttpServer()).post(path).send(body).expect(201).expect((res: any) => {
+        expect(res.body.code).toBe(0)
+      })
+    })
   })
 })

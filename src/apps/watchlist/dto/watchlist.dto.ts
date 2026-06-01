@@ -154,3 +154,78 @@ export class ReorderWatchlistsDto {
   @Type(() => ReorderItem)
   items: ReorderItem[]
 }
+
+// ── Controller Body DTOs (with id) ───────────────────────────────────────────
+
+export class UpdateWatchlistBodyDto extends UpdateWatchlistDto {
+  @ApiProperty({ description: '自选组 ID' })
+  @IsInt()
+  @Min(1)
+  id: number
+}
+
+export class DeleteWatchlistBodyDto {
+  @ApiProperty({ description: '自选组 ID' })
+  @IsInt()
+  @Min(1)
+  id: number
+}
+
+export class WatchlistIdBodyDto {
+  @ApiProperty({ description: '自选组 ID' })
+  @IsInt()
+  @Min(1)
+  id: number
+}
+
+export class AddStockBodyDto extends AddWatchlistStockDto {
+  @ApiProperty({ description: '自选组 ID' })
+  @IsInt()
+  @Min(1)
+  id: number
+}
+
+export class BatchAddStockBodyDto extends BatchAddStocksDto {
+  @ApiProperty({ description: '自选组 ID' })
+  @IsInt()
+  @Min(1)
+  id: number
+}
+
+export class ReorderStocksBodyDto extends ReorderWatchlistsDto {
+  @ApiProperty({ description: '自选组 ID' })
+  @IsInt()
+  @Min(1)
+  id: number
+}
+
+export class UpdateStockBodyDto extends UpdateWatchlistStockDto {
+  @ApiProperty({ description: '自选组 ID' })
+  @IsInt()
+  @Min(1)
+  id: number
+
+  @ApiProperty({ description: '股票记录 ID' })
+  @IsInt()
+  @Min(1)
+  stockId: number
+}
+
+export class BatchRemoveStockBodyDto extends BatchRemoveStocksDto {
+  @ApiProperty({ description: '自选组 ID' })
+  @IsInt()
+  @Min(1)
+  id: number
+}
+
+export class RemoveStockBodyDto {
+  @ApiProperty({ description: '自选组 ID' })
+  @IsInt()
+  @Min(1)
+  id: number
+
+  @ApiProperty({ description: '股票记录 ID' })
+  @IsInt()
+  @Min(1)
+  stockId: number
+}

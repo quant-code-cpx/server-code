@@ -179,6 +179,21 @@ describe('FactorScreeningService', () => {
       expect((service as any).passesCondition(5, { operator: 'lte', value: 5 })).toBe(true)
     })
 
+    it('between: 5 in [3,7] → true', () => {
+      expect((service as any).passesCondition(5, { operator: 'between', min: 3, max: 7 })).toBe(true)
+    })
+    it('between: 2 in [3,7] → false', () => {
+      expect((service as any).passesCondition(2, { operator: 'between', min: 3, max: 7 })).toBe(false)
+    })
+    it('between: 边界 3 in [3,7] → true（闭区间）', () => {
+      expect((service as any).passesCondition(3, { operator: 'between', min: 3, max: 7 })).toBe(true)
+    })
+    it('[BUG?] between: min=null max=7 → 应返回 false（不等式的短路结果）', () => {
+      // between 分支: cond.min != null && cond.max != null && val >= cond.min && val <= cond.max
+      // min=null 时整个表达式为 false
+      expect((service as any).passesCondition(5, { operator: 'between', min: null as any, max: 7 })).toBe(false)
+    })
+
     it('gt 且 condition.value 为 undefined → false', () => {
       expect((service as any).passesCondition(10, { operator: 'gt', value: undefined })).toBe(false)
     })

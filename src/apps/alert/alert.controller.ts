@@ -19,7 +19,7 @@ import {
   ListPriceAlertRulesDto,
   UpdatePriceAlertRuleDto,
 } from './dto/price-alert-rule.dto'
-import { MarketAnomalyListResponseDto, MarketAnomalyQueryDto } from './dto/market-anomaly.dto'
+import { MarketAnomalyDetailQueryDto, MarketAnomalyListResponseDto, MarketAnomalyQueryDto } from './dto/market-anomaly.dto'
 
 @ApiBearerAuth()
 @ApiTags('Alert - 预警与监控')
@@ -120,7 +120,7 @@ export class AlertController {
   @ApiOperation({ summary: '单条异动详情（含股票名称、结构化 detail）' })
   @ApiSuccessRawResponse({ type: 'object', nullable: true })
   @Post('anomalies/detail')
-  getAnomalyDetail(@Body() body: { anomalyId: number }) {
+  getAnomalyDetail(@Body() body: MarketAnomalyDetailQueryDto) {
     return this.marketAnomalyService.getDetail(body.anomalyId)
   }
 

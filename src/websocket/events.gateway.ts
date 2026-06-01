@@ -10,9 +10,13 @@ import {
 } from '@nestjs/websockets'
 import { Logger } from '@nestjs/common'
 import { JwtService } from '@nestjs/jwt'
+import { UserRole } from '@prisma/client'
 import { Server, Socket } from 'socket.io'
 import type { QualityCheckSummary } from 'src/tushare/sync/quality/data-quality.service'
 import type { RepairSummary } from 'src/tushare/sync/quality/auto-repair.service'
+
+/** 管理员专属 WebSocket 房间（ADMIN + SUPER_ADMIN 均可加入） */
+const ADMIN_ROOM = 'role:admin'
 
 /**
  * WebSocket 网关
@@ -53,11 +57,15 @@ export class EventsGateway implements OnGatewayInit, OnGatewayConnection, OnGate
 
   handleConnection(client: Socket) {
     this.logger.log(`Client connected: ${client.id}`)
-    // 尝试从 token 中解析 userId，加入用户专属房间
-    const userId = this.extractUserId(client)
-    if (userId) {
-      client.join(`user:${userId}`)
-      this.logger.debug(`Client ${client.id} joined user:${userId}`)
+    // 尝试从 token 中解析 userId 和 role，加入对应房间
+    const payload = this.extractPayload(client)
+    if (payload) {
+      client.join(`user:${payload.id}`)
+      this.logger.debug(`Client ${client.id} joined user:${payload.id}`)
+      if (payload.role === UserRole.ADMIN || payload.role === UserRole.SUPER_ADMIN) {
+        client.join(ADMIN_ROOM)
+        this.logger.debug(`Client ${client.id} joined ${ADMIN_ROOM} (role=${payload.role})`)
+      }
     }
   }
 
@@ -70,14 +78,15 @@ export class EventsGateway implements OnGatewayInit, OnGatewayConnection, OnGate
     this.logger.log(`Client disconnected: ${client.id}, left ${rooms.length} rooms`)
   }
 
-  private extractUserId(client: Socket): number | null {
+  private extractPayload(client: Socket): { id: number; role: UserRole } | null {
     try {
       const token =
         (client.handshake.auth?.token as string) ||
         (client.handshake.headers?.authorization as string)?.replace('Bearer ', '')
       if (!token) return null
-      const payload = this.jwtService.verify<{ id?: number }>(token)
-      return payload?.id ?? null
+      const payload = this.jwtService.verify<{ id?: number; role?: UserRole }>(token)
+      if (!payload?.id) return null
+      return { id: payload.id, role: payload.role ?? UserRole.USER }
     } catch {
       return null
     }
@@ -125,12 +134,12 @@ export class EventsGateway implements OnGatewayInit, OnGatewayConnection, OnGate
     this.server.emit('notification', { message, data })
   }
 
-  /** 广播 Tushare 同步已开始 */
+  /** 向管理员推送 Tushare 同步已开始 */
   broadcastSyncStarted(trigger: string, mode: string) {
-    this.server.emit('tushare_sync_started', { trigger, mode })
+    this.server.to(ADMIN_ROOM).emit('tushare_sync_started', { trigger, mode })
   }
 
-  /** 广播 Tushare 同步已完成 */
+  /** 向管理员推送 Tushare 同步已完成 */
   broadcastSyncCompleted(result: {
     trigger: string
     mode: string
@@ -140,16 +149,16 @@ export class EventsGateway implements OnGatewayInit, OnGatewayConnection, OnGate
     targetTradeDate: string | null
     elapsedSeconds: number
   }) {
-    this.server.emit('tushare_sync_completed', result)
+    this.server.to(ADMIN_ROOM).emit('tushare_sync_completed', result)
   }
 
-  /** 广播 Tushare 同步异常终止 */
+  /** 向管理员推送 Tushare 同步异常终止 */
   broadcastSyncFailed(trigger: string, mode: string, reason: string) {
-    this.server.emit('tushare_sync_failed', { trigger, mode, reason })
+    this.server.to(ADMIN_ROOM).emit('tushare_sync_failed', { trigger, mode, reason })
   }
 
   /**
-   * 广播单个任务的同步进度（节流由调用方控制）。
+   * 向管理员推送单个任务的同步进度（节流由调用方控制）。
    * 前端事件名: tushare_sync_progress
    */
   broadcastSyncProgress(payload: {
@@ -163,11 +172,11 @@ export class EventsGateway implements OnGatewayInit, OnGatewayConnection, OnGate
     elapsedMs: number
     estimatedRemainingMs?: number
   }) {
-    this.server.emit('tushare_sync_progress', payload)
+    this.server.to(ADMIN_ROOM).emit('tushare_sync_progress', payload)
   }
 
   /**
-   * 广播全局同步总体进度（各任务等权聚合）。
+   * 向管理员推送全局同步总体进度（各任务等权聚合）。
    * 前端事件名: tushare_sync_overall_progress
    */
   broadcastSyncOverallProgress(payload: {
@@ -177,7 +186,7 @@ export class EventsGateway implements OnGatewayInit, OnGatewayConnection, OnGate
     elapsedMs: number
     estimatedRemainingMs?: number
   }) {
-    this.server.emit('tushare_sync_overall_progress', payload)
+    this.server.to(ADMIN_ROOM).emit('tushare_sync_overall_progress', payload)
   }
 
   /**
@@ -188,14 +197,14 @@ export class EventsGateway implements OnGatewayInit, OnGatewayConnection, OnGate
     this.server.to(`user:${userId}`).emit(event, data)
   }
 
-  /** 广播数据质量检查完成 */
+  /** 向管理员推送数据质量检查完成 */
   broadcastDataQualityCompleted(summary: QualityCheckSummary): void {
-    this.server.emit('data_quality_completed', summary)
+    this.server.to(ADMIN_ROOM).emit('data_quality_completed', summary)
   }
 
-  /** 广播自动补数任务入队 */
+  /** 向管理员推送自动补数任务入队 */
   broadcastAutoRepairQueued(summary: RepairSummary): void {
-    this.server.emit('auto_repair_queued', summary)
+    this.server.to(ADMIN_ROOM).emit('auto_repair_queued', summary)
   }
 
   /** 获取当前 WebSocket 连接数（供 Prometheus 指标采集） */

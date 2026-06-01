@@ -89,20 +89,20 @@ describe('StrategyDraftService', () => {
     prisma.strategyDraft.findFirst.mockResolvedValue(existing as never)
     prisma.strategyDraft.update.mockResolvedValue(updated as never)
 
-    const result = await service.updateDraft(1, 1, { name: '新名称' })
+    const result = await service.updateDraft(1, 1, { id: 1, name: '新名称' })
     expect(result).toBe(updated)
   })
 
   it('updateDraft — 不存在 → NotFoundException', async () => {
     prisma.strategyDraft.findFirst.mockResolvedValue(null)
-    await expect(service.updateDraft(1, 99, { name: 'x' })).rejects.toThrow(NotFoundException)
+    await expect(service.updateDraft(1, 99, { id: 99, name: 'x' })).rejects.toThrow(NotFoundException)
   })
 
   it('updateDraft — 重名(P2002) → ConflictException', async () => {
     prisma.strategyDraft.findFirst.mockResolvedValue({ id: 1 } as never)
     prisma.strategyDraft.update.mockRejectedValue({ code: 'P2002' })
 
-    await expect(service.updateDraft(1, 1, { name: 'dup' })).rejects.toThrow(ConflictException)
+    await expect(service.updateDraft(1, 1, { id: 1, name: 'dup' })).rejects.toThrow(ConflictException)
   })
 
   // ── deleteDraft ───────────────────────────────────────────────────────────
@@ -133,7 +133,7 @@ describe('StrategyDraftService', () => {
     prisma.strategyDraft.findFirst.mockResolvedValue(draft as never)
     backtestRunService.createRun.mockResolvedValue({ id: 'run-1' } as never)
 
-    const result = await service.submitDraft(1, 1, {})
+    const result = await service.submitDraft(1, 1, { id: 1 })
     expect(schemaValidator.validate).toHaveBeenCalledWith('MA_CROSS_SINGLE', draft.config.strategyConfig)
     expect(backtestRunService.createRun).toHaveBeenCalled()
     expect(result).toEqual({ id: 'run-1' })
@@ -141,14 +141,14 @@ describe('StrategyDraftService', () => {
 
   it('submitDraft — 草稿不存在 → NotFoundException', async () => {
     prisma.strategyDraft.findFirst.mockResolvedValue(null)
-    await expect(service.submitDraft(1, 99, {})).rejects.toThrow(NotFoundException)
+    await expect(service.submitDraft(1, 99, { id: 99 })).rejects.toThrow(NotFoundException)
   })
 
   it('submitDraft — config 缺少 strategyType → BadRequestException', async () => {
     const draft = { id: 1, userId: 1, name: '草稿B', config: {} }
     prisma.strategyDraft.findFirst.mockResolvedValue(draft as never)
 
-    await expect(service.submitDraft(1, 1, {})).rejects.toThrow(BadRequestException)
+    await expect(service.submitDraft(1, 1, { id: 1 })).rejects.toThrow(BadRequestException)
   })
 
   it('submitDraft — 无 strategyConfig → 跳过 schema 验证', async () => {
@@ -161,7 +161,7 @@ describe('StrategyDraftService', () => {
     prisma.strategyDraft.findFirst.mockResolvedValue(draft as never)
     backtestRunService.createRun.mockResolvedValue({ id: 'run-2' } as never)
 
-    await service.submitDraft(1, 1, {})
+    await service.submitDraft(1, 1, { id: 1 })
     expect(schemaValidator.validate).not.toHaveBeenCalled()
     expect(backtestRunService.createRun).toHaveBeenCalled()
   })

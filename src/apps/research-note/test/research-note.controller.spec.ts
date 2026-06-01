@@ -24,6 +24,10 @@ const mockService = {
   create: jest.fn(async () => ({ id: 1, title: '新笔记' })),
   update: jest.fn(async () => ({ id: 1, title: '更新笔记' })),
   remove: jest.fn(async () => ({ message: '删除成功' })),
+  restore: jest.fn(async () => ({ id: 1, title: '恢复笔记' })),
+  permanentDelete: jest.fn(async () => ({ message: '永久删除成功' })),
+  listTrash: jest.fn(async () => ({ notes: [], total: 0, page: 1, pageSize: 20 })),
+  search: jest.fn(async () => ({ items: [], total: 0, page: 1, pageSize: 20 })),
 }
 
 describe('ResearchNoteController (integration)', () => {
@@ -112,6 +116,35 @@ describe('ResearchNoteController (integration)', () => {
       .expect((res) => {
         expect(res.body.data.message).toBe('删除成功')
       }))
+
+  // ── 补充：缺失端点冒烟 ──────────────────────────────────────────────
+  it('[BIZ] POST /research-note/restore → 201', () =>
+    request(app.getHttpServer())
+      .post('/research-note/restore')
+      .send({ id: 1 })
+      .expect(201)
+      .expect((res) => expect(res.body.code).toBe(0)))
+
+  it('[BIZ] POST /research-note/permanent-delete → 201', () =>
+    request(app.getHttpServer())
+      .post('/research-note/permanent-delete')
+      .send({ id: 1 })
+      .expect(201)
+      .expect((res) => expect(res.body.code).toBe(0)))
+
+  it('[BIZ] POST /research-note/list-trash → 201', () =>
+    request(app.getHttpServer())
+      .post('/research-note/list-trash')
+      .send({})
+      .expect(201)
+      .expect((res) => expect(res.body.code).toBe(0)))
+
+  it('[BIZ] POST /research-note/search → 201', () =>
+    request(app.getHttpServer())
+      .post('/research-note/search')
+      .send({ keyword: '量化' })
+      .expect(201)
+      .expect((res) => expect(res.body.code).toBe(0)))
 
   // CreateResearchNoteDto: title required (@IsString @MinLength(1) @MaxLength(100))
   it('[VAL] POST /research-note/create 缺 title → 400', () =>

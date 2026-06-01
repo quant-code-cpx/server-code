@@ -1,4 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
+import { Type } from 'class-transformer'
 import { IsEnum, IsIn, IsInt, IsObject, IsOptional, IsString, MaxLength, MinLength } from 'class-validator'
 import { SubscriptionFrequency } from '@prisma/client'
 
@@ -96,4 +97,22 @@ export class SubscriptionLogsQueryDto {
   @IsOptional()
   @IsInt()
   pageSize?: number = 20
+}
+
+export class SubscriptionIdDto {
+  @ApiProperty({ description: '订阅 ID' })
+  @IsInt()
+  id: number
+}
+
+export class UpdateSubscriptionBodyDto extends UpdateSubscriptionDto {
+  @ApiProperty({ description: '订阅 ID' })
+  @IsInt()
+  id: number
+}
+
+export class SubscriptionLogsBodyDto extends SubscriptionLogsQueryDto {
+  @ApiProperty({ description: '订阅 ID' })
+  @IsInt()
+  id: number
 }

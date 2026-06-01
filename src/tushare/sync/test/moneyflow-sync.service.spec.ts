@@ -56,6 +56,7 @@ function buildMockHelper() {
     replaceTradeDateRows: jest.fn(async () => 10),
     replaceDateRangeRows: jest.fn(async () => 10),
     deleteRowsBeforeDate: jest.fn(async () => 0),
+    enqueueRetry: jest.fn(async () => undefined),
     writeSyncLog: jest.fn(async () => undefined),
     flushValidationLogs: jest.fn(async () => undefined),
   }

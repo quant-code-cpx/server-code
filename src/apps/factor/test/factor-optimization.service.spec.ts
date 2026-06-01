@@ -109,6 +109,14 @@ describe('FactorOptimizationService', () => {
     }
   })
 
+  it('should respect minWeight constraint', async () => {
+    const { result } = await runMode(OptimizationMode.MIN_VARIANCE, { minWeight: 0.1, maxWeight: 0.6 })
+    for (const w of result.weights) {
+      expect(w.weight).toBeGreaterThanOrEqual(0.1 - 1e-4)
+      expect(w.weight).toBeLessThanOrEqual(0.6 + 1e-4)
+    }
+  })
+
   it('should return portfolio metrics', async () => {
     const { result } = await runMode(OptimizationMode.MIN_VARIANCE)
     expect(result.portfolioMetrics).toMatchObject({

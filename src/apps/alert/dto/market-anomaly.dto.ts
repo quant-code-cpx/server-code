@@ -74,6 +74,14 @@ export class MarketAnomalyQueryDto {
   pageSize?: number = 20
 }
 
+export class MarketAnomalyDetailQueryDto {
+  @ApiProperty({ description: '异动记录 ID' })
+  @Type(() => Number)
+  @IsNumber()
+  @Min(1)
+  anomalyId: number
+}
+
 /** 异动监控 detail 字段（各类型共用，不适用的字段为 null） */
 export class MarketAnomalyDetailDto {
   /** 扫描时交易日字符串，格式 YYYYMMDD */

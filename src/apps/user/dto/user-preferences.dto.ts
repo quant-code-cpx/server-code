@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
-import { IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator'
+import { IsDefined, IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator'
 
 export class GetPreferencesDto {
   @ApiPropertyOptional({ description: '偏好 key；不传则返回全部偏好对象', example: 'stockListColumns' })
@@ -20,5 +20,6 @@ export class UpdatePreferenceDto {
     description: '偏好值（任意 JSON 可序列化数据）',
     example: ['tsCode', 'name', 'peTtm', 'totalMv'],
   })
+  @IsDefined()
   value: unknown
 }

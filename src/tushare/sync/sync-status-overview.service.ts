@@ -442,6 +442,8 @@ const CACHE_TTL = 5 * 60 // 5 分钟
 @Injectable()
 export class SyncStatusOverviewService {
   private readonly logger = new Logger(SyncStatusOverviewService.name)
+  /** 防击穿：当缓存未命中时，只允许一个并发 buildOverview() 在飞 */
+  private _buildOverviewFlight: Promise<SyncStatusOverview> | null = null
 
   constructor(
     private readonly prisma: PrismaService,
@@ -454,7 +456,14 @@ export class SyncStatusOverviewService {
       namespace: 'tushare-sync-overview',
       key: CACHE_KEY,
       ttlSeconds: CACHE_TTL,
-      loader: () => this.buildOverview(),
+      loader: () => {
+        if (!this._buildOverviewFlight) {
+          this._buildOverviewFlight = this.buildOverview().finally(() => {
+            this._buildOverviewFlight = null
+          })
+        }
+        return this._buildOverviewFlight
+      },
     })
   }
 

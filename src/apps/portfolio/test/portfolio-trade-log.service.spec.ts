@@ -117,7 +117,7 @@ describe('PortfolioTradeLogService', () => {
       prisma.portfolioTradeLog.findMany.mockResolvedValue([])
       const svc = createService(prisma)
 
-      await svc.query({ portfolioId: 'p-1', startDate: '2024-01-01', endDate: '2024-12-31' } as TradeLogQueryDto, 1)
+      await svc.query({ portfolioId: 'p-1', startDate: '20240101', endDate: '20241231' } as TradeLogQueryDto, 1)
 
       expect(prisma.portfolioTradeLog.count).toHaveBeenCalledWith(
         expect.objectContaining({

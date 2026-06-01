@@ -21,6 +21,7 @@ lerna-debug.log*
 # Tests
 /coverage
 /.nyc_output
+*.profraw
 
 # IDEs and editors
 /.idea

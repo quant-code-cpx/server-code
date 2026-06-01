@@ -434,13 +434,15 @@ export class WatchlistService {
           v.pb::float,
           v.total_mv::float,
           d.trade_date
-        FROM stock_daily_prices d
+        FROM (
+          SELECT DISTINCT ON (ts_code)
+            ts_code, close, pct_chg, vol, amount, trade_date
+          FROM stock_daily_prices
+          WHERE ts_code = ANY(${tsCodes})
+          ORDER BY ts_code, trade_date DESC
+        ) d
         LEFT JOIN stock_daily_valuation_metrics v
           ON v.ts_code = d.ts_code AND v.trade_date = d.trade_date
-        WHERE d.ts_code = ANY(${tsCodes})
-          AND d.trade_date = (
-            SELECT MAX(d2.trade_date) FROM stock_daily_prices d2 WHERE d2.ts_code = d.ts_code
-          )
       `
 
       for (const r of rows) {

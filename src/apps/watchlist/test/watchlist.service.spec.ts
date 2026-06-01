@@ -509,6 +509,8 @@ describe('WatchlistService', () => {
       expect(result.upCount).toBe(2)
       expect(result.downCount).toBe(1)
       expect(result.flatCount).toBe(1)
+      // 手算 avgPctChg: (3.0 + (-1.5) + 0 + 2.0) / 4 = 0.875
+      expect(result.avgPctChg).toBeCloseTo(0.875, 5)
     })
 
     it('totalMv 为所有股票 totalMv 之和', async () => {
@@ -548,6 +550,30 @@ describe('WatchlistService', () => {
       const result = await svc.getWatchlistSummary(10, 1)
 
       expect(result.totalMv).toBe(100000)
+    })
+
+    it('[手算验证] null pctChg 视为 0 → flatCount 计数 + avgPctChg 正确', async () => {
+      const prisma = buildPrismaMock()
+      prisma.watchlist.findFirst.mockResolvedValue(buildWatchlist())
+      const stocks = [
+        buildWatchlistStock({ tsCode: '000001.SZ' }),
+        buildWatchlistStock({ id: 101, tsCode: '000002.SZ' }),
+      ]
+      prisma.watchlistStock.findMany.mockResolvedValue(stocks)
+      prisma.$queryRaw.mockResolvedValue([
+        { ts_code: '000001.SZ', close: 10, pct_chg: 5.0, vol: 1000, amount: 10000, pe_ttm: 15, pb: 2, total_mv: 10000, trade_date: new Date() },
+        { ts_code: '000002.SZ', close: 10, pct_chg: null, vol: 1000, amount: 10000, pe_ttm: 15, pb: 2, total_mv: 20000, trade_date: new Date() },
+      ])
+      const svc = createService(prisma)
+
+      const result = await svc.getWatchlistSummary(10, 1)
+
+      // null pctChg → 0 → flatCount 含此股
+      expect(result.upCount).toBe(1)
+      expect(result.flatCount).toBe(1)
+      // avgPctChg = (5.0 + 0) / 2 = 2.5
+      expect(result.avgPctChg).toBeCloseTo(2.5, 5)
+      expect(result.totalMv).toBe(30000)
     })
 
     it('自选组不存在时抛 NotFoundException', async () => {

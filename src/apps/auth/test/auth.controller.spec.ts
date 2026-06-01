@@ -89,13 +89,10 @@ describe('AuthController (integration)', () => {
 
   // ── [VAL] DTO 校验 ──────────────────────────────────────────────────────────
 
-  // [BUG P4-B1] LoginDto 所有字段仅用 @Allow() 装饰，无任何必填校验。
-  // ValidationPipe 不会拒绝空 body，导致空凭据请求直达 service。
-  it('[BUG P4-B1] POST /auth/login empty body → 201（LoginDto 用 @Allow() 无 required 校验）', async () => {
-    const res = await req.post('/auth/login').send({}).expect(201)
-    expect(res.body.code).toBe(0)
-    // 文档化缺陷：account/password 缺失也能调到 service
-    expect(mockAuthService.login).toHaveBeenCalledTimes(1)
+  // LoginDto 已启用必填校验，空 body 由 ValidationPipe 直接拦截。
+  it('POST /auth/login empty body → 400（LoginDto required 校验生效）', async () => {
+    await req.post('/auth/login').send({}).expect(400)
+    expect(mockAuthService.login).not.toHaveBeenCalled()
   })
 
   // ── [ERR] 异常透传 ─────────────────────────────────────────────────────────

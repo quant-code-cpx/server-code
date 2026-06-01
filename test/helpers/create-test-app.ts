@@ -60,6 +60,13 @@ function createMockLoggerService(): LoggerService {
 }
 
 export async function createTestApp(options: CreateTestAppOptions = {}) {
+  // 与 main.ts 保持一致：统一处理 BigInt JSON 序列化
+  if (!(BigInt.prototype as any).toJSON) {
+    ;(BigInt.prototype as any).toJSON = function () {
+      return Number(this)
+    }
+  }
+
   const { controllers = [], providers = [], imports = [] } = options
   // undefined → use default user; null → unauthenticated; TokenPayload → specific user
   const user: TokenPayload | null = options.user !== undefined ? options.user : buildTestUser()

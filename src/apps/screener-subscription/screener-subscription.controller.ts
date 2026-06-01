@@ -6,7 +6,10 @@ import { TokenPayload } from 'src/shared/token.interface'
 import { ScreenerSubscriptionService } from './screener-subscription.service'
 import {
   CreateSubscriptionDto,
+  SubscriptionIdDto,
+  SubscriptionLogsBodyDto,
   SubscriptionLogsQueryDto,
+  UpdateSubscriptionBodyDto,
   UpdateSubscriptionDto,
   ValidateSubscriptionDto,
 } from './dto/subscription.dto'
@@ -36,7 +39,7 @@ export class ScreenerSubscriptionController {
   @Post('detail')
   @ApiOperation({ summary: '获取单条订阅详情' })
   @ApiSuccessResponse(SubscriptionDto)
-  detail(@CurrentUser() user: TokenPayload, @Body() { id }: { id: number }) {
+  detail(@CurrentUser() user: TokenPayload, @Body() { id }: SubscriptionIdDto) {
     return this.subscriptionService.detail(user.id, id)
   }
 
@@ -50,42 +53,42 @@ export class ScreenerSubscriptionController {
   @Post('update')
   @ApiOperation({ summary: '更新条件订阅（名称/频率/条件/策略）' })
   @ApiSuccessResponse(SubscriptionDto)
-  update(@CurrentUser() user: TokenPayload, @Body() dto: UpdateSubscriptionDto & { id: number }) {
+  update(@CurrentUser() user: TokenPayload, @Body() dto: UpdateSubscriptionBodyDto) {
     return this.subscriptionService.update(user.id, dto.id, dto)
   }
 
   @Post('delete')
   @ApiOperation({ summary: '删除条件订阅' })
   @ApiSuccessResponse(SubscriptionMessageResponseDto)
-  remove(@CurrentUser() user: TokenPayload, @Body() { id }: { id: number }) {
+  remove(@CurrentUser() user: TokenPayload, @Body() { id }: SubscriptionIdDto) {
     return this.subscriptionService.remove(user.id, id)
   }
 
   @Post('pause')
   @ApiOperation({ summary: '暂停订阅' })
   @ApiSuccessResponse(SubscriptionDto)
-  pause(@CurrentUser() user: TokenPayload, @Body() { id }: { id: number }) {
+  pause(@CurrentUser() user: TokenPayload, @Body() { id }: SubscriptionIdDto) {
     return this.subscriptionService.pause(user.id, id)
   }
 
   @Post('resume')
   @ApiOperation({ summary: '恢复订阅' })
   @ApiSuccessResponse(SubscriptionDto)
-  resume(@CurrentUser() user: TokenPayload, @Body() { id }: { id: number }) {
+  resume(@CurrentUser() user: TokenPayload, @Body() { id }: SubscriptionIdDto) {
     return this.subscriptionService.resume(user.id, id)
   }
 
   @Post('run')
   @ApiOperation({ summary: '手动触发一次订阅执行' })
   @ApiSuccessResponse(ManualRunResponseDto)
-  manualRun(@CurrentUser() user: TokenPayload, @Body() { id }: { id: number }) {
+  manualRun(@CurrentUser() user: TokenPayload, @Body() { id }: SubscriptionIdDto) {
     return this.subscriptionService.manualRun(user.id, id)
   }
 
   @Post('logs')
   @ApiOperation({ summary: '获取订阅执行日志（含股票元数据）' })
   @ApiSuccessResponse(SubscriptionLogListResponseDto)
-  getLogs(@CurrentUser() user: TokenPayload, @Body() dto: SubscriptionLogsQueryDto & { id: number }) {
+  getLogs(@CurrentUser() user: TokenPayload, @Body() dto: SubscriptionLogsBodyDto) {
     return this.subscriptionService.getLogs(user.id, dto.id, dto)
   }
 

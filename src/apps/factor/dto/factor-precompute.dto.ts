@@ -47,3 +47,22 @@ export class FactorBackfillDto {
   @IsBoolean()
   skipExisting?: boolean
 }
+
+// ── Custom factor precompute DTO ─────────────────────────────────────────────
+
+export class FactorCustomPrecomputeDto {
+  @ApiProperty({ description: '自定义因子名称', example: 'my_factor' })
+  @IsString()
+  name: string
+
+  @ApiProperty({ description: '目标交易日 YYYYMMDD', example: '20260327' })
+  @IsString()
+  @Matches(/^\d{8}$/, { message: 'tradeDate 格式应为 YYYYMMDD，例如 20240101' })
+  tradeDate: string
+
+  @ApiPropertyOptional({ description: '仅预计算指定因子（不传则计算当前因子）', type: [String] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  factorNames?: string[]
+}

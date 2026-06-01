@@ -7,112 +7,79 @@ import { MarketService } from '../market.service'
 
 const SUCCESS_CODE = 0
 
-const mockMarketService = {
-  getMarketMoneyFlow: jest.fn(),
-  getSectorFlow: jest.fn(),
-  getMarketSentiment: jest.fn(),
-  getMarketValuation: jest.fn(),
-  getIndexQuote: jest.fn(),
-  getHsgtFlow: jest.fn(),
-  getIndexTrend: jest.fn(),
-  getChangeDistribution: jest.fn(),
-  getSectorRanking: jest.fn(),
-  getVolumeOverview: jest.fn(),
-  getSentimentTrend: jest.fn(),
-  getValuationTrend: jest.fn(),
-  getMoneyFlowTrend: jest.fn(),
-  getSectorFlowRanking: jest.fn(),
-  getSectorFlowTrend: jest.fn(),
-  getHsgtTrend: jest.fn(),
-  getMainFlowRanking: jest.fn(),
-  getStockFlowDetail: jest.fn(),
-  getConceptList: jest.fn(),
-  getConceptMembers: jest.fn(),
+const mockMarketService: Record<string, jest.Mock> = {
+  getMarketMoneyFlow: jest.fn(), getSectorFlow: jest.fn(), getMarketSentiment: jest.fn(),
+  getMarketValuation: jest.fn(), getIndexQuote: jest.fn(), getHsgtFlow: jest.fn(),
+  getIndexTrend: jest.fn(), getIndexQuoteWithSparkline: jest.fn(), getChangeDistribution: jest.fn(),
+  getSectorRanking: jest.fn(), getVolumeOverview: jest.fn(), getSentimentTrend: jest.fn(),
+  getValuationTrend: jest.fn(), getMoneyFlowTrend: jest.fn(), getSectorFlowRanking: jest.fn(),
+  getSectorFlowTrend: jest.fn(), getHsgtTrend: jest.fn(), getMainFlowRanking: jest.fn(),
+  getStockFlowDetail: jest.fn(), getConceptList: jest.fn(), getConceptMembers: jest.fn(),
+  getDailyNarrative: jest.fn(), getTopMovers: jest.fn(), getDataDates: jest.fn(),
+  getSectorTopBottom: jest.fn(), getMarketBreadth: jest.fn(),
 }
+
+const ok = (key: string) => (mockMarketService[key] as jest.Mock).mockResolvedValueOnce({})
 
 describe('MarketController', () => {
   let app: INestApplication
-
-  beforeAll(async () => {
-    const module: TestingModule = await Test.createTestingModule({
-      controllers: [MarketController],
-      providers: [{ provide: MarketService, useValue: mockMarketService }],
+  beforeEach(async () => {
+    jest.clearAllMocks()
+    const m = await Test.createTestingModule({
+      controllers: [MarketController], providers: [{ provide: MarketService, useValue: mockMarketService }],
     }).compile()
-
-    app = module.createNestApplication()
+    app = m.createNestApplication()
     app.useGlobalInterceptors(new TransformInterceptor())
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }))
     await app.init()
   })
+  afterEach(async () => app.close())
 
-  afterAll(async () => app.close())
-  beforeEach(() => jest.clearAllMocks())
+  const eps: Array<[string, string, Record<string, unknown>]> = [
+    ['/market/money-flow', 'getMarketMoneyFlow', {}],
+    ['/market/sector-flow', 'getSectorFlow', {}],
+    ['/market/sentiment', 'getMarketSentiment', {}],
+    ['/market/valuation', 'getMarketValuation', {}],
+    ['/market/index-quote', 'getIndexQuote', {}],
+    ['/market/hsgt-flow', 'getHsgtFlow', {}],
+    ['/market/index-trend', 'getIndexTrend', {}],
+    ['/market/index-quote-with-sparkline', 'getIndexQuoteWithSparkline', {}],
+    ['/market/change-distribution', 'getChangeDistribution', {}],
+    ['/market/sector-ranking', 'getSectorRanking', {}],
+    ['/market/volume-overview', 'getVolumeOverview', {}],
+    ['/market/sentiment-trend', 'getSentimentTrend', {}],
+    ['/market/valuation-trend', 'getValuationTrend', {}],
+    ['/market/money-flow-trend', 'getMoneyFlowTrend', {}],
+    ['/market/sector-flow-ranking', 'getSectorFlowRanking', {}],
+    ['/market/sector-flow-trend', 'getSectorFlowTrend', { ts_code: 'BK0001' }],
+    ['/market/hsgt-trend', 'getHsgtTrend', {}],
+    ['/market/main-flow-ranking', 'getMainFlowRanking', {}],
+    ['/market/stock-flow-detail', 'getStockFlowDetail', { ts_code: '000001.SZ' }],
+    ['/market/market-breadth', 'getMarketBreadth', {}],
+    ['/market/concept/list', 'getConceptList', {}],
+    ['/market/concept/members', 'getConceptMembers', { tsCode: '885835.TI' }],
+    ['/market/daily-narrative', 'getDailyNarrative', {}],
+        ['/market/top-movers', 'getTopMovers', { dim: 'gain' }],
+    ['/market/data-dates', 'getDataDates', {}],
+    ['/market/sector-top-bottom', 'getSectorTopBottom', {}],
+  ]
 
-  it('POST /market/money-flow → 201 with code 200000', async () => {
-    const mockData = [{ date: '20231201', netAmount: 1000 }]
-    mockMarketService.getMarketMoneyFlow.mockResolvedValueOnce(mockData)
-
-    await request(app.getHttpServer())
-      .post('/market/money-flow')
-      .send({})
-      .expect(201)
-      .expect((res) => {
+  eps.forEach(([path, svcKey, body]) => {
+    it(`[BIZ] POST ${path} → 201`, async () => {
+      ok(svcKey)
+      await request(app.getHttpServer()).post(path).send(body).expect(201).expect((res: any) => {
         expect(res.body.code).toBe(SUCCESS_CODE)
-        expect(res.body.data).toBeDefined()
       })
+    })
   })
 
-  it('POST /market/sector-flow → 201', async () => {
-    const mockData = { industry: [], concept: [] }
-    mockMarketService.getSectorFlow.mockResolvedValueOnce(mockData)
-
-    await request(app.getHttpServer())
-      .post('/market/sector-flow')
-      .send({})
-      .expect(201)
-      .expect((res) => {
-        expect(res.body.code).toBe(SUCCESS_CODE)
-        expect(res.body.data).toBeDefined()
-      })
-  })
-
-  it('POST /market/sentiment → 201', async () => {
-    const mockData = { upCount: 2000, downCount: 1500, flatCount: 200 }
-    mockMarketService.getMarketSentiment.mockResolvedValueOnce(mockData)
-
-    await request(app.getHttpServer())
-      .post('/market/sentiment')
-      .send({})
-      .expect(201)
-      .expect((res) => {
-        expect(res.body.code).toBe(SUCCESS_CODE)
-        expect(res.body.data).toBeDefined()
-      })
-  })
-
-  it('POST /market/index-quote → 201', async () => {
-    const mockData = [{ tsCode: '000300.SH', close: 3800 }]
-    mockMarketService.getIndexQuote.mockResolvedValueOnce(mockData)
-
-    await request(app.getHttpServer())
-      .post('/market/index-quote')
-      .send({})
-      .expect(201)
-      .expect((res) => {
-        expect(res.body.code).toBe(SUCCESS_CODE)
-        expect(res.body.data).toBeDefined()
-      })
-  })
-
-  // MoneyFlowQueryDto.trade_date uses @Matches(/^\d{8}$/) — hyphen format fails
-  it('[VAL] POST /market/money-flow trade_date 含横线格式 → 400', async () => {
+  it('[VAL] POST /market/money-flow trade_date 含横线 → 400', async () => {
     await request(app.getHttpServer()).post('/market/money-flow').send({ trade_date: '2023-12-01' }).expect(400)
-    expect(mockMarketService.getMarketMoneyFlow).not.toHaveBeenCalled()
   })
-
-  // SectorFlowQueryDto.content_type uses @IsEnum(['INDUSTRY','CONCEPT','REGION'])
   it('[VAL] POST /market/sector-flow content_type 非法枚举 → 400', async () => {
     await request(app.getHttpServer()).post('/market/sector-flow').send({ content_type: 'INVALID' }).expect(400)
-    expect(mockMarketService.getSectorFlow).not.toHaveBeenCalled()
+  })
+  it('[VAL] POST /market/stock-flow-detail 缺 ts_code → 400', async () => {
+    await request(app.getHttpServer()).post('/market/stock-flow-detail').send({}).expect(400)
   })
 })

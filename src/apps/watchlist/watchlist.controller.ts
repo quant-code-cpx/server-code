@@ -5,13 +5,17 @@ import { CurrentUser } from 'src/common/decorators/current-user.decorator'
 import { TokenPayload } from 'src/shared/token.interface'
 import { WatchlistService } from './watchlist.service'
 import {
-  AddWatchlistStockDto,
-  BatchAddStocksDto,
-  BatchRemoveStocksDto,
+  AddStockBodyDto,
+  BatchAddStockBodyDto,
+  BatchRemoveStockBodyDto,
   CreateWatchlistDto,
+  DeleteWatchlistBodyDto,
+  RemoveStockBodyDto,
+  ReorderStocksBodyDto,
   ReorderWatchlistsDto,
-  UpdateWatchlistDto,
-  UpdateWatchlistStockDto,
+  UpdateStockBodyDto,
+  UpdateWatchlistBodyDto,
+  WatchlistIdBodyDto,
 } from './dto/watchlist.dto'
 import { ApiSuccessResponse } from 'src/common/decorators/api-success-response.decorator'
 import {
@@ -65,14 +69,14 @@ export class WatchlistController {
   @Post('update')
   @ApiOperation({ summary: '更新自选组（名称/描述/排序/默认标记）' })
   @ApiSuccessResponse(WatchlistDto)
-  updateWatchlist(@CurrentUser() user: TokenPayload, @Body() dto: UpdateWatchlistDto & { id: number }) {
+  updateWatchlist(@CurrentUser() user: TokenPayload, @Body() dto: UpdateWatchlistBodyDto) {
     return this.watchlistService.updateWatchlist(user.id, dto.id, dto)
   }
 
   @Post('delete')
   @ApiOperation({ summary: '删除自选组（级联删除成员）' })
   @ApiSuccessResponse(WatchlistMessageResponseDto)
-  deleteWatchlist(@CurrentUser() user: TokenPayload, @Body() { id }: { id: number }) {
+  deleteWatchlist(@CurrentUser() user: TokenPayload, @Body() { id }: DeleteWatchlistBodyDto) {
     return this.watchlistService.deleteWatchlist(user.id, id)
   }
 
@@ -81,28 +85,28 @@ export class WatchlistController {
   @Post('stocks/list')
   @ApiOperation({ summary: '获取自选组内股票列表（含最新行情）' })
   @ApiSuccessResponse(WatchlistStocksResponseDto)
-  getStocks(@CurrentUser() user: TokenPayload, @Body() { id }: { id: number }) {
+  getStocks(@CurrentUser() user: TokenPayload, @Body() { id }: WatchlistIdBodyDto) {
     return this.watchlistService.getStocks(user.id, id)
   }
 
   @Post('stocks')
   @ApiOperation({ summary: '添加单只股票到自选组' })
   @ApiSuccessResponse(WatchlistStockDto)
-  addStock(@CurrentUser() user: TokenPayload, @Body() dto: AddWatchlistStockDto & { id: number }) {
+  addStock(@CurrentUser() user: TokenPayload, @Body() dto: AddStockBodyDto) {
     return this.watchlistService.addStock(user.id, dto.id, dto)
   }
 
   @Post('stocks/batch')
   @ApiOperation({ summary: '批量添加股票到自选组' })
   @ApiSuccessResponse(BatchAddResponseDto)
-  batchAddStocks(@CurrentUser() user: TokenPayload, @Body() dto: BatchAddStocksDto & { id: number }) {
+  batchAddStocks(@CurrentUser() user: TokenPayload, @Body() dto: BatchAddStockBodyDto) {
     return this.watchlistService.batchAddStocks(user.id, dto.id, dto)
   }
 
   @Post('stocks/reorder')
   @ApiOperation({ summary: '批量更新组内股票排序' })
   @ApiSuccessResponse(WatchlistMessageResponseDto)
-  reorderStocks(@CurrentUser() user: TokenPayload, @Body() dto: ReorderWatchlistsDto & { id: number }) {
+  reorderStocks(@CurrentUser() user: TokenPayload, @Body() dto: ReorderStocksBodyDto) {
     return this.watchlistService.reorderStocks(user.id, dto.id, dto)
   }
 
@@ -111,7 +115,7 @@ export class WatchlistController {
   @ApiSuccessResponse(WatchlistStockDto)
   updateStock(
     @CurrentUser() user: TokenPayload,
-    @Body() dto: UpdateWatchlistStockDto & { id: number; stockId: number },
+    @Body() dto: UpdateStockBodyDto,
   ) {
     return this.watchlistService.updateStock(user.id, dto.id, dto.stockId, dto)
   }
@@ -119,21 +123,21 @@ export class WatchlistController {
   @Post('stocks/batch/delete')
   @ApiOperation({ summary: '批量移除股票' })
   @ApiSuccessResponse(BatchRemoveResponseDto)
-  batchRemoveStocks(@CurrentUser() user: TokenPayload, @Body() dto: BatchRemoveStocksDto & { id: number }) {
+  batchRemoveStocks(@CurrentUser() user: TokenPayload, @Body() dto: BatchRemoveStockBodyDto) {
     return this.watchlistService.batchRemoveStocks(user.id, dto.id, dto)
   }
 
   @Post('stocks/delete')
   @ApiOperation({ summary: '从自选组移除股票' })
   @ApiSuccessResponse(WatchlistMessageResponseDto)
-  removeStock(@CurrentUser() user: TokenPayload, @Body() { id, stockId }: { id: number; stockId: number }) {
+  removeStock(@CurrentUser() user: TokenPayload, @Body() { id, stockId }: RemoveStockBodyDto) {
     return this.watchlistService.removeStock(user.id, id, stockId)
   }
 
   @Post('summary')
   @ApiOperation({ summary: '获取自选组行情汇总（涨跌统计 + 平均涨幅）' })
   @ApiSuccessResponse(WatchlistOverviewSummaryDto)
-  getWatchlistSummary(@CurrentUser() user: TokenPayload, @Body() { id }: { id: number }) {
+  getWatchlistSummary(@CurrentUser() user: TokenPayload, @Body() { id }: WatchlistIdBodyDto) {
     return this.watchlistService.getWatchlistSummary(user.id, id)
   }
 }

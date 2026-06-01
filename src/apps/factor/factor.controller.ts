@@ -4,6 +4,9 @@ import { ApiSuccessRawResponse } from 'src/common/decorators/api-success-respons
 import { JwtAuthGuard } from 'src/lifecycle/guard/jwt-auth.guard'
 import { CurrentUser } from 'src/common/decorators/current-user.decorator'
 import { TokenPayload } from 'src/shared/token.interface'
+import { UserRole } from '@prisma/client'
+import { Roles } from 'src/common/decorators/roles.decorator'
+import { RolesGuard } from 'src/lifecycle/guard/roles.guard'
 import { FactorService } from './factor.service'
 import {
   FactorAdminJobDetailDto,
@@ -21,7 +24,7 @@ import {
   FactorQuantileAnalysisDto,
 } from './dto/factor-analysis.dto'
 import { FactorScreeningDto } from './dto/factor-screening.dto'
-import { FactorBackfillDto, FactorPrecomputeTriggerDto } from './dto/factor-precompute.dto'
+import { FactorBackfillDto, FactorCustomPrecomputeDto, FactorPrecomputeTriggerDto } from './dto/factor-precompute.dto'
 import { CreateCustomFactorDto, TestCustomFactorDto, UpdateCustomFactorDto } from './dto/factor-custom.dto'
 import { FactorBacktestSubmitDto, FactorAttributionDto } from './dto/factor-backtest.dto'
 import { SaveAsStrategyDto } from './dto/save-as-strategy.dto'
@@ -136,13 +139,15 @@ export class FactorController {
   @Post('custom/precompute')
   @ApiOperation({ summary: '触发单因子预计算' })
   @ApiSuccessRawResponse({ type: 'object' })
-  triggerSinglePrecompute(@Body() dto: FactorPrecomputeTriggerDto & { name: string }) {
+  triggerSinglePrecompute(@Body() dto: FactorCustomPrecomputeDto) {
     return this.factorService.triggerSinglePrecompute(dto.name, dto.tradeDate)
   }
 
   // ── Admin: Precompute (Phase 1) ──────────────────────────────────────────
 
   @Post('admin/precompute')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN)
   @ApiOperation({ summary: '[管理] 手动触发指定日期的因子预计算' })
   @ApiSuccessRawResponse({ type: 'null', nullable: true })
   triggerPrecompute(@Body() dto: FactorPrecomputeTriggerDto) {
@@ -150,6 +155,8 @@ export class FactorController {
   }
 
   @Post('admin/backfill')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN)
   @ApiOperation({ summary: '[管理] 触发历史因子值回补（指定日期范围）' })
   @ApiSuccessRawResponse({ type: 'null', nullable: true })
   triggerBackfill(@Body() dto: FactorBackfillDto) {
@@ -157,6 +164,8 @@ export class FactorController {
   }
 
   @Post('admin/precompute/status')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN)
   @ApiOperation({ summary: '[管理] 查询预计算状态（最新日期、各因子覆盖情况）' })
   @ApiSuccessRawResponse({ type: 'object' })
   getPrecomputeStatus() {
@@ -164,6 +173,8 @@ export class FactorController {
   }
 
   @Post('admin/precompute-batch')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN)
   @ApiOperation({ summary: '[管理] 批量触发因子预计算（指定因子子集 + 可选交易日）' })
   @ApiSuccessRawResponse({ type: 'object' })
   triggerPrecomputeBatch(@Body() dto: FactorPrecomputeBatchDto) {
@@ -171,6 +182,8 @@ export class FactorController {
   }
 
   @Post('admin/jobs')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN)
   @ApiOperation({ summary: '[管理] 查询预计算批次历史（按交易日分组）' })
   @ApiSuccessRawResponse({ type: 'object' })
   listAdminJobs(@Body() dto: FactorAdminJobsQueryDto) {
@@ -178,6 +191,8 @@ export class FactorController {
   }
 
   @Post('admin/jobs/detail')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN)
   @ApiOperation({ summary: '[管理] 查询指定交易日的预计算批次详情（逐因子状态）' })
   @ApiSuccessRawResponse({ type: 'object' })
   getAdminJobDetail(@Body() dto: FactorAdminJobDetailDto) {
@@ -185,6 +200,8 @@ export class FactorController {
   }
 
   @Post('admin/schedule')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN)
   @ApiOperation({ summary: '[管理] 查询因子调度配置（功能待实现）' })
   @ApiSuccessRawResponse({ type: 'object' })
   listAdminSchedule() {
@@ -192,6 +209,8 @@ export class FactorController {
   }
 
   @Post('admin/audit')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN)
   @ApiOperation({ summary: '[管理] 查询因子操作审计日志（功能待实现）' })
   @ApiSuccessRawResponse({ type: 'object' })
   listAdminAudit() {

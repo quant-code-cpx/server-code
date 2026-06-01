@@ -78,6 +78,15 @@ function buildSharedMocks() {
 }
 
 function createService(registry: Partial<TushareSyncRegistryService>, mocks = buildSharedMocks()): TushareSyncService {
+  const normalizedRegistry: Partial<TushareSyncRegistryService> = {
+    getPlans: jest.fn(() => []),
+    getPlan: jest.fn(() => undefined),
+    getPlansByTasks: jest.fn(() => []),
+    getManualPlans: jest.fn(() => []),
+    getBootstrapPlans: jest.fn(() => []),
+    getScheduledPlans: jest.fn(() => []),
+    ...registry,
+  }
   const noopHistogram = { observe: jest.fn(), startTimer: jest.fn(() => jest.fn()) } as never
   const noopCounter = { inc: jest.fn() } as never
   const noopGauge = { set: jest.fn() } as never
@@ -85,7 +94,7 @@ function createService(registry: Partial<TushareSyncRegistryService>, mocks = bu
     mocks.configService as never,
     mocks.schedulerRegistry as SchedulerRegistry,
     mocks.helper as never,
-    registry as TushareSyncRegistryService,
+    normalizedRegistry as TushareSyncRegistryService,
     mocks.cacheService as never,
     mocks.eventsGateway as EventsGateway,
     mocks.heatmapSnapshotService as never,

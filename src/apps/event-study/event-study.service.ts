@@ -311,7 +311,10 @@ export class EventStudyService {
   // ── Private: Event extraction ─────────────────────────────────────────────
 
   async extractEventSamples(dto: EventStudyAnalyzeDto): Promise<EventRecord[]> {
-    const startDate = dto.startDate ? parseYMD(dto.startDate) : new Date('2015-01-01')
+    // 默认最近 5 年——避免 2015 年起全扫导致大表（如 share_float_schedule 1000 万行）超时
+    const defaultStart = new Date()
+    defaultStart.setFullYear(defaultStart.getFullYear() - 5)
+    const startDate = dto.startDate ? parseYMD(dto.startDate) : defaultStart
     const endDate = dto.endDate ? parseYMD(dto.endDate) : new Date()
     const tsCodeFilter = dto.tsCode ? { tsCode: dto.tsCode } : {}
     const limit = 2000
@@ -359,7 +362,9 @@ export class EventStudyService {
       }
       case EventType.SHARE_FLOAT: {
         // floatDate is String in YYYYMMDD format
-        const startStr = dto.startDate ?? '20150101'
+        // 默认最近 5 年
+        const defaultStartStr = `${new Date().getFullYear() - 5}0101`
+        const startStr = dto.startDate ?? defaultStartStr
         const endStr = dto.endDate ?? new Date().toISOString().slice(0, 10).replace(/-/g, '')
         const rows = await this.prisma.shareFloat.findMany({
           where: { floatDate: { gte: startStr, lte: endStr }, ...(dto.tsCode ? { tsCode: dto.tsCode } : {}) },

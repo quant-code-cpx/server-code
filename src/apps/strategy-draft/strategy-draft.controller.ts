@@ -42,7 +42,7 @@ export class StrategyDraftController {
   @Post('update')
   @ApiOperation({ summary: '更新草稿（前端自动保存调用此接口）' })
   @ApiSuccessResponse(StrategyDraftDto)
-  updateDraft(@CurrentUser() user: TokenPayload, @Body() dto: UpdateStrategyDraftDto & { id: number }) {
+  updateDraft(@CurrentUser() user: TokenPayload, @Body() dto: UpdateStrategyDraftDto) {
     return this.draftService.updateDraft(user.id, dto.id, dto)
   }
 
@@ -56,7 +56,7 @@ export class StrategyDraftController {
   @Post('submit')
   @ApiOperation({ summary: '从草稿提交回测任务' })
   @ApiSuccessRawResponse({ type: 'object', description: '回测任务创建结果，同 BacktestController.createRun 响应' })
-  submitDraft(@CurrentUser() user: TokenPayload, @Body() dto: SubmitDraftDto & { id: number }) {
+  submitDraft(@CurrentUser() user: TokenPayload, @Body() dto: SubmitDraftDto) {
     return this.draftService.submitDraft(user.id, dto.id, dto)
   }
 }

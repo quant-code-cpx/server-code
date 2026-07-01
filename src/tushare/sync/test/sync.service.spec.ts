@@ -45,6 +45,7 @@ function buildSharedMocks() {
       isTodayTradingDay: jest.fn(async () => true),
       resolveLatestCompletedTradeDate: jest.fn(async () => '20260327'),
       getCurrentShanghaiNow: jest.fn(() => dayjs('2026-03-27T20:00:00+08:00')),
+      isTaskFresh: jest.fn(async () => false),
     },
     schedulerRegistry: {
       doesExist: jest.fn(() => false),
@@ -292,6 +293,51 @@ describe('TushareSyncService', () => {
       expect(() => service.triggerManualSyncAsync({ tasks: [TushareSyncTaskName.DAILY], mode: 'incremental' })).toThrow(
         ConflictException,
       )
+    })
+  })
+
+  describe('catch-up freshness', () => {
+    it('非交易日维度任务应按今日同步日志判鲜', async () => {
+      const mocks = buildSharedMocks()
+      mocks.helper.isTaskFresh.mockResolvedValue(true)
+      const plan = createPlan({
+        task: TushareSyncTaskName.STOCK_BASIC,
+        category: 'basic',
+        requiresTradeDate: false,
+        schedule: {
+          cron: '0 0 8 * * *',
+          timeZone: 'Asia/Shanghai',
+          description: '每日早盘前刷新股票列表',
+        },
+      })
+      const registry: Pick<TushareSyncRegistryService, 'getScheduledPlans'> = {
+        getScheduledPlans: jest.fn(() => [plan]),
+      }
+      const service = createService(registry, mocks)
+
+      await (
+        service as unknown as { checkAndCatchUpMissedSchedules: () => Promise<void> }
+      ).checkAndCatchUpMissedSchedules()
+
+      expect(mocks.helper.isTaskFresh).toHaveBeenCalledWith(TushareSyncTaskName.STOCK_BASIC, null)
+      expect(plan.execute).not.toHaveBeenCalled()
+    })
+
+    it('交易日维度任务应按最近已完成交易日判鲜', async () => {
+      const mocks = buildSharedMocks()
+      mocks.helper.isTaskFresh.mockResolvedValue(true)
+      const plan = createPlan({ task: TushareSyncTaskName.DAILY, requiresTradeDate: true })
+      const registry: Pick<TushareSyncRegistryService, 'getScheduledPlans'> = {
+        getScheduledPlans: jest.fn(() => [plan]),
+      }
+      const service = createService(registry, mocks)
+
+      await (
+        service as unknown as { checkAndCatchUpMissedSchedules: () => Promise<void> }
+      ).checkAndCatchUpMissedSchedules()
+
+      expect(mocks.helper.isTaskFresh).toHaveBeenCalledWith(TushareSyncTaskName.DAILY, '20260327')
+      expect(plan.execute).not.toHaveBeenCalled()
     })
   })
 })

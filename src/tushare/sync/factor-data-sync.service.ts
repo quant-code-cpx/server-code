@@ -102,16 +102,10 @@ export class FactorDataSyncService {
         label: '沪深股通持股明细',
         category: 'factor',
         order: 540,
-        bootstrapEnabled: true,
+        bootstrapEnabled: false,
         supportsManual: true,
         supportsFullSync: true,
         requiresTradeDate: true,
-        schedule: {
-          cron: '0 0 9 * * 1-5',
-          timeZone: this.helper.syncTimeZone,
-          description: '交易日盘前同步沪深股通持股',
-          tradingDayOnly: true,
-        },
         execute: (ctx) => this.syncHkHold(this.requireTradeDate(ctx.targetTradeDate), ctx.mode),
       },
       {

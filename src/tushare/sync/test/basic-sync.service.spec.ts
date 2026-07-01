@@ -113,6 +113,14 @@ describe('BasicSyncService', () => {
       const orders = plans.map((p) => p.order)
       expect(orders).toEqual([...orders].sort((a, b) => a - b))
     })
+
+    it('低变化快照任务不应每日自动刷新', () => {
+      const plans = createService().getSyncPlans()
+      const byTask = new Map(plans.map((plan) => [plan.task, plan]))
+
+      expect(byTask.get(TushareSyncTaskName.TRADE_CAL)?.schedule?.cron).toBe('0 15 8 * * 1')
+      expect(byTask.get(TushareSyncTaskName.STOCK_COMPANY)?.schedule?.cron).toBe('0 20 8 * * 1')
+    })
   })
 
   // ── syncStockBasic() ───────────────────────────────────────────────────────

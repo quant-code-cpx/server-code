@@ -132,7 +132,7 @@ export class TushareSyncService implements OnApplicationBootstrap {
     // 逐 plan 检查数据新鲜度，只保留需要同步的
     const stalePlans: TushareSyncPlan[] = []
     for (const plan of bootstrapPlans) {
-      const isFresh = await this.helper.isTaskFresh(plan.task, latestTradeDate)
+      const isFresh = await this.helper.isTaskFresh(plan.task, this.getPlanFreshnessTradeDate(plan, latestTradeDate))
       if (!isFresh) stalePlans.push(plan)
     }
 
@@ -193,7 +193,10 @@ export class TushareSyncService implements OnApplicationBootstrap {
 
       // 检查今天是否已成功完成
       try {
-        const alreadyRan = await this.helper.isTaskFresh(plan.task, latestTradeDate)
+        const alreadyRan = await this.helper.isTaskFresh(
+          plan.task,
+          this.getPlanFreshnessTradeDate(plan, latestTradeDate),
+        )
         if (!alreadyRan) plansToRun.push(plan)
       } catch (err) {
         this.logger.warn(`[Catch-up] 检查 ${plan.task} 新鲜度失败: ${(err as Error).message}`)
@@ -213,6 +216,10 @@ export class TushareSyncService implements OnApplicationBootstrap {
     }).catch((err) => {
       this.logger.error(`[Catch-up] 补跑失败: ${(err as Error).message}`, (err as Error).stack)
     })
+  }
+
+  private getPlanFreshnessTradeDate(plan: TushareSyncPlan, latestTradeDate: string | null): string | null {
+    return plan.requiresTradeDate ? latestTradeDate : null
   }
 
   /**

@@ -65,9 +65,9 @@ export class BasicSyncService {
         supportsFullSync: true,
         requiresTradeDate: false,
         schedule: {
-          cron: '0 15 8 * * *',
+          cron: '0 15 8 * * 1',
           timeZone: this.helper.syncTimeZone,
-          description: '每日早盘前刷新交易日历',
+          description: '每周一早盘前刷新交易日历',
         },
         execute: ({ mode }) => this.syncTradeCal(mode),
       },
@@ -81,9 +81,9 @@ export class BasicSyncService {
         supportsFullSync: true,
         requiresTradeDate: false,
         schedule: {
-          cron: '0 20 8 * * *',
+          cron: '0 20 8 * * 1',
           timeZone: this.helper.syncTimeZone,
-          description: '每日早盘前刷新上市公司信息',
+          description: '每周一早盘前刷新上市公司信息',
         },
         execute: ({ mode }) => this.syncStockCompany(mode),
       },

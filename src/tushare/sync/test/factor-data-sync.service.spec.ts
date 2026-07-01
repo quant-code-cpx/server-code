@@ -52,6 +52,18 @@ describe('FactorDataSyncService', () => {
     jest.clearAllMocks()
   })
 
+  describe('getSyncPlans()', () => {
+    it('停更的沪深股通持股只保留手动补历史，不注册自动计划', () => {
+      const plan = createService()
+        .getSyncPlans()
+        .find((p) => p.task === TushareSyncTaskName.HK_HOLD)!
+
+      expect(plan.bootstrapEnabled).toBe(false)
+      expect(plan.schedule).toBeUndefined()
+      expect(plan.supportsManual).toBe(true)
+    })
+  })
+
   describe('syncIndexWeight()', () => {
     it('应覆盖 /index/list 中全部核心指数，而不是只同步旧的 5 个指数', async () => {
       const api = buildMockApi()

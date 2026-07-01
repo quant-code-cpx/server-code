@@ -106,6 +106,15 @@ describe('MarketSyncService', () => {
         expect(typeof plan.execute).toBe('function')
       }
     })
+
+    it('高成本逐股筹码分布应为周五盘后任务', () => {
+      const plan = createService()
+        .getSyncPlans()
+        .find((p) => p.task === TushareSyncTaskName.CYQ_CHIPS)!
+
+      expect(plan.schedule?.cron).toBe('0 30 20 * * 5')
+      expect(plan.schedule?.tradingDayOnly).toBe(true)
+    })
   })
 
   // ── syncDaily() ────────────────────────────────────────────────────────────
@@ -180,9 +189,7 @@ describe('MarketSyncService', () => {
       helper.isTaskSyncedForTradeDate.mockResolvedValue(false)
       helper.getOpenTradeDatesBetween.mockResolvedValue(['20240101', '20240102'])
       const api = buildMockApi()
-      api.getDailyByTradeDate
-        .mockRejectedValueOnce(new Error('网络超时'))
-        .mockResolvedValueOnce([])
+      api.getDailyByTradeDate.mockRejectedValueOnce(new Error('网络超时')).mockResolvedValueOnce([])
       const service = createService(api, helper)
 
       // 不应抛出异常

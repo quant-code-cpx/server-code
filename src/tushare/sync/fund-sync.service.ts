@@ -15,6 +15,8 @@ import { SyncHelperService } from './sync-helper.service'
 import { TushareSyncMode, TushareSyncPlan, TushareSyncPlanContext } from './sync-plan.types'
 import { ValidationCollector } from './quality/validation-collector'
 
+const TUSHARE_MAX_ROWS_PER_REQUEST = 2000
+
 /**
  * FundSyncService — 基金数据同步
  *
@@ -25,7 +27,7 @@ import { ValidationCollector } from './quality/validation-collector'
  * - fund_nav: 按代码逐只增量（仅场内 ETF/LOF）
  * - fund_daily: 按交易日增量（同 DAILY 模式）
  * - fund_portfolio: 按基金代码逐只增量（仅场内 ETF/LOF）
- * - fund_share: 按基金代码逐只增量（仅场内 ETF/LOF）
+ * - fund_share: 增量按市场 + 日期范围拉取，full 按基金代码重建
  */
 @Injectable()
 export class FundSyncService {
@@ -64,10 +66,9 @@ export class FundSyncService {
         supportsFullSync: true,
         requiresTradeDate: false,
         schedule: {
-          cron: '0 0 21 * * 1-5',
+          cron: '0 0 21 * * 1',
           timeZone: this.helper.syncTimeZone,
-          description: '每个工作日晚间同步基金净值',
-          tradingDayOnly: true,
+          description: '每周一晚间同步基金净值',
         },
         execute: (ctx) => this.syncFundNav(ctx),
       },
@@ -96,7 +97,7 @@ export class FundSyncService {
         bootstrapEnabled: true,
         supportsManual: true,
         supportsFullSync: true,
-        requiresTradeDate: false,
+        requiresTradeDate: true,
         schedule: {
           cron: '0 0 22 * * 1-5',
           timeZone: this.helper.syncTimeZone,
@@ -129,7 +130,7 @@ export class FundSyncService {
         bootstrapEnabled: true,
         supportsManual: true,
         supportsFullSync: true,
-        requiresTradeDate: false,
+        requiresTradeDate: true,
         schedule: {
           cron: '0 30 21 * * 1-5',
           timeZone: this.helper.syncTimeZone,
@@ -335,12 +336,86 @@ export class FundSyncService {
     return targetTradeDate
   }
 
-  // ─── 基金份额（按代码逐只增量）──────────────────────────────────────────────
+  // ─── 基金份额（增量按日期，full 按代码）────────────────────────────────────
 
   async syncFundShare(ctx?: TushareSyncPlanContext): Promise<void> {
     const isFullSync = ctx?.mode === 'full'
     const startedAt = new Date()
-    this.logger.log(`[基金份额] 开始同步...${isFullSync ? '（全量模式）' : ''}`)
+
+    if (!isFullSync) {
+      const targetTradeDate = this.requireTradeDate(ctx?.targetTradeDate)
+      if (await this.helper.isTaskSyncedForTradeDate(TushareSyncTaskName.FUND_SHARE, targetTradeDate)) {
+        this.logger.log(`[基金份额] 目标交易日 ${targetTradeDate} 已同步，跳过`)
+        return
+      }
+
+      const latestDate = await this.helper.getLatestDateString('fundShare')
+      const startDate = latestDate ? this.helper.addDays(latestDate, 1) : this.helper.syncStartDate
+
+      if (this.helper.compareDateString(startDate, targetTradeDate) > 0) {
+        this.logger.log(`[基金份额] 已是最新（本地最新: ${latestDate}），无需同步`)
+        return
+      }
+
+      const tradeDates = await this.helper.getOpenTradeDatesBetween(startDate, targetTradeDate)
+      if (!tradeDates.length) {
+        this.logger.log(`[基金份额] ${startDate} ~ ${targetTradeDate} 间无交易日，跳过`)
+        return
+      }
+
+      this.logger.log(`[基金份额] 按市场/交易日同步 ${tradeDates.length} 个交易日`)
+      const collector = new ValidationCollector(TushareSyncTaskName.FUND_SHARE)
+      const markets = ['SH', 'SZ'] as const
+      let totalRows = 0
+      const failed: Array<{ date: string; market: string; error: string }> = []
+
+      for (const [i, td] of tradeDates.entries()) {
+        const rowsForDate: Record<string, unknown>[] = []
+
+        for (const market of markets) {
+          try {
+            const rows = await this.api.getFundShareByMarketAndDateRange(market, td, td)
+            rowsForDate.push(...rows)
+          } catch (error) {
+            const msg = (error as Error).message
+            this.logger.error(`[基金份额] ${td} ${market} 同步失败: ${msg}`)
+            failed.push({ date: td, market, error: msg })
+          }
+        }
+
+        const mapped = rowsForDate
+          .map((r) => mapFundShareRecord(r, collector))
+          .filter((r): r is NonNullable<typeof r> => Boolean(r))
+        totalRows += await this.helper.replaceTradeDateRows('fundShare', this.helper.toDate(td), mapped)
+
+        if (i === 0 || (i + 1) % 50 === 0 || i === tradeDates.length - 1) {
+          ctx?.onProgress?.(i + 1, tradeDates.length, td)
+          this.logger.log(`[基金份额] 进度 ${i + 1}/${tradeDates.length}，当前 ${td}，累计 ${totalRows} 条`)
+        }
+      }
+
+      await this.helper.flushValidationLogs(collector)
+      this.logger.log(
+        `[基金份额] 同步完成，共 ${totalRows} 条${failed.length ? `，${failed.length} 个市场日期失败` : ''}`,
+      )
+      await this.helper.writeSyncLog(
+        TushareSyncTaskName.FUND_SHARE,
+        {
+          status: failed.length > 0 ? TushareSyncExecutionStatus.FAILED : TushareSyncExecutionStatus.SUCCESS,
+          message: `基金份额同步完成，共 ${totalRows} 条`,
+          tradeDate: this.helper.toDate(tradeDates[tradeDates.length - 1]),
+          payload: {
+            rowCount: totalRows,
+            dateCount: tradeDates.length,
+            failed: failed.length > 0 ? failed : undefined,
+          },
+        },
+        startedAt,
+      )
+      return
+    }
+
+    this.logger.log('[基金份额] 开始同步...（全量模式）')
 
     const fundList = await this.helper.prisma.fundBasic.findMany({
       where: { market: 'E' },
@@ -355,36 +430,14 @@ export class FundSyncService {
 
     this.logger.log(`[基金份额] 待同步 ${tsCodes.length} 只场内基金`)
 
-    const resumeKey = isFullSync ? null : await this.helper.getResumeKey(TushareSyncTaskName.FUND_SHARE)
-    let startIndex = 0
-    if (resumeKey) {
-      const idx = tsCodes.indexOf(resumeKey)
-      if (idx >= 0) {
-        startIndex = idx + 1
-        this.logger.log(`[基金份额] 从断点续传: ${resumeKey} (index=${startIndex})`)
-      }
-    }
-
     const collector = new ValidationCollector(TushareSyncTaskName.FUND_SHARE)
     let totalRows = 0
     const failed: Array<{ tsCode: string; error: string }> = []
 
-    for (let i = startIndex; i < tsCodes.length; i++) {
+    for (let i = 0; i < tsCodes.length; i++) {
       const tsCode = tsCodes[i]
       try {
-        let startDate: string | undefined
-        if (!isFullSync) {
-          const latest = await this.helper.prisma.fundShare.findFirst({
-            where: { tsCode },
-            orderBy: { tradeDate: 'desc' },
-            select: { tradeDate: true },
-          })
-          if (latest) {
-            startDate = this.helper.addDays(this.helper.formatDate(latest.tradeDate), 1)
-          }
-        }
-
-        const rows = await this.api.getFundShareByTsCode(tsCode, startDate)
+        const rows = await this.api.getFundShareByTsCode(tsCode)
         if (rows.length > 0) {
           const mapped = rows
             .map((r) => mapFundShareRecord(r, collector))
@@ -524,97 +577,121 @@ export class FundSyncService {
     )
   }
 
-  // ─── 基金复权因子（按代码逐只增量）───────────────────────────────────────────
+  // ─── 基金复权因子（按交易日增量）────────────────────────────────────────────
 
   async syncFundAdj(ctx?: TushareSyncPlanContext): Promise<void> {
     const isFullSync = ctx?.mode === 'full'
     const startedAt = new Date()
-    this.logger.log(`[基金复权因子] 开始同步...${isFullSync ? '（全量模式）' : ''}`)
+    const targetTradeDate = this.requireTradeDate(ctx?.targetTradeDate)
 
-    const fundList = await this.helper.prisma.fundBasic.findMany({
-      where: { market: 'E' },
-      select: { tsCode: true },
-    })
-    const tsCodes: string[] = fundList.map((f: { tsCode: string }) => f.tsCode)
-
-    if (!tsCodes.length) {
-      this.logger.warn('[基金复权因子] fund_basic 中无场内基金，请先同步基金列表')
+    if (!isFullSync && (await this.helper.isTaskSyncedForTradeDate(TushareSyncTaskName.FUND_ADJ, targetTradeDate))) {
+      this.logger.log(`[基金复权因子] 目标交易日 ${targetTradeDate} 已同步，跳过`)
       return
     }
 
-    this.logger.log(`[基金复权因子] 待同步 ${tsCodes.length} 只场内基金`)
+    const latestDate = isFullSync ? null : await this.helper.getLatestDateString('fundAdj')
+    const startDate = latestDate ? this.helper.addDays(latestDate, 1) : this.helper.syncStartDate
 
-    const resumeKey = isFullSync ? null : await this.helper.getResumeKey(TushareSyncTaskName.FUND_ADJ)
-    let startIndex = 0
-    if (resumeKey) {
-      const idx = tsCodes.indexOf(resumeKey)
-      if (idx >= 0) {
-        startIndex = idx + 1
-        this.logger.log(`[基金复权因子] 从断点续传: ${resumeKey} (index=${startIndex})`)
-      }
+    if (this.helper.compareDateString(startDate, targetTradeDate) > 0) {
+      this.logger.log(`[基金复权因子] 已是最新（本地最新: ${latestDate}），无需同步`)
+      return
     }
+
+    const tradeDates = await this.helper.getOpenTradeDatesBetween(startDate, targetTradeDate)
+    if (!tradeDates.length) {
+      this.logger.log(`[基金复权因子] ${startDate} ~ ${targetTradeDate} 间无交易日，跳过`)
+      return
+    }
+
+    this.logger.log(`[基金复权因子] 开始同步 ${tradeDates.length} 个交易日${isFullSync ? '（全量模式）' : ''}`)
 
     const collector = new ValidationCollector(TushareSyncTaskName.FUND_ADJ)
     let totalRows = 0
-    const failed: Array<{ tsCode: string; error: string }> = []
+    const failed: Array<{ date: string; error: string }> = []
+    let fallbackTsCodes: string[] | null = null
 
-    for (let i = startIndex; i < tsCodes.length; i++) {
-      const tsCode = tsCodes[i]
+    for (const [i, td] of tradeDates.entries()) {
       try {
-        let startDate: string | undefined
-        if (!isFullSync) {
-          const latest = await this.helper.prisma.fundAdj.findFirst({
-            where: { tsCode },
-            orderBy: { tradeDate: 'desc' },
-            select: { tradeDate: true },
-          })
-          if (latest) {
-            startDate = this.helper.addDays(this.helper.formatDate(latest.tradeDate), 1)
+        const rows = await this.api.getFundAdjByTradeDate(td)
+        let rowsForDate = rows
+
+        if (rows.length >= TUSHARE_MAX_ROWS_PER_REQUEST) {
+          this.logger.warn(`[基金复权因子] ${td} 返回 ${rows.length} 条，疑似达到接口上限，回退逐基金补全`)
+          fallbackTsCodes ??= await this.loadExchangeFundTsCodes()
+          const fallback = await this.getFundAdjRowsByTsCodeForDate(td, fallbackTsCodes)
+          rowsForDate = fallback.rows
+          if (fallback.failed.length > 0) {
+            failed.push({ date: td, error: `${fallback.failed.length} 只基金回退同步失败` })
           }
         }
 
-        const rows = await this.api.getFundAdjByTsCode(tsCode, startDate)
-        if (rows.length > 0) {
-          const mapped = rows
-            .map((r) => mapFundAdjRecord(r, collector))
-            .filter((r): r is NonNullable<typeof r> => Boolean(r))
+        const mapped = rowsForDate
+          .map((r) => mapFundAdjRecord(r, collector))
+          .filter((r): r is NonNullable<typeof r> => Boolean(r))
 
-          if (mapped.length > 0) {
-            const result = await this.helper.prisma.fundAdj.createMany({
-              data: mapped,
-              skipDuplicates: true,
-            })
-            totalRows += result.count
-          }
-        }
+        totalRows += await this.helper.replaceTradeDateRows('fundAdj', this.helper.toDate(td), mapped)
 
-        if ((i + 1) % 50 === 0 || i === tsCodes.length - 1) {
-          await this.helper.updateProgress(TushareSyncTaskName.FUND_ADJ, tsCode, i + 1, tsCodes.length)
-          ctx?.onProgress?.(i + 1, tsCodes.length, tsCode)
-          this.logger.log(`[基金复权因子] 进度 ${i + 1}/${tsCodes.length}，累计 ${totalRows} 条`)
+        if (i === 0 || (i + 1) % 50 === 0 || i === tradeDates.length - 1) {
+          ctx?.onProgress?.(i + 1, tradeDates.length, td)
+          this.logger.log(`[基金复权因子] 进度 ${i + 1}/${tradeDates.length}，当前 ${td}，累计 ${totalRows} 条`)
         }
       } catch (error) {
         const msg = (error as Error).message
-        this.logger.error(`[基金复权因子] ${tsCode} 同步失败: ${msg}`)
-        failed.push({ tsCode, error: msg })
+        this.logger.error(`[基金复权因子] ${td} 同步失败: ${msg}`)
+        failed.push({ date: td, error: msg })
       }
     }
 
-    await this.helper.markCompleted(TushareSyncTaskName.FUND_ADJ)
     await this.helper.flushValidationLogs(collector)
-    this.logger.log(`[基金复权因子] 同步完成，共 ${totalRows} 条${failed.length ? `，${failed.length} 只失败` : ''}`)
+    this.logger.log(
+      `[基金复权因子] 同步完成，共 ${totalRows} 条${failed.length ? `，${failed.length} 个日期失败` : ''}`,
+    )
     await this.helper.writeSyncLog(
       TushareSyncTaskName.FUND_ADJ,
       {
-        status: TushareSyncExecutionStatus.SUCCESS,
+        status: failed.length > 0 ? TushareSyncExecutionStatus.FAILED : TushareSyncExecutionStatus.SUCCESS,
         message: `基金复权因子同步完成，共 ${totalRows} 条`,
+        tradeDate: this.helper.toDate(tradeDates[tradeDates.length - 1]),
         payload: {
           rowCount: totalRows,
-          fundCount: tsCodes.length,
-          failedFunds: failed.length > 0 ? failed : undefined,
+          dateCount: tradeDates.length,
+          failedDates: failed.length > 0 ? failed : undefined,
         },
       },
       startedAt,
     )
+  }
+
+  private async loadExchangeFundTsCodes(): Promise<string[]> {
+    const fundList = await this.helper.prisma.fundBasic.findMany({
+      where: { market: 'E' },
+      select: { tsCode: true },
+    })
+    return fundList.map((f: { tsCode: string }) => f.tsCode)
+  }
+
+  private async getFundAdjRowsByTsCodeForDate(
+    tradeDate: string,
+    tsCodes: string[],
+  ): Promise<{ rows: Record<string, unknown>[]; failed: Array<{ tsCode: string; error: string }> }> {
+    const rows: Record<string, unknown>[] = []
+    const failed: Array<{ tsCode: string; error: string }> = []
+
+    if (!tsCodes.length) {
+      return { rows, failed: [{ tsCode: '*', error: 'fund_basic 中无场内基金' }] }
+    }
+
+    for (const tsCode of tsCodes) {
+      try {
+        const byCodeRows = await this.api.getFundAdjByTsCode(tsCode, tradeDate, tradeDate)
+        rows.push(...byCodeRows)
+      } catch (error) {
+        const msg = (error as Error).message
+        this.logger.error(`[基金复权因子] ${tradeDate} ${tsCode} 回退同步失败: ${msg}`)
+        failed.push({ tsCode, error: msg })
+      }
+    }
+
+    return { rows, failed }
   }
 }

@@ -60,11 +60,29 @@ export class FundApiService {
     })
   }
 
+  /** 按市场 + 日期范围获取份额变动 */
+  getFundShareByMarketAndDateRange(market: 'SH' | 'SZ', startDate: string, endDate: string) {
+    return this.client.call({
+      api_name: TushareApiName.FUND_SHARE,
+      params: { market, start_date: startDate, end_date: endDate },
+      fields: [...TUSHARE_FUND_SHARE_FIELDS],
+    })
+  }
+
   /** 按基金代码获取复权因子 */
   getFundAdjByTsCode(tsCode: string, startDate?: string, endDate?: string) {
     return this.client.call({
       api_name: TushareApiName.FUND_ADJ,
       params: { ts_code: tsCode, start_date: startDate, end_date: endDate },
+      fields: [...TUSHARE_FUND_ADJ_FIELDS],
+    })
+  }
+
+  /** 按交易日获取基金复权因子 */
+  getFundAdjByTradeDate(tradeDate: string) {
+    return this.client.call({
+      api_name: TushareApiName.FUND_ADJ,
+      params: { trade_date: tradeDate },
       fields: [...TUSHARE_FUND_ADJ_FIELDS],
     })
   }

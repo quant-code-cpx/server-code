@@ -1,5 +1,6 @@
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common'
 import type { Prisma } from '@prisma/client'
+import { CACHE_NAMESPACE } from 'src/constant/cache.constant'
 import { PrismaService } from 'src/shared/prisma.service'
 import { CacheService } from 'src/shared/cache.service'
 import { ADMIN_WATCHLIST_UNLIMITED } from 'src/constant/user.constant'
@@ -319,6 +320,15 @@ export class WatchlistService {
   }
 
   async getOverview(userId: number) {
+    return this.cacheService.rememberJson({
+      namespace: CACHE_NAMESPACE.WATCHLIST,
+      key: `overview:${userId}`,
+      ttlSeconds: 30,
+      loader: () => this.getOverviewData(userId),
+    })
+  }
+
+  private async getOverviewData(userId: number) {
     const watchlists = await this.prisma.watchlist.findMany({
       where: { userId },
       orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }],

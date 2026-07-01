@@ -237,9 +237,9 @@ export class MarketSyncService {
         supportsFullSync: false,
         requiresTradeDate: true,
         schedule: {
-          cron: '0 30 20 * * 1-5',
+          cron: '0 30 20 * * 5',
           timeZone: this.helper.syncTimeZone,
-          description: '交易日盘后同步筹码分布（按股票逐只）',
+          description: '每周五盘后同步筹码分布（按股票逐只）',
           tradingDayOnly: true,
         },
         execute: (ctx) => this.syncCyqChips(ctx),

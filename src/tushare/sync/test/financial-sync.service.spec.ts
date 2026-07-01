@@ -155,6 +155,18 @@ describe('FinancialSyncService', () => {
       const orders = plans.map((p) => p.order)
       expect(orders).toEqual([...orders].sort((a, b) => a - b))
     })
+
+    it('季度报表和股东快照类任务应降为周六错峰同步', () => {
+      const plans = createService().getSyncPlans()
+      const byTask = new Map(plans.map((plan) => [plan.task, plan]))
+
+      expect(byTask.get(TushareSyncTaskName.INCOME)?.schedule?.cron).toBe('0 10 22 * * 6')
+      expect(byTask.get(TushareSyncTaskName.BALANCE_SHEET)?.schedule?.cron).toBe('0 15 22 * * 6')
+      expect(byTask.get(TushareSyncTaskName.CASHFLOW)?.schedule?.cron).toBe('0 20 22 * * 6')
+      expect(byTask.get(TushareSyncTaskName.FINA_INDICATOR)?.schedule?.cron).toBe('0 25 22 * * 6')
+      expect(byTask.get(TushareSyncTaskName.TOP10_HOLDERS)?.schedule?.cron).toBe('0 30 22 * * 6')
+      expect(byTask.get(TushareSyncTaskName.TOP10_FLOAT_HOLDERS)?.schedule?.cron).toBe('0 35 22 * * 6')
+    })
   })
 
   // ── syncForecast() ─────────────────────────────────────────────────────────

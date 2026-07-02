@@ -97,6 +97,13 @@ describe('StockListService', () => {
       expect(result).toMatchObject({ page: 1, pageSize: 20, total: 1 })
       expect(result.items).toHaveLength(1)
       expect(prisma.$queryRaw).toHaveBeenCalledTimes(2)
+
+      const itemSql = queryRawCallSql(prisma, 1)
+      expect(itemSql).toMatch(/WITH latest AS/)
+      expect(itemSql).toMatch(/CROSS JOIN latest/)
+      expect(itemSql).toMatch(/db\.trade_date = latest\.db_date/)
+      expect(itemSql).toMatch(/d\.trade_date = latest\.d_date/)
+      expect(itemSql).not.toMatch(/LEFT JOIN LATERAL/)
     })
 
     it('有 minPeTtm 时 count 只 JOIN 最新交易日估值截面', async () => {
@@ -154,6 +161,7 @@ describe('StockListService', () => {
 
       const countSql = queryRawCallSql(prisma, 0)
       expect(countSql).toMatch(/ths_index_members/)
+      expect(countSql).not.toMatch(/WITH latest AS/)
       expect(countSql).not.toMatch(/stock_daily_valuation_metrics db/)
       expect(countSql).not.toMatch(/stock_daily_prices d/)
     })

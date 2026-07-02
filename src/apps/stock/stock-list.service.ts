@@ -146,7 +146,7 @@ export class StockListService {
         const countNeedsDailyJoin = this.requiresDailyJoin(query)
 
         const countPromise =
-          countNeedsValuationJoin || countNeedsDailyJoin || needsConceptJoin
+          countNeedsValuationJoin || countNeedsDailyJoin
             ? this.prisma.$queryRaw<[{ count: bigint }]>`
               WITH latest AS (
                 SELECT
@@ -173,7 +173,14 @@ export class StockListService {
               }
               ${whereClause}
             `
-            : this.prisma.$queryRaw<[{ count: bigint }]>`
+            : needsConceptJoin
+              ? this.prisma.$queryRaw<[{ count: bigint }]>`
+                SELECT COUNT(*)::bigint AS count
+                FROM stock_basic_profiles sb
+                ${conceptJoinSql}
+                ${whereClause}
+              `
+              : this.prisma.$queryRaw<[{ count: bigint }]>`
               SELECT COUNT(*)::bigint AS count
               FROM stock_basic_profiles sb
               ${whereClause}

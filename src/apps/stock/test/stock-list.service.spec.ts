@@ -68,6 +68,20 @@ function mockQueryRaw(prisma: ReturnType<typeof buildPrismaMock>, count = 1, ite
   prisma.$queryRaw.mockResolvedValueOnce([{ count: BigInt(count) }]).mockResolvedValueOnce(items)
 }
 
+function collectSqlText(value: unknown): string {
+  if (typeof value === 'string') return value
+  if (Array.isArray(value)) return value.join('')
+  if (value && typeof value === 'object') {
+    const sql = value as { strings?: string[]; values?: unknown[] }
+    return `${sql.strings?.join('') ?? ''} ${sql.values?.map(collectSqlText).join(' ') ?? ''}`
+  }
+  return ''
+}
+
+function queryRawCallSql(prisma: ReturnType<typeof buildPrismaMock>, callIndex: number): string {
+  return prisma.$queryRaw.mock.calls[callIndex].map(collectSqlText).join(' ')
+}
+
 // ══════════════════════════════════════════════════════════════════════════════
 
 describe('StockListService', () => {
@@ -85,7 +99,7 @@ describe('StockListService', () => {
       expect(prisma.$queryRaw).toHaveBeenCalledTimes(2)
     })
 
-    it('有 minPeTtm 时 count 走含 metric JOIN 的路径（两次 $queryRaw）', async () => {
+    it('有 minPeTtm 时 count 只 JOIN 最新交易日估值截面', async () => {
       const prisma = buildPrismaMock()
       const cache = buildCacheServiceMock()
       mockQueryRaw(prisma, 5, [MOCK_ITEM])
@@ -97,13 +111,14 @@ describe('StockListService', () => {
       expect(result.total).toBe(5)
       // count 与 items 各一次
       expect(prisma.$queryRaw).toHaveBeenCalledTimes(2)
-      // 确认 count SQL（TemplateStringsArray）包含 LEFT JOIN LATERAL（含 metric JOIN 路径）
-      const countStrings = prisma.$queryRaw.mock.calls[0][0] as string[]
-      const countSql = Array.from(countStrings).join('')
-      expect(countSql).toMatch(/LEFT JOIN LATERAL/)
+      const countSql = queryRawCallSql(prisma, 0)
+      expect(countSql).toMatch(/stock_daily_valuation_metrics db/)
+      expect(countSql).toMatch(/db\.trade_date = latest\.db_date/)
+      expect(countSql).not.toMatch(/LEFT JOIN LATERAL/)
+      expect(countSql).not.toMatch(/stock_daily_prices d/)
     })
 
-    it('有 maxPeTtm 时 count 同样走含 metric JOIN 的路径', async () => {
+    it('有 maxPeTtm 时 count 同样走最新估值截面路径', async () => {
       const prisma = buildPrismaMock()
       const cache = buildCacheServiceMock()
       mockQueryRaw(prisma, 10, [])
@@ -111,11 +126,12 @@ describe('StockListService', () => {
 
       await service.findAll({ maxPeTtm: 30 } as StockListQueryDto)
 
-      const countStrings = prisma.$queryRaw.mock.calls[0][0] as string[]
-      expect(Array.from(countStrings).join('')).toMatch(/LEFT JOIN LATERAL/)
+      const countSql = queryRawCallSql(prisma, 0)
+      expect(countSql).toMatch(/stock_daily_valuation_metrics db/)
+      expect(countSql).not.toMatch(/LEFT JOIN LATERAL/)
     })
 
-    it('有 minTotalMv 时 count 走含 metric JOIN 的路径', async () => {
+    it('有 minTotalMv 时 count 走最新估值截面路径', async () => {
       const prisma = buildPrismaMock()
       const cache = buildCacheServiceMock()
       mockQueryRaw(prisma, 20, [])
@@ -123,8 +139,9 @@ describe('StockListService', () => {
 
       await service.findAll({ minTotalMv: 50000 } as StockListQueryDto)
 
-      const countStrings = prisma.$queryRaw.mock.calls[0][0] as string[]
-      expect(Array.from(countStrings).join('')).toMatch(/LEFT JOIN LATERAL/)
+      const countSql = queryRawCallSql(prisma, 0)
+      expect(countSql).toMatch(/stock_daily_valuation_metrics db/)
+      expect(countSql).not.toMatch(/LEFT JOIN LATERAL/)
     })
 
     it('有 conceptCodes 时无论是否有 metric 条件都走含 JOIN 的路径', async () => {
@@ -135,10 +152,10 @@ describe('StockListService', () => {
 
       await service.findAll({ conceptCodes: ['885001.TI'] } as StockListQueryDto)
 
-      // conceptJoinSql 是嵌套 Prisma.Sql，作为 template 参数传入，出现在 mock.calls[0][1] 的 strings 里
-      const conceptSqlArg = prisma.$queryRaw.mock.calls[0][1] as { strings?: string[] } | undefined
-      const conceptSqlText = conceptSqlArg?.strings ? Array.from(conceptSqlArg.strings).join('') : ''
-      expect(conceptSqlText).toMatch(/ths_index_members/)
+      const countSql = queryRawCallSql(prisma, 0)
+      expect(countSql).toMatch(/ths_index_members/)
+      expect(countSql).not.toMatch(/stock_daily_valuation_metrics db/)
+      expect(countSql).not.toMatch(/stock_daily_prices d/)
     })
 
     it('无 metric 且无 concept 条件时 count 走简单路径（不含 LEFT JOIN LATERAL）', async () => {
@@ -149,8 +166,7 @@ describe('StockListService', () => {
 
       await service.findAll({ keyword: '银行' } as StockListQueryDto)
 
-      const countStrings = prisma.$queryRaw.mock.calls[0][0] as string[]
-      expect(Array.from(countStrings).join('')).not.toMatch(/LEFT JOIN LATERAL/)
+      expect(queryRawCallSql(prisma, 0)).not.toMatch(/LEFT JOIN LATERAL/)
     })
 
     it('industries 数组过滤时走简单 count 路径（无 metric）', async () => {
@@ -161,8 +177,7 @@ describe('StockListService', () => {
 
       await service.findAll({ industries: ['银行', '保险'] } as StockListQueryDto)
 
-      const countStrings = prisma.$queryRaw.mock.calls[0][0] as string[]
-      expect(Array.from(countStrings).join('')).not.toMatch(/LEFT JOIN LATERAL/)
+      expect(queryRawCallSql(prisma, 0)).not.toMatch(/LEFT JOIN LATERAL/)
     })
 
     it('同时有 minPeTtm 和 conceptCodes 时，count 走含所有 JOIN 的路径', async () => {
@@ -176,13 +191,10 @@ describe('StockListService', () => {
         conceptCodes: ['885001.TI'],
       } as StockListQueryDto)
 
-      // count SQL 字符串包含 LEFT JOIN LATERAL（metric join）
-      const countStrings = prisma.$queryRaw.mock.calls[0][0] as string[]
-      expect(Array.from(countStrings).join('')).toMatch(/LEFT JOIN LATERAL/)
-      // conceptJoinSql 嵌套在 mock.calls[0][1] 的 strings 里
-      const conceptSqlArg = prisma.$queryRaw.mock.calls[0][1] as { strings?: string[] } | undefined
-      const conceptSqlText = conceptSqlArg?.strings ? Array.from(conceptSqlArg.strings).join('') : ''
-      expect(conceptSqlText).toMatch(/ths_index_members/)
+      const countSql = queryRawCallSql(prisma, 0)
+      expect(countSql).toMatch(/stock_daily_valuation_metrics db/)
+      expect(countSql).toMatch(/ths_index_members/)
+      expect(countSql).not.toMatch(/LEFT JOIN LATERAL/)
     })
 
     it('sortBy=PE_TTM 但无 metric 过滤条件时，count 仍走简单路径', async () => {
@@ -193,9 +205,8 @@ describe('StockListService', () => {
 
       await service.findAll({ sortBy: StockSortBy.PE_TTM } as StockListQueryDto)
 
-      const countStrings = prisma.$queryRaw.mock.calls[0][0] as string[]
       // 排序不影响 count，count 走简单路径
-      expect(Array.from(countStrings).join('')).not.toMatch(/LEFT JOIN LATERAL/)
+      expect(queryRawCallSql(prisma, 0)).not.toMatch(/LEFT JOIN LATERAL/)
     })
   })
 })

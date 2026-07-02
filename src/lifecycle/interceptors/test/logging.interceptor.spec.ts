@@ -198,4 +198,5 @@ describe('LoggingInterceptor', () => {
       expect(logger.log).not.toHaveBeenCalled()
     })
   })
+
 })

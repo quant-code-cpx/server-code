@@ -88,8 +88,8 @@ export class StockListService {
     return conditions
   }
 
-  /** 是否有需要 valuation/market metric 表 JOIN 的条件（用于 count 优化）*/
-  private requiresMetricJoin(query: StockListQueryDto): boolean {
+  /** 是否有需要 valuation 表 JOIN 的条件（用于 count / 分页前 JOIN 优化）*/
+  private requiresValuationJoin(query: StockListQueryDto): boolean {
     return (
       query.minTotalMv !== undefined ||
       query.maxTotalMv !== undefined ||
@@ -99,7 +99,13 @@ export class StockListService {
       query.maxPb !== undefined ||
       query.minDvTtm !== undefined ||
       query.minTurnoverRate !== undefined ||
-      query.maxTurnoverRate !== undefined ||
+      query.maxTurnoverRate !== undefined
+    )
+  }
+
+  /** 是否有需要 daily 表 JOIN 的条件（用于 count / 分页前 JOIN 优化）*/
+  private requiresDailyJoin(query: StockListQueryDto): boolean {
+    return (
       query.minPctChg !== undefined ||
       query.maxPctChg !== undefined ||
       query.minAmount !== undefined ||
@@ -136,21 +142,35 @@ export class StockListService {
           ? Prisma.sql`INNER JOIN ths_index_members tm ON tm.con_code = sb.ts_code AND tm.is_new = 'Y'
               AND tm.ts_code = ANY(${query.conceptCodes!})`
           : Prisma.empty
+        const countNeedsValuationJoin = this.requiresValuationJoin(query)
+        const countNeedsDailyJoin = this.requiresDailyJoin(query)
 
         const countPromise =
-          this.requiresMetricJoin(query) || needsConceptJoin
+          countNeedsValuationJoin || countNeedsDailyJoin || needsConceptJoin
             ? this.prisma.$queryRaw<[{ count: bigint }]>`
+              WITH latest AS (
+                SELECT
+                  (SELECT MAX(trade_date) FROM stock_daily_valuation_metrics) AS db_date,
+                  (SELECT MAX(trade_date) FROM stock_daily_prices) AS d_date
+              )
               SELECT COUNT(*)::bigint AS count
               FROM stock_basic_profiles sb
+              CROSS JOIN latest
               ${conceptJoinSql}
-              LEFT JOIN LATERAL (
-                SELECT pe_ttm, pb, dv_ttm, total_mv, circ_mv, turnover_rate
-                FROM stock_daily_valuation_metrics WHERE ts_code = sb.ts_code ORDER BY trade_date DESC LIMIT 1
-              ) db ON true
-              LEFT JOIN LATERAL (
-                SELECT pct_chg, amount, close, vol
-                FROM stock_daily_prices WHERE ts_code = sb.ts_code ORDER BY trade_date DESC LIMIT 1
-              ) d ON true
+              ${
+                countNeedsValuationJoin
+                  ? Prisma.sql`
+              LEFT JOIN stock_daily_valuation_metrics db
+                     ON db.ts_code = sb.ts_code AND db.trade_date = latest.db_date`
+                  : Prisma.empty
+              }
+              ${
+                countNeedsDailyJoin
+                  ? Prisma.sql`
+              LEFT JOIN stock_daily_prices d
+                     ON d.ts_code = sb.ts_code AND d.trade_date = latest.d_date`
+                  : Prisma.empty
+              }
               ${whereClause}
             `
             : this.prisma.$queryRaw<[{ count: bigint }]>`
@@ -162,6 +182,11 @@ export class StockListService {
         const [countResult, items] = await Promise.all([
           countPromise,
           this.prisma.$queryRaw<StockListRow[]>`
+            WITH latest AS (
+              SELECT
+                (SELECT MAX(trade_date) FROM stock_daily_valuation_metrics) AS db_date,
+                (SELECT MAX(trade_date) FROM stock_daily_prices) AS d_date
+            )
             SELECT
               sb.ts_code            AS "tsCode",   sb.symbol,    sb.name, sb.fullname,
               sb.exchange::text     AS "exchange",  sb.curr_type AS "currType", sb.market,    sb.industry,
@@ -171,17 +196,14 @@ export class StockListService {
               db.total_mv AS "totalMv", db.circ_mv AS "circMv", db.turnover_rate AS "turnoverRate",
               d.pct_chg AS "pctChg", d.amount, d.close, d.vol
             FROM stock_basic_profiles sb
+            CROSS JOIN latest
             ${conceptJoinSql}
-            LEFT JOIN LATERAL (
-              SELECT pe_ttm, pb, dv_ttm, total_mv, circ_mv, turnover_rate
-              FROM stock_daily_valuation_metrics WHERE ts_code = sb.ts_code ORDER BY trade_date DESC LIMIT 1
-            ) db ON true
-            LEFT JOIN LATERAL (
-              SELECT trade_date, pct_chg, amount, close, vol
-              FROM stock_daily_prices WHERE ts_code = sb.ts_code ORDER BY trade_date DESC LIMIT 1
-            ) d ON true
+            LEFT JOIN stock_daily_valuation_metrics db
+                   ON db.ts_code = sb.ts_code AND db.trade_date = latest.db_date
+            LEFT JOIN stock_daily_prices d
+                   ON d.ts_code = sb.ts_code AND d.trade_date = latest.d_date
             ${whereClause}
-            ORDER BY ${sortCol} ${sortDir}
+            ORDER BY ${sortCol} ${sortDir}, sb.ts_code ASC
             LIMIT ${pageSize} OFFSET ${offset}
           `,
         ])

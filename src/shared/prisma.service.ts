@@ -51,7 +51,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
       ;(this as unknown as { $on(event: string, cb: (e: { duration: number; query: string }) => void): void }).$on(
         'query',
         (e: { duration: number; query: string }) => {
-          this.recordQueryMetrics(e.duration)
+          this.recordQueryMetrics(e.duration, e.query)
         },
       )
     }
@@ -64,7 +64,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
     await this.$disconnect()
   }
 
-  private recordQueryMetrics(durationMs: number) {
+  private recordQueryMetrics(durationMs: number, query?: string) {
     const durationSec = durationMs / 1000
 
     this.queryDuration?.observe(durationSec)
@@ -76,6 +76,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
           message: `慢查询检测: 耗时 ${durationMs.toFixed(1)}ms`,
           durationMs: Math.round(durationMs),
           threshold: SLOW_QUERY_THRESHOLD_MS,
+          query,
         },
         'PrismaSlowQuery',
       )

@@ -123,11 +123,13 @@ describe('PrismaService.recordQueryMetrics()', () => {
     mockCounter = { inc: jest.fn() }
   })
 
-  it('[BIZ] 慢查询（duration > 500ms）→ 记录 histogram + counter + warn 日志', () => {
+  type RecordQueryMetricsFn = (d: number, query?: string) => void
+
+  it('[BIZ] 慢查询（duration > 500ms）→ 记录 histogram + counter + warn 日志，包含 SQL', () => {
     const service = new PrismaService(mockLogger, mockHistogram as never, mockCounter as never)
 
     // 直接调用私有方法（测试场景）
-    ;(service as unknown as { recordQueryMetrics(d: number): void }).recordQueryMetrics(600)
+    ;(service as unknown as { recordQueryMetrics: RecordQueryMetricsFn }).recordQueryMetrics(600, 'SELECT * FROM users')
 
     expect(mockHistogram.observe).toHaveBeenCalledWith(0.6)
     expect(mockCounter.inc).toHaveBeenCalledTimes(1)
@@ -135,7 +137,19 @@ describe('PrismaService.recordQueryMetrics()', () => {
       expect.objectContaining({
         message: expect.stringContaining('600.0ms'),
         durationMs: 600,
+        query: 'SELECT * FROM users',
       }),
+      'PrismaSlowQuery',
+    )
+  })
+
+  it('[BIZ] 慢查询无 query 参数 → warn 日志中 query 为 undefined', () => {
+    const service = new PrismaService(mockLogger, mockHistogram as never, mockCounter as never)
+
+    ;(service as unknown as { recordQueryMetrics: RecordQueryMetricsFn }).recordQueryMetrics(600)
+
+    expect(mockLogger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ durationMs: 600 }),
       'PrismaSlowQuery',
     )
   })
@@ -143,7 +157,7 @@ describe('PrismaService.recordQueryMetrics()', () => {
   it('[BIZ] 正常查询（duration <= 500ms）→ 记录 histogram + counter，不记录 warn', () => {
     const service = new PrismaService(mockLogger, mockHistogram as never, mockCounter as never)
 
-    ;(service as unknown as { recordQueryMetrics(d: number): void }).recordQueryMetrics(100)
+    ;(service as unknown as { recordQueryMetrics: RecordQueryMetricsFn }).recordQueryMetrics(100)
 
     expect(mockHistogram.observe).toHaveBeenCalledWith(0.1)
     expect(mockCounter.inc).toHaveBeenCalledTimes(1)
@@ -153,7 +167,7 @@ describe('PrismaService.recordQueryMetrics()', () => {
   it('[EDGE] duration 恰好 500ms（临界值）→ 不记录 warn（> 而非 >=）', () => {
     const service = new PrismaService(mockLogger, mockHistogram as never, mockCounter as never)
 
-    ;(service as unknown as { recordQueryMetrics(d: number): void }).recordQueryMetrics(500)
+    ;(service as unknown as { recordQueryMetrics: RecordQueryMetricsFn }).recordQueryMetrics(500)
 
     expect(mockLogger.warn).not.toHaveBeenCalled()
     expect(mockHistogram.observe).toHaveBeenCalledWith(0.5)
@@ -162,7 +176,7 @@ describe('PrismaService.recordQueryMetrics()', () => {
   it('[BIZ] 无 histogram/counter（仅 logger）→ 慢查询仍记录 warn 日志', () => {
     const service = new PrismaService(mockLogger, undefined, undefined)
 
-    ;(service as unknown as { recordQueryMetrics(d: number): void }).recordQueryMetrics(700)
+    ;(service as unknown as { recordQueryMetrics: RecordQueryMetricsFn }).recordQueryMetrics(700)
 
     // histogram/counter 为 undefined，observe/inc 不应调用
     expect(mockHistogram.observe).not.toHaveBeenCalled()

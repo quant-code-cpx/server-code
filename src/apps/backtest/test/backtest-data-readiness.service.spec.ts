@@ -3,13 +3,13 @@
  *
  * 覆盖要点：
  * - tradeCal count=0 → errors 包含 '交易日历'
- * - daily count=0 → errors 包含 '股票日线'
- * - adjFactor count=0 → errors 包含 '复权因子'
- * - indexDaily count=0 → errors 包含 '基准指数'
- * - stkLimit count=0, enableTradeConstraints=true → warnings 包含 '涨跌停'
- * - suspendD count=0, enableTradeConstraints=true → warnings 包含 '停牌'
+ * - daily 缺失 → errors 包含 '股票日线'
+ * - adjFactor 缺失 → errors 包含 '复权因子'
+ * - indexDaily 缺失 → errors 包含 '基准指数'
+ * - stkLimit 缺失, enableTradeConstraints=true → warnings 包含 '涨跌停'
+ * - suspendD 缺失, enableTradeConstraints=true → warnings 包含 '停牌'
  * - enableTradeConstraints=false → 不产生 stkLimit/suspendD 警告
- * - universe != ALL_A 且 indexWeight count=0 → errors 包含 indexWeight 相关
+ * - universe != ALL_A 且 indexWeight 缺失 → errors 包含 indexWeight 相关
  * - 所有数据齐全 → isValid=true, errors=[]
  */
 import { BacktestDataReadinessService } from '../services/backtest-data-readiness.service'
@@ -22,28 +22,27 @@ function buildPrismaMock() {
   return {
     tradeCal: { count: jest.fn(async () => 0) },
     daily: {
-      count: jest.fn(async () => 0),
       findFirst: jest.fn(async () => null),
-      groupBy: jest.fn(async () => []),
     },
-    adjFactor: { count: jest.fn(async () => 0) },
-    indexDaily: { count: jest.fn(async () => 0) },
-    stkLimit: { count: jest.fn(async () => 0) },
-    suspendD: { count: jest.fn(async () => 0) },
-    indexWeight: { count: jest.fn(async () => 0) },
+    adjFactor: { findFirst: jest.fn(async () => null) },
+    indexDaily: { findFirst: jest.fn(async () => null) },
+    stkLimit: { findFirst: jest.fn(async () => null) },
+    suspendD: { findFirst: jest.fn(async () => null) },
+    indexWeight: { findFirst: jest.fn(async () => null) },
+    $queryRaw: jest.fn(async () => [{ count: 0n }]),
   }
 }
 
 /** 将 Prisma mock 所有 count 设为正值（数据充足状态） */
 function setAllCountsPositive(prisma: PrismaMock, value = 100) {
   prisma.tradeCal.count.mockResolvedValue(value)
-  prisma.daily.count.mockResolvedValue(value)
-  prisma.adjFactor.count.mockResolvedValue(value)
-  prisma.indexDaily.count.mockResolvedValue(value)
-  prisma.stkLimit.count.mockResolvedValue(value)
-  prisma.suspendD.count.mockResolvedValue(value)
-  prisma.indexWeight.count.mockResolvedValue(value)
-  prisma.daily.groupBy.mockResolvedValue(Array.from({ length: 200 }, (_, i) => ({ tsCode: `00000${i}.SZ` })))
+  prisma.daily.findFirst.mockResolvedValue({ tsCode: '000001.SZ', tradeDate: new Date('2023-01-03') })
+  prisma.adjFactor.findFirst.mockResolvedValue({ tsCode: '000001.SZ' })
+  prisma.indexDaily.findFirst.mockResolvedValue({ tsCode: '000300.SH' })
+  prisma.stkLimit.findFirst.mockResolvedValue({ tsCode: '000001.SZ' })
+  prisma.suspendD.findFirst.mockResolvedValue({ tsCode: '000001.SZ' })
+  prisma.indexWeight.findFirst.mockResolvedValue({ indexCode: '000300.SH' })
+  prisma.$queryRaw.mockResolvedValue([{ count: 200n }])
 }
 
 function createService(prisma = buildPrismaMock()): BacktestDataReadinessService {
@@ -127,11 +126,11 @@ describe('BacktestDataReadinessService', () => {
 
   // ── 股票日线缺失 ───────────────────────────────────────────────────────────
 
-  describe('daily count=0', () => {
+  describe('daily 缺失', () => {
     it('errors 包含 "股票日线"', async () => {
       const prisma = buildPrismaMock()
       setAllCountsPositive(prisma)
-      prisma.daily.count.mockResolvedValue(0)
+      prisma.daily.findFirst.mockResolvedValue(null)
       const svc = createService(prisma)
 
       const result = await svc.checkReadiness(baseDto)
@@ -143,11 +142,11 @@ describe('BacktestDataReadinessService', () => {
 
   // ── 复权因子缺失 ───────────────────────────────────────────────────────────
 
-  describe('adjFactor count=0', () => {
+  describe('adjFactor 缺失', () => {
     it('errors 包含 "复权因子"', async () => {
       const prisma = buildPrismaMock()
       setAllCountsPositive(prisma)
-      prisma.adjFactor.count.mockResolvedValue(0)
+      prisma.adjFactor.findFirst.mockResolvedValue(null)
       const svc = createService(prisma)
 
       const result = await svc.checkReadiness(baseDto)
@@ -159,11 +158,11 @@ describe('BacktestDataReadinessService', () => {
 
   // ── 基准指数缺失 ───────────────────────────────────────────────────────────
 
-  describe('indexDaily count=0', () => {
+  describe('indexDaily 缺失', () => {
     it('errors 包含 "基准指数"', async () => {
       const prisma = buildPrismaMock()
       setAllCountsPositive(prisma)
-      prisma.indexDaily.count.mockResolvedValue(0)
+      prisma.indexDaily.findFirst.mockResolvedValue(null)
       const svc = createService(prisma)
 
       const result = await svc.checkReadiness(baseDto)
@@ -175,11 +174,11 @@ describe('BacktestDataReadinessService', () => {
 
   // ── 涨跌停数据缺失 ────────────────────────────────────────────────────────
 
-  describe('stkLimit count=0, enableTradeConstraints=true', () => {
+  describe('stkLimit 缺失, enableTradeConstraints=true', () => {
     it('warnings 包含 "涨跌停"', async () => {
       const prisma = buildPrismaMock()
       setAllCountsPositive(prisma)
-      prisma.stkLimit.count.mockResolvedValue(0)
+      prisma.stkLimit.findFirst.mockResolvedValue(null)
       const svc = createService(prisma)
 
       const result = await svc.checkReadiness({ ...baseDto, enableTradeConstraints: true })
@@ -191,7 +190,7 @@ describe('BacktestDataReadinessService', () => {
     it('enableTradeConstraints=false → 不产生涨跌停警告', async () => {
       const prisma = buildPrismaMock()
       setAllCountsPositive(prisma)
-      prisma.stkLimit.count.mockResolvedValue(0)
+      prisma.stkLimit.findFirst.mockResolvedValue(null)
       const svc = createService(prisma)
 
       const result = await svc.checkReadiness({ ...baseDto, enableTradeConstraints: false })
@@ -203,11 +202,11 @@ describe('BacktestDataReadinessService', () => {
 
   // ── 停牌数据缺失 ──────────────────────────────────────────────────────────
 
-  describe('suspendD count=0, enableTradeConstraints=true', () => {
+  describe('suspendD 缺失, enableTradeConstraints=true', () => {
     it('warnings 包含 "停牌"', async () => {
       const prisma = buildPrismaMock()
       setAllCountsPositive(prisma)
-      prisma.suspendD.count.mockResolvedValue(0)
+      prisma.suspendD.findFirst.mockResolvedValue(null)
       const svc = createService(prisma)
 
       const result = await svc.checkReadiness({ ...baseDto, enableTradeConstraints: true })
@@ -219,7 +218,7 @@ describe('BacktestDataReadinessService', () => {
     it('enableTradeConstraints=false → 不产生停牌警告', async () => {
       const prisma = buildPrismaMock()
       setAllCountsPositive(prisma)
-      prisma.suspendD.count.mockResolvedValue(0)
+      prisma.suspendD.findFirst.mockResolvedValue(null)
       const svc = createService(prisma)
 
       const result = await svc.checkReadiness({ ...baseDto, enableTradeConstraints: false })
@@ -231,11 +230,11 @@ describe('BacktestDataReadinessService', () => {
 
   // ── 指数成分权重缺失 ──────────────────────────────────────────────────────
 
-  describe('indexWeight count=0，universe 非 ALL_A/CUSTOM', () => {
+  describe('indexWeight 缺失，universe 非 ALL_A/CUSTOM', () => {
     it('universe=HS300 且 indexWeight 缺失 → errors 包含权重相关信息', async () => {
       const prisma = buildPrismaMock()
       setAllCountsPositive(prisma)
-      prisma.indexWeight.count.mockResolvedValue(0)
+      prisma.indexWeight.findFirst.mockResolvedValue(null)
       const svc = createService(prisma)
 
       const result = await svc.checkReadiness({ ...baseDto, universe: 'HS300' as any })
@@ -248,7 +247,7 @@ describe('BacktestDataReadinessService', () => {
     it('universe=ALL_A 时 indexWeight 不影响结果', async () => {
       const prisma = buildPrismaMock()
       setAllCountsPositive(prisma)
-      prisma.indexWeight.count.mockResolvedValue(0)
+      prisma.indexWeight.findFirst.mockResolvedValue(null)
       const svc = createService(prisma)
 
       const result = await svc.checkReadiness({ ...baseDto, universe: 'ALL_A' as any })
@@ -263,7 +262,7 @@ describe('BacktestDataReadinessService', () => {
     it('universe=CUSTOM 时 indexWeight 不影响结果', async () => {
       const prisma = buildPrismaMock()
       setAllCountsPositive(prisma)
-      prisma.indexWeight.count.mockResolvedValue(0)
+      prisma.indexWeight.findFirst.mockResolvedValue(null)
       const svc = createService(prisma)
 
       const result = await svc.checkReadiness({ ...baseDto, universe: 'CUSTOM' as any })
@@ -292,7 +291,7 @@ describe('BacktestDataReadinessService', () => {
     it('无日线数据时 estimatedUniverseSize=null', async () => {
       const prisma = buildPrismaMock()
       setAllCountsPositive(prisma)
-      prisma.daily.count.mockResolvedValue(0)
+      prisma.daily.findFirst.mockResolvedValue(null)
       const svc = createService(prisma)
 
       const result = await svc.checkReadiness(baseDto)

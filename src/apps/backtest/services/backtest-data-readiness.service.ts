@@ -12,81 +12,78 @@ export class BacktestDataReadinessService {
     const endDate = this.parseDate(dto.endDate)
     const startStr = dto.startDate
     const endStr = dto.endDate
+    const compactStartStr = startStr.replace(/-/g, '')
+    const compactEndStr = endStr.replace(/-/g, '')
+    const benchmarkCode = dto.benchmarkTsCode ?? '000300.SH'
+    const needsIndexWeight = dto.universe && !['ALL_A', 'CUSTOM'].includes(dto.universe)
 
     const warnings: string[] = []
     const errors: string[] = []
 
-    // Check trading calendar
-    const tradeCalCount = await this.prisma.tradeCal.count({
-      where: { exchange: 'SSE', calDate: { gte: startDate, lte: endDate }, isOpen: '1' },
-    })
+    const [
+      tradeCalCount,
+      dailyRow,
+      adjFactorRow,
+      indexDailyRow,
+      stkLimitRow,
+      suspendRow,
+      indexWeightRow,
+      earliestRow,
+      latestRow,
+      universeCountRows,
+    ] = await Promise.all([
+      this.prisma.tradeCal.count({
+        where: { exchange: 'SSE', calDate: { gte: startDate, lte: endDate }, isOpen: '1' },
+      }),
+      this.prisma.daily.findFirst({
+        where: { tradeDate: { gte: startDate, lte: endDate } },
+        select: { tsCode: true },
+      }),
+      this.prisma.adjFactor.findFirst({
+        where: { tradeDate: { gte: startDate, lte: endDate } },
+        select: { tsCode: true },
+      }),
+      this.prisma.indexDaily.findFirst({
+        where: { tsCode: benchmarkCode, tradeDate: { gte: startDate, lte: endDate } },
+        select: { tsCode: true },
+      }),
+      this.prisma.stkLimit.findFirst({
+        where: { tradeDate: { gte: startStr, lte: endStr } },
+        select: { tsCode: true },
+      }),
+      this.prisma.suspendD.findFirst({
+        where: { tradeDate: { gte: startStr, lte: endStr } },
+        select: { tsCode: true },
+      }),
+      needsIndexWeight
+        ? this.prisma.indexWeight.findFirst({
+            where: { tradeDate: { gte: compactStartStr, lte: compactEndStr } },
+            select: { indexCode: true },
+          })
+        : Promise.resolve({ indexCode: null }),
+      this.prisma.daily.findFirst({
+        orderBy: { tradeDate: 'asc' },
+        select: { tradeDate: true },
+      }),
+      this.prisma.daily.findFirst({
+        orderBy: { tradeDate: 'desc' },
+        select: { tradeDate: true },
+      }),
+      this.prisma.$queryRaw<{ count: bigint | number | string }[]>`
+        SELECT COUNT(DISTINCT ts_code)::bigint AS count
+        FROM stock_daily_prices
+        WHERE trade_date >= ${startDate} AND trade_date <= ${endDate}
+      `,
+    ])
+
     const hasTradeCal = tradeCalCount > 0
-
-    // Check daily prices
-    const dailyCount = await this.prisma.daily.count({
-      where: { tradeDate: { gte: startDate, lte: endDate } },
-    })
-    const hasDaily = dailyCount > 0
-
-    // Check adj factor
-    const adjCount = await this.prisma.adjFactor.count({
-      where: { tradeDate: { gte: startDate, lte: endDate } },
-    })
-    const hasAdjFactor = adjCount > 0
-
-    // Check index daily (benchmark)
-    const benchmarkCode = dto.benchmarkTsCode ?? '000300.SH'
-    const indexDailyCount = await this.prisma.indexDaily.count({
-      where: { tsCode: benchmarkCode, tradeDate: { gte: startDate, lte: endDate } },
-    })
-    const hasIndexDaily = indexDailyCount > 0
-
-    // Check stk_limit
-    const stkLimitCount = await this.prisma.stkLimit.count({
-      where: {
-        tradeDate: { gte: startStr, lte: endStr },
-      },
-    })
-    const hasStkLimit = stkLimitCount > 0
-
-    // Check suspend
-    const suspendCount = await this.prisma.suspendD.count({
-      where: {
-        tradeDate: { gte: startStr, lte: endStr },
-      },
-    })
-    const hasSuspendD = suspendCount > 0
-
-    // Check index weight (only needed for index universe)
-    const needsIndexWeight = dto.universe && !['ALL_A', 'CUSTOM'].includes(dto.universe)
-    let hasIndexWeight = true
-    if (needsIndexWeight) {
-      const iwCount = await this.prisma.indexWeight.count({
-        where: { tradeDate: { gte: startStr.replace(/-/g, ''), lte: endStr.replace(/-/g, '') } },
-      })
-      hasIndexWeight = iwCount > 0
-    }
-
-    // Get earliest/latest available dates
-    const earliestRow = await this.prisma.daily.findFirst({
-      orderBy: { tradeDate: 'asc' },
-      select: { tradeDate: true },
-    })
-    const latestRow = await this.prisma.daily.findFirst({
-      orderBy: { tradeDate: 'desc' },
-      select: { tradeDate: true },
-    })
-
-    // Estimate universe size
-    let estimatedUniverseSize: number | null = null
-    if (hasDaily) {
-      estimatedUniverseSize = await this.prisma.daily
-        .groupBy({
-          by: ['tsCode'],
-          where: { tradeDate: { gte: startDate, lte: endDate } },
-        })
-        .then((rows) => rows.length)
-    }
+    const hasDaily = Boolean(dailyRow)
+    const hasAdjFactor = Boolean(adjFactorRow)
+    const hasIndexDaily = Boolean(indexDailyRow)
+    const hasStkLimit = Boolean(stkLimitRow)
+    const hasSuspendD = Boolean(suspendRow)
+    const hasIndexWeight = needsIndexWeight ? Boolean(indexWeightRow) : true
+    const estimatedUniverseSize = hasDaily ? Number(universeCountRows[0]?.count ?? 0) : null
 
     // Validation logic
     if (!hasTradeCal) errors.push('交易日历数据不完整，无法确定交易日')

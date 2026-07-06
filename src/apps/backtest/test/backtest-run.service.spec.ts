@@ -42,6 +42,7 @@ function buildRunRecord(overrides: Record<string, unknown> = {}) {
     sharpeRatio: null,
     createdAt: new Date('2025-01-01'),
     completedAt: null,
+    deletedAt: null,
     ...overrides,
   }
 }
@@ -57,9 +58,22 @@ function buildPrismaMock() {
       count: jest.fn(async () => 0),
       delete: jest.fn(),
     },
-    backtestDailyNav: { deleteMany: jest.fn(async () => ({ count: 0 })) },
-    backtestTrade: { deleteMany: jest.fn(async () => ({ count: 0 })) },
+    backtestDailyNav: {
+      deleteMany: jest.fn(async () => ({ count: 0 })),
+      findMany: jest.fn(async () => []),
+    },
+    backtestTrade: {
+      deleteMany: jest.fn(async () => ({ count: 0 })),
+      count: jest.fn(async () => 0),
+      findMany: jest.fn(async () => []),
+    },
     backtestPosition: { deleteMany: jest.fn(async () => ({ count: 0 })) },
+    backtestPositionSnapshot: {
+      findFirst: jest.fn(async () => null),
+      findMany: jest.fn(async () => []),
+    },
+    backtestRebalanceLog: { findMany: jest.fn(async () => []) },
+    stockBasic: { findMany: jest.fn(async () => []) },
     $transaction: jest.fn(async (fn: unknown) =>
       typeof fn === 'function' ? fn(mockPrisma) : fn,
     ),
@@ -273,6 +287,75 @@ describe('BacktestRunService', () => {
     })
   })
 
+  // ── owner guard ──────────────────────────────────────────────────────────
+
+  describe('owner guard', () => {
+    it('getRunDetail: 非本人 run → 404，不解析策略配置', async () => {
+      const prisma = buildPrismaMock()
+      const strategyRegistry = buildStrategyRegistryMock()
+      prisma.backtestRun.findUnique.mockResolvedValue(buildRunRecord({ userId: 2 }))
+      const svc = createService(prisma, buildDataReadinessMock(), strategyRegistry)
+
+      await expect(svc.getRunDetail('run-1', 1)).rejects.toThrow(NotFoundException)
+
+      expect(strategyRegistry.validateStrategyConfig).not.toHaveBeenCalled()
+    })
+
+    it('getEquity: 非本人 run → 404，不读取 NAV', async () => {
+      const prisma = buildPrismaMock()
+      prisma.backtestRun.findUnique.mockResolvedValue(buildRunRecord({ userId: 2 }))
+      const svc = createService(prisma)
+
+      await expect(svc.getEquity('run-1', 1)).rejects.toThrow(NotFoundException)
+
+      expect(prisma.backtestDailyNav.findMany).not.toHaveBeenCalled()
+    })
+
+    it('getTrades: 非本人 run → 404，不读取交易明细', async () => {
+      const prisma = buildPrismaMock()
+      prisma.backtestRun.findUnique.mockResolvedValue(buildRunRecord({ userId: 2 }))
+      const svc = createService(prisma)
+
+      await expect(svc.getTrades('run-1', {}, 1)).rejects.toThrow(NotFoundException)
+
+      expect(prisma.backtestTrade.count).not.toHaveBeenCalled()
+      expect(prisma.backtestTrade.findMany).not.toHaveBeenCalled()
+    })
+
+    it('getPositions: 非本人 run → 404，不读取持仓快照', async () => {
+      const prisma = buildPrismaMock()
+      prisma.backtestRun.findUnique.mockResolvedValue(buildRunRecord({ userId: 2 }))
+      const svc = createService(prisma)
+
+      await expect(svc.getPositions('run-1', {}, 1)).rejects.toThrow(NotFoundException)
+
+      expect(prisma.backtestPositionSnapshot.findFirst).not.toHaveBeenCalled()
+      expect(prisma.backtestPositionSnapshot.findMany).not.toHaveBeenCalled()
+    })
+
+    it('cancelRun: 非本人 run → 404，不移除队列 job，不更新状态', async () => {
+      const prisma = buildPrismaMock()
+      const queue = buildQueueMock()
+      prisma.backtestRun.findUnique.mockResolvedValue(buildRunRecord({ userId: 2, status: 'QUEUED', jobId: 'job-1' }))
+      const svc = createService(prisma, buildDataReadinessMock(), buildStrategyRegistryMock(), queue)
+
+      await expect(svc.cancelRun('run-1', 1)).rejects.toThrow(NotFoundException)
+
+      expect(queue.getJob).not.toHaveBeenCalled()
+      expect(prisma.backtestRun.update).not.toHaveBeenCalled()
+    })
+
+    it('getRebalanceLogs: 非本人 run → 404，不读取调仓日志', async () => {
+      const prisma = buildPrismaMock()
+      prisma.backtestRun.findUnique.mockResolvedValue(buildRunRecord({ userId: 2 }))
+      const svc = createService(prisma)
+
+      await expect(svc.getRebalanceLogs('run-1', 1)).rejects.toThrow(NotFoundException)
+
+      expect(prisma.backtestRebalanceLog.findMany).not.toHaveBeenCalled()
+    })
+  })
+
   // ── cancelRun() ───────────────────────────────────────────────────────────
 
   describe('cancelRun()', () => {
@@ -281,7 +364,7 @@ describe('BacktestRunService', () => {
       prisma.backtestRun.findUnique.mockResolvedValue(null)
       const svc = createService(prisma)
 
-      await expect(svc.cancelRun('nonexistent')).rejects.toThrow(NotFoundException)
+      await expect(svc.cancelRun('nonexistent', 1)).rejects.toThrow(NotFoundException)
     })
 
     it('已完成状态不能取消 → 抛 BadRequestException', async () => {
@@ -289,7 +372,7 @@ describe('BacktestRunService', () => {
       prisma.backtestRun.findUnique.mockResolvedValue(buildRunRecord({ status: 'COMPLETED' }))
       const svc = createService(prisma)
 
-      await expect(svc.cancelRun('run-1')).rejects.toThrow()
+      await expect(svc.cancelRun('run-1', 1)).rejects.toThrow()
     })
 
     it('QUEUED 状态可以取消 → 更新状态为 CANCELLED', async () => {
@@ -298,7 +381,7 @@ describe('BacktestRunService', () => {
       prisma.backtestRun.update.mockResolvedValue(buildRunRecord({ status: 'CANCELLED' }))
       const svc = createService(prisma)
 
-      const result = await svc.cancelRun('run-1')
+      const result = await svc.cancelRun('run-1', 1)
 
       expect(prisma.backtestRun.update).toHaveBeenCalledWith(
         expect.objectContaining({ where: { id: 'run-1' }, data: { status: 'CANCELLED' } }),
@@ -315,7 +398,7 @@ describe('BacktestRunService', () => {
       prisma.backtestRun.update.mockResolvedValue(buildRunRecord({ status: 'CANCELLED' }))
       const svc = createService(prisma, buildDataReadinessMock(), buildStrategyRegistryMock(), queue)
 
-      await svc.cancelRun('run-1')
+      await svc.cancelRun('run-1', 1)
 
       expect(queue.getJob).toHaveBeenCalledWith('job-1')
       expect(fakeJob.remove).toHaveBeenCalled()

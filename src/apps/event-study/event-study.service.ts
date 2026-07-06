@@ -568,16 +568,22 @@ export class EventStudyService {
         ? [dto.eventType]
         : (Object.values(EventType) as EventType[])
 
+    const results = await Promise.all(
+      types.map(async (eventType) => {
+        try {
+          const result = await this.queryEvents({ eventType, startDate, endDate, tsCode, page: 1, pageSize: 2000 })
+          return { eventType, result }
+        } catch {
+          return null
+        }
+      }),
+    )
+
     // 按 (date, eventType) 聚合为 cell
     const cellMap = new Map<string, { count: number }>()
-    for (const eventType of types) {
-      let result: { total: number; items: unknown[] } | undefined
-      try {
-        result = await this.queryEvents({ eventType, startDate, endDate, tsCode, page: 1, pageSize: 2000 })
-      } catch {
-        continue
-      }
-      if (!result?.items) continue
+    for (const entry of results) {
+      if (!entry?.result?.items) continue
+      const { eventType, result } = entry
       const dateField = this.getEventDateField(eventType)
       for (const item of result.items as Record<string, unknown>[]) {
         const raw = item[dateField]

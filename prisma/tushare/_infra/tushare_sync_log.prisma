@@ -11,6 +11,7 @@ model TushareSyncLog {
   createdAt  DateTime          @default(now()) @map("created_at")
 
   @@index([task, status, startedAt(sort: Desc)])
+  @@index([task, startedAt(sort: Desc)])
   @@index([tradeDate])
   @@map("tushare_sync_logs")
 }

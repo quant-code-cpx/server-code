@@ -47,14 +47,62 @@ function buildPortfolio(overrides: Partial<PortfolioState> = {}): PortfolioState
 
 // ── 构造服务（全部依赖 mock 为空对象） ────────────────────────────────────────
 
-function createService(): BacktestEngineService {
-  const prisma = {}
-  const dataService = {}
-  const executionService = {}
-  const metricsService = {}
-  const strategyRegistry = {}
+function createService(overrides: Record<string, unknown> = {}): BacktestEngineService {
+  const prisma = overrides.prisma ?? {}
+  const dataService = overrides.dataService ?? {}
+  const executionService = overrides.executionService ?? {}
+  const metricsService = overrides.metricsService ?? {}
+  const strategyRegistry = overrides.strategyRegistry ?? {}
   // @ts-ignore 局部 mock，跳过 DI
   return new BacktestEngineService(prisma, dataService, executionService, metricsService, strategyRegistry)
+}
+
+function buildConfig(overrides: Partial<BacktestConfig> = {}): BacktestConfig {
+  return {
+    runId: 'run-1',
+    strategyType: 'CUSTOM_POOL_REBALANCE',
+    strategyConfig: { tsCodes: ['000001.SZ'], weightMode: 'EQUAL' },
+    startDate: new Date('2025-01-01'),
+    endDate: new Date('2025-01-03'),
+    benchmarkTsCode: '000300.SH',
+    universe: 'CUSTOM',
+    customUniverseTsCodes: ['000001.SZ'],
+    initialCapital: 100_000,
+    rebalanceFrequency: 'DAILY',
+    priceMode: 'NEXT_OPEN',
+    commissionRate: 0,
+    stampDutyRate: 0,
+    minCommission: 0,
+    slippageBps: 0,
+    maxPositions: 10,
+    maxWeightPerStock: 1,
+    minDaysListed: 60,
+    enableTradeConstraints: true,
+    enableT1Restriction: true,
+    partialFillEnabled: true,
+    ...overrides,
+  }
+}
+
+function buildMetrics(overrides: Record<string, number> = {}) {
+  return {
+    totalReturn: 0,
+    annualizedReturn: 0,
+    benchmarkReturn: 0,
+    excessReturn: 0,
+    maxDrawdown: 0,
+    sharpeRatio: 0,
+    sortinoRatio: 0,
+    calmarRatio: 0,
+    volatility: 0,
+    alpha: 0,
+    beta: 0,
+    informationRatio: 0,
+    winRate: 0,
+    turnoverRate: 0,
+    tradeCount: 0,
+    ...overrides,
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -322,7 +370,7 @@ describe('BacktestEngineService', () => {
 
       ;(service as any).adjustCostPriceForSplits(portfolio, todayBars, yesterdayBars)
 
-      // ratio = 2.0 / 1.0 = 2，costPrice /= 2，quantity *= 2（四舍五入）
+      // ratio = 2.0 / 1.0 = 2，costPrice /= 2，quantity *= 2
       expect(pos.costPrice).toBeCloseTo(5, 5)
       expect(pos.quantity).toBe(2000)
     })
@@ -440,7 +488,7 @@ describe('BacktestEngineService', () => {
       expect(pos.costPrice).toBeCloseTo(2.5, 5)
     })
 
-    it('[EDGE] quantity=1, ratio=0.5（缩股）→ Math.round(0.5)=1 数量不变，成本翻倍', () => {
+    it('[EDGE] quantity=1, ratio=0.5（缩股）→ 保留 0.5 股，避免市值被 round 放大', () => {
       const pos = { tsCode: '000001.SZ', quantity: 1, costPrice: 10, entryDate: new Date() }
       const portfolio = buildPortfolio({ positions: new Map([['000001.SZ', pos]]) })
 
@@ -449,9 +497,29 @@ describe('BacktestEngineService', () => {
         new Map([['000001.SZ', buildBar({ tsCode: '000001.SZ', adjFactor: 0.5 })]]),
         new Map([['000001.SZ', buildBar({ tsCode: '000001.SZ', adjFactor: 1.0 })]]),
       )
-      // ratio = 0.5/1.0 = 0.5; quantity = Math.round(1 * 0.5) = 1; costPrice = 10 / 0.5 = 20
-      expect(pos.quantity).toBe(1)
+      // ratio = 0.5/1.0 = 0.5; quantity = 0.5; costPrice = 10 / 0.5 = 20; market value remains 10
+      expect(pos.quantity).toBeCloseTo(0.5, 8)
       expect(pos.costPrice).toBeCloseTo(20, 5)
+    })
+
+    it('[EDGE] 小数比例多次复权不因每日 round 产生累计误差', () => {
+      const pos = { tsCode: '000001.SZ', quantity: 101, costPrice: 10, entryDate: new Date() }
+      const portfolio = buildPortfolio({ positions: new Map([['000001.SZ', pos]]) })
+
+      ;(service as any).adjustCostPriceForSplits(
+        portfolio,
+        new Map([['000001.SZ', buildBar({ tsCode: '000001.SZ', adjFactor: 1.1 })]]),
+        new Map([['000001.SZ', buildBar({ tsCode: '000001.SZ', adjFactor: 1.0 })]]),
+      )
+      ;(service as any).adjustCostPriceForSplits(
+        portfolio,
+        new Map([['000001.SZ', buildBar({ tsCode: '000001.SZ', adjFactor: 1.21 })]]),
+        new Map([['000001.SZ', buildBar({ tsCode: '000001.SZ', adjFactor: 1.1 })]]),
+      )
+
+      expect(pos.quantity).toBeCloseTo(101 * 1.21, 8)
+      expect(pos.costPrice).toBeCloseTo(10 / 1.21, 8)
+      expect(pos.quantity * pos.costPrice).toBeCloseTo(1010, 8)
     })
 
     it('[EDGE] adjFactor 从 0 → 正值时不调整（避免除零）', () => {
@@ -481,6 +549,156 @@ describe('BacktestEngineService', () => {
       const value: number = (service as any).computePositionValueWithAdjFactor(portfolio, todayBars)
       // close=0 时 price !== null，使用 close 价格计算市值
       expect(value).toBe(0)
+    })
+  })
+
+  // ── runBacktest: 真实主循环场景 ─────────────────────────────────────────
+
+  describe('runBacktest()', () => {
+    it('[BIZ] T+1 执行：今日 signal 不在当日成交，下一交易日才执行', async () => {
+      const tradingDays = [new Date('2025-01-01'), new Date('2025-01-02')]
+      const dataService = {
+        getTradingDays: jest.fn(async () => tradingDays),
+        loadDailyBars: jest.fn(async () =>
+          new Map([
+            [
+              '000001.SZ',
+              new Map([
+                ['2025-01-01', buildBar({ tsCode: '000001.SZ', tradeDate: tradingDays[0], open: 10, close: 10 })],
+                ['2025-01-02', buildBar({ tsCode: '000001.SZ', tradeDate: tradingDays[1], open: 11, close: 11 })],
+              ]),
+            ],
+          ]),
+        ),
+        loadBenchmarkBars: jest.fn(async () => new Map(tradingDays.map((d) => [d.toISOString().slice(0, 10), 100]))),
+      }
+      const strategyRegistry = {
+        getStrategy: jest.fn(() => ({ generateSignal: jest.fn(async () => ({ targets: [{ tsCode: '000001.SZ' }] })) })),
+      }
+      const executeTrades = jest.fn((_portfolio, _signal, _bars, _config, signalDate, executeDate) => ({
+        trades: [],
+        rebalanceLog: {
+          signalDate,
+          executeDate,
+          targetCount: 1,
+          executedBuyCount: 0,
+          executedSellCount: 0,
+          skippedLimitCount: 0,
+          skippedSuspendCount: 0,
+          message: null,
+        },
+      }))
+      const executionService = { executeTrades }
+      const metricsService = { computeMetrics: jest.fn(() => buildMetrics()) }
+      const svc = createService({ dataService, executionService, metricsService, strategyRegistry })
+
+      await svc.runBacktest(buildConfig())
+
+      expect(executeTrades).toHaveBeenCalledTimes(1)
+      const [, , , , signalDate, executeDate] = executeTrades.mock.calls[0]
+      expect(signalDate.toISOString().slice(0, 10)).toBe('2025-01-01')
+      expect(executeDate.toISOString().slice(0, 10)).toBe('2025-01-02')
+    })
+
+    it('[BIZ] T+1 执行日无行情时保留 pending signal，延后到下一可交易日', async () => {
+      const tradingDays = [new Date('2025-01-01'), new Date('2025-01-02'), new Date('2025-01-03')]
+      const dataService = {
+        getTradingDays: jest.fn(async () => tradingDays),
+        loadDailyBars: jest.fn(async () =>
+          new Map([
+            [
+              '000001.SZ',
+              new Map([
+                ['2025-01-01', buildBar({ tsCode: '000001.SZ', tradeDate: tradingDays[0], open: 10, close: 10 })],
+                ['2025-01-03', buildBar({ tsCode: '000001.SZ', tradeDate: tradingDays[2], open: 11, close: 11 })],
+              ]),
+            ],
+          ]),
+        ),
+        loadBenchmarkBars: jest.fn(async () => new Map(tradingDays.map((d) => [d.toISOString().slice(0, 10), 100]))),
+      }
+      const generateSignal = jest.fn(async () => ({ targets: [{ tsCode: '000001.SZ', weight: 1 }] }))
+      const strategyRegistry = { getStrategy: jest.fn(() => ({ generateSignal })) }
+      const executeTrades = jest.fn((_portfolio, _signal, _bars, _config, signalDate, executeDate) => ({
+        trades: [
+          {
+            tradeDate: executeDate,
+            tsCode: '000001.SZ',
+            side: 'BUY',
+            price: 11,
+            quantity: 100,
+            amount: 1100,
+            commission: 0,
+            stampDuty: 0,
+            slippageCost: 0,
+            reason: 'rebalance-buy',
+          },
+        ],
+        rebalanceLog: {
+          signalDate,
+          executeDate,
+          targetCount: 1,
+          executedBuyCount: 1,
+          executedSellCount: 0,
+          skippedLimitCount: 0,
+          skippedSuspendCount: 0,
+          message: null,
+        },
+      }))
+      const executionService = { executeTrades }
+      const metricsService = { computeMetrics: jest.fn(() => buildMetrics({ tradeCount: 1 })) }
+      const svc = createService({ dataService, executionService, metricsService, strategyRegistry })
+
+      await svc.runBacktest(buildConfig())
+
+      expect(executeTrades).toHaveBeenCalledTimes(1)
+      const [, , , , signalDate, executeDate] = executeTrades.mock.calls[0]
+      expect(signalDate.toISOString().slice(0, 10)).toBe('2025-01-01')
+      expect(executeDate.toISOString().slice(0, 10)).toBe('2025-01-03')
+      expect(generateSignal).toHaveBeenCalledTimes(2)
+    })
+
+    it('[EDGE] benchmark 中间缺日时沿用上一日 benchmarkNav，不产生虚假回撤', async () => {
+      const tradingDays = [new Date('2025-01-01'), new Date('2025-01-02'), new Date('2025-01-03')]
+      const dataService = {
+        getTradingDays: jest.fn(async () => tradingDays),
+        loadDailyBars: jest.fn(async () => new Map()),
+        loadBenchmarkBars: jest.fn(async () =>
+          new Map([
+            ['2025-01-01', 100],
+            ['2025-01-03', 120],
+          ]),
+        ),
+      }
+      const strategyRegistry = { getStrategy: jest.fn(() => ({ generateSignal: jest.fn(async () => ({ targets: [] })) })) }
+      const executionService = {
+        executeTrades: jest.fn((_portfolio, _signal, _bars, _config, signalDate, executeDate) => ({
+          trades: [],
+          rebalanceLog: {
+            signalDate,
+            executeDate,
+            targetCount: 0,
+            executedBuyCount: 0,
+            executedSellCount: 0,
+            skippedLimitCount: 0,
+            skippedSuspendCount: 0,
+            message: null,
+          },
+        })),
+      }
+      const metricsService = { computeMetrics: jest.fn(() => buildMetrics({ benchmarkReturn: 0.2 })) }
+      const svc = createService({ dataService, executionService, metricsService, strategyRegistry })
+
+      const result = await svc.runBacktest(
+        buildConfig({
+          strategyConfig: { tsCodes: [], weightMode: 'EQUAL' },
+          customUniverseTsCodes: [],
+          rebalanceFrequency: 'MONTHLY',
+        }),
+      )
+
+      expect(result.navRecords.map((r) => r.benchmarkNav)).toEqual([1, 1, 1.2])
+      expect(result.navRecords.map((r) => r.benchmarkReturn)).toEqual([0, 0, 0.19999999999999996])
     })
   })
 })

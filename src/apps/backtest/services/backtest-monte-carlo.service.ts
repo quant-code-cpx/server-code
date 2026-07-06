@@ -15,9 +15,9 @@ interface MonteCarloOptions {
 export class BacktestMonteCarloService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async runMonteCarloSimulation(runId: string, dto: RunMonteCarloDto) {
+  async runMonteCarloSimulation(runId: string, dto: RunMonteCarloDto, userId: number) {
     const run = await this.prisma.backtestRun.findUnique({ where: { id: runId } })
-    if (!run) throw new NotFoundException(`BacktestRun ${runId} not found`)
+    if (!run || run.deletedAt || run.userId !== userId) throw new NotFoundException(`BacktestRun ${runId} not found`)
 
     const navRows = await this.prisma.backtestDailyNav.findMany({
       where: { runId },

@@ -205,6 +205,102 @@ describe('BacktestController', () => {
     await request(app.getHttpServer()).post('/backtests/runs').send(baseBacktestBody).expect(401)
   })
 
+  describe('[SEC] ID 型接口透传当前用户', () => {
+    it('run 详情/曲线/交易/持仓/取消/调仓日志都传 user.id', async () => {
+      const cases = [
+        {
+          path: '/backtests/runs/detail',
+          body: { runId: 'run-1' },
+          mock: mockRunService.getRunDetail,
+          args: ['run-1', testUser.id],
+        },
+        {
+          path: '/backtests/runs/equity',
+          body: { runId: 'run-1' },
+          mock: mockRunService.getEquity,
+          args: ['run-1', testUser.id],
+        },
+        {
+          path: '/backtests/runs/trades',
+          body: { runId: 'run-1', page: 2 },
+          mock: mockRunService.getTrades,
+          args: ['run-1', expect.objectContaining({ runId: 'run-1', page: 2 }), testUser.id],
+        },
+        {
+          path: '/backtests/runs/positions',
+          body: { runId: 'run-1', tradeDate: '20230103' },
+          mock: mockRunService.getPositions,
+          args: ['run-1', expect.objectContaining({ runId: 'run-1', tradeDate: '20230103' }), testUser.id],
+        },
+        {
+          path: '/backtests/runs/cancel',
+          body: { runId: 'run-1' },
+          mock: mockRunService.cancelRun,
+          args: ['run-1', testUser.id],
+        },
+        {
+          path: '/backtests/runs/rebalance-logs',
+          body: { runId: 'run-1' },
+          mock: mockRunService.getRebalanceLogs,
+          args: ['run-1', testUser.id],
+        },
+      ]
+
+      for (const item of cases) {
+        item.mock.mockResolvedValueOnce({})
+        await request(app.getHttpServer()).post(item.path).send(item.body).expect(201)
+        expect(item.mock).toHaveBeenLastCalledWith(...item.args)
+      }
+    })
+
+    it('Monte Carlo / Walk-Forward / Comparison 也传 user.id', async () => {
+      const cases = [
+        {
+          path: '/backtests/runs/monte-carlo',
+          body: { runId: 'run-1', numSimulations: 100 },
+          mock: mockMonteCarloService.runMonteCarloSimulation,
+          args: ['run-1', expect.objectContaining({ runId: 'run-1', numSimulations: 100 }), testUser.id],
+        },
+        {
+          path: '/backtests/walk-forward/runs/detail',
+          body: { wfRunId: 'wf-1' },
+          mock: mockWalkForwardService.getWalkForwardRunDetail,
+          args: ['wf-1', testUser.id],
+        },
+        {
+          path: '/backtests/walk-forward/runs/equity',
+          body: { wfRunId: 'wf-1' },
+          mock: mockWalkForwardService.getWalkForwardEquity,
+          args: ['wf-1', testUser.id],
+        },
+        {
+          path: '/backtests/walk-forward/runs/cancel',
+          body: { wfRunId: 'wf-1' },
+          mock: mockWalkForwardService.cancelWalkForwardRun,
+          args: ['wf-1', testUser.id],
+        },
+        {
+          path: '/backtests/comparisons/detail',
+          body: { groupId: 'grp-1' },
+          mock: mockComparisonService.getComparisonDetail,
+          args: ['grp-1', testUser.id],
+        },
+        {
+          path: '/backtests/comparisons/equity',
+          body: { groupId: 'grp-1' },
+          mock: mockComparisonService.getComparisonEquity,
+          args: ['grp-1', testUser.id],
+        },
+      ]
+
+      for (const item of cases) {
+        item.mock.mockResolvedValueOnce({})
+        await request(app.getHttpServer()).post(item.path).send(item.body).expect(201)
+        expect(item.mock).toHaveBeenLastCalledWith(...item.args)
+      }
+    })
+  })
+
   // ── 新增 DTO 校验 ────────────────────────────────────────────────────────
 
   describe('[DTO 校验] CreateBacktestRunDto', () => {

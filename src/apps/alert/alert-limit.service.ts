@@ -10,6 +10,11 @@ export interface LimitMeta {
   isHoliday: boolean
 }
 
+type LimitItemsQuery = Pick<
+  AlertLimitListDto,
+  'limitType' | 'industry' | 'keyword' | 'minStreak' | 'sortBy' | 'sortOrder'
+>
+
 @Injectable()
 export class AlertLimitService {
   constructor(private readonly prisma: PrismaService) {}
@@ -18,21 +23,7 @@ export class AlertLimitService {
     const { actualDate, meta } = await this.resolveTradeDate(dto.tradeDate)
     if (!actualDate) return { page: dto.page ?? 1, pageSize: dto.pageSize ?? 50, total: 0, items: [], meta }
 
-    const where = this.buildWhere(actualDate, dto)
-    const rows = await this.prisma.limitListD.findMany({ where })
-    const concepts = await this.loadConcepts(rows.map((r) => r.tsCode))
-
-    let items = rows.map((r) => this.mapLimitRow(r, concepts.get(r.tsCode) ?? []))
-    if (dto.minStreak) items = items.filter((i) => i.streakDays >= dto.minStreak!)
-
-    const sortBy = dto.sortBy ?? 'sealRatio'
-    const sortOrder = dto.sortOrder ?? 'desc'
-    items.sort((a, b) => {
-      const av = Number(a[sortBy] ?? 0)
-      const bv = Number(b[sortBy] ?? 0)
-      return sortOrder === 'asc' ? av - bv : bv - av
-    })
-
+    const items = await this.loadLimitItems(actualDate, dto)
     const page = dto.page ?? 1
     const pageSize = dto.pageSize ?? 50
     const total = items.length
@@ -53,48 +44,50 @@ export class AlertLimitService {
     if (!actualDate) return []
 
     const anchorDate = parseCompactTradeDateToUtcDate(actualDate)
-    const tradeDates = await this.prisma.limitListD.findMany({
-      where: { tradeDate: { lte: anchorDate } },
-      select: { tradeDate: true },
-      distinct: ['tradeDate'],
-      orderBy: { tradeDate: 'desc' },
-      take: range,
-    })
+    const rows = await this.prisma.$queryRaw<
+      Array<{ trade_date: Date | string; limit_up: number; limit_down: number; max_streak: number | null }>
+    >(Prisma.sql`
+      WITH recent_dates AS (
+        SELECT DISTINCT trade_date
+        FROM limit_list_d
+        WHERE trade_date <= ${anchorDate}
+        ORDER BY trade_date DESC
+        LIMIT ${range}
+      )
+      SELECT
+        l.trade_date,
+        COUNT(*) FILTER (WHERE l.limit = 'U')::int AS limit_up,
+        COUNT(*) FILTER (WHERE l.limit = 'D')::int AS limit_down,
+        MAX(COALESCE(l.limit_times, substring(l.up_stat from '([0-9]+)')::int, 1))::int AS max_streak
+      FROM limit_list_d l
+      INNER JOIN recent_dates d ON d.trade_date = l.trade_date
+      GROUP BY l.trade_date
+      ORDER BY l.trade_date ASC
+    `)
 
-    if (!tradeDates.length) return []
-
-    const result = await Promise.all(
-      tradeDates.map(async ({ tradeDate }) => {
-        const rows = await this.prisma.limitListD.findMany({
-          where: { tradeDate },
-          select: { limit: true, limitTimes: true, upStat: true },
-        })
-        const date = formatDateToCompactTradeDate(tradeDate) ?? ''
-        const limitUp = rows.filter((r) => r.limit === 'U').length
-        const limitDown = rows.filter((r) => r.limit === 'D').length
-        const maxStreak = rows.reduce((max, r) => {
-          const streak = r.limitTimes ?? (r.upStat ? Number(r.upStat.match(/(\d+)/)?.[1] ?? 1) : 1)
-          return Math.max(max, streak)
-        }, 0)
-        return { date, limitUp, limitDown, maxStreak, sealRate: null, promoteRate: null, failRate: null }
-      }),
-    )
-
-    return result.sort((a, b) => a.date.localeCompare(b.date))
+    return rows.map((row) => ({
+      date:
+        row.trade_date instanceof Date
+          ? (formatDateToCompactTradeDate(row.trade_date) ?? '')
+          : String(row.trade_date).replace(/-/g, '').slice(0, 8),
+      limitUp: Number(row.limit_up ?? 0),
+      limitDown: Number(row.limit_down ?? 0),
+      maxStreak: Number(row.max_streak ?? 0),
+      sealRate: null,
+      promoteRate: null,
+      failRate: null,
+    }))
   }
 
   async nextDayPerf(dto: AlertLimitNextDayPerfDto) {
     const { actualDate, meta } = await this.resolveTradeDate(dto.tradeDate)
     if (!actualDate) return { meta, nextTradeDate: null, total: 0, avgPctChg: null, upRatio: null, items: [] }
 
-    const listResult = await this.list({
-      tradeDate: actualDate,
+    const baseItems = await this.loadLimitItems(actualDate, {
       limitType: dto.limitType,
       minStreak: dto.minStreak,
-      page: 1,
-      pageSize: 200,
     })
-    const tsCodes = listResult.items.map((i) => i.tsCode)
+    const tsCodes = baseItems.map((i) => i.tsCode)
     if (!tsCodes.length) return { meta, nextTradeDate: null, total: 0, avgPctChg: null, upRatio: null, items: [] }
 
     const baseDate = parseCompactTradeDateToUtcDate(actualDate)
@@ -111,7 +104,7 @@ export class AlertLimitService {
       select: { tsCode: true, close: true, pctChg: true },
     })
     const nextMap = new Map(nextRows.map((r) => [r.tsCode, r]))
-    const items = listResult.items.map((item) => {
+    const items = baseItems.map((item) => {
       const next = nextMap.get(item.tsCode)
       return { ...item, nextClose: next?.close ?? null, nextPctChg: next?.pctChg ?? null }
     })
@@ -122,7 +115,7 @@ export class AlertLimitService {
     return {
       meta,
       nextTradeDate: formatDateToCompactTradeDate(nextDaily.tradeDate),
-      total: tsCodes.length,
+      total: baseItems.length,
       avgPctChg: avgPctChg == null ? null : Math.round(avgPctChg * 10000) / 10000,
       upRatio: upRatio == null ? null : Math.round(upRatio * 10000) / 10000,
       items,
@@ -147,7 +140,26 @@ export class AlertLimitService {
     }
   }
 
-  private buildWhere(actualDate: string, dto: AlertLimitListDto): Prisma.LimitListDWhereInput {
+  private async loadLimitItems(actualDate: string, dto: LimitItemsQuery) {
+    const where = this.buildWhere(actualDate, dto)
+    const rows = await this.prisma.limitListD.findMany({ where })
+    const concepts = await this.loadConcepts(rows.map((r) => r.tsCode))
+
+    let items = rows.map((r) => this.mapLimitRow(r, concepts.get(r.tsCode) ?? []))
+    if (dto.minStreak) items = items.filter((i) => i.streakDays >= dto.minStreak!)
+
+    const sortBy = dto.sortBy ?? 'sealRatio'
+    const sortOrder = dto.sortOrder ?? 'desc'
+    items.sort((a, b) => {
+      const av = Number(a[sortBy] ?? 0)
+      const bv = Number(b[sortBy] ?? 0)
+      return sortOrder === 'asc' ? av - bv : bv - av
+    })
+
+    return items
+  }
+
+  private buildWhere(actualDate: string, dto: LimitItemsQuery): Prisma.LimitListDWhereInput {
     return {
       tradeDate: parseCompactTradeDateToUtcDate(actualDate),
       ...(dto.limitType ? { limit: dto.limitType === 'UP' ? 'U' : 'D' } : {}),

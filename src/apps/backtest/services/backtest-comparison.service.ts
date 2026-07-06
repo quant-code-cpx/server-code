@@ -152,9 +152,9 @@ export class BacktestComparisonService {
     })
   }
 
-  async getComparisonDetail(groupId: string) {
+  async getComparisonDetail(groupId: string, userId: number) {
     const group = await this.prisma.backtestComparisonGroup.findUnique({ where: { id: groupId } })
-    if (!group) throw new NotFoundException(`ComparisonGroup ${groupId} not found`)
+    if (!group || group.userId !== userId) throw new NotFoundException(`ComparisonGroup ${groupId} not found`)
 
     const runIds = (group.runIds as string[]) ?? []
     const runs = await this.prisma.backtestRun.findMany({
@@ -196,9 +196,9 @@ export class BacktestComparisonService {
     }
   }
 
-  async getComparisonEquity(groupId: string) {
+  async getComparisonEquity(groupId: string, userId: number) {
     const group = await this.prisma.backtestComparisonGroup.findUnique({ where: { id: groupId } })
-    if (!group) throw new NotFoundException(`ComparisonGroup ${groupId} not found`)
+    if (!group || group.userId !== userId) throw new NotFoundException(`ComparisonGroup ${groupId} not found`)
 
     const runIds = (group.runIds as string[]) ?? []
     const runs = await this.prisma.backtestRun.findMany({

@@ -165,37 +165,47 @@ describe('BacktestMonteCarloService', () => {
       prismaMock.backtestRun.findUnique.mockResolvedValue(null)
       const svc = createService(prismaMock)
 
-      await expect(svc.runMonteCarloSimulation('nonexistent-id', {} as any)).rejects.toThrow(NotFoundException)
+      await expect(svc.runMonteCarloSimulation('nonexistent-id', {} as any, 1)).rejects.toThrow(NotFoundException)
+    })
+
+    it('非本人 run 时抛出 NotFoundException，且不读取 NAV', async () => {
+      const prismaMock = buildPrismaMock()
+      prismaMock.backtestRun.findUnique.mockResolvedValue({ id: 'run-1', userId: 2, deletedAt: null })
+      const svc = createService(prismaMock)
+
+      await expect(svc.runMonteCarloSimulation('run-1', {} as any, 1)).rejects.toThrow(NotFoundException)
+
+      expect(prismaMock.backtestDailyNav.findMany).not.toHaveBeenCalled()
     })
 
     it('NAV 数据不足（< 2 行）时抛出 NotFoundException', async () => {
       const prismaMock = buildPrismaMock()
-      prismaMock.backtestRun.findUnique.mockResolvedValue({ id: 'run-1' })
+      prismaMock.backtestRun.findUnique.mockResolvedValue({ id: 'run-1', userId: 1, deletedAt: null })
       prismaMock.backtestDailyNav.findMany.mockResolvedValue([{ nav: 1.0, dailyReturn: 0 }])
       const svc = createService(prismaMock)
 
-      await expect(svc.runMonteCarloSimulation('run-1', {} as any)).rejects.toThrow(NotFoundException)
+      await expect(svc.runMonteCarloSimulation('run-1', {} as any, 1)).rejects.toThrow(NotFoundException)
     })
 
     it('初始 NAV 为 0 时抛出 NotFoundException', async () => {
       const prismaMock = buildPrismaMock()
-      prismaMock.backtestRun.findUnique.mockResolvedValue({ id: 'run-1' })
+      prismaMock.backtestRun.findUnique.mockResolvedValue({ id: 'run-1', userId: 1, deletedAt: null })
       prismaMock.backtestDailyNav.findMany.mockResolvedValue([
         { nav: 0, dailyReturn: 0 },
         { nav: 1.0, dailyReturn: 0 },
       ])
       const svc = createService(prismaMock)
 
-      await expect(svc.runMonteCarloSimulation('run-1', {} as any)).rejects.toThrow(NotFoundException)
+      await expect(svc.runMonteCarloSimulation('run-1', {} as any, 1)).rejects.toThrow(NotFoundException)
     })
 
     it('正常数据时返回包含 finalNavDistribution 的结果', async () => {
       const prismaMock = buildPrismaMock()
-      prismaMock.backtestRun.findUnique.mockResolvedValue({ id: 'run-1' })
+      prismaMock.backtestRun.findUnique.mockResolvedValue({ id: 'run-1', userId: 1, deletedAt: null })
       prismaMock.backtestDailyNav.findMany.mockResolvedValue(buildNavRows(30))
       const svc = createService(prismaMock)
 
-      const result = await svc.runMonteCarloSimulation('run-1', { numSimulations: 100, seed: 42 } as any)
+      const result = await svc.runMonteCarloSimulation('run-1', { numSimulations: 100, seed: 42 } as any, 1)
       expect(result).toHaveProperty('finalNavDistribution')
       expect(result).toHaveProperty('timeSeries')
     })

@@ -10,23 +10,24 @@ function createService(prisma: { $queryRawUnsafe: jest.Mock }): SyncStatusOvervi
 }
 
 describe('SyncStatusOverviewService', () => {
-  describe('countDistinctDates()', () => {
-    it('用递归 CTE skip-scan 统计 distinct trade_date，避免 COUNT(DISTINCT) 全索引扫描', async () => {
+  describe('fetchDateDistinctStats()', () => {
+    it('批量读取 pg_stats 的 trade_date distinct 估算，避免逐表 recursive skip-scan', async () => {
       const prisma = {
-        $queryRawUnsafe: jest.fn().mockResolvedValue([{ cnt: 8674n }]),
+        $queryRawUnsafe: jest.fn().mockResolvedValue([{ table_name: 'stock_daily_prices', distinct_dates: 8674 }]),
       }
       const service = createService(prisma)
 
       const result = await (
-        service as unknown as { countDistinctDates(tableName: string): Promise<number> }
-      ).countDistinctDates('stock_daily_prices')
+        service as unknown as { fetchDateDistinctStats(): Promise<Map<string, number>> }
+      ).fetchDateDistinctStats()
 
-      expect(result).toBe(8674)
+      expect(result.get('stock_daily_prices')).toBe(8674)
       expect(prisma.$queryRawUnsafe).toHaveBeenCalledTimes(1)
       const sql = prisma.$queryRawUnsafe.mock.calls[0][0]
-      expect(sql).toContain('WITH RECURSIVE tdates AS')
-      expect(sql).toContain('SELECT MIN(trade_date) AS d FROM "stock_daily_prices"')
-      expect(sql).toContain('WHERE trade_date > d')
+      expect(sql).toContain('FROM pg_stats s')
+      expect(sql).toContain('s.attname = \'trade_date\'')
+      expect(sql).toContain('s.n_distinct')
+      expect(sql).not.toContain('WITH RECURSIVE tdates AS')
       expect(sql).not.toContain('COUNT(DISTINCT trade_date)')
     })
   })

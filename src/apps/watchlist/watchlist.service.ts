@@ -16,7 +16,6 @@ import {
 } from './dto/watchlist.dto'
 import {
   MAX_STOCKS_PER_WATCHLIST,
-  WATCHLIST_CACHE_TTL,
   WATCHLIST_QUOTE_CACHE_TTL,
 } from './constants/watchlist.constant'
 
@@ -323,7 +322,7 @@ export class WatchlistService {
     return this.cacheService.rememberJson({
       namespace: CACHE_NAMESPACE.WATCHLIST,
       key: `overview:${userId}`,
-      ttlSeconds: 30,
+      ttlSeconds: WATCHLIST_QUOTE_CACHE_TTL,
       loader: () => this.getOverviewData(userId),
     })
   }
@@ -444,13 +443,14 @@ export class WatchlistService {
           v.pb::float,
           v.total_mv::float,
           d.trade_date
-        FROM (
-          SELECT DISTINCT ON (ts_code)
-            ts_code, close, pct_chg, vol, amount, trade_date
+        FROM unnest(${tsCodes}::text[]) AS input(ts_code)
+        JOIN LATERAL (
+          SELECT ts_code, close, pct_chg, vol, amount, trade_date
           FROM stock_daily_prices
-          WHERE ts_code = ANY(${tsCodes})
-          ORDER BY ts_code, trade_date DESC
-        ) d
+          WHERE ts_code = input.ts_code
+          ORDER BY trade_date DESC
+          LIMIT 1
+        ) d ON true
         LEFT JOIN stock_daily_valuation_metrics v
           ON v.ts_code = d.ts_code AND v.trade_date = d.trade_date
       `

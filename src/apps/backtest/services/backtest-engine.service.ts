@@ -91,6 +91,7 @@ export class BacktestEngineService {
 
     let highWaterMark = config.initialCapital
     let benchmarkBase: number | null = null
+    let lastBenchmarkNav = 1
 
     let pendingSignal: { signal: SignalOutput; signalDate: Date } | null = null
 
@@ -116,25 +117,27 @@ export class BacktestEngineService {
 
       // Execute pending signal (T+1 execution)
       if (pendingSignal) {
-        const { trades, rebalanceLog } = this.executionService.executeTrades(
-          portfolio,
-          pendingSignal.signal,
-          todayBars,
-          config,
-          pendingSignal.signalDate,
-          today,
-        )
-        allTrades.push(...trades)
-        allRebalanceLogs.push(rebalanceLog)
-        pendingSignal = null
+        if (this.canExecuteSignalToday(portfolio, pendingSignal.signal, todayBars, config)) {
+          const { trades, rebalanceLog } = this.executionService.executeTrades(
+            portfolio,
+            pendingSignal.signal,
+            todayBars,
+            config,
+            pendingSignal.signalDate,
+            today,
+          )
+          allTrades.push(...trades)
+          allRebalanceLogs.push(rebalanceLog)
+          pendingSignal = null
 
-        // Save position snapshot after rebalance
-        const posSnapshot = this.buildPositionSnapshots(portfolio, todayBars, today)
-        allPositionSnapshots.push(...posSnapshot)
+          // Save position snapshot after rebalance
+          const posSnapshot = this.buildPositionSnapshots(portfolio, todayBars, today)
+          allPositionSnapshots.push(...posSnapshot)
+        }
       }
 
       // Generate signal for today (will be executed T+1)
-      if (isRebalanceDay(today, idx)) {
+      if (!pendingSignal && isRebalanceDay(today, idx)) {
         const historicalBars = this.buildHistoricalBars(allBarsMap, todayStr)
 
         // If universe changes with time (index), refresh it
@@ -159,12 +162,13 @@ export class BacktestEngineService {
       const benchmarkClose = benchmarkBars.get(todayStr) ?? null
       if (benchmarkBase === null && benchmarkClose !== null) benchmarkBase = benchmarkClose
 
-      const benchmarkNav = benchmarkBase && benchmarkClose ? benchmarkClose / benchmarkBase : 1
+      const benchmarkNav = benchmarkBase && benchmarkClose ? benchmarkClose / benchmarkBase : lastBenchmarkNav
 
       const prevRecord = navRecords[navRecords.length - 1]
       const dailyReturn = prevRecord ? nav / prevRecord.nav - 1 : 0
       const prevBenchmarkNav = prevRecord ? prevRecord.benchmarkNav : 1
-      const benchmarkReturn = benchmarkNav / prevBenchmarkNav - 1
+      const benchmarkReturn = prevBenchmarkNav > 0 ? benchmarkNav / prevBenchmarkNav - 1 : 0
+      lastBenchmarkNav = benchmarkNav
 
       highWaterMark = Math.max(highWaterMark, nav)
       const drawdown = highWaterMark > 0 ? nav / highWaterMark - 1 : 0
@@ -312,9 +316,48 @@ export class BacktestEngineService {
       ) {
         const ratio = todayBar.adjFactor / yesterdayBar.adjFactor
         pos.costPrice = pos.costPrice / ratio
-        pos.quantity = Math.round(pos.quantity * ratio)
+        pos.quantity = pos.quantity * ratio
       }
     }
+  }
+
+  private canExecuteSignalToday(
+    portfolio: PortfolioState,
+    signal: SignalOutput,
+    bars: Map<string, DailyBar>,
+    config: BacktestConfig,
+  ): boolean {
+    const targetCodes = new Set(signal.targets.map((t) => t.tsCode))
+    const codes = new Set<string>(targetCodes)
+
+    for (const tsCode of portfolio.positions.keys()) {
+      if (!targetCodes.has(tsCode)) codes.add(tsCode)
+    }
+
+    if (codes.size === 0) return true
+
+    for (const tsCode of codes) {
+      const bar = bars.get(tsCode)
+      const execPrice = this.getSignalExecutionPrice(bar, config)
+      if (!bar || execPrice === null) return false
+
+      if (!config.enableTradeConstraints) continue
+      if (bar.isSuspended) return false
+
+      const isBuyCandidate = targetCodes.has(tsCode)
+      const isSellCandidate = portfolio.positions.has(tsCode) && !targetCodes.has(tsCode)
+      if (isBuyCandidate && bar.upLimit !== null && execPrice >= bar.upLimit) return false
+      if (isSellCandidate && bar.downLimit !== null && execPrice <= bar.downLimit) return false
+    }
+
+    return true
+  }
+
+  private getSignalExecutionPrice(bar: DailyBar | undefined, config: BacktestConfig): number | null {
+    if (!bar) return null
+    const price = config.priceMode === 'NEXT_CLOSE' ? bar.close : bar.open
+    if (!price || price <= 0) return null
+    return price
   }
 
   private checkRebalanceDay(date: Date, tradingDays: Date[], idx: number, frequency: RebalanceFrequency): boolean {

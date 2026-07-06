@@ -27,6 +27,7 @@ function buildPrismaMock() {
       findFirst: jest.fn(async () => null),
     },
     dailyBasic: { findFirst: jest.fn(async () => null) },
+    valuationDailyMedian: { findFirst: jest.fn(async () => null) },
     indexDaily: {
       findMany: jest.fn(async () => []),
       findFirst: jest.fn(async () => null),
@@ -206,6 +207,58 @@ describe('MarketService', () => {
   // ── computeValuationPercentile() [private] ─────────────────────────────────
 
   describe('computeValuationPercentile() [private, via (svc as any)]', () => {
+    it('getMarketValuation() 使用 valuation_daily_medians 预计算表，避免实时扫描原始估值表', async () => {
+      const prisma = buildPrismaMock()
+      const cache = buildCacheMock()
+      const svc = new MarketService(prisma as any, cache as any)
+
+      prisma.valuationDailyMedian.findFirst.mockResolvedValueOnce({ tradeDate: new Date('2024-01-05T00:00:00.000Z') })
+      prisma.$queryRaw.mockResolvedValueOnce([
+        { trade_date: new Date('2023-01-05T00:00:00.000Z'), pe_ttm_median: 10, pb_median: 1 },
+        { trade_date: new Date('2023-07-05T00:00:00.000Z'), pe_ttm_median: 20, pb_median: 2 },
+        { trade_date: new Date('2024-01-05T00:00:00.000Z'), pe_ttm_median: 30, pb_median: 3 },
+      ])
+
+      const result = await svc.getMarketValuation({})
+
+      expect(result.peTtmMedian).toBe(30)
+      expect(result.pbMedian).toBe(3)
+      const sql = String((prisma.$queryRaw.mock.calls[0] as unknown[])[0])
+      expect(sql).toContain('valuation_daily_medians')
+      expect(sql).toContain("scope = '__ALL__'")
+      expect(sql).not.toContain('stock_daily_valuation_metrics')
+    })
+
+    it('getMoneyFlowTrend() 先限定最近交易日再聚合，避免对全历史 groupBy', async () => {
+      const prisma = buildPrismaMock()
+      const cache = buildCacheMock()
+      const svc = new MarketService(prisma as any, cache as any)
+
+      prisma.moneyflow.findFirst.mockResolvedValueOnce({ tradeDate: new Date('2024-01-05T00:00:00.000Z') })
+      prisma.$queryRaw.mockResolvedValueOnce([
+        {
+          trade_date: new Date('2024-01-05T00:00:00.000Z'),
+          net_mf_amount: 2,
+          buy_elg_amount: 5,
+          sell_elg_amount: 1,
+          buy_lg_amount: 4,
+          sell_lg_amount: 2,
+          buy_md_amount: 3,
+          sell_md_amount: 1,
+          buy_sm_amount: 2,
+          sell_sm_amount: 1,
+        },
+      ])
+
+      const result = await svc.getMoneyFlowTrend({ days: 5 })
+
+      expect(result.data[0].netAmount).toBe(20000)
+      const sql = String((prisma.$queryRaw.mock.calls[0] as unknown[])[0])
+      expect(sql).toContain('WITH RECURSIVE recent_dates')
+      expect(sql).toContain('stock_capital_flows')
+      expect(sql).not.toContain('GROUP BY "tradeDate"')
+    })
+
     /**
      * P3-B17: 百分位公式为 rank/total，其中 rank = count(v <= currentVal)。
      * 当当前值 = 历史最小值时，rank=1 而非 0，导致最低百分位为 1/n*100 而非 0。

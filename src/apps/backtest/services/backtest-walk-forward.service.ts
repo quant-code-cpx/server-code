@@ -97,7 +97,7 @@ export class BacktestWalkForwardService {
 
   async listWalkForwardRuns(userId: number, page = 1, pageSize = 20) {
     const skip = (page - 1) * pageSize
-    const where = { userId }
+    const where = { userId, deletedAt: null }
     const [total, items] = await Promise.all([
       this.prisma.backtestWalkForwardRun.count({ where }),
       this.prisma.backtestWalkForwardRun.findMany({
@@ -143,12 +143,13 @@ export class BacktestWalkForwardService {
     }
   }
 
-  async getWalkForwardRunDetail(wfRunId: string) {
+  async getWalkForwardRunDetail(wfRunId: string, userId: number) {
     const wfRun = await this.prisma.backtestWalkForwardRun.findUnique({
       where: { id: wfRunId },
       include: { windows: { orderBy: { windowIndex: 'asc' } } },
     })
-    if (!wfRun) throw new NotFoundException(`WalkForwardRun ${wfRunId} not found`)
+    if (!wfRun || wfRun.deletedAt || wfRun.userId !== userId)
+      throw new NotFoundException(`WalkForwardRun ${wfRunId} not found`)
 
     return {
       wfRunId: wfRun.id,
@@ -187,12 +188,13 @@ export class BacktestWalkForwardService {
     }
   }
 
-  async getWalkForwardEquity(wfRunId: string) {
+  async getWalkForwardEquity(wfRunId: string, userId: number) {
     const wfRun = await this.prisma.backtestWalkForwardRun.findUnique({
       where: { id: wfRunId },
       include: { windows: { orderBy: { windowIndex: 'asc' } } },
     })
-    if (!wfRun) throw new NotFoundException(`WalkForwardRun ${wfRunId} not found`)
+    if (!wfRun || wfRun.deletedAt || wfRun.userId !== userId)
+      throw new NotFoundException(`WalkForwardRun ${wfRunId} not found`)
 
     const points: Array<{ tradeDate: string; nav: number; windowIndex: number }> = []
 
@@ -561,9 +563,9 @@ export class BacktestWalkForwardService {
     return new Date(`${dateStr.slice(0, 4)}-${dateStr.slice(4, 6)}-${dateStr.slice(6, 8)}`)
   }
 
-  async cancelWalkForwardRun(wfRunId: string) {
+  async cancelWalkForwardRun(wfRunId: string, userId: number) {
     const run = await this.prisma.backtestWalkForwardRun.findUnique({ where: { id: wfRunId } })
-    if (!run || run.deletedAt) throw new NotFoundException(`WalkForwardRun ${wfRunId} not found`)
+    if (!run || run.deletedAt || run.userId !== userId) throw new NotFoundException(`WalkForwardRun ${wfRunId} not found`)
     if (['COMPLETED', 'FAILED', 'CANCELLED'].includes(run.status)) {
       throw new BadRequestException(`Cannot cancel run with status ${run.status}`)
     }

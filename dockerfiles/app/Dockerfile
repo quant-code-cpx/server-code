@@ -8,14 +8,14 @@
 # ─────────────────────────────────────────────────────────────────────────────
 FROM node:22-alpine
 
-# 安装 pnpm
-RUN npm install -g pnpm
+# 安装 pnpm（锁定 v9，避免 v10 dependency build approval 行为打断 Docker 构建）
+RUN npm install -g pnpm@9.15.9
 
 WORKDIR /app
 
 # 先复制 package 描述文件以利用 Docker 层缓存：
 # 只要 package.json / pnpm-lock.yaml 不变，依赖层就不会重建。
-COPY package.json pnpm-lock.yaml ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 
 # 安装全部依赖（含 devDependencies）
 RUN pnpm install

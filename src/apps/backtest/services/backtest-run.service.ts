@@ -175,9 +175,8 @@ export class BacktestRunService {
     }
   }
 
-  async getRunDetail(runId: string) {
-    const run = await this.prisma.backtestRun.findUnique({ where: { id: runId } })
-    if (!run) throw new NotFoundException(`BacktestRun ${runId} not found`)
+  async getRunDetail(runId: string, userId: number) {
+    const run = await this.findOwnedRun(runId, userId)
 
     const strategyType = run.strategyType as BacktestConfig['strategyType']
     const strategyConfig = this.strategyRegistry.validateStrategyConfig(strategyType, run.strategyConfig)
@@ -221,9 +220,8 @@ export class BacktestRunService {
     }
   }
 
-  async cancelRun(runId: string) {
-    const run = await this.prisma.backtestRun.findUnique({ where: { id: runId } })
-    if (!run) throw new NotFoundException(`BacktestRun ${runId} not found`)
+  async cancelRun(runId: string, userId: number) {
+    const run = await this.findOwnedRun(runId, userId)
 
     if (['COMPLETED', 'FAILED', 'CANCELLED'].includes(run.status)) {
       throw new BadRequestException(`Cannot cancel run with status ${run.status}`)
@@ -248,9 +246,8 @@ export class BacktestRunService {
     return { runId, status: 'CANCELLED' }
   }
 
-  async getEquity(runId: string) {
-    const run = await this.prisma.backtestRun.findUnique({ where: { id: runId } })
-    if (!run) throw new NotFoundException(`BacktestRun ${runId} not found`)
+  async getEquity(runId: string, userId: number) {
+    await this.findOwnedRun(runId, userId)
 
     const navs = await this.prisma.backtestDailyNav.findMany({
       where: { runId },
@@ -271,9 +268,8 @@ export class BacktestRunService {
     }
   }
 
-  async getTrades(runId: string, dto: BacktestTradeQueryDto) {
-    const run = await this.prisma.backtestRun.findUnique({ where: { id: runId } })
-    if (!run) throw new NotFoundException(`BacktestRun ${runId} not found`)
+  async getTrades(runId: string, dto: BacktestTradeQueryDto, userId: number) {
+    await this.findOwnedRun(runId, userId)
 
     const page = dto.page ?? 1
     const pageSize = dto.pageSize ?? 50
@@ -317,9 +313,8 @@ export class BacktestRunService {
     }
   }
 
-  async getPositions(runId: string, dto: BacktestPositionQueryDto) {
-    const run = await this.prisma.backtestRun.findUnique({ where: { id: runId } })
-    if (!run) throw new NotFoundException(`BacktestRun ${runId} not found`)
+  async getPositions(runId: string, dto: BacktestPositionQueryDto, userId: number) {
+    await this.findOwnedRun(runId, userId)
 
     let tradeDate: Date
     if (dto.tradeDate) {
@@ -508,7 +503,9 @@ export class BacktestRunService {
     }
   }
 
-  async getRebalanceLogs(runId: string) {
+  async getRebalanceLogs(runId: string, userId: number) {
+    await this.findOwnedRun(runId, userId)
+
     const rows = await this.prisma.backtestRebalanceLog.findMany({
       where: { runId },
       orderBy: { signalDate: 'asc' },
@@ -525,6 +522,12 @@ export class BacktestRunService {
         remark: r.message ?? null,
       })),
     }
+  }
+
+  private async findOwnedRun(runId: string, userId: number) {
+    const run = await this.prisma.backtestRun.findUnique({ where: { id: runId } })
+    if (!run || run.deletedAt || run.userId !== userId) throw new NotFoundException(`BacktestRun ${runId} not found`)
+    return run
   }
 
   private assertValidDateRange(startDateStr: string, endDateStr: string) {

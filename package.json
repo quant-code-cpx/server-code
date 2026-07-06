@@ -100,25 +100,5 @@
     "ts-node": "^10.9.2",
     "tsconfig-paths": "^4.2.0",
     "typescript": "^5.8.0"
-  },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "@nestjs/core",
-      "@prisma/client",
-      "@prisma/engines",
-      "bcrypt",
-      "msgpackr-extract",
-      "prisma"
-    ],
-    "ignoredBuiltDependencies": [
-      "@nestjs/core",
-      "@prisma/client",
-      "@prisma/engines",
-      "@scarf/scarf",
-      "bcrypt",
-      "msgpackr-extract",
-      "prisma",
-      "puppeteer"
-    ]
   }
 }

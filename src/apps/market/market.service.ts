@@ -206,7 +206,7 @@ export class MarketService {
   async getMarketValuation(query: MoneyFlowQueryDto) {
     const tradeDate = query.trade_date
       ? this.parseDate(query.trade_date)
-      : await this.resolveLatestDailyBasicTradeDate()
+      : await this.resolveLatestValuationMedianTradeDate()
     if (!tradeDate) {
       return {
         tradeDate: null,
@@ -217,29 +217,26 @@ export class MarketService {
       }
     }
 
-    const tradeDateStr = dayjs(tradeDate).tz('Asia/Shanghai').format('YYYYMMDD')
+    const tradeDateStr = this.formatTradeDateForSql(tradeDate)
     const cacheKey = `valuation:${tradeDateStr}`
     return this.rememberMarketCache(cacheKey, MARKET_EXTENDED_CACHE_TTL_SECONDS, async () => {
-      const fiveYearAgo = new Date(tradeDate)
-      fiveYearAgo.setFullYear(fiveYearAgo.getFullYear() - 5)
-      const oneYearAgo = new Date(tradeDate)
-      oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1)
-      const threeYearAgo = new Date(tradeDate)
-      threeYearAgo.setFullYear(threeYearAgo.getFullYear() - 3)
+      const tradeDay = dayjs(tradeDate).tz('Asia/Shanghai')
+      const fiveYearAgoStr = tradeDay.subtract(5, 'year').format('YYYYMMDD')
+      const oneYearAgoStr = tradeDay.subtract(1, 'year').format('YYYYMMDD')
+      const threeYearAgoStr = tradeDay.subtract(3, 'year').format('YYYYMMDD')
 
-      // 单次查询：拉取 5 年内每日 PE_TTM / PB 双字段中位数，ORDER BY 保证最后一行为当日
+      // 使用每日预计算中位数，避免每次请求在原始估值明细表上做 5 年 PERCENTILE_CONT。
       const dailyMedians = await this.prisma.$queryRaw<
-        { trade_date: Date; pe_ttm_median: string; pb_median: string }[]
+        { trade_date: Date; pe_ttm_median: number | string | null; pb_median: number | string | null }[]
       >`
         SELECT
           trade_date,
-          PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY pe_ttm)::text AS pe_ttm_median,
-          PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY pb)::text     AS pb_median
-        FROM stock_daily_valuation_metrics
-        WHERE trade_date >= ${fiveYearAgo} AND trade_date <= ${tradeDate}
-          AND pe_ttm > 0 AND pe_ttm < 1000
-          AND pb > 0
-        GROUP BY trade_date
+          pe_ttm_median,
+          pb_median
+        FROM valuation_daily_medians
+        WHERE scope = '__ALL__'
+          AND trade_date >= ${fiveYearAgoStr}::date
+          AND trade_date <= ${tradeDateStr}::date
         ORDER BY trade_date
       `
 
@@ -255,29 +252,31 @@ export class MarketService {
 
       // 最后一行即当日
       const lastRow = dailyMedians[dailyMedians.length - 1]
-      const peTtmMedianCurrent = Number(lastRow.pe_ttm_median)
-      const pbMedianCurrent = Number(lastRow.pb_median)
+      const peTtmMedianCurrent = this.toNullableNumber(lastRow.pe_ttm_median)
+      const pbMedianCurrent = this.toNullableNumber(lastRow.pb_median)
 
-      const oneYearAgoTs = oneYearAgo.getTime()
-      const threeYearAgoTs = threeYearAgo.getTime()
-      const oneYearRows = dailyMedians.filter((r) => new Date(r.trade_date).getTime() >= oneYearAgoTs)
-      const threeYearRows = dailyMedians.filter((r) => new Date(r.trade_date).getTime() >= threeYearAgoTs)
+      const oneYearRows = dailyMedians.filter((r) => this.formatTradeDateForSql(r.trade_date) >= oneYearAgoStr)
+      const threeYearRows = dailyMedians.filter((r) => this.formatTradeDateForSql(r.trade_date) >= threeYearAgoStr)
 
       const computePct = (
-        rows: { pe_ttm_median: string; pb_median: string }[],
+        rows: { pe_ttm_median: number | string | null; pb_median: number | string | null }[],
         field: 'pe_ttm_median' | 'pb_median',
-        currentVal: number,
+        currentVal: number | null,
       ): number | null => {
-        if (rows.length < 2) return null
-        const allVals = rows.map((r) => Number(r[field])).sort((a, b) => a - b)
+        if (currentVal === null || rows.length < 2) return null
+        const allVals = rows
+          .map((r) => this.toNullableNumber(r[field]))
+          .filter((v): v is number => v !== null)
+          .sort((a, b) => a - b)
+        if (allVals.length < 2) return null
         const rank = allVals.filter((v) => v <= currentVal).length
         return Math.round((rank / allVals.length) * 100)
       }
 
       return {
-        tradeDate,
-        peTtmMedian: Number(peTtmMedianCurrent.toFixed(2)),
-        pbMedian: Number(pbMedianCurrent.toFixed(2)),
+        tradeDate: lastRow.trade_date ?? tradeDate,
+        peTtmMedian: peTtmMedianCurrent !== null ? Number(peTtmMedianCurrent.toFixed(2)) : null,
+        pbMedian: pbMedianCurrent !== null ? Number(pbMedianCurrent.toFixed(2)) : null,
         peTtmPercentile: {
           oneYear: computePct(oneYearRows, 'pe_ttm_median', peTtmMedianCurrent),
           threeYear: computePct(threeYearRows, 'pe_ttm_median', peTtmMedianCurrent),
@@ -616,37 +615,41 @@ export class MarketService {
 
     const days = query.days ?? 20
     // Use Shanghai timezone for formatting to avoid UTC-offset date mismatch
-    const tradeDateStr = dayjs(tradeDate).tz('Asia/Shanghai').format('YYYYMMDD')
+    const tradeDateStr = this.formatTradeDateForSql(tradeDate)
     const tradeDateIso = `${tradeDateStr.slice(0, 4)}-${tradeDateStr.slice(4, 6)}-${tradeDateStr.slice(6, 8)}`
     const cacheKey = `market:vol-overview:${tradeDateStr}:${days}`
 
     return this.rememberMarketCache(cacheKey, MARKET_STANDARD_CACHE_TTL_SECONDS, async () => {
       // 全A成交额（万元，amount字段单位为千元，除以100000转亿元）
-      // 下界：3倍日历天数，足够覆盖任意 days 个交易日（约含周末/节假日缓冲）
-      // Use date strings with ::date cast to avoid UTC-offset comparison issues
-      const volLowerBoundIso = dayjs
-        .tz(tradeDateStr, 'YYYYMMDD', 'Asia/Shanghai')
-        .subtract(days * 3, 'day')
-        .format('YYYY-MM-DD')
       const totalRows = await this.prisma.$queryRaw<{ trade_date: Date; total_amount: string }[]>`
-        SELECT trade_date, SUM(amount) / 100000.0 AS total_amount
-        FROM stock_daily_prices
-        WHERE trade_date <= ${tradeDateIso}::date
-          AND trade_date >= ${volLowerBoundIso}::date
-        GROUP BY trade_date
-        ORDER BY trade_date DESC
-        LIMIT ${days}
+        WITH RECURSIVE recent_dates(trade_date, seq) AS (
+          SELECT MAX(trade_date), 1
+          FROM stock_daily_prices
+          WHERE trade_date <= ${tradeDateIso}::date
+          UNION ALL
+          SELECT (
+            SELECT MAX(trade_date)
+            FROM stock_daily_prices
+            WHERE trade_date < recent_dates.trade_date
+          ), seq + 1
+          FROM recent_dates
+          WHERE trade_date IS NOT NULL AND seq < ${days}
+        )
+        SELECT d.trade_date, SUM(d.amount) / 100000.0 AS total_amount
+        FROM stock_daily_prices d
+        JOIN recent_dates rd ON rd.trade_date = d.trade_date
+        WHERE rd.trade_date IS NOT NULL
+        GROUP BY d.trade_date
+        ORDER BY d.trade_date DESC
       `
 
       // 指数成交额（index_daily amount 字段单位同 daily，除以100000转亿元）
-      const tradeDateUtc = new Date(`${tradeDateIso}T00:00:00.000Z`)
       const indexRows = await this.prisma.indexDaily.findMany({
         where: {
           tsCode: { in: ['000001.SH', '399001.SZ'] },
-          tradeDate: { lte: tradeDateUtc },
+          tradeDate: { in: totalRows.map((r) => r.trade_date) },
         },
         orderBy: { tradeDate: 'desc' },
-        take: days * 2,
         select: { tsCode: true, tradeDate: true, amount: true },
       })
 
@@ -751,20 +754,24 @@ export class MarketService {
     const cacheKey = `market:valuation-trend:${period}`
 
     return this.rememberMarketCache(cacheKey, MARKET_EXTENDED_CACHE_TTL_SECONDS, async () => {
-      const latestDate = await this.resolveLatestDailyBasicTradeDate()
+      const latestDate = await this.resolveLatestValuationMedianTradeDate()
       if (!latestDate) return { period, data: [] }
 
       const startDate = this.periodToStartDate(latestDate, period as ValuationTrendPeriod)
+      const startDateStr = this.formatTradeDateForSql(startDate)
+      const latestDateStr = this.formatTradeDateForSql(latestDate)
 
-      const rows = await this.prisma.$queryRaw<{ trade_date: Date; pe_ttm_median: string; pb_median: string }[]>`
+      const rows = await this.prisma.$queryRaw<
+        { trade_date: Date; pe_ttm_median: number | string | null; pb_median: number | string | null }[]
+      >`
         SELECT
           trade_date,
-          PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY pe_ttm)::text AS pe_ttm_median,
-          PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY pb)::text     AS pb_median
-        FROM stock_daily_valuation_metrics
-        WHERE trade_date >= ${startDate}
-          AND pe_ttm > 0 AND pe_ttm < 1000 AND pb > 0
-        GROUP BY trade_date
+          pe_ttm_median,
+          pb_median
+        FROM valuation_daily_medians
+        WHERE scope = '__ALL__'
+          AND trade_date >= ${startDateStr}::date
+          AND trade_date <= ${latestDateStr}::date
         ORDER BY trade_date ASC
       `
 
@@ -772,8 +779,12 @@ export class MarketService {
         period,
         data: rows.map((r) => ({
           tradeDate: dayjs(r.trade_date).format('YYYY-MM-DD'),
-          peTtmMedian: Number(Number(r.pe_ttm_median).toFixed(2)),
-          pbMedian: Number(Number(r.pb_median).toFixed(2)),
+          peTtmMedian:
+            this.toNullableNumber(r.pe_ttm_median) !== null
+              ? Number(this.toNullableNumber(r.pe_ttm_median)!.toFixed(2))
+              : null,
+          pbMedian:
+            this.toNullableNumber(r.pb_median) !== null ? Number(this.toNullableNumber(r.pb_median)!.toFixed(2)) : null,
         })),
       }
     })
@@ -786,47 +797,77 @@ export class MarketService {
     if (!tradeDate) return { data: [] }
 
     const days = query.days ?? 20
-    const tradeDateStr = dayjs(tradeDate).format('YYYYMMDD')
+    const tradeDateStr = this.formatTradeDateForSql(tradeDate)
     const cacheKey = `market:mf-trend:${tradeDateStr}:${days}`
 
     return this.rememberMarketCache(cacheKey, MARKET_STANDARD_CACHE_TTL_SECONDS, async () => {
       // 从个股 moneyflow 按交易日聚合全市场净流入，口径与 getMarketMoneyFlow 一致（全口径，非主力）
-      const rows = await this.prisma.moneyflow.groupBy({
-        by: ['tradeDate'],
-        where: { tradeDate: { lte: tradeDate } },
-        _sum: {
-          netMfAmount: true,
-          buyElgAmount: true,
-          sellElgAmount: true,
-          buyLgAmount: true,
-          sellLgAmount: true,
-          buyMdAmount: true,
-          sellMdAmount: true,
-          buySmAmount: true,
-          sellSmAmount: true,
-        },
-        orderBy: { tradeDate: 'desc' },
-        take: days,
-      })
+      const rows = await this.prisma.$queryRaw<
+        {
+          trade_date: Date
+          net_mf_amount: number | string | null
+          buy_elg_amount: number | string | null
+          sell_elg_amount: number | string | null
+          buy_lg_amount: number | string | null
+          sell_lg_amount: number | string | null
+          buy_md_amount: number | string | null
+          sell_md_amount: number | string | null
+          buy_sm_amount: number | string | null
+          sell_sm_amount: number | string | null
+        }[]
+      >`
+        WITH RECURSIVE recent_dates(trade_date, seq) AS (
+          SELECT MAX(trade_date), 1
+          FROM stock_capital_flows
+          WHERE trade_date <= ${tradeDateStr}::date
+          UNION ALL
+          SELECT (
+            SELECT MAX(trade_date)
+            FROM stock_capital_flows
+            WHERE trade_date < recent_dates.trade_date
+          ), seq + 1
+          FROM recent_dates
+          WHERE trade_date IS NOT NULL AND seq < ${days}
+        )
+        SELECT
+          mf.trade_date,
+          SUM(mf.net_mf_amount) AS net_mf_amount,
+          SUM(mf.buy_elg_amount) AS buy_elg_amount,
+          SUM(mf.sell_elg_amount) AS sell_elg_amount,
+          SUM(mf.buy_lg_amount) AS buy_lg_amount,
+          SUM(mf.sell_lg_amount) AS sell_lg_amount,
+          SUM(mf.buy_md_amount) AS buy_md_amount,
+          SUM(mf.sell_md_amount) AS sell_md_amount,
+          SUM(mf.buy_sm_amount) AS buy_sm_amount,
+          SUM(mf.sell_sm_amount) AS sell_sm_amount
+        FROM stock_capital_flows mf
+        JOIN recent_dates rd ON rd.trade_date = mf.trade_date
+        WHERE rd.trade_date IS NOT NULL
+        GROUP BY mf.trade_date
+        ORDER BY mf.trade_date ASC
+      `
 
-      const sorted = rows.reverse()
       let cumulative = 0
-      const wan2yuan = (v: number | null | undefined) => (v != null ? Number((v * 10000).toFixed(2)) : null)
+      const wan2yuan = (v: number | string | null | undefined) => {
+        const num = this.toNullableNumber(v)
+        return num !== null ? Number((num * 10000).toFixed(2)) : null
+      }
       return {
-        data: sorted.map((r) => {
+        data: rows.map((r) => {
           // netMfAmount 单位万元，× 10000 转元，与 getMarketMoneyFlow 保持一致
-          const netAmount = r._sum.netMfAmount != null ? Number((r._sum.netMfAmount * 10000).toFixed(2)) : 0
+          const netAmountRaw = this.toNullableNumber(r.net_mf_amount)
+          const netAmount = netAmountRaw !== null ? Number((netAmountRaw * 10000).toFixed(2)) : 0
           cumulative += netAmount
-          const buyElg = wan2yuan(r._sum.buyElgAmount)
-          const sellElg = wan2yuan(r._sum.sellElgAmount)
-          const buyLg = wan2yuan(r._sum.buyLgAmount)
-          const sellLg = wan2yuan(r._sum.sellLgAmount)
-          const buyMd = wan2yuan(r._sum.buyMdAmount)
-          const sellMd = wan2yuan(r._sum.sellMdAmount)
-          const buySm = wan2yuan(r._sum.buySmAmount)
-          const sellSm = wan2yuan(r._sum.sellSmAmount)
+          const buyElg = wan2yuan(r.buy_elg_amount)
+          const sellElg = wan2yuan(r.sell_elg_amount)
+          const buyLg = wan2yuan(r.buy_lg_amount)
+          const sellLg = wan2yuan(r.sell_lg_amount)
+          const buyMd = wan2yuan(r.buy_md_amount)
+          const sellMd = wan2yuan(r.sell_md_amount)
+          const buySm = wan2yuan(r.buy_sm_amount)
+          const sellSm = wan2yuan(r.sell_sm_amount)
           return {
-            tradeDate: dayjs(r.tradeDate).format('YYYY-MM-DD'),
+            tradeDate: dayjs(r.trade_date).format('YYYY-MM-DD'),
             netAmount,
             cumulativeNet: Number(cumulative.toFixed(2)),
             buyElgAmount: buyElg != null && sellElg != null ? Number((buyElg - sellElg).toFixed(2)) : null,
@@ -1651,6 +1692,15 @@ export class MarketService {
     return record?.tradeDate ?? null
   }
 
+  private async resolveLatestValuationMedianTradeDate() {
+    const record = await this.prisma.valuationDailyMedian.findFirst({
+      where: { scope: '__ALL__' },
+      orderBy: { tradeDate: 'desc' },
+      select: { tradeDate: true },
+    })
+    return record?.tradeDate ?? (await this.resolveLatestDailyBasicTradeDate())
+  }
+
   private async resolveLatestIndexTradeDate() {
     const record = await this.prisma.indexDaily.findFirst({
       orderBy: { tradeDate: 'desc' },
@@ -1677,6 +1727,16 @@ export class MarketService {
 
   private parseDate(value: string) {
     return dayjs.utc(value, 'YYYYMMDD').toDate()
+  }
+
+  private formatTradeDateForSql(value: Date) {
+    return dayjs(value).tz('Asia/Shanghai').format('YYYYMMDD')
+  }
+
+  private toNullableNumber(value: number | string | null | undefined) {
+    if (value === null || value === undefined) return null
+    const num = Number(value)
+    return Number.isFinite(num) ? num : null
   }
 
   private rememberMarketCache<T>(

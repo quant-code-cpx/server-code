@@ -73,48 +73,79 @@ export class SyncLogService {
     }>
   > {
     const allTasks = Object.values(TushareSyncTaskName)
+    const queryTasks = allTasks.filter((taskName) => Boolean(TushareSyncTask[taskName as keyof typeof TushareSyncTask]))
 
-    const results = await Promise.all(
-      allTasks.map(async (taskName) => {
-        const task = TushareSyncTask[taskName]
+    if (queryTasks.length === 0) {
+      return allTasks.map((task) => ({
+        task,
+        lastSyncAt: null,
+        lastStatus: null,
+        lastRowCount: null,
+        consecutiveFailures: 0,
+      }))
+    }
 
-        // 最后一次记录（无论成功与否）
-        const lastLog = await this.prisma.tushareSyncLog.findFirst({
-          where: { task },
-          orderBy: { startedAt: 'desc' },
-          select: { status: true, startedAt: true, payload: true },
-        })
+    const rows = await this.prisma.$queryRaw<
+      Array<{
+        task: string
+        last_sync_at: Date | null
+        last_status: string | null
+        payload: Record<string, unknown> | null
+        consecutive_failures: number | bigint | string | null
+      }>
+    >`
+      WITH requested(task) AS (
+        SELECT unnest(${queryTasks}::"TushareSyncTask"[])
+      )
+      SELECT
+        requested.task::text AS task,
+        last_log.started_at AS last_sync_at,
+        last_log.status::text AS last_status,
+        last_log.payload,
+        COALESCE(failures.consecutive_failures, 0) AS consecutive_failures
+      FROM requested
+      LEFT JOIN LATERAL (
+        SELECT status, started_at, payload
+        FROM tushare_sync_logs
+        WHERE task = requested.task
+        ORDER BY started_at DESC
+        LIMIT 1
+      ) last_log ON true
+      LEFT JOIN LATERAL (
+        WITH recent AS (
+          SELECT status::text, row_number() OVER (ORDER BY started_at DESC) AS rn
+          FROM (
+            SELECT status, started_at
+            FROM tushare_sync_logs
+            WHERE task = requested.task
+            ORDER BY started_at DESC
+            LIMIT 10
+          ) latest
+        ),
+        first_non_failed AS (
+          SELECT COALESCE(MIN(rn), 11) AS rn
+          FROM recent
+          WHERE status <> ${TushareSyncStatus.FAILED}
+        )
+        SELECT COUNT(*)::int AS consecutive_failures
+        FROM recent, first_non_failed
+        WHERE recent.status = ${TushareSyncStatus.FAILED}
+          AND recent.rn < first_non_failed.rn
+      ) failures ON true
+    `
 
-        if (!lastLog) {
-          return { task: taskName, lastSyncAt: null, lastStatus: null, lastRowCount: null, consecutiveFailures: 0 }
-        }
-
-        // 统计连续失败次数（从最新往前取最多 10 条，找连续 FAILED 的数量）
-        const recentLogs = await this.prisma.tushareSyncLog.findMany({
-          where: { task },
-          orderBy: { startedAt: 'desc' },
-          take: 10,
-          select: { status: true },
-        })
-        let consecutiveFailures = 0
-        for (const log of recentLogs) {
-          if (log.status === TushareSyncStatus.FAILED) consecutiveFailures++
-          else break
-        }
-
-        const payload = lastLog.payload as Record<string, unknown> | null
-        const lastRowCount = typeof payload?.rowCount === 'number' ? payload.rowCount : null
-
-        return {
-          task: taskName,
-          lastSyncAt: lastLog.startedAt,
-          lastStatus: lastLog.status as string,
-          lastRowCount,
-          consecutiveFailures,
-        }
-      }),
-    )
-
-    return results
+    const rowMap = new Map(rows.map((row) => [row.task, row]))
+    return allTasks.map((task) => {
+      const row = rowMap.get(task)
+      const payload = row?.payload ?? null
+      const lastRowCount = typeof payload?.rowCount === 'number' ? payload.rowCount : null
+      return {
+        task,
+        lastSyncAt: row?.last_sync_at ?? null,
+        lastStatus: row?.last_status ?? null,
+        lastRowCount,
+        consecutiveFailures: Number(row?.consecutive_failures ?? 0),
+      }
+    })
   }
 }

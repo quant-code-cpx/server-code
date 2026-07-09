@@ -214,6 +214,33 @@ describe('IndustryRotationService', () => {
       expect(result.summary.inflowCount).toBe(1)
       expect(result.summary.outflowCount).toBe(0)
     })
+
+    it('limit 参与缓存 key，避免 Top10 缓存污染全量热力图', async () => {
+      const prisma = buildPrismaMock()
+      const cache = buildCacheMock()
+      const svc = createService({ prisma, cache })
+      prisma.$queryRawUnsafe.mockResolvedValue([])
+
+      await svc.getFlowAnalysis({
+        trade_date: '20240628',
+        days: 5,
+        sort_by: 'cumulative_net',
+        order: 'desc',
+        limit: 10,
+      })
+      await svc.getFlowAnalysis({ trade_date: '20240628', days: 5, sort_by: 'cumulative_net', order: 'desc' })
+
+      expect(cache.buildKey).toHaveBeenNthCalledWith(
+        1,
+        'ind-rotation:flow',
+        expect.objectContaining({ days: 5, limit: 10 }),
+      )
+      expect(cache.buildKey).toHaveBeenNthCalledWith(
+        2,
+        'ind-rotation:flow',
+        expect.objectContaining({ days: 5, limit: null }),
+      )
+    })
   })
 
   // ── getIndustryValuation ──────────────────────────────────────────────────

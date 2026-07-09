@@ -11,8 +11,9 @@
  * - matchConditions() [private]: 通过 scanAndGenerate 间接测试或 (svc as any) 调用
  */
 
-import { NotFoundException } from '@nestjs/common'
+import { BadRequestException, NotFoundException } from '@nestjs/common'
 import { EventSignalRuleStatus } from '@prisma/client'
+import { EventStudyJobName } from 'src/constant/queue.constant'
 import { EventSignalService } from '../event-signal.service'
 import { EventType } from '../event-type.registry'
 
@@ -50,12 +51,20 @@ function buildEventStudyMock() {
   return { extractEventSamples: jest.fn(async () => []) }
 }
 
+function buildQueueMock() {
+  return {
+    add: jest.fn(async () => ({ id: 'job-1' })),
+    getJob: jest.fn(async () => null),
+  }
+}
+
 function createService(
   prismaMock = buildPrismaMock(),
   gatewayMock = buildGatewayMock(),
   eventStudyMock = buildEventStudyMock(),
+  queueMock = buildQueueMock(),
 ) {
-  return new EventSignalService(prismaMock as any, gatewayMock as any, eventStudyMock as any)
+  return new EventSignalService(prismaMock as any, gatewayMock as any, eventStudyMock as any, queueMock as any)
 }
 
 // ── 规则数据助手 ──────────────────────────────────────────────────────────────
@@ -329,6 +338,97 @@ describe('EventSignalService', () => {
       expect(result.signalsGenerated).toBe(0)
       // 验证确实有调用 findMany（说明执行了扫描流程）
       expect(prisma.forecast.findMany).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  // ── async scan queue ─────────────────────────────────────────────────────
+
+  describe('enqueueScan()', () => {
+    it('入队事件信号扫描任务并返回 jobId/status/tradeDate', async () => {
+      const queue = buildQueueMock()
+      const svc = createService(buildPrismaMock(), buildGatewayMock(), buildEventStudyMock(), queue)
+
+      const result = await svc.enqueueScan(7, '20240115')
+
+      expect(queue.add).toHaveBeenCalledWith(
+        EventStudyJobName.SCAN_SIGNAL_RULES,
+        expect.objectContaining({
+          tradeDate: '20240115',
+          requestedByUserId: 7,
+          requestedAt: expect.any(String),
+        }),
+        expect.objectContaining({
+          attempts: 2,
+          backoff: { type: 'exponential', delay: 5000 },
+        }),
+      )
+      expect(result).toEqual({ jobId: 'job-1', status: 'QUEUED', tradeDate: '20240115' })
+    })
+
+    it('非法日历日期 → BadRequestException，不入队', async () => {
+      const queue = buildQueueMock()
+      const svc = createService(buildPrismaMock(), buildGatewayMock(), buildEventStudyMock(), queue)
+
+      await expect(svc.enqueueScan(7, '20240231')).rejects.toThrow(BadRequestException)
+      expect(queue.add).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('getScanJobStatus()', () => {
+    it('job 不存在 → NotFoundException', async () => {
+      const queue = buildQueueMock()
+      queue.getJob.mockResolvedValue(null)
+      const svc = createService(buildPrismaMock(), buildGatewayMock(), buildEventStudyMock(), queue)
+
+      await expect(svc.getScanJobStatus('missing')).rejects.toThrow(NotFoundException)
+    })
+
+    it('completed job → 返回 COMPLETED、进度、结果和时间字段', async () => {
+      const queue = buildQueueMock()
+      queue.getJob.mockResolvedValue({
+        data: { tradeDate: '20240115' },
+        getState: jest.fn(async () => 'completed'),
+        progress: 100,
+        returnvalue: {
+          tradeDate: '20240115',
+          signalsGenerated: 3,
+          completedAt: '2024-01-15T10:00:00.000Z',
+        },
+        failedReason: undefined,
+        timestamp: Date.UTC(2024, 0, 15, 9),
+        processedOn: Date.UTC(2024, 0, 15, 9, 1),
+        finishedOn: Date.UTC(2024, 0, 15, 9, 2),
+      } as any)
+      const svc = createService(buildPrismaMock(), buildGatewayMock(), buildEventStudyMock(), queue)
+
+      const result = await svc.getScanJobStatus('job-1')
+
+      expect(result.status).toBe('COMPLETED')
+      expect(result.state).toBe('completed')
+      expect(result.progress).toBe(100)
+      expect(result.result?.signalsGenerated).toBe(3)
+      expect(result.createdAt).toBe('2024-01-15T09:00:00.000Z')
+    })
+
+    it('active job → 返回 RUNNING', async () => {
+      const queue = buildQueueMock()
+      queue.getJob.mockResolvedValue({
+        data: { tradeDate: '20240115' },
+        getState: jest.fn(async () => 'active'),
+        progress: 10,
+        returnvalue: null,
+        failedReason: null,
+        timestamp: undefined,
+        processedOn: undefined,
+        finishedOn: undefined,
+      } as any)
+      const svc = createService(buildPrismaMock(), buildGatewayMock(), buildEventStudyMock(), queue)
+
+      const result = await svc.getScanJobStatus('job-1')
+
+      expect(result.status).toBe('RUNNING')
+      expect(result.progress).toBe(10)
+      expect(result.result).toBeNull()
     })
   })
 

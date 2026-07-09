@@ -7,6 +7,11 @@ import { Roles } from 'src/common/decorators/roles.decorator'
 import { RolesGuard } from 'src/lifecycle/guard/roles.guard'
 import { TokenPayload } from 'src/shared/token.interface'
 import { CreateSignalRuleDto } from './dto/create-signal-rule.dto'
+import { EventSignalScanDto, EventSignalScanJobQueryDto } from './dto/event-signal-scan.dto'
+import {
+  EventSignalScanAsyncResponseDto,
+  EventSignalScanJobStatusResponseDto,
+} from './dto/event-signal-scan-response.dto'
 import { EventStudyAnalyzeDto } from './dto/event-study-analyze.dto'
 import { EventStudyEventsQueryDto } from './dto/event-study-events-query.dto'
 import { EventStudyResultDto } from './dto/event-study-response.dto'
@@ -125,8 +130,35 @@ export class EventStudyController {
   @Roles(UserRole.SUPER_ADMIN)
   @ApiOperation({ summary: '手动触发事件信号扫描（管理员）' })
   @ApiSuccessRawResponse({ type: 'object' })
-  triggerScan(@Body() dto: { tradeDate?: string }) {
+  triggerScan(@Body() dto: EventSignalScanDto) {
     return this.eventSignalService.scanAndGenerate(dto.tradeDate)
+  }
+
+  @Post('signal-rules/scan/async')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.SUPER_ADMIN)
+  @ApiOperation({ summary: '异步触发事件信号扫描（管理员）' })
+  @ApiSuccessResponse(EventSignalScanAsyncResponseDto)
+  triggerScanAsync(@CurrentUser() user: TokenPayload, @Body() dto: EventSignalScanDto) {
+    return this.eventSignalService.enqueueScan(user?.id, dto.tradeDate)
+  }
+
+  @Post('signal-rules/scan/jobs/get')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.SUPER_ADMIN)
+  @ApiOperation({ summary: '查询事件信号扫描任务状态（管理员）' })
+  @ApiSuccessResponse(EventSignalScanJobStatusResponseDto)
+  getScanJob(@Body() dto: EventSignalScanJobQueryDto) {
+    return this.eventSignalService.getScanJobStatus(dto.jobId)
+  }
+
+  @Post('scan/jobs/get')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.SUPER_ADMIN)
+  @ApiOperation({ summary: '查询事件信号扫描任务状态（管理员，兼容路径）' })
+  @ApiSuccessResponse(EventSignalScanJobStatusResponseDto)
+  getScanJobCompat(@Body() dto: EventSignalScanJobQueryDto) {
+    return this.eventSignalService.getScanJobStatus(dto.jobId)
   }
 
   // ── Phase 2: 信号历史 ─────────────────────────────────────────────────────

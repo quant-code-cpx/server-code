@@ -20,6 +20,8 @@ describe('Event-study Fresh V2', () => {
     deleteRule: jest.fn(),
     previewRule: jest.fn(),
     scanAndGenerate: jest.fn(),
+    enqueueScan: jest.fn(),
+    getScanJobStatus: jest.fn(),
     querySignals: jest.fn(),
   }
 

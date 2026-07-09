@@ -1,12 +1,27 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common'
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  Optional,
+  ServiceUnavailableException,
+} from '@nestjs/common'
+import { InjectQueue } from '@nestjs/bullmq'
 import { EventSignalRule, EventSignalRuleStatus } from '@prisma/client'
+import { Queue } from 'bullmq'
 import { formatDateToCompactTradeDate, parseCompactTradeDateToUtcDate } from 'src/common/utils/trade-date.util'
+import { EVENT_STUDY_QUEUE, EventStudyJobName } from 'src/constant/queue.constant'
 import { PrismaService } from 'src/shared/prisma.service'
 import { EventsGateway } from 'src/websocket/events.gateway'
 import { EVENT_TYPE_CONFIGS, EventType } from './event-type.registry'
 import { EventStudyService } from './event-study.service'
 import { CreateSignalRuleDto } from './dto/create-signal-rule.dto'
 import { UpdateSignalRuleDto } from './dto/update-signal-rule.dto'
+import {
+  EventSignalScanAsyncResponseDto,
+  EventSignalScanJobStatusResponseDto,
+} from './dto/event-signal-scan-response.dto'
+import { EventSignalScanJobData, EventSignalScanJobResult, EventSignalScanJobStatus } from './event-signal-scan.types'
 
 @Injectable()
 export class EventSignalService {
@@ -16,6 +31,9 @@ export class EventSignalService {
     private readonly prisma: PrismaService,
     private readonly eventsGateway: EventsGateway,
     private readonly eventStudyService: EventStudyService,
+    @Optional()
+    @InjectQueue(EVENT_STUDY_QUEUE)
+    private readonly eventStudyQueue?: Queue<EventSignalScanJobData, EventSignalScanJobResult>,
   ) {}
 
   // ── 规则 CRUD ──────────────────────────────────────────────────────────────
@@ -167,7 +185,7 @@ export class EventSignalService {
    * 若不传 targetDate，默认使用今日（YYYYMMDD 格式）。
    */
   async scanAndGenerate(targetDate?: string): Promise<{ signalsGenerated: number }> {
-    const dateStr = targetDate ?? formatDateToCompactTradeDate(new Date())!
+    const { dateStr, parsedDate } = this.resolveScanDate(targetDate)
     this.logger.log(`开始事件信号扫描，目标日期：${dateStr}`)
 
     const rules = await this.prisma.eventSignalRule.findMany({
@@ -188,7 +206,7 @@ export class EventSignalService {
     }
 
     let signalsGenerated = 0
-    const eventDateParsed = parseCompactTradeDateToUtcDate(dateStr)
+    const eventDateParsed = parsedDate
 
     for (const [eventTypeStr, typeRules] of rulesByType) {
       if (!Object.values(EventType).includes(eventTypeStr as EventType)) continue
@@ -228,7 +246,96 @@ export class EventSignalService {
     return { signalsGenerated }
   }
 
+  async enqueueScan(userId: number | undefined, targetDate?: string): Promise<EventSignalScanAsyncResponseDto> {
+    const { dateStr } = this.resolveScanDate(targetDate)
+    const queue = this.getEventStudyQueue()
+    const job = await queue.add(
+      EventStudyJobName.SCAN_SIGNAL_RULES,
+      {
+        tradeDate: dateStr,
+        requestedByUserId: userId,
+        requestedAt: new Date().toISOString(),
+      },
+      {
+        attempts: 2,
+        backoff: { type: 'exponential', delay: 5000 },
+        removeOnComplete: { count: 100 },
+        removeOnFail: { count: 100 },
+      },
+    )
+
+    if (job.id == null) {
+      throw new ServiceUnavailableException('事件信号扫描任务未返回 jobId')
+    }
+
+    return { jobId: job.id.toString(), status: 'QUEUED', tradeDate: dateStr }
+  }
+
+  async getScanJobStatus(jobId: string): Promise<EventSignalScanJobStatusResponseDto> {
+    const queue = this.getEventStudyQueue()
+    const job = await queue.getJob(jobId)
+    if (!job) throw new NotFoundException('扫描任务不存在')
+
+    const state = await job.getState()
+    return {
+      jobId,
+      status: this.mapJobStatus(state),
+      state,
+      tradeDate: job.data.tradeDate,
+      progress: this.normalizeJobProgress(job.progress),
+      result: job.returnvalue ?? null,
+      failedReason: job.failedReason ?? null,
+      createdAt: this.timestampToIso(job.timestamp),
+      processedAt: this.timestampToIso(job.processedOn),
+      finishedAt: this.timestampToIso(job.finishedOn),
+    }
+  }
+
   // ── Private ────────────────────────────────────────────────────────────────
+
+  private getEventStudyQueue(): Queue<EventSignalScanJobData, EventSignalScanJobResult> {
+    if (!this.eventStudyQueue) {
+      throw new ServiceUnavailableException('事件信号扫描队列未配置')
+    }
+    return this.eventStudyQueue
+  }
+
+  private resolveScanDate(targetDate?: string): { dateStr: string; parsedDate: Date } {
+    const dateStr = targetDate ?? formatDateToCompactTradeDate(new Date())!
+    try {
+      return { dateStr, parsedDate: parseCompactTradeDateToUtcDate(dateStr) }
+    } catch {
+      throw new BadRequestException('tradeDate 必须是有效 YYYYMMDD 日期')
+    }
+  }
+
+  private mapJobStatus(state: string): EventSignalScanJobStatus {
+    switch (state) {
+      case 'waiting':
+      case 'waiting-children':
+      case 'paused':
+      case 'prioritized':
+        return 'QUEUED'
+      case 'active':
+        return 'RUNNING'
+      case 'completed':
+        return 'COMPLETED'
+      case 'failed':
+        return 'FAILED'
+      case 'delayed':
+        return 'DELAYED'
+      default:
+        return 'UNKNOWN'
+    }
+  }
+
+  private normalizeJobProgress(progress: unknown): number {
+    return typeof progress === 'number' ? progress : 0
+  }
+
+  private timestampToIso(timestamp: number | undefined): string | null {
+    return timestamp ? new Date(timestamp).toISOString() : null
+  }
 
   /**
    * 查询指定日期的事件，返回含业务字段的 Record 数组，

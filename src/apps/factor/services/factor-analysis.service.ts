@@ -76,6 +76,30 @@ function sharpe(returns: number[]): number {
   return (m / s) * Math.sqrt(252)
 }
 
+function formatTradeDate(value: Date | string): string {
+  const d = value instanceof Date ? value : new Date(value)
+  return `${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, '0')}${String(d.getUTCDate()).padStart(2, '0')}`
+}
+
+async function mapWithConcurrency<T, R>(
+  items: readonly T[],
+  concurrency: number,
+  worker: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length)
+  let nextIndex = 0
+
+  const workers = Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+    while (nextIndex < items.length) {
+      const currentIndex = nextIndex++
+      results[currentIndex] = await worker(items[currentIndex], currentIndex)
+    }
+  })
+
+  await Promise.all(workers)
+  return results
+}
+
 // ────────────────────────────────────────────────────────────────────────────
 
 interface AdjReturnRow {
@@ -87,7 +111,22 @@ interface TradeCalRow {
   cal_date: Date
 }
 
+interface ForwardTradeCalRow extends TradeCalRow {
+  forward_date: Date | null
+}
+
+interface ForwardPeriodTradeCalRow extends TradeCalRow {
+  period: number
+  forward_date: Date | null
+}
+
+interface AdjReturnByPeriodRow extends AdjReturnRow {
+  period: number
+}
+
 const FACTOR_ANALYSIS_CACHE_TTL_SECONDS = 24 * 3600
+const FACTOR_IC_ANALYSIS_CONCURRENCY = Math.max(1, Number(process.env.FACTOR_IC_ANALYSIS_CONCURRENCY) || 8)
+const FACTOR_DECAY_ANALYSIS_CONCURRENCY = Math.max(1, Number(process.env.FACTOR_DECAY_ANALYSIS_CONCURRENCY) || 4)
 
 @Injectable()
 export class FactorAnalysisService {
@@ -107,30 +146,79 @@ export class FactorAnalysisService {
         AND cal_date <= ${endDate}::date
       ORDER BY cal_date ASC
     `)
-    return rows.map((r) => {
-      const d = r.cal_date instanceof Date ? r.cal_date : new Date(r.cal_date)
-      return `${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, '0')}${String(d.getUTCDate()).padStart(2, '0')}`
-    })
+    return rows.map((r) => formatTradeDate(r.cal_date))
   }
 
-  private async getNthTradingDayAfter(tradeDate: string, n: number): Promise<string | null> {
-    const rows = await this.prisma.$queryRaw<TradeCalRow[]>(Prisma.sql`
-      SELECT cal_date FROM exchange_trade_calendars
-      WHERE exchange = 'SSE' AND is_open = '1'
-        AND cal_date > ${tradeDate}::date
+  private async getForwardTradeDatePairs(
+    startDate: string,
+    endDate: string,
+    forwardDays: number,
+  ): Promise<Array<{ tradeDate: string; forwardDate: string | null }>> {
+    const rows = await this.prisma.$queryRaw<ForwardTradeCalRow[]>(Prisma.sql`
+      WITH open_days AS (
+        SELECT
+          cal_date,
+          LEAD(cal_date, ${forwardDays}::int) OVER (ORDER BY cal_date ASC) AS forward_date
+        FROM exchange_trade_calendars
+        WHERE exchange = 'SSE' AND is_open = '1'
+      )
+      SELECT cal_date, forward_date
+      FROM open_days
+      WHERE cal_date >= ${startDate}::date
+        AND cal_date <= ${endDate}::date
       ORDER BY cal_date ASC
-      LIMIT ${n}
     `)
-    if (rows.length < n) return null
-    const d =
-      rows[rows.length - 1].cal_date instanceof Date
-        ? rows[rows.length - 1].cal_date
-        : new Date(rows[rows.length - 1].cal_date)
-    return `${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, '0')}${String(d.getUTCDate()).padStart(2, '0')}`
+
+    return rows.map((r) => ({
+      tradeDate: formatTradeDate(r.cal_date),
+      forwardDate: r.forward_date ? formatTradeDate(r.forward_date) : null,
+    }))
+  }
+
+  private async getForwardTradeDateMatrix(
+    startDate: string,
+    endDate: string,
+    periods: number[],
+  ): Promise<Map<string, Map<number, string | null>>> {
+    if (!periods.length) return new Map()
+
+    const periodValues = Prisma.join(periods.map((period) => Prisma.sql`(${period}::int)`))
+    const rows = await this.prisma.$queryRaw<ForwardPeriodTradeCalRow[]>(Prisma.sql`
+      WITH periods(period) AS (
+        VALUES ${periodValues}
+      ),
+      open_days AS (
+        SELECT
+          cal_date,
+          ROW_NUMBER() OVER (ORDER BY cal_date ASC) AS rn
+        FROM exchange_trade_calendars
+        WHERE exchange = 'SSE' AND is_open = '1'
+      )
+      SELECT
+        d0.cal_date,
+        p.period,
+        d1.cal_date AS forward_date
+      FROM open_days d0
+      CROSS JOIN periods p
+      LEFT JOIN open_days d1 ON d1.rn = d0.rn + p.period
+      WHERE d0.cal_date >= ${startDate}::date
+        AND d0.cal_date <= ${endDate}::date
+      ORDER BY d0.cal_date ASC, p.period ASC
+    `)
+
+    const matrix = new Map<string, Map<number, string | null>>()
+    for (const row of rows) {
+      const tradeDate = formatTradeDate(row.cal_date)
+      const periodMap = matrix.get(tradeDate) ?? new Map<number, string | null>()
+      periodMap.set(Number(row.period), row.forward_date ? formatTradeDate(row.forward_date) : null)
+      matrix.set(tradeDate, periodMap)
+    }
+    return matrix
   }
 
   private async getAdjReturns(fromDate: string, toDate: string, tsCodes: string[]): Promise<Record<string, number>> {
     if (!tsCodes.length) return {}
+    const requestedCodes = new Set(tsCodes)
     const rows = await this.prisma.$queryRaw<AdjReturnRow[]>(Prisma.sql`
       SELECT
         d0.ts_code,
@@ -144,13 +232,75 @@ export class FactorAnalysisService {
       JOIN stock_adjustment_factors af1
         ON af1.ts_code = d1.ts_code AND af1.trade_date = d1.trade_date
       WHERE d0.trade_date = ${fromDate}::date
-        AND d0.ts_code = ANY(${tsCodes})
     `)
     const map: Record<string, number> = {}
     for (const r of rows) {
-      if (r.forward_return != null) map[r.ts_code] = Number(r.forward_return)
+      if (r.forward_return != null && requestedCodes.has(r.ts_code)) map[r.ts_code] = Number(r.forward_return)
     }
     return map
+  }
+
+  private async getAdjReturnsByPeriod(
+    fromDate: string,
+    forwardDatesByPeriod: Map<number, string>,
+    tsCodes: string[],
+  ): Promise<Map<number, Record<string, number>>> {
+    if (!tsCodes.length || forwardDatesByPeriod.size === 0) return new Map()
+
+    const requestedCodes = new Set(tsCodes)
+    const requestedValues = Prisma.join(
+      [...forwardDatesByPeriod.entries()].map(
+        ([period, forwardDate]) => Prisma.sql`(${period}::int, ${forwardDate}::date)`,
+      ),
+    )
+
+    const rows = await this.prisma.$queryRaw<AdjReturnByPeriodRow[]>(Prisma.sql`
+      WITH requested(period, forward_date) AS (
+        VALUES ${requestedValues}
+      ),
+      base AS MATERIALIZED (
+        SELECT d0.ts_code, d0.close, af0.adj_factor
+        FROM stock_daily_prices d0
+        JOIN stock_adjustment_factors af0
+          ON af0.ts_code = d0.ts_code AND af0.trade_date = d0.trade_date
+        WHERE d0.trade_date = ${fromDate}::date
+      ),
+      future_prices AS MATERIALIZED (
+        SELECT requested.period, d1.ts_code, d1.close
+        FROM requested
+        JOIN stock_daily_prices d1
+          ON d1.trade_date = requested.forward_date
+      ),
+      future_factors AS MATERIALIZED (
+        SELECT requested.period, af1.ts_code, af1.adj_factor
+        FROM requested
+        JOIN stock_adjustment_factors af1
+          ON af1.trade_date = requested.forward_date
+      ),
+      future AS MATERIALIZED (
+        SELECT fp.period, fp.ts_code, fp.close, ff.adj_factor
+        FROM future_prices fp
+        JOIN future_factors ff
+          ON ff.period = fp.period AND ff.ts_code = fp.ts_code
+      )
+      SELECT
+        future.period,
+        base.ts_code,
+        ((future.close::numeric * future.adj_factor::numeric) /
+          NULLIF(base.close::numeric * base.adj_factor::numeric, 0) - 1)::float AS forward_return
+      FROM base
+      JOIN future ON future.ts_code = base.ts_code
+    `)
+
+    const returnsByPeriod = new Map<number, Record<string, number>>()
+    for (const row of rows) {
+      if (row.forward_return == null || !requestedCodes.has(row.ts_code)) continue
+      const period = Number(row.period)
+      const returnMap = returnsByPeriod.get(period) ?? {}
+      returnMap[row.ts_code] = Number(row.forward_return)
+      returnsByPeriod.set(period, returnMap)
+    }
+    return returnsByPeriod
   }
 
   // ── IC Analysis ──────────────────────────────────────────────────────────
@@ -162,36 +312,40 @@ export class FactorAnalysisService {
       const forwardDays = dto.forwardDays ?? 5
       const icMethod = dto.icMethod ?? 'rank'
 
-      const tradeDates = await this.getTradeDates(dto.startDate, dto.endDate)
+      const tradeDatePairs = await this.getForwardTradeDatePairs(dto.startDate, dto.endDate, forwardDays)
+      const seriesWithEmpty = await mapWithConcurrency(
+        tradeDatePairs,
+        FACTOR_IC_ANALYSIS_CONCURRENCY,
+        async ({ tradeDate, forwardDate }) => {
+          if (!forwardDate) return null
+          const factorValues = await this.compute.getRawFactorValuesForDate(dto.factorName, tradeDate, dto.universe)
+          const valid = factorValues.filter((v) => v.factorValue != null)
+          if (!valid.length) return null
 
-      const series: Array<{ tradeDate: string; ic: number; stockCount: number }> = []
+          const returnMap = await this.getAdjReturns(
+            tradeDate,
+            forwardDate,
+            valid.map((v) => v.tsCode),
+          )
 
-      for (const tradeDate of tradeDates) {
-        const forwardDate = await this.getNthTradingDayAfter(tradeDate, forwardDays)
-        if (!forwardDate) continue
+          const pairs: Array<{ f: number; r: number }> = []
+          for (const { tsCode, factorValue } of valid) {
+            const ret = returnMap[tsCode]
+            if (ret != null && factorValue != null) pairs.push({ f: factorValue, r: ret })
+          }
+          if (pairs.length < 5) return null
 
-        const factorValues = await this.compute.getRawFactorValuesForDate(dto.factorName, tradeDate, dto.universe)
-        const valid = factorValues.filter((v) => v.factorValue != null)
-        if (!valid.length) continue
+          const fs = pairs.map((p) => p.f)
+          const rs = pairs.map((p) => p.r)
+          const ic = icMethod === 'rank' ? spearmanCorr(fs, rs) : pearsonCorr(fs, rs)
+          if (ic == null) return null
+          return { tradeDate, ic: Math.round(ic * 1e6) / 1e6, stockCount: pairs.length }
+        },
+      )
 
-        const returnMap = await this.getAdjReturns(
-          tradeDate,
-          forwardDate,
-          valid.map((v) => v.tsCode),
-        )
-
-        const pairs: Array<{ f: number; r: number }> = []
-        for (const { tsCode, factorValue } of valid) {
-          const ret = returnMap[tsCode]
-          if (ret != null && factorValue != null) pairs.push({ f: factorValue, r: ret })
-        }
-        if (pairs.length < 5) continue
-
-        const fs = pairs.map((p) => p.f)
-        const rs = pairs.map((p) => p.r)
-        const ic = icMethod === 'rank' ? spearmanCorr(fs, rs) : pearsonCorr(fs, rs)
-        if (ic != null) series.push({ tradeDate, ic: Math.round(ic * 1e6) / 1e6, stockCount: pairs.length })
-      }
+      const series = seriesWithEmpty.filter(
+        (item): item is { tradeDate: string; ic: number; stockCount: number } => item !== null,
+      )
 
       const ics = series.map((s) => s.ic)
       const icMean = ics.length ? mean(ics) : 0
@@ -344,24 +498,83 @@ export class FactorAnalysisService {
     const cacheKey = `factor:decay:${dto.factorName}:${dto.startDate}:${dto.endDate}:${dto.universe ?? 'all'}:${periods.join(',')}`
 
     return this.rememberFactorAnalysisCache(cacheKey, async () => {
-      const results = await Promise.all(
-        periods.map(async (period) => {
-          const icDto: FactorIcAnalysisDto = {
-            factorName: dto.factorName,
-            startDate: dto.startDate,
-            endDate: dto.endDate,
-            universe: dto.universe,
-            forwardDays: period,
-            icMethod: 'rank',
+      const uniquePeriods = [...new Set(periods)]
+      const tradeDateMatrix = await this.getForwardTradeDateMatrix(dto.startDate, dto.endDate, uniquePeriods)
+      const tradeDates = [...tradeDateMatrix.keys()]
+      const factorValuesByDate = await this.compute.getRawFactorValuesForDates(dto.factorName, tradeDates, dto.universe)
+      const icRowsByDate = await mapWithConcurrency(
+        tradeDates,
+        FACTOR_DECAY_ANALYSIS_CONCURRENCY,
+        async (tradeDate) => {
+          const forwardDatesByPeriod = new Map<number, string>()
+          const periodMap = tradeDateMatrix.get(tradeDate)
+          for (const period of uniquePeriods) {
+            const forwardDate = periodMap?.get(period)
+            if (forwardDate) forwardDatesByPeriod.set(period, forwardDate)
           }
-          const ic = await this.getIcAnalysis(icDto)
-          return {
+          if (forwardDatesByPeriod.size === 0) return []
+
+          const factorValues = factorValuesByDate.get(tradeDate) ?? []
+          const valid = factorValues.filter((v): v is { tsCode: string; factorValue: number } => v.factorValue != null)
+          if (!valid.length) return []
+
+          const returnsByPeriod = await this.getAdjReturnsByPeriod(
+            tradeDate,
+            forwardDatesByPeriod,
+            valid.map((v) => v.tsCode),
+          )
+
+          const icRows: Array<{ period: number; ic: number }> = []
+          for (const period of uniquePeriods) {
+            const returnMap = returnsByPeriod.get(period)
+            if (!returnMap) continue
+
+            const pairs: Array<{ f: number; r: number }> = []
+            for (const { tsCode, factorValue } of valid) {
+              const ret = returnMap[tsCode]
+              if (ret != null) pairs.push({ f: factorValue, r: ret })
+            }
+            if (pairs.length < 5) continue
+
+            const fs = pairs.map((p) => p.f)
+            const rs = pairs.map((p) => p.r)
+            const ic = spearmanCorr(fs, rs)
+            if (ic != null) icRows.push({ period, ic: Math.round(ic * 1e6) / 1e6 })
+          }
+          return icRows
+        },
+      )
+
+      const icsByPeriod = new Map<number, number[]>()
+      for (const rows of icRowsByDate) {
+        for (const row of rows) {
+          const ics = icsByPeriod.get(row.period) ?? []
+          ics.push(row.ic)
+          icsByPeriod.set(row.period, ics)
+        }
+      }
+
+      const summaryByPeriod = new Map(
+        uniquePeriods.map((period) => {
+          const ics = icsByPeriod.get(period) ?? []
+          const icMean = ics.length ? mean(ics) : 0
+          const icStd = ics.length ? stdDev(ics, icMean) : 0
+          const icIr = icStd !== 0 ? icMean / icStd : 0
+          const icPositiveRate = ics.length ? ics.filter((v) => v > 0).length / ics.length : 0
+          return [
             period,
-            icMean: ic.summary.icMean,
-            icIr: ic.summary.icIr,
-            icPositiveRate: ic.summary.icPositiveRate,
-          }
+            {
+              period,
+              icMean: Math.round(icMean * 1e6) / 1e6,
+              icIr: Math.round(icIr * 1e4) / 1e4,
+              icPositiveRate: Math.round(icPositiveRate * 1e4) / 1e4,
+            },
+          ] as const
         }),
+      )
+
+      const results = periods.map(
+        (period) => summaryByPeriod.get(period) ?? { period, icMean: 0, icIr: 0, icPositiveRate: 0 },
       )
 
       return { factorName: dto.factorName, results }

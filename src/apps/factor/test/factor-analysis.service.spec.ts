@@ -26,7 +26,10 @@ function buildPrismaMock() {
 }
 
 function buildComputeMock() {
-  return { getRawFactorValuesForDate: jest.fn(async () => []) }
+  return {
+    getRawFactorValuesForDate: jest.fn(async () => []),
+    getRawFactorValuesForDates: jest.fn(async () => new Map()),
+  }
 }
 
 function buildCacheMock() {
@@ -84,10 +87,11 @@ describe('FactorAnalysisService', () => {
 
     it('有因子数据 → series 被填充', async () => {
       mockPrisma.$queryRaw
-        .mockResolvedValueOnce([{ cal_date: new Date('2024-01-02') }, { cal_date: new Date('2024-01-03') }])
-        .mockResolvedValueOnce([{ cal_date: new Date('2024-01-03') }])
+        .mockResolvedValueOnce([
+          { cal_date: new Date('2024-01-02'), forward_date: new Date('2024-01-03') },
+          { cal_date: new Date('2024-01-03'), forward_date: null },
+        ])
         .mockResolvedValueOnce(FIVE_RETURNS)
-        .mockResolvedValueOnce([])
       mockCompute.getRawFactorValuesForDate.mockResolvedValueOnce(FIVE_STOCKS)
       const result = await service.getIcAnalysis(baseDto)
       expect(result.series).toHaveLength(1)
@@ -97,10 +101,11 @@ describe('FactorAnalysisService', () => {
 
     it('完全单调相关数据 → IC ≈ 1.0', async () => {
       mockPrisma.$queryRaw
-        .mockResolvedValueOnce([{ cal_date: new Date('2024-01-02') }, { cal_date: new Date('2024-01-03') }])
-        .mockResolvedValueOnce([{ cal_date: new Date('2024-01-03') }])
+        .mockResolvedValueOnce([
+          { cal_date: new Date('2024-01-02'), forward_date: new Date('2024-01-03') },
+          { cal_date: new Date('2024-01-03'), forward_date: null },
+        ])
         .mockResolvedValueOnce(FIVE_RETURNS)
-        .mockResolvedValueOnce([])
       mockCompute.getRawFactorValuesForDate.mockResolvedValueOnce(FIVE_STOCKS)
       const result = await service.getIcAnalysis(baseDto)
       expect(result.series[0].ic).toBeCloseTo(1.0, 3)
@@ -118,10 +123,11 @@ describe('FactorAnalysisService', () => {
         { ts_code: '000005.SZ', forward_return: 0.01 },
       ]
       mockPrisma.$queryRaw
-        .mockResolvedValueOnce([{ cal_date: new Date('2024-01-02') }, { cal_date: new Date('2024-01-03') }])
-        .mockResolvedValueOnce([{ cal_date: new Date('2024-01-03') }])
+        .mockResolvedValueOnce([
+          { cal_date: new Date('2024-01-02'), forward_date: new Date('2024-01-03') },
+          { cal_date: new Date('2024-01-03'), forward_date: null },
+        ])
         .mockResolvedValueOnce(REVERSED_RETURNS)
-        .mockResolvedValueOnce([])
       mockCompute.getRawFactorValuesForDate.mockResolvedValueOnce(FIVE_STOCKS)
       const result = await service.getIcAnalysis(baseDto)
       expect(result.series[0].ic).toBeCloseTo(-1.0, 3)
@@ -129,8 +135,11 @@ describe('FactorAnalysisService', () => {
 
     it('缓存命中 → 直接返回缓存值，不调用 getRawFactorValuesForDate', async () => {
       const cached = {
-        factorName: 'pe', forwardDays: 1, icMethod: 'rank',
-        startDate: '20240101', endDate: '20240110',
+        factorName: 'pe',
+        forwardDays: 1,
+        icMethod: 'rank',
+        startDate: '20240101',
+        endDate: '20240110',
         summary: { icMean: 0.05, icStd: 0.1, icIr: 0.5, icPositiveRate: 0.6, icAboveThreshold: 0.4, tStat: 1.2 },
         series: [{ tradeDate: '20240102', ic: 0.05, stockCount: 100 }],
       }
@@ -143,7 +152,11 @@ describe('FactorAnalysisService', () => {
 
   describe('getQuantileAnalysis()', () => {
     const baseDto: FactorQuantileAnalysisDto = {
-      factorName: 'pe', startDate: '20240101', endDate: '20240110', quantiles: 5, rebalanceDays: 5,
+      factorName: 'pe',
+      startDate: '20240101',
+      endDate: '20240110',
+      quantiles: 5,
+      rebalanceDays: 5,
     }
     it('交易日数量不足（< 2）→ 抛出 NotFoundException', async () => {
       mockPrisma.$queryRaw.mockResolvedValueOnce([{ cal_date: new Date('2024-01-02') }])
@@ -153,8 +166,11 @@ describe('FactorAnalysisService', () => {
       const tradeDates = Array.from({ length: 10 }, (_, i) => ({ cal_date: new Date(2024, 0, i + 2) }))
       mockPrisma.$queryRaw.mockResolvedValueOnce(tradeDates)
       const fiveGroupStocks = [
-        { tsCode: 'A', factorValue: 1 }, { tsCode: 'B', factorValue: 2 },
-        { tsCode: 'C', factorValue: 3 }, { tsCode: 'D', factorValue: 4 }, { tsCode: 'E', factorValue: 5 },
+        { tsCode: 'A', factorValue: 1 },
+        { tsCode: 'B', factorValue: 2 },
+        { tsCode: 'C', factorValue: 3 },
+        { tsCode: 'D', factorValue: 4 },
+        { tsCode: 'E', factorValue: 5 },
       ]
       mockCompute.getRawFactorValuesForDate.mockResolvedValue(fiveGroupStocks)
       mockPrisma.$queryRaw.mockResolvedValue([])
@@ -172,14 +188,20 @@ describe('FactorAnalysisService', () => {
       // Q3(顶2): E+F → mean(0.04, 0.02) = 0.03
       // 多空 = 0.03 - 0.11 = -0.08, 基准 = mean(全部) = 0.07
       const SIX_STOCKS = [
-        { tsCode: 'A', factorValue: 1 }, { tsCode: 'B', factorValue: 2 },
-        { tsCode: 'C', factorValue: 3 }, { tsCode: 'D', factorValue: 4 },
-        { tsCode: 'E', factorValue: 5 }, { tsCode: 'F', factorValue: 6 },
+        { tsCode: 'A', factorValue: 1 },
+        { tsCode: 'B', factorValue: 2 },
+        { tsCode: 'C', factorValue: 3 },
+        { tsCode: 'D', factorValue: 4 },
+        { tsCode: 'E', factorValue: 5 },
+        { tsCode: 'F', factorValue: 6 },
       ]
       const SIX_RETURNS = [
-        { ts_code: 'A', forward_return: 0.12 }, { ts_code: 'B', forward_return: 0.10 },
-        { ts_code: 'C', forward_return: 0.08 }, { ts_code: 'D', forward_return: 0.06 },
-        { ts_code: 'E', forward_return: 0.04 }, { ts_code: 'F', forward_return: 0.02 },
+        { ts_code: 'A', forward_return: 0.12 },
+        { ts_code: 'B', forward_return: 0.1 },
+        { ts_code: 'C', forward_return: 0.08 },
+        { ts_code: 'D', forward_return: 0.06 },
+        { ts_code: 'E', forward_return: 0.04 },
+        { ts_code: 'F', forward_return: 0.02 },
       ]
 
       // 2 个交易日，rebalanceDays=1 → 1 个调仓周期
@@ -191,8 +213,11 @@ describe('FactorAnalysisService', () => {
       mockPrisma.$queryRaw.mockResolvedValueOnce(SIX_RETURNS) // getAdjReturns
 
       const result = await service.getQuantileAnalysis({
-        factorName: 'pe', startDate: '20240101', endDate: '20240110',
-        quantiles: 3, rebalanceDays: 1,
+        factorName: 'pe',
+        startDate: '20240101',
+        endDate: '20240110',
+        quantiles: 3,
+        rebalanceDays: 1,
       })
 
       expect(result.groups).toHaveLength(3)
@@ -212,24 +237,34 @@ describe('FactorAnalysisService', () => {
       // Q5: [E,F]   → mean(0.04,0.02) = 0.03
       // 多空 = 0.03 - 0.12 = -0.09
       const SIX_STOCKS = [
-        { tsCode: 'A', factorValue: 1 }, { tsCode: 'B', factorValue: 2 },
-        { tsCode: 'C', factorValue: 3 }, { tsCode: 'D', factorValue: 4 },
-        { tsCode: 'E', factorValue: 5 }, { tsCode: 'F', factorValue: 6 },
+        { tsCode: 'A', factorValue: 1 },
+        { tsCode: 'B', factorValue: 2 },
+        { tsCode: 'C', factorValue: 3 },
+        { tsCode: 'D', factorValue: 4 },
+        { tsCode: 'E', factorValue: 5 },
+        { tsCode: 'F', factorValue: 6 },
       ]
       const SIX_RETURNS = [
-        { ts_code: 'A', forward_return: 0.12 }, { ts_code: 'B', forward_return: 0.10 },
-        { ts_code: 'C', forward_return: 0.08 }, { ts_code: 'D', forward_return: 0.06 },
-        { ts_code: 'E', forward_return: 0.04 }, { ts_code: 'F', forward_return: 0.02 },
+        { ts_code: 'A', forward_return: 0.12 },
+        { ts_code: 'B', forward_return: 0.1 },
+        { ts_code: 'C', forward_return: 0.08 },
+        { ts_code: 'D', forward_return: 0.06 },
+        { ts_code: 'E', forward_return: 0.04 },
+        { ts_code: 'F', forward_return: 0.02 },
       ]
       mockPrisma.$queryRaw.mockResolvedValueOnce([
-        { cal_date: new Date('2024-01-02') }, { cal_date: new Date('2024-01-03') },
+        { cal_date: new Date('2024-01-02') },
+        { cal_date: new Date('2024-01-03') },
       ])
       mockCompute.getRawFactorValuesForDate.mockResolvedValueOnce(SIX_STOCKS)
       mockPrisma.$queryRaw.mockResolvedValueOnce(SIX_RETURNS)
 
       const result = await service.getQuantileAnalysis({
-        factorName: 'pe', startDate: '20240101', endDate: '20240110',
-        quantiles: 5, rebalanceDays: 1,
+        factorName: 'pe',
+        startDate: '20240101',
+        endDate: '20240110',
+        quantiles: 5,
+        rebalanceDays: 1,
       })
 
       expect(result.groups).toHaveLength(5)
@@ -249,8 +284,11 @@ describe('FactorAnalysisService', () => {
     })
     it('正常因子数据 → stats 含 mean/median/std，histogram 有桶', async () => {
       const values = [
-        { tsCode: 'A', factorValue: 1 }, { tsCode: 'B', factorValue: 2 }, { tsCode: 'C', factorValue: 3 },
-        { tsCode: 'D', factorValue: 4 }, { tsCode: 'E', factorValue: 5 },
+        { tsCode: 'A', factorValue: 1 },
+        { tsCode: 'B', factorValue: 2 },
+        { tsCode: 'C', factorValue: 3 },
+        { tsCode: 'D', factorValue: 4 },
+        { tsCode: 'E', factorValue: 5 },
       ]
       mockCompute.getRawFactorValuesForDate.mockResolvedValueOnce(values)
       const result = await service.getDistribution(baseDto)
@@ -268,6 +306,30 @@ describe('FactorAnalysisService', () => {
       const result = await service.getDecayAnalysis(baseDto)
       expect(result.results).toHaveLength(5)
     })
+
+    it('多个持有期共享同一天因子截面，只回源一次因子值', async () => {
+      mockPrisma.$queryRaw
+        .mockResolvedValueOnce([
+          { cal_date: new Date('2024-01-02'), period: 1, forward_date: new Date('2024-01-03') },
+          { cal_date: new Date('2024-01-02'), period: 3, forward_date: new Date('2024-01-05') },
+        ])
+        .mockResolvedValueOnce([
+          ...FIVE_RETURNS.map((row) => ({ ...row, period: 1 })),
+          ...FIVE_RETURNS.map((row) => ({ ...row, period: 3 })),
+        ])
+      mockCompute.getRawFactorValuesForDates.mockResolvedValueOnce(new Map([['20240102', FIVE_STOCKS]]))
+
+      const result = await service.getDecayAnalysis({ ...baseDto, periods: [1, 3] })
+
+      expect(result.results).toEqual([
+        { period: 1, icMean: 1, icIr: 0, icPositiveRate: 1 },
+        { period: 3, icMean: 1, icIr: 0, icPositiveRate: 1 },
+      ])
+      expect(mockCompute.getRawFactorValuesForDates).toHaveBeenCalledTimes(1)
+      expect(mockCompute.getRawFactorValuesForDates).toHaveBeenCalledWith('pe', ['20240102'], undefined)
+      expect(mockCompute.getRawFactorValuesForDate).not.toHaveBeenCalled()
+      expect(mockPrisma.$queryRaw).toHaveBeenCalledTimes(2)
+    })
   })
 
   describe('getCorrelation()', () => {
@@ -280,10 +342,15 @@ describe('FactorAnalysisService', () => {
     })
     it('完全相同因子 → 相关性为 1', async () => {
       const identicalValues = [
-        { tsCode: '000001.SZ', factorValue: 3 }, { tsCode: '000002.SZ', factorValue: 3 },
-        { tsCode: '000003.SZ', factorValue: 3 }, { tsCode: '000004.SZ', factorValue: 3 }, { tsCode: '000005.SZ', factorValue: 3 },
+        { tsCode: '000001.SZ', factorValue: 3 },
+        { tsCode: '000002.SZ', factorValue: 3 },
+        { tsCode: '000003.SZ', factorValue: 3 },
+        { tsCode: '000004.SZ', factorValue: 3 },
+        { tsCode: '000005.SZ', factorValue: 3 },
       ]
-      mockCompute.getRawFactorValuesForDate.mockResolvedValueOnce(identicalValues).mockResolvedValueOnce(identicalValues)
+      mockCompute.getRawFactorValuesForDate
+        .mockResolvedValueOnce(identicalValues)
+        .mockResolvedValueOnce(identicalValues)
       const result = await service.getCorrelation(baseDto)
       expect(result.matrix[0][0]).toBe(1)
     })

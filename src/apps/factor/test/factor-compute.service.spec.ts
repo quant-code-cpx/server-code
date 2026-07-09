@@ -25,6 +25,7 @@ function buildPrismaMock() {
     factorSnapshotSummary: {
       findUnique: jest.fn(async () => null),
       findFirst: jest.fn(async () => null),
+      findMany: jest.fn(async () => []),
     },
     factorSnapshotRow: {
       findMany: jest.fn(async () => []),
@@ -187,6 +188,47 @@ describe('FactorComputeService', () => {
 
       expect(prisma.$queryRaw).toHaveBeenCalled()
       expect(result).toBeDefined()
+    })
+  })
+
+  describe('getRawFactorValuesForDates()', () => {
+    it('[BIZ] daily_basic 因子无快照时批量实时计算并按日期分组', async () => {
+      const prisma = buildPrismaMock()
+      prisma.factorSnapshotSummary.findMany.mockResolvedValue([])
+      prisma.$queryRaw.mockResolvedValueOnce([
+        { trade_date: '20240102', ts_code: '000001.SZ', factor_value: 8.5 },
+        { trade_date: '20240102', ts_code: '000002.SZ', factor_value: null },
+        { trade_date: '20240103', ts_code: '000001.SZ', factor_value: 8.8 },
+      ])
+      const svc = createService(prisma)
+
+      const result = await svc.getRawFactorValuesForDates('pe_ttm', ['20240102', '20240103'])
+
+      expect(prisma.factorSnapshotSummary.findMany).toHaveBeenCalledWith({
+        where: { factorName: 'pe_ttm', tradeDate: { in: ['20240102', '20240103'] } },
+        select: { tradeDate: true },
+      })
+      expect(prisma.$queryRaw).toHaveBeenCalledTimes(1)
+      expect(result.get('20240102')).toEqual([
+        { tsCode: '000001.SZ', factorValue: 8.5 },
+        { tsCode: '000002.SZ', factorValue: null },
+      ])
+      expect(result.get('20240103')).toEqual([{ tsCode: '000001.SZ', factorValue: 8.8 }])
+    })
+
+    it('[BIZ] 部分日期有快照时优先使用快照，缺失日期批量实时计算', async () => {
+      const prisma = buildPrismaMock()
+      prisma.factorSnapshotSummary.findMany.mockResolvedValue([{ tradeDate: '20240102' }])
+      prisma.$queryRaw
+        .mockResolvedValueOnce([{ trade_date: '20240102', ts_code: '000001.SZ', factor_value: 7.5 }])
+        .mockResolvedValueOnce([{ trade_date: '20240103', ts_code: '000001.SZ', factor_value: 8.8 }])
+      const svc = createService(prisma)
+
+      const result = await svc.getRawFactorValuesForDates('pe_ttm', ['20240102', '20240103'])
+
+      expect(prisma.$queryRaw).toHaveBeenCalledTimes(2)
+      expect(result.get('20240102')).toEqual([{ tsCode: '000001.SZ', factorValue: 7.5 }])
+      expect(result.get('20240103')).toEqual([{ tsCode: '000001.SZ', factorValue: 8.8 }])
     })
   })
 

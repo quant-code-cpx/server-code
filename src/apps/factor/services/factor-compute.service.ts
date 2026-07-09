@@ -67,6 +67,20 @@ interface StatsRow {
   q75_val: number | null
 }
 
+interface RawFactorValue {
+  tsCode: string
+  factorValue: number | null
+}
+
+interface RawFactorValueRow {
+  ts_code: string
+  factor_value: number | null
+}
+
+interface RawFactorValueByDateRow extends RawFactorValueRow {
+  trade_date: string
+}
+
 @Injectable()
 export class FactorComputeService {
   private readonly logger = new Logger(FactorComputeService.name)
@@ -838,16 +852,54 @@ export class FactorComputeService {
     return this.computeRealtimeRaw(factorName, tradeDate, universe)
   }
 
+  async getRawFactorValuesForDates(
+    factorName: string,
+    tradeDates: string[],
+    universe?: string,
+  ): Promise<Map<string, RawFactorValue[]>> {
+    const uniqueTradeDates = [...new Set(tradeDates)]
+    const result = new Map<string, RawFactorValue[]>(uniqueTradeDates.map((tradeDate) => [tradeDate, []]))
+    if (!uniqueTradeDates.length) return result
+
+    const snapshotSummaries = await this.prisma.factorSnapshotSummary.findMany({
+      where: { factorName, tradeDate: { in: uniqueTradeDates } },
+      select: { tradeDate: true },
+    })
+    const snapshotDates = new Set(snapshotSummaries.map((row) => row.tradeDate))
+
+    if (snapshotDates.size > 0) {
+      const snapshotRows = await this.getRawSnapshotsForDates(factorName, [...snapshotDates], universe)
+      for (const [tradeDate, values] of snapshotRows) {
+        result.set(tradeDate, values)
+      }
+    }
+
+    const missingDates = uniqueTradeDates.filter((tradeDate) => !snapshotDates.has(tradeDate))
+    if (!missingDates.length) return result
+
+    const batchRealtime = await this.computeRealtimeRawForDates(factorName, missingDates, universe)
+    if (batchRealtime !== null) {
+      this.logger.debug(
+        `[${factorName}] ${missingDates.length}/${uniqueTradeDates.length} 个日期无预计算快照，批量降级实时计算`,
+      )
+      for (const [tradeDate, values] of batchRealtime) {
+        result.set(tradeDate, values)
+      }
+      return result
+    }
+
+    for (const tradeDate of missingDates) {
+      this.logger.debug(`[${factorName}] ${tradeDate} 无预计算快照，降级实时计算`)
+      result.set(tradeDate, await this.computeRealtimeRaw(factorName, tradeDate, universe))
+    }
+    return result
+  }
+
   private async getRawFromSnapshot(
     factorName: string,
     tradeDate: string,
     universe?: string,
   ): Promise<Array<{ tsCode: string; factorValue: number | null }> | null> {
-    interface SnapshotRawRow {
-      ts_code: string
-      factor_value: number | null
-    }
-
     const summaryCheck = await this.prisma.factorSnapshotSummary.findUnique({
       where: { factorName_tradeDate: { factorName, tradeDate } },
     })
@@ -863,7 +915,7 @@ export class FactorComputeService {
           )`
       : Prisma.sql``
 
-    const rows = await this.prisma.$queryRaw<SnapshotRawRow[]>(Prisma.sql`
+    const rows = await this.prisma.$queryRaw<RawFactorValueRow[]>(Prisma.sql`
       SELECT fs.ts_code, fs.value::float AS factor_value
       FROM factor_snapshots fs
       ${universeJoin}
@@ -875,6 +927,156 @@ export class FactorComputeService {
       tsCode: r.ts_code,
       factorValue: r.factor_value != null ? Number(r.factor_value) : null,
     }))
+  }
+
+  private async getRawSnapshotsForDates(
+    factorName: string,
+    tradeDates: string[],
+    universe?: string,
+  ): Promise<Map<string, RawFactorValue[]>> {
+    if (!tradeDates.length) return new Map()
+
+    const tradeDateValues = Prisma.join(tradeDates)
+    const universeJoin = universe
+      ? Prisma.sql`INNER JOIN index_constituent_weights iw
+          ON iw.con_code = fs.ts_code
+          AND iw.index_code = ${universe}
+          AND iw.trade_date = (
+            SELECT MAX(trade_date) FROM index_constituent_weights
+            WHERE index_code = ${universe} AND trade_date <= fs.trade_date
+          )`
+      : Prisma.sql``
+
+    const rows = await this.prisma.$queryRaw<RawFactorValueByDateRow[]>(Prisma.sql`
+      SELECT fs.trade_date, fs.ts_code, fs.value::float AS factor_value
+      FROM factor_snapshots fs
+      ${universeJoin}
+      WHERE fs.factor_name = ${factorName}
+        AND fs.trade_date IN (${tradeDateValues})
+    `)
+
+    return this.groupRawRowsByTradeDate(rows, tradeDates)
+  }
+
+  private async computeRealtimeRawForDates(
+    factorName: string,
+    tradeDates: string[],
+    universe?: string,
+  ): Promise<Map<string, RawFactorValue[]> | null> {
+    if (!tradeDates.length) return new Map()
+
+    if (FIELD_REF_MAP[factorName]?.table === 'daily_basic') {
+      return this.queryDailyBasicRawForDates(factorName, FIELD_REF_MAP[factorName].column, tradeDates, universe)
+    }
+
+    if (DERIVED_DAILY_BASIC_MAP[factorName]) {
+      return this.queryDerivedDailyBasicRawForDates(
+        factorName,
+        DERIVED_DAILY_BASIC_MAP[factorName],
+        tradeDates,
+        universe,
+      )
+    }
+
+    return null
+  }
+
+  private async queryDailyBasicRawForDates(
+    _factorName: string,
+    column: string,
+    tradeDates: string[],
+    universe?: string,
+  ): Promise<Map<string, RawFactorValue[]>> {
+    const col = Prisma.raw(column)
+    return this.queryDailyBasicRawExpressionForDates(Prisma.sql`db.${col}`, tradeDates, universe)
+  }
+
+  private async queryDerivedDailyBasicRawForDates(
+    _factorName: string,
+    expression: string,
+    tradeDates: string[],
+    universe?: string,
+  ): Promise<Map<string, RawFactorValue[]>> {
+    return this.queryDailyBasicRawExpressionForDates(Prisma.raw(`(${expression})`), tradeDates, universe)
+  }
+
+  private async queryDailyBasicRawExpressionForDates(
+    factorExpression: Prisma.Sql,
+    tradeDates: string[],
+    universe?: string,
+  ): Promise<Map<string, RawFactorValue[]>> {
+    const minTradeDate = tradeDates.reduce((min, tradeDate) => (tradeDate < min ? tradeDate : min), tradeDates[0]!)
+    const maxTradeDate = tradeDates.reduce((max, tradeDate) => (tradeDate > max ? tradeDate : max), tradeDates[0]!)
+    const dateValues = Prisma.join(tradeDates.map((tradeDate) => Prisma.sql`(${tradeDate}, ${tradeDate}::date)`))
+    const universeCte = universe
+      ? Prisma.sql`,
+      universe_dates AS MATERIALIZED (
+        SELECT
+          dates.trade_date_text,
+          (
+            SELECT MAX(iw.trade_date)
+            FROM index_constituent_weights iw
+            WHERE iw.index_code = ${universe}
+              AND iw.trade_date <= dates.trade_date_text
+          ) AS iw_trade_date
+        FROM dates
+      )`
+      : Prisma.sql``
+    const universeJoin = universe
+      ? Prisma.sql`INNER JOIN universe_dates ud ON ud.trade_date_text = dates.trade_date_text
+        INNER JOIN index_constituent_weights iw
+          ON iw.con_code = db.ts_code
+          AND iw.index_code = ${universe}
+          AND iw.trade_date = ud.iw_trade_date`
+      : Prisma.sql``
+
+    const rows = await this.prisma.$queryRaw<RawFactorValueByDateRow[]>(Prisma.sql`
+      WITH dates(trade_date_text, trade_date) AS (
+        VALUES ${dateValues}
+      ),
+      valid_stocks AS MATERIALIZED (
+        SELECT sb.ts_code, sb.list_date
+        FROM stock_basic_profiles sb
+        WHERE sb.name NOT LIKE '%ST%'
+          AND sb.name NOT LIKE '%退%'
+      ),
+      suspended AS MATERIALIZED (
+        SELECT sp.ts_code, sp.trade_date
+        FROM stock_suspend_events sp
+        WHERE sp.trade_date >= ${minTradeDate}
+          AND sp.trade_date <= ${maxTradeDate}
+      )
+      ${universeCte}
+      SELECT
+        dates.trade_date_text AS trade_date,
+        db.ts_code,
+        ${factorExpression}::float AS factor_value
+      FROM dates
+      INNER JOIN stock_daily_valuation_metrics db ON db.trade_date = dates.trade_date
+      INNER JOIN valid_stocks sb ON sb.ts_code = db.ts_code
+      ${universeJoin}
+      LEFT JOIN suspended sp ON sp.ts_code = db.ts_code AND sp.trade_date = dates.trade_date_text
+      WHERE sp.ts_code IS NULL
+        AND (sb.list_date IS NULL OR sb.list_date <= (dates.trade_date - INTERVAL '60 days'))
+    `)
+
+    return this.groupRawRowsByTradeDate(rows, tradeDates)
+  }
+
+  private groupRawRowsByTradeDate(
+    rows: RawFactorValueByDateRow[],
+    tradeDates: string[],
+  ): Map<string, RawFactorValue[]> {
+    const grouped = new Map<string, RawFactorValue[]>(tradeDates.map((tradeDate) => [tradeDate, []]))
+    for (const row of rows) {
+      const values = grouped.get(row.trade_date) ?? []
+      values.push({
+        tsCode: row.ts_code,
+        factorValue: row.factor_value != null ? Number(row.factor_value) : null,
+      })
+      grouped.set(row.trade_date, values)
+    }
+    return grouped
   }
 
   /**

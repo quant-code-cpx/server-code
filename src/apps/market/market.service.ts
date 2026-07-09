@@ -1109,43 +1109,96 @@ export class MarketService {
         ts_code: string
         name: string | null
         industry: string | null
-        main_net_inflow: string
-        elg_net_inflow: string
-        lg_net_inflow: string
-        md_net_inflow: string
-        sm_net_inflow: string
+        main_net_inflow: string | number
+        elg_net_inflow: string | number
+        lg_net_inflow: string | number
+        md_net_inflow: string | number
+        sm_net_inflow: string | number
         pct_chg: number | null
         amount: number | null
       }
 
-      const sortColMap: Record<string, Prisma.Sql> = {
+      const flowSortColMap: Record<string, Prisma.Sql> = {
         main_net_inflow: Prisma.sql`main_net_inflow`,
         elg_net_inflow: Prisma.sql`elg_net_inflow`,
         lg_net_inflow: Prisma.sql`lg_net_inflow`,
-        pct_chg: Prisma.sql`d.pct_chg`,
       }
-      const sortCol = sortColMap[sortBy] ?? Prisma.sql`main_net_inflow`
+      const rankedFlowSortColMap: Record<string, Prisma.Sql> = {
+        main_net_inflow: Prisma.sql`mf.main_net_inflow`,
+        elg_net_inflow: Prisma.sql`mf.elg_net_inflow`,
+        lg_net_inflow: Prisma.sql`mf.lg_net_inflow`,
+      }
+      const flowSortCol = flowSortColMap[sortBy] ?? Prisma.sql`main_net_inflow`
+      const rankedFlowSortCol = rankedFlowSortColMap[sortBy] ?? Prisma.sql`mf.main_net_inflow`
 
-      const buildQuery = (dirSql: Prisma.Sql): Prisma.Sql => Prisma.sql`
-        SELECT
-          mf.ts_code,
-          sb.name,
-          sb.industry,
-          (COALESCE(mf.buy_elg_amount, 0) - COALESCE(mf.sell_elg_amount, 0)
-           + COALESCE(mf.buy_lg_amount, 0)  - COALESCE(mf.sell_lg_amount, 0))  AS main_net_inflow,
-          (COALESCE(mf.buy_elg_amount, 0) - COALESCE(mf.sell_elg_amount, 0))   AS elg_net_inflow,
-          (COALESCE(mf.buy_lg_amount, 0)  - COALESCE(mf.sell_lg_amount, 0))    AS lg_net_inflow,
-          (COALESCE(mf.buy_md_amount, 0)  - COALESCE(mf.sell_md_amount, 0))    AS md_net_inflow,
-          (COALESCE(mf.buy_sm_amount, 0)  - COALESCE(mf.sell_sm_amount, 0))    AS sm_net_inflow,
-          d.pct_chg,
-          d.amount
-        FROM stock_capital_flows mf
-        JOIN stock_basic_profiles sb ON sb.ts_code = mf.ts_code
-        LEFT JOIN stock_daily_prices d ON d.ts_code = mf.ts_code AND d.trade_date = mf.trade_date
-        WHERE mf.trade_date = ${tradeDateStr}::date
-        ORDER BY ${sortCol} ${dirSql} NULLS LAST
-        LIMIT ${limit}
-      `
+      const buildFlowRankQuery = (dirSql: Prisma.Sql): Prisma.Sql =>
+        sortBy === 'pct_chg'
+          ? Prisma.sql`
+            WITH ranked_flow AS MATERIALIZED (
+              SELECT
+                mf.ts_code,
+                mf.trade_date,
+                (COALESCE(mf.buy_elg_amount, 0) - COALESCE(mf.sell_elg_amount, 0)
+                 + COALESCE(mf.buy_lg_amount, 0)  - COALESCE(mf.sell_lg_amount, 0)) AS main_net_inflow,
+                (COALESCE(mf.buy_elg_amount, 0) - COALESCE(mf.sell_elg_amount, 0))  AS elg_net_inflow,
+                (COALESCE(mf.buy_lg_amount, 0)  - COALESCE(mf.sell_lg_amount, 0))   AS lg_net_inflow,
+                (COALESCE(mf.buy_md_amount, 0)  - COALESCE(mf.sell_md_amount, 0))   AS md_net_inflow,
+                (COALESCE(mf.buy_sm_amount, 0)  - COALESCE(mf.sell_sm_amount, 0))   AS sm_net_inflow,
+                d.pct_chg,
+                d.amount
+              FROM stock_capital_flows mf
+              LEFT JOIN stock_daily_prices d ON d.ts_code = mf.ts_code AND d.trade_date = mf.trade_date
+              WHERE mf.trade_date = ${tradeDateStr}::date
+              ORDER BY d.pct_chg ${dirSql} NULLS LAST
+              LIMIT ${limit}
+            )
+            SELECT
+              mf.ts_code,
+              sb.name,
+              sb.industry,
+              mf.main_net_inflow,
+              mf.elg_net_inflow,
+              mf.lg_net_inflow,
+              mf.md_net_inflow,
+              mf.sm_net_inflow,
+              mf.pct_chg,
+              mf.amount
+            FROM ranked_flow mf
+            JOIN stock_basic_profiles sb ON sb.ts_code = mf.ts_code
+            ORDER BY mf.pct_chg ${dirSql} NULLS LAST
+          `
+          : Prisma.sql`
+            WITH ranked_flow AS MATERIALIZED (
+              SELECT
+                mf.ts_code,
+                mf.trade_date,
+                (COALESCE(mf.buy_elg_amount, 0) - COALESCE(mf.sell_elg_amount, 0)
+                 + COALESCE(mf.buy_lg_amount, 0)  - COALESCE(mf.sell_lg_amount, 0)) AS main_net_inflow,
+                (COALESCE(mf.buy_elg_amount, 0) - COALESCE(mf.sell_elg_amount, 0))  AS elg_net_inflow,
+                (COALESCE(mf.buy_lg_amount, 0)  - COALESCE(mf.sell_lg_amount, 0))   AS lg_net_inflow,
+                (COALESCE(mf.buy_md_amount, 0)  - COALESCE(mf.sell_md_amount, 0))   AS md_net_inflow,
+                (COALESCE(mf.buy_sm_amount, 0)  - COALESCE(mf.sell_sm_amount, 0))   AS sm_net_inflow
+              FROM stock_capital_flows mf
+              WHERE mf.trade_date = ${tradeDateStr}::date
+              ORDER BY ${flowSortCol} ${dirSql} NULLS LAST
+              LIMIT ${limit}
+            )
+            SELECT
+              mf.ts_code,
+              sb.name,
+              sb.industry,
+              mf.main_net_inflow,
+              mf.elg_net_inflow,
+              mf.lg_net_inflow,
+              mf.md_net_inflow,
+              mf.sm_net_inflow,
+              d.pct_chg,
+              d.amount
+            FROM ranked_flow mf
+            JOIN stock_basic_profiles sb ON sb.ts_code = mf.ts_code
+            LEFT JOIN stock_daily_prices d ON d.ts_code = mf.ts_code AND d.trade_date = mf.trade_date
+            ORDER BY ${rankedFlowSortCol} ${dirSql} NULLS LAST
+          `
 
       const mapRow = (r: RawRow) => ({
         tsCode: r.ts_code,
@@ -1162,8 +1215,8 @@ export class MarketService {
 
       if (dual) {
         const [topInflowRows, topOutflowRows] = await Promise.all([
-          this.prisma.$queryRaw<RawRow[]>(buildQuery(Prisma.sql`DESC`)),
-          this.prisma.$queryRaw<RawRow[]>(buildQuery(Prisma.sql`ASC`)),
+          this.prisma.$queryRaw<RawRow[]>(buildFlowRankQuery(Prisma.sql`DESC`)),
+          this.prisma.$queryRaw<RawRow[]>(buildFlowRankQuery(Prisma.sql`ASC`)),
         ])
         return {
           tradeDate,
@@ -1174,7 +1227,7 @@ export class MarketService {
 
       const order = query.order ?? 'desc'
       const rows = await this.prisma.$queryRaw<RawRow[]>(
-        buildQuery(order === 'desc' ? Prisma.sql`DESC` : Prisma.sql`ASC`),
+        buildFlowRankQuery(order === 'desc' ? Prisma.sql`DESC` : Prisma.sql`ASC`),
       )
       return { tradeDate, data: rows.map(mapRow) }
     })

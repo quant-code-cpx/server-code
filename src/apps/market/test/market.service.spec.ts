@@ -61,6 +61,11 @@ function buildCacheMock() {
   }
 }
 
+function readSqlText(sqlArg: unknown): string {
+  const sql = sqlArg as { sql?: string; strings?: string[] }
+  return sql.sql ?? sql.strings?.join('') ?? String(sqlArg)
+}
+
 // ── 测试套件 ──────────────────────────────────────────────────────────────────
 
 describe('MarketService', () => {
@@ -201,6 +206,75 @@ describe('MarketService', () => {
       const result = await service.getIndexQuote({})
 
       expect(result).toEqual([])
+    })
+  })
+
+  // ── getMainFlowRanking() ─────────────────────────────────────────────────
+
+  describe('getMainFlowRanking()', () => {
+    it('默认按主力净流入排行 → 先在资金表 Top-N，再关联个股资料', async () => {
+      mockPrisma.$queryRaw.mockResolvedValueOnce([
+        {
+          ts_code: '000001.SZ',
+          name: '平安银行',
+          industry: '银行',
+          main_net_inflow: 30,
+          elg_net_inflow: 20,
+          lg_net_inflow: 10,
+          md_net_inflow: -5,
+          sm_net_inflow: -25,
+          pct_chg: 1.5,
+          amount: 1000,
+        },
+      ])
+
+      const result = await service.getMainFlowRanking({ trade_date: '20240102', limit: 20 })
+
+      expect(result).toEqual({
+        tradeDate: new Date('2024-01-02T00:00:00.000Z'),
+        data: [
+          {
+            tsCode: '000001.SZ',
+            name: '平安银行',
+            industry: '银行',
+            mainNetInflow: 30,
+            elgNetInflow: 20,
+            lgNetInflow: 10,
+            mdNetInflow: -5,
+            smNetInflow: -25,
+            pctChg: 1.5,
+            amount: 1000,
+          },
+        ],
+      })
+      const sql = readSqlText((mockPrisma.$queryRaw.mock.calls[0] as unknown[])[0])
+      expect(sql).toContain('WITH ranked_flow AS MATERIALIZED')
+      expect(sql).toContain('FROM stock_capital_flows mf')
+      expect(sql).toContain('LIMIT')
+      expect(sql).toContain('LEFT JOIN stock_daily_prices d')
+      expect(sql.indexOf('LIMIT')).toBeLessThan(sql.indexOf('LEFT JOIN stock_daily_prices d'))
+    })
+
+    it('按 pct_chg 排序 → CTE 内先关联日线并截断，避免全量股票资料 join', async () => {
+      mockPrisma.$queryRaw.mockResolvedValueOnce([])
+
+      await service.getMainFlowRanking({ trade_date: '20240102', sort_by: 'pct_chg', order: 'asc', limit: 10 })
+
+      const sql = readSqlText((mockPrisma.$queryRaw.mock.calls[0] as unknown[])[0])
+      expect(sql).toContain('WITH ranked_flow AS MATERIALIZED')
+      expect(sql).toContain('ORDER BY d.pct_chg')
+      expect(sql.indexOf('LIMIT')).toBeLessThan(sql.indexOf('JOIN stock_basic_profiles sb'))
+    })
+
+    it('dual=true → 生成流入/流出两条 Top-N 查询', async () => {
+      mockPrisma.$queryRaw.mockResolvedValueOnce([]).mockResolvedValueOnce([])
+
+      const result = await service.getMainFlowRanking({ trade_date: '20240102', dual: true, limit: 5 })
+
+      expect(result).toEqual({ tradeDate: new Date('2024-01-02T00:00:00.000Z'), topInflow: [], topOutflow: [] })
+      expect(mockPrisma.$queryRaw).toHaveBeenCalledTimes(2)
+      expect(readSqlText((mockPrisma.$queryRaw.mock.calls[0] as unknown[])[0])).toContain('DESC')
+      expect(readSqlText((mockPrisma.$queryRaw.mock.calls[1] as unknown[])[0])).toContain('ASC')
     })
   })
 

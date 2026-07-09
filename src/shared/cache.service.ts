@@ -36,6 +36,7 @@ export class CacheService {
   private static readonly METRICS_KEY_PREFIX = 'cache:metrics:'
   private static readonly SCAN_COUNT = Number(process.env.CACHE_SCAN_COUNT) || 200
   private static readonly DELETE_CHUNK_SIZE = Number(process.env.CACHE_DELETE_CHUNK_SIZE) || 200
+  private readonly inFlightJsonLoads = new Map<string, Promise<unknown>>()
 
   constructor(
     @Inject(REDIS_CLIENT) private readonly redis: RedisClientType,
@@ -71,6 +72,29 @@ export class CacheService {
       this.logger.warn(`缓存读取失败，已回源数据库: ${key} (${this.formatError(error)})`, CacheService.name)
     }
 
+    const inFlight = this.inFlightJsonLoads.get(key) as Promise<T> | undefined
+    if (inFlight) {
+      return inFlight
+    }
+
+    const loadPromise = this.loadAndWriteJson({ namespace, key, ttlSeconds, loader, skipCacheIf })
+    this.inFlightJsonLoads.set(key, loadPromise)
+    try {
+      return await loadPromise
+    } finally {
+      if (this.inFlightJsonLoads.get(key) === loadPromise) {
+        this.inFlightJsonLoads.delete(key)
+      }
+    }
+  }
+
+  private async loadAndWriteJson<T>({
+    namespace,
+    key,
+    ttlSeconds,
+    loader,
+    skipCacheIf,
+  }: RememberJsonOptions<T>): Promise<T> {
     const value = await loader()
 
     try {

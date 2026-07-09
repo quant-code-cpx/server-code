@@ -234,6 +234,7 @@ export class IndustryRotationService {
       days,
       sortBy,
       order,
+      limit: limit ?? null,
     })
 
     return this.rememberCache(cacheKey, STANDARD_CACHE_TTL, async () => {

@@ -423,6 +423,19 @@ describe('EventStudyController — DTO校验 + Guard权限 + 接口契约', () =
       deleteRule: jest.fn().mockResolvedValue(undefined),
       previewRule: jest.fn().mockResolvedValue({ matchCount: 0 }),
       scanAndGenerate: jest.fn().mockResolvedValue({ signalsGenerated: 5 }),
+      enqueueScan: jest.fn().mockResolvedValue({ jobId: 'job-1', status: 'QUEUED', tradeDate: '20240115' }),
+      getScanJobStatus: jest.fn().mockResolvedValue({
+        jobId: 'job-1',
+        status: 'COMPLETED',
+        state: 'completed',
+        tradeDate: '20240115',
+        progress: 100,
+        result: { tradeDate: '20240115', signalsGenerated: 5, completedAt: '2024-01-15T00:00:00.000Z' },
+        failedReason: null,
+        createdAt: '2024-01-15T00:00:00.000Z',
+        processedAt: null,
+        finishedAt: '2024-01-15T00:00:01.000Z',
+      }),
       querySignals: jest.fn().mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 20 }),
     }
 

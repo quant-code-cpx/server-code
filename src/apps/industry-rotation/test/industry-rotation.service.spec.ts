@@ -280,6 +280,12 @@ describe('IndustryRotationService', () => {
       expect(result.industries[0].stockCount).toBe(42)
       expect(result.industries[0].peTtmMedian).toBe(6.5)
       expect(result.industries[0].valuationLabel).toBe('低估')
+
+      const valuationSql = (prisma.$queryRawUnsafe.mock.calls as unknown as string[][])[1][0]
+      expect(valuationSql).toContain('WITH current_medians AS')
+      expect(valuationSql).toContain('history.pe_ttm_median < current.pe_ttm_median')
+      expect(valuationSql).toContain('history.pb_median < current.pb_median')
+      expect(valuationSql).not.toContain('PERCENT_RANK()')
     })
 
     it('请求日期晚于预计算估值日期时回退到最近可用日期', async () => {
@@ -309,6 +315,22 @@ describe('IndustryRotationService', () => {
         "SELECT MAX(trade_date) AS trade_date FROM valuation_daily_medians WHERE scope != '__ALL__' AND trade_date <= $1::date",
         '20240628',
       )
+    })
+
+    it('筛选行业时仅查询目标行业的当前值和历史值', async () => {
+      const prisma = buildPrismaMock()
+      prisma.$queryRawUnsafe
+        .mockResolvedValueOnce([{ trade_date: new Date('2024-06-28T00:00:00.000Z') }])
+        .mockResolvedValueOnce([])
+      const svc = createService({ prisma })
+
+      await svc.getIndustryValuation({ industry: '银行' })
+
+      const calls = prisma.$queryRawUnsafe.mock.calls as unknown as [string, ...unknown[]][]
+      expect(calls[0][0]).toContain('scope = $1')
+      expect(calls[0][1]).toBe('银行')
+      expect(calls[1][0]).toContain('AND scope = $4')
+      expect(calls[1].slice(1)).toEqual(['20240628', '20230628', '20210628', '银行'])
     })
 
     it('PE 百分位 > 75 标为高估', async () => {

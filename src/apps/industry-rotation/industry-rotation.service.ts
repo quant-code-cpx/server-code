@@ -378,9 +378,9 @@ export class IndustryRotationService {
       const threeYearAgo = dayjs(tradeDate).tz('Asia/Shanghai').subtract(3, 'year').format('YYYYMMDD')
 
       // Use pre-computed valuation_daily_medians table (populated by syncDailyBasic).
-      // Scanning ~22k pre-aggregated rows is orders of magnitude faster than the
-      // previous approach of scanning ~4M raw stock rows with PERCENTILE_CONT.
-      const industryCondition = industryFilter ? 'AND scope = $4' : ''
+      // Only compare each target-day median with its history. This preserves
+      // PERCENT_RANK semantics without sorting every historical row four times.
+      const industryCondition = industryFilter ? 'scope = $4' : "scope != '__ALL__'"
       const params: (string | number)[] = [tradeDateStr, oneYearAgo, threeYearAgo]
       if (industryFilter) params.push(industryFilter)
 
@@ -397,41 +397,73 @@ export class IndustryRotationService {
 
       const rows = await this.prisma.$queryRawUnsafe<PrecomputedRow[]>(
         `
-        WITH medians AS (
-          SELECT scope AS industry, trade_date, pe_ttm_median, pb_median, stock_count
+        WITH current_medians AS (
+          SELECT scope AS industry, stock_count, pe_ttm_median, pb_median
           FROM valuation_daily_medians
-          WHERE scope != '__ALL__'
-            AND trade_date >= $3::date AND trade_date <= $1::date
-            ${industryCondition}
-        ),
-        pctl_1y AS (
-          SELECT
-            industry, trade_date,
-            PERCENT_RANK() OVER (PARTITION BY industry ORDER BY pe_ttm_median) AS pe_pctl,
-            PERCENT_RANK() OVER (PARTITION BY industry ORDER BY pb_median) AS pb_pctl
-          FROM medians
-          WHERE trade_date >= $2::date
-        ),
-        pctl_3y AS (
-          SELECT
-            industry, trade_date,
-            PERCENT_RANK() OVER (PARTITION BY industry ORDER BY pe_ttm_median) AS pe_pctl,
-            PERCENT_RANK() OVER (PARTITION BY industry ORDER BY pb_median) AS pb_pctl
-          FROM medians
+          WHERE trade_date = $1::date
+            AND ${industryCondition}
         )
         SELECT
-          t.industry,
-          t.stock_count,
-          t.pe_ttm_median,
-          t.pb_median,
-          ROUND((p1.pe_pctl * 100)::numeric, 2) AS pe_pctl_1y,
-          ROUND((p1.pb_pctl * 100)::numeric, 2) AS pb_pctl_1y,
-          ROUND((p3.pe_pctl * 100)::numeric, 2) AS pe_pctl_3y,
-          ROUND((p3.pb_pctl * 100)::numeric, 2) AS pb_pctl_3y
-        FROM medians t
-        LEFT JOIN pctl_1y p1 ON p1.industry = t.industry AND p1.trade_date = $1::date
-        LEFT JOIN pctl_3y p3 ON p3.industry = t.industry AND p3.trade_date = $1::date
-        WHERE t.trade_date = $1::date
+          current.industry,
+          current.stock_count,
+          current.pe_ttm_median,
+          current.pb_median,
+          ROUND(
+            COUNT(*) FILTER (
+              WHERE history.trade_date >= $2::date
+                AND CASE
+                  WHEN current.pe_ttm_median IS NULL THEN history.pe_ttm_median IS NOT NULL
+                  ELSE history.pe_ttm_median < current.pe_ttm_median
+                END
+            )::numeric
+            / NULLIF(COUNT(*) FILTER (WHERE history.trade_date >= $2::date) - 1, 0)
+            * 100,
+            2
+          ) AS pe_pctl_1y,
+          ROUND(
+            COUNT(*) FILTER (
+              WHERE history.trade_date >= $2::date
+                AND CASE
+                  WHEN current.pb_median IS NULL THEN history.pb_median IS NOT NULL
+                  ELSE history.pb_median < current.pb_median
+                END
+            )::numeric
+            / NULLIF(COUNT(*) FILTER (WHERE history.trade_date >= $2::date) - 1, 0)
+            * 100,
+            2
+          ) AS pb_pctl_1y,
+          ROUND(
+            COUNT(*) FILTER (
+              WHERE CASE
+                WHEN current.pe_ttm_median IS NULL THEN history.pe_ttm_median IS NOT NULL
+                ELSE history.pe_ttm_median < current.pe_ttm_median
+              END
+            )::numeric
+            / NULLIF(COUNT(*) - 1, 0)
+            * 100,
+            2
+          ) AS pe_pctl_3y,
+          ROUND(
+            COUNT(*) FILTER (
+              WHERE CASE
+                WHEN current.pb_median IS NULL THEN history.pb_median IS NOT NULL
+                ELSE history.pb_median < current.pb_median
+              END
+            )::numeric
+            / NULLIF(COUNT(*) - 1, 0)
+            * 100,
+            2
+          ) AS pb_pctl_3y
+        FROM current_medians current
+        JOIN valuation_daily_medians history
+          ON history.scope = current.industry
+          AND history.trade_date >= $3::date
+          AND history.trade_date <= $1::date
+        GROUP BY
+          current.industry,
+          current.stock_count,
+          current.pe_ttm_median,
+          current.pb_median
         `,
         ...params,
       )

@@ -21,6 +21,7 @@ import { LoggerService } from 'src/shared/logger/logger.service'
 import { PrismaService } from 'src/shared/prisma.service'
 import { sha256 } from '../../audit/agent-audit-sanitizer'
 import { AgentEventRepository } from '../agent-event.repository'
+import { AgentRunCompletionRepository } from '../agent-run-completion.repository'
 import {
   AgentRunConflictError,
   AgentRunIdempotencyConflictError,
@@ -63,6 +64,7 @@ integrationDescribe('Agent Run/Step/Event Repository - 独立 PostgreSQL 集成�
   let client: PrismaClient | undefined
   let events: AgentEventRepository
   let runs: AgentRunRepository
+  let completion: AgentRunCompletionRepository
   let userA: User
   let userB: User
   let promptVersion: AiPromptVersion
@@ -127,14 +129,10 @@ integrationDescribe('Agent Run/Step/Event Repository - 独立 PostgreSQL 集成�
         publishedAt,
       },
     })
+    const stateMachine = new AgentStateMachineService()
     events = new AgentEventRepository(client as unknown as PrismaService, config, logger)
-    runs = new AgentRunRepository(
-      client as unknown as PrismaService,
-      events,
-      new AgentStateMachineService(),
-      config,
-      logger,
-    )
+    runs = new AgentRunRepository(client as unknown as PrismaService, events, stateMachine, config, logger)
+    completion = new AgentRunCompletionRepository(client as unknown as PrismaService, events, stateMachine, logger)
   }, 240_000)
 
   afterAll(async () => {
@@ -585,6 +583,130 @@ integrationDescribe('Agent Run/Step/Event Repository - 独立 PostgreSQL 集成�
         'ai_run_events_integrity_trigger',
       ]),
     )
+  })
+
+  it('最终消息、complete Step、引用、completed event 与 Run 终态同事务提交或回滚', async () => {
+    const command = await makeRunCommand()
+    const run = await runs.createRun(command)
+    const running = await runs.claimRun(run.id, 'worker-complete')
+    const step = await runs.createStep(run.id, 'worker-complete', {
+      stepKey: 'complete',
+      kind: AiAgentStepKind.FINALIZE,
+      ordinal: 7,
+      input: { workflow: 'stock_research@1' },
+    })
+    await runs.transitionStep(run.id, step.id, {
+      workerId: 'worker-complete',
+      targetStatus: AiAgentStepStatus.RUNNING,
+      event: {
+        eventType: 'agent.progress',
+        traceId: run.traceId,
+        payload: { stepKey: 'complete', label: '提交终态', completed: 7, total: 8 },
+      },
+    })
+
+    await completion.complete(run.id, {
+      userId: userA.id,
+      workerId: 'worker-complete',
+      stepId: step.id,
+      expectedRunStatusVersion: running.statusVersion,
+      traceId: run.traceId,
+      responseMessageId: command.responseMessageId,
+      contentText: '最终研究回答',
+      contentBlocks: [{ blockId: 'answer_1', schemaVersion: 1, type: 'MARKDOWN', text: '最终研究回答' }],
+      citations: [],
+      modelName: 'fake-model',
+      tokenCount: 12,
+      resultSummary: { workflowKey: 'stock_research', workflowVersion: 1 },
+      completedEventPayload: {
+        finalMessageId: command.responseMessageId,
+        usage: { inputTokens: 10, outputTokens: 2, totalTokens: 12 },
+        cost: { amount: 0, currency: 'CNY' },
+        dataCutoff: null,
+        warnings: [],
+      },
+      stepOutput: { completed: true },
+    })
+
+    expect(await client!.aiAgentRun.findUniqueOrThrow({ where: { id: run.id } })).toMatchObject({
+      status: AiAgentRunStatus.COMPLETED,
+      leaseOwner: null,
+    })
+    expect(await client!.aiAgentStep.findUniqueOrThrow({ where: { id: step.id } })).toMatchObject({
+      status: AiAgentStepStatus.COMPLETED,
+    })
+    expect(await client!.aiMessage.findUniqueOrThrow({ where: { id: command.responseMessageId } })).toMatchObject({
+      status: AiMessageStatus.COMPLETED,
+      contentText: '最终研究回答',
+      tokenCount: 12,
+    })
+    expect(await client!.aiRunEvent.count({ where: { runId: run.id, eventType: 'agent.completed' } })).toBe(1)
+
+    const rollbackCommand = await makeRunCommand()
+    const rollbackRun = await runs.createRun(rollbackCommand)
+    const rollbackRunning = await runs.claimRun(rollbackRun.id, 'worker-complete-rollback')
+    const rollbackStep = await runs.createStep(rollbackRun.id, 'worker-complete-rollback', {
+      stepKey: 'complete',
+      kind: AiAgentStepKind.FINALIZE,
+      ordinal: 7,
+      input: { workflow: 'stock_research@1' },
+    })
+    await runs.transitionStep(rollbackRun.id, rollbackStep.id, {
+      workerId: 'worker-complete-rollback',
+      targetStatus: AiAgentStepStatus.RUNNING,
+      event: {
+        eventType: 'agent.progress',
+        traceId: rollbackRun.traceId,
+        payload: { stepKey: 'complete', label: '提交终态', completed: 7, total: 8 },
+      },
+    })
+    await expect(
+      completion.complete(rollbackRun.id, {
+        userId: userA.id,
+        workerId: 'worker-complete-rollback',
+        stepId: rollbackStep.id,
+        expectedRunStatusVersion: rollbackRunning.statusVersion,
+        traceId: rollbackRun.traceId,
+        responseMessageId: rollbackCommand.responseMessageId,
+        contentText: '不应落库',
+        contentBlocks: [{ blockId: 'answer_2', schemaVersion: 1, type: 'MARKDOWN', text: '不应落库' }],
+        citations: [
+          {
+            publicId: 'citation_missing_tool',
+            blockId: 'answer_2',
+            claimKey: 'missing_tool',
+            conclusionLevel: 'FACT',
+            locator: { factId: 'fact_missing' },
+            toolCallId: 'missing_tool_call',
+          },
+        ],
+        modelName: 'fake-model',
+        tokenCount: 1,
+        resultSummary: { workflowKey: 'stock_research', workflowVersion: 1 },
+        completedEventPayload: {
+          finalMessageId: rollbackCommand.responseMessageId,
+          usage: { inputTokens: 1, outputTokens: 0, totalTokens: 1 },
+          cost: { amount: 0, currency: 'CNY' },
+          dataCutoff: null,
+          warnings: [],
+        },
+        stepOutput: { completed: true },
+      }),
+    ).rejects.toThrow('已成功 Tool 调用')
+    expect(await client!.aiAgentRun.findUniqueOrThrow({ where: { id: rollbackRun.id } })).toMatchObject({
+      status: AiAgentRunStatus.RUNNING,
+      leaseOwner: 'worker-complete-rollback',
+    })
+    expect(await client!.aiAgentStep.findUniqueOrThrow({ where: { id: rollbackStep.id } })).toMatchObject({
+      status: AiAgentStepStatus.RUNNING,
+    })
+    expect(
+      await client!.aiMessage.findUniqueOrThrow({ where: { id: rollbackCommand.responseMessageId } }),
+    ).toMatchObject({
+      status: AiMessageStatus.PENDING,
+      contentText: null,
+    })
+    expect(await client!.aiRunEvent.count({ where: { runId: rollbackRun.id, eventType: 'agent.completed' } })).toBe(0)
   })
 })
 

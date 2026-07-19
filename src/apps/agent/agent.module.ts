@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common'
 import { ConfigModule } from '@nestjs/config'
 import { AgentToolsConfig } from 'src/config/agent-tools.config'
 import type { IAgentToolsConfig } from 'src/config/agent-tools.config'
+import { AgentExecutionConfig } from 'src/config/agent-execution.config'
 import { StockModule } from 'src/apps/stock/stock.module'
 import { MarketModule } from 'src/apps/market/market.module'
 import { IndustryModule } from 'src/apps/industry/industry.module'
@@ -35,10 +36,30 @@ import { createStockMarketToolDefinitions } from './tools/adapters/stock-market-
 import { createFinancialToolDefinitions } from './tools/adapters/financial-tools'
 import { createQuantToolDefinitions } from './tools/adapters/quant-tools'
 import { createWebResearchToolDefinitions } from './tools/adapters/web-research-tools'
+import { AgentOrchestratorService } from './orchestrator/agent-orchestrator.service'
+import { CitationCoverageService } from './workflow/citation-coverage.service'
+import { AuthorizeToolsNode } from './workflow/nodes/authorize-tools.node'
+import { CompleteNode } from './workflow/nodes/complete.node'
+import { ExecuteToolsNode } from './workflow/nodes/execute-tools.node'
+import { LoadContextNode } from './workflow/nodes/load-context.node'
+import { PersistNode } from './workflow/nodes/persist.node'
+import { PlanNode } from './workflow/nodes/plan.node'
+import { SynthesizeNode } from './workflow/nodes/synthesize.node'
+import { ValidateCitationsNode } from './workflow/nodes/validate-citations.node'
+import { ResearchPlanCompilerService } from './workflow/research-plan-compiler.service'
+import { WorkflowBudgetService } from './workflow/workflow-budget.service'
+import { WorkflowContextService } from './workflow/workflow-context.service'
+import { WorkflowEngineService } from './workflow/workflow-engine.service'
+import { WorkflowFinalizationService } from './workflow/workflow-finalization.service'
+import { WorkflowModelService } from './workflow/workflow-model.service'
+import { AGENT_WORKFLOW_DEFINITIONS, WorkflowRegistryService } from './workflow/workflow-registry.service'
+import { WorkflowToolService } from './workflow/workflow-tool.service'
+import { STOCK_RESEARCH_WORKFLOW_V1 } from './workflow/workflows/stock-research.v1'
 
 @Module({
   imports: [
     ConfigModule.forFeature(AgentToolsConfig),
+    ConfigModule.forFeature(AgentExecutionConfig),
     ModelGatewayModule,
     AgentExecutionModule,
     AgentAuditModule,
@@ -58,6 +79,25 @@ import { createWebResearchToolDefinitions } from './tools/adapters/web-research-
     ToolPolicyService,
     ToolRunLimiterService,
     ToolExecutorService,
+    WorkflowRegistryService,
+    WorkflowBudgetService,
+    ResearchPlanCompilerService,
+    WorkflowContextService,
+    WorkflowModelService,
+    WorkflowToolService,
+    CitationCoverageService,
+    WorkflowFinalizationService,
+    LoadContextNode,
+    PlanNode,
+    AuthorizeToolsNode,
+    ExecuteToolsNode,
+    SynthesizeNode,
+    ValidateCitationsNode,
+    PersistNode,
+    CompleteNode,
+    WorkflowEngineService,
+    AgentOrchestratorService,
+    { provide: AGENT_WORKFLOW_DEFINITIONS, useValue: Object.freeze([STOCK_RESEARCH_WORKFLOW_V1]) },
     {
       provide: AGENT_TOOL_DEFINITIONS,
       inject: [
@@ -107,6 +147,9 @@ import { createWebResearchToolDefinitions } from './tools/adapters/web-research-
     ToolPolicyService,
     ToolRunLimiterService,
     ToolExecutorService,
+    WorkflowRegistryService,
+    WorkflowEngineService,
+    AgentOrchestratorService,
   ],
 })
 export class AgentModule {}

@@ -29,7 +29,7 @@ interface AttemptSignal {
 
 @Injectable()
 export class ModelGatewayService implements ModelGatewayPort {
-  private readonly ajv = new Ajv({ strict: true, allErrors: true })
+  private readonly ajv = new Ajv({ strict: true, allErrors: true, allowUnionTypes: true })
 
   constructor(
     @Inject(MODEL_PROVIDER) private readonly provider: ModelProvider,
@@ -37,7 +37,10 @@ export class ModelGatewayService implements ModelGatewayPort {
     @Inject(ModelConfig.KEY) private readonly config: IModelConfig,
     private readonly logger: LoggerService,
     @Inject(MODEL_GATEWAY_OBSERVER) private readonly observer: ModelGatewayObserver,
-  ) {}
+  ) {
+    this.ajv.addFormat('date', { type: 'string', validate: isIsoDate })
+    this.ajv.addFormat('date-time', { type: 'string', validate: isIsoDateTime })
+  }
 
   getCapabilities(modelRef?: string | null): ModelDescriptor {
     return this.registry.get(modelRef?.trim() || this.config.defaultModel)
@@ -396,4 +399,14 @@ function parseStructuredText(text: string): { ok: true; value: unknown } | { ok:
   } catch {
     return { ok: false }
   }
+}
+
+function isIsoDate(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false
+  const parsed = new Date(`${value}T00:00:00.000Z`)
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value
+}
+
+function isIsoDateTime(value: string): boolean {
+  return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/.test(value) && !Number.isNaN(Date.parse(value))
 }

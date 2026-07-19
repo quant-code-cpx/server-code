@@ -10,7 +10,11 @@ export function sanitizeExecutionObject(
   fieldName: string,
   maxBytes = MAX_AGENT_CHECKPOINT_BYTES,
 ): Record<string, unknown> {
-  const sanitized = sanitizeAuditPayload(value)
+  const sanitized = sanitizeAuditPayload(value, {
+    maxDepth: 20,
+    maxArrayLength: 500,
+    maxStringLength: 100_000,
+  })
   if (!sanitized || Array.isArray(sanitized) || typeof sanitized !== 'object') {
     throw new AgentExecutionValidationError(`${fieldName} 必须是 JSON object`)
   }

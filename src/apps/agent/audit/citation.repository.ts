@@ -41,6 +41,7 @@ export interface CreateSearchSourceCommand {
 }
 
 interface BaseCitationInput {
+  publicId?: string
   blockId: string
   claimKey: string
   conclusionLevel: AiConclusionLevel
@@ -124,7 +125,9 @@ export class CitationRepository {
       if (!message) throw new AgentAuditNotFoundError('消息')
 
       const prepared: Prisma.AiCitationCreateManyInput[] = []
-      for (const citation of citations) prepared.push(await prepareCitation(tx, userId, messageId, citation))
+      for (const citation of citations) {
+        prepared.push(await prepareCitationInTransaction(tx, userId, messageId, citation))
+      }
 
       await tx.aiCitation.createMany({ data: prepared, skipDuplicates: true })
       const rows = await tx.aiCitation.findMany({
@@ -168,7 +171,7 @@ export class CitationRepository {
   }
 }
 
-async function prepareCitation(
+export async function prepareCitationInTransaction(
   tx: Prisma.TransactionClient,
   userId: number,
   messageId: string,
@@ -238,6 +241,7 @@ async function prepareCitation(
   )
 
   return {
+    ...(citation.publicId ? { publicId: requireText(citation.publicId, 'publicId', 32) } : {}),
     userId,
     messageId,
     blockId,

@@ -6,6 +6,11 @@ export interface AgentExecutionConfigEnvironment {
   AGENT_RUN_LEASE_MS?: string
   AGENT_EVENT_REPLAY_LIMIT?: string
   AGENT_RUN_MAX_DURATION_MS?: string
+  AGENT_MAX_STEPS?: string
+  AGENT_MAX_TOOL_CALLS?: string
+  AGENT_MAX_PARALLEL_TOOLS?: string
+  AGENT_MAX_INPUT_TOKENS?: string
+  AGENT_MAX_COST_PER_RUN?: string
 }
 
 export function buildAgentExecutionConfig(env: AgentExecutionConfigEnvironment) {
@@ -19,6 +24,11 @@ export function buildAgentExecutionConfig(env: AgentExecutionConfigEnvironment) 
       10_000,
       86_400_000,
     ),
+    maxSteps: parseInteger(env.AGENT_MAX_STEPS, 'AGENT_MAX_STEPS', 32, 8, 1_000),
+    maxToolCalls: parseInteger(env.AGENT_MAX_TOOL_CALLS, 'AGENT_MAX_TOOL_CALLS', 20, 0, 1_000),
+    maxParallelTools: parseInteger(env.AGENT_MAX_PARALLEL_TOOLS, 'AGENT_MAX_PARALLEL_TOOLS', 3, 1, 50),
+    maxInputTokens: parseInteger(env.AGENT_MAX_INPUT_TOKENS, 'AGENT_MAX_INPUT_TOKENS', 32_768, 1, 10_000_000),
+    maxCostPerRun: parseNumber(env.AGENT_MAX_COST_PER_RUN, 'AGENT_MAX_COST_PER_RUN', 10, 0, 1_000_000),
   }
 }
 
@@ -39,6 +49,21 @@ function parseInteger(
   const value = Number(raw)
   if (!Number.isInteger(value) || value < minimum || value > maximum) {
     throw new Error(`[AgentExecution] ${name} 必须是 ${minimum}-${maximum} 的整数`)
+  }
+  return value
+}
+
+function parseNumber(
+  raw: string | undefined,
+  name: string,
+  fallback: number,
+  minimum: number,
+  maximum: number,
+): number {
+  if (!raw?.trim()) return fallback
+  const value = Number(raw)
+  if (!Number.isFinite(value) || value < minimum || value > maximum) {
+    throw new Error(`[AgentExecution] ${name} 必须是 ${minimum}-${maximum} 的有限数值`)
   }
   return value
 }

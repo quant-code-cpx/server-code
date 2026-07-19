@@ -62,10 +62,20 @@ describe('Agent execution 配置与 payload 边界', () => {
       leaseMs: 30_000,
       replayLimit: 100,
       maxDurationMs: 180_000,
+      maxSteps: 32,
+      maxToolCalls: 20,
+      maxParallelTools: 3,
+      maxInputTokens: 32_768,
+      maxCostPerRun: 10,
     })
     expect(() => buildAgentExecutionConfig({ AGENT_RUN_LEASE_MS: '999' })).toThrow('AGENT_RUN_LEASE_MS')
     expect(() => buildAgentExecutionConfig({ AGENT_EVENT_REPLAY_LIMIT: '1001' })).toThrow('AGENT_EVENT_REPLAY_LIMIT')
     expect(() => buildAgentExecutionConfig({ AGENT_RUN_MAX_DURATION_MS: 'NaN' })).toThrow('AGENT_RUN_MAX_DURATION_MS')
+    expect(() => buildAgentExecutionConfig({ AGENT_MAX_STEPS: '7' })).toThrow('AGENT_MAX_STEPS')
+    expect(() => buildAgentExecutionConfig({ AGENT_MAX_TOOL_CALLS: '-1' })).toThrow('AGENT_MAX_TOOL_CALLS')
+    expect(() => buildAgentExecutionConfig({ AGENT_MAX_PARALLEL_TOOLS: '0' })).toThrow('AGENT_MAX_PARALLEL_TOOLS')
+    expect(() => buildAgentExecutionConfig({ AGENT_MAX_INPUT_TOKENS: '0' })).toThrow('AGENT_MAX_INPUT_TOKENS')
+    expect(() => buildAgentExecutionConfig({ AGENT_MAX_COST_PER_RUN: 'Infinity' })).toThrow('AGENT_MAX_COST_PER_RUN')
   })
 
   it('checkpoint/event payload 递归脱敏 secret 与 hidden reasoning，并固定 schemaVersion', () => {

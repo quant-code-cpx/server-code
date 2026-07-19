@@ -57,6 +57,15 @@ const TERMINAL_STEP_STATUSES = new Set<AiAgentStepStatus>([
   AiAgentStepStatus.SKIPPED,
 ])
 
+export type AgentExecutionRun = Prisma.AiAgentRunGetPayload<{
+  include: {
+    user: { select: { role: true; status: true } }
+    triggerMessage: { select: { id: true; contentText: true } }
+    workflowVersion: true
+    promptVersion: true
+  }
+}>
+
 @Injectable()
 export class AgentRunRepository {
   constructor(
@@ -126,6 +135,24 @@ export class AgentRunRepository {
     const run = await this.prisma.aiAgentRun.findFirst({ where: { id, userId } })
     if (!run) throw new AgentRunNotFoundError()
     return run
+  }
+
+  async findForExecution(runId: string, workerId: string): Promise<AgentExecutionRun> {
+    const id = requireText(runId, 'runId', 32)
+    const owner = requireText(workerId, 'workerId', 128)
+    return this.prisma.$transaction(async (tx) => {
+      const locked = await this.events.lockRun(tx, id)
+      this.events.assertActiveWorkerLease(locked, owner)
+      return tx.aiAgentRun.findUniqueOrThrow({
+        where: { id },
+        include: {
+          user: { select: { role: true, status: true } },
+          triggerMessage: { select: { id: true, contentText: true } },
+          workflowVersion: true,
+          promptVersion: true,
+        },
+      })
+    })
   }
 
   async claimRun(runId: string, workerId: string, leaseMs = this.config.leaseMs): Promise<AiAgentRun> {

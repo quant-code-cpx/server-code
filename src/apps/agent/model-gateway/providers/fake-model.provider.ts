@@ -69,6 +69,10 @@ function fakeValueFromSchema(schema: Record<string, unknown>): unknown {
   if (Array.isArray(schema.enum) && schema.enum.length > 0) return schema.enum[0]
 
   const type = schema.type
+  if (Array.isArray(type)) {
+    if (type.includes('null')) return null
+    return fakeValueFromSchema({ ...schema, type: type[0] })
+  }
   if (type === 'object' || (type == null && schema.properties && typeof schema.properties === 'object')) {
     const properties = (schema.properties ?? {}) as Record<string, Record<string, unknown>>
     const required = new Set(
@@ -86,5 +90,7 @@ function fakeValueFromSchema(schema: Record<string, unknown>): unknown {
   if (type === 'integer' || type === 'number') return 0
   if (type === 'boolean') return false
   if (type === 'null') return null
+  if (type === 'string' && schema.format === 'date') return '2000-01-01'
+  if (type === 'string' && schema.format === 'date-time') return '2000-01-01T00:00:00.000Z'
   return 'fake'
 }

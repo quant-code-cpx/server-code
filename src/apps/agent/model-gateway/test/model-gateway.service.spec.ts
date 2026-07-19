@@ -143,6 +143,26 @@ describe('Model Gateway provider contract 与 OpenAI-compatible adapter', () => 
     }
   })
 
+  it('fake structured output 正确生成 nullable 与日期 schema 值', async () => {
+    const fakeConfig = buildModelConfig({}, 'test') as IModelConfig
+    const service = createService(new FakeModelProvider(fakeConfig), fakeConfig)
+    const result = await service.generateStructured<{ cutoff: string | null; tradeDate: string }>(
+      baseRequest({
+        responseSchema: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['cutoff', 'tradeDate'],
+          properties: {
+            cutoff: { type: ['string', 'null'], format: 'date' },
+            tradeDate: { type: 'string', format: 'date' },
+          },
+        },
+      }),
+    )
+
+    expect(result.data).toEqual({ cutoff: null, tradeDate: '2000-01-01' })
+  })
+
   it('SSE 跨 UTF-8 字节分片，并合并乱序 index 的 Tool fragments、usage 与 request ID', async () => {
     handler = async (_request, response, body) => {
       expect(body.stream).toBe(true)

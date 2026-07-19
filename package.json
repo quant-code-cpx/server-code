@@ -39,7 +39,8 @@
     "verify:moneyflow": "ts-node -T scripts/verify-moneyflow-window.ts",
     "swagger:generate": "ts-node -r tsconfig-paths/register -T scripts/generate-swagger.ts",
     "agent:contracts:generate": "ts-node -r tsconfig-paths/register scripts/export-agent-contracts.ts",
-    "agent:contracts:check": "ts-node -r tsconfig-paths/register scripts/export-agent-contracts.ts --check"
+    "agent:contracts:check": "ts-node -r tsconfig-paths/register scripts/export-agent-contracts.ts --check",
+    "agent:workflow:publish-v1": "ts-node -r tsconfig-paths/register scripts/publish-agent-workflow-v1.ts"
   },
   "dependencies": {
     "@nestjs/bullmq": "^11.0.2",

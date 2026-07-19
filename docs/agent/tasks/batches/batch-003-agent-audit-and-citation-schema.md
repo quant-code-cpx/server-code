@@ -1,6 +1,6 @@
 ---
 batch: 3
-status: pending
+status: completed
 type: database
 depends_on: ["batch-001-agent-public-contracts", "batch-002-conversation-and-message-schema"]
 blocks: ["batch-005-run-state-and-event-store", "batch-006-tool-registry-and-policy", "batch-010-web-search-and-citations", "batch-013-conversation-rest-api", "batch-020-scheduled-agent-tasks", "batch-022-research-report-and-investment-journal"]
@@ -147,6 +147,17 @@ estimated_scope: large
 ## 24. 完成定义
 
 模型、migration、repository、sanitizer、集成测试和数据保留说明合入。
+
+当前进度（2026-07-19）：
+
+- 已新增 `AiToolCall`、`AiModelCall`、`AiSearchSource`、`AiCitation`、`AiPromptVersion`、`AiWorkflowVersion` 和七个内部枚举；Batch 005 前 `runId/stepId` 保持 nullable 标量。
+- 已落地 attempt 幂等键、Decimal(18,8) 成本、非负 token/cost/duration、payload ref 模式、单一引用证据源、offset/locator/hash、租户 owner 等 CHECK/FK/index/trigger。
+- 已实现 Tool/Model start/complete/fail 幂等状态机、重复完成防双计费、Prompt/Workflow 发布冻结、SearchSource 全局内容去重、Citation owner-scoped 事务与查询。
+- sanitizer 会递归清理 password/token/secret/cookie/authorization/apiKey/privateKey/credential、hidden reasoning/完整 Prompt、URL userinfo/fragment/敏感 query，并限制深度、数组和字符串长度；持久化 hash 使用 canonical JSON + SHA-256。
+- 独立 tmpfs PostgreSQL 从空库完整执行 31 条 migration；Batch 003 的 9 个真实数据库测试、Batch 002 的 7 个回归测试和 Batch 001 的 9 个 canonical contract 测试通过。
+- 真实开发库已 applied Batch 003 migration，`prisma migrate status` 为 up to date，schema drift 为 0；Nest build、容器内 Prisma generate、增量编译 `Found 0 errors` 均通过。
+- app/PostgreSQL/Redis 容器均 healthy；集成测试使用独立临时 PostgreSQL，避免 44 GB 开发主库 bind mount 承担 fresh DB 创建/删除压力。
+- 实现 commit：`2cc0ee9 feat(agent): add audit and citation persistence`。
 
 ## 25. 回滚方案
 

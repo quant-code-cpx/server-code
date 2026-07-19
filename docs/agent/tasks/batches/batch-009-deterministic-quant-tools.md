@@ -1,10 +1,17 @@
 ---
 batch: 9
-status: pending
+status: completed
 type: backend
-depends_on: ["batch-000-platform-data-readiness", "batch-006-tool-registry-and-policy"]
-blocks: ["batch-011-agent-orchestrator-workflow", "batch-024-python-quant-compute-service"]
-parallel_with: ["batch-007-stock-market-query-tools", "batch-008-financial-fund-flow-tools", "batch-010-web-search-and-citations", "batch-015-frontend-stream-client-and-contracts", "batch-016-frontend-chat-shell"]
+depends_on: ['batch-000-platform-data-readiness', 'batch-006-tool-registry-and-policy']
+blocks: ['batch-011-agent-orchestrator-workflow', 'batch-024-python-quant-compute-service']
+parallel_with:
+  [
+    'batch-007-stock-market-query-tools',
+    'batch-008-financial-fund-flow-tools',
+    'batch-010-web-search-and-citations',
+    'batch-015-frontend-stream-client-and-contracts',
+    'batch-016-frontend-chat-shell',
+  ]
 recommended_executor: backend-coding-agent
 recommended_reasoning_level: very-high
 estimated_scope: large
@@ -41,7 +48,7 @@ estimated_scope: large
 
 - `src/apps/portfolio/portfolio.service.ts`、`portfolio-risk.service.ts`、performance service
 - `src/apps/backtest/services/*`
-- `src/apps/factor/factor.service.ts`
+- `src/apps/stock/valuation-tool.facade.ts`
 - `DailyBasic`（物理表 `stock_daily_valuation_metrics`）及回测 Prisma models
 
 ## 7. 需要新增的文件
@@ -52,10 +59,15 @@ estimated_scope: large
 - `src/apps/agent/quant/valuation-percentile.ts`
 - `src/apps/agent/tools/adapters/quant-tools.ts`
 - `src/apps/agent/tools/adapters/test/quant-tools.spec.ts`
+- `src/apps/stock/valuation-tool.facade.ts`
+- `src/apps/portfolio/test/portfolio-tool.facade.spec.ts`
+- `src/apps/backtest/test/backtest-tool.facade.spec.ts`
+- `src/apps/agent/quant/test/performance-metrics.spec.ts`
+- `src/apps/agent/quant/test/valuation-percentile.spec.ts`
 
 ## 8. 需要修改的文件
 
-- PortfolioModule/BacktestModule 只 export Facade
+- PortfolioModule/BacktestModule/StockModule export 稳定 Facade，保留既有模块兼容导出
 - `src/apps/agent/agent.module.ts` 注册四个 Tool
 
 ## 9. 数据库变更
@@ -84,7 +96,7 @@ estimated_scope: large
 
 ## 14. 详细执行步骤
 
-- 从现有回测指标实现抽出/对齐口径，列出差异。
+- 建立独立 v1 纯函数口径，与现有回测指标服务保持 API 隔离并列出差异。
 - 实现纯函数和手算 golden fixtures。
 - 实现组合/回测 Facade 所有权和受限 section。
 - 实现估值查询+分位算法与缺失过滤。
@@ -140,7 +152,18 @@ estimated_scope: large
 
 ## 24. 完成定义
 
-纯函数、Facades、adapters、golden/差分/权限测试与口径文档合入。
+- [x] `PortfolioToolFacade`、`BacktestToolFacade`、`ValuationToolFacade` 与四个 strict READ/idempotent Tool 已实现并注册。
+- [x] 绩效 v1 固定日期排序、重复日期拒绝、小数收益、样本波动、周期无风险利率、负最大回撤和正损失 VaR/CVaR 口径。
+- [x] 估值分位固定十年窗口、至少 60 样本、非正值过滤、Type-7 P1/P99 缩尾与 WEAK/MEAN 秩定义。
+- [x] 组合/回测所有权条件包含 `userId`；跨租户与不存在统一 `DATA_NOT_FOUND`，模型无法覆盖 userId。
+- [x] 组合 Beta 已按股票与基准共有交易日对齐；风险 `dataAsOf` 使用数据库真实最新估值日，不使用尚未入库的交易日。
+- [x] 回测结果始终返回 `BACKTEST_BIAS_UNVERIFIED` 与不可复现 flags；null 不转 0，净值最多返回 2,000 点。
+- [x] output 带 `algorithmVersion/inputHash/outputHash`；默认 `AGENT_TOOLS_ENABLED` 仍为空。
+- [x] 实现提交：`d630fc1 feat(agent): add deterministic quant tools`；数据时点修复：`3477eaf fix(portfolio): use available market date for risk`。
+- [x] Agent/Portfolio/Backtest/quant 回归 33 suites、552/552；Stock 11 suites、229/229；build、contracts、legacy ESLint、Prettier 全部通过。
+- [x] 10,000 点绩效计算 p95 18.809ms；真实 DB 四 Tool schema 全通过，估值 1,584 样本，组合与估值 `dataAsOf=2026-07-17`。
+- [x] Docker Desktop 恢复后 App/PostgreSQL/Redis healthy；watch `Found 0 errors`；`/health`、`/ready` 均为 ok。
+- [x] Tool inventory、量化口径文档、[执行报告](../../../Agent确定性量化工具测试执行报告-20260720.md)与 `docs/README.md` 已同步。
 
 ## 25. 回滚方案
 
@@ -149,5 +172,6 @@ estimated_scope: large
 ## 26. 后续批次
 
 - Batch 011 使用确定性结果合成回答。
+- Batch 010 补齐受控联网搜索与引用后，Batch 011 才能完成 MVP 编排。
 - Batch 024 达到阈值后拆 Python。
 - Batch 029 修复底层回测偏差后解除 warning。

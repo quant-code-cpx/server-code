@@ -29,12 +29,33 @@
     },
     "annualizationFactor": { "type": "integer", "enum": [12, 52, 242, 252] },
     "riskFreeRateAnnual": { "type": "number", "minimum": -0.1, "maximum": 0.5 },
-    "metrics": { "type": "array", "minItems": 1, "maxItems": 10, "uniqueItems": true, "items": { "enum": ["TOTAL_RETURN", "CAGR", "ANNUAL_VOLATILITY", "SHARPE", "SORTINO", "MAX_DRAWDOWN", "CALMAR", "WIN_RATE", "VAR_95", "CVAR_95"] } }
+    "metrics": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 10,
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "TOTAL_RETURN",
+          "CAGR",
+          "ANNUAL_VOLATILITY",
+          "SHARPE",
+          "SORTINO",
+          "MAX_DRAWDOWN",
+          "CALMAR",
+          "WIN_RATE",
+          "VAR_95",
+          "CVAR_95"
+        ]
+      }
+    }
   }
 }
 ```
 
 程序先按日期升序去重（重复日期是错误），检查 equity 必须大于 0；return 值采用小数比例。输出每个指标的值、单位、样本数、起止日期和 warnings。
+
+`performance-metrics-v1` 固定口径：收益使用复利；波动使用样本标准差；无风险利率先复利转换为周期利率；Sharpe/Sortino 分母为零时返回 null 并告警；最大回撤保留负值；VaR95/CVaR95 返回历史 5% 尾部的正损失值。CAGR 的周期数由有效收益点数与 `annualizationFactor` 决定，不根据自然日自行猜测频率。
 
 ## `compute_valuation_percentile`
 
@@ -57,6 +78,8 @@
 ```
 
 数据来自真实 Prisma Model `DailyBasic`（物理表 `stock_daily_valuation_metrics`），查询最大十年，最少 60 个有效样本；输出当前值、percentile（0–1）、样本数、窗口、min/max/median、过滤数量和数据日期。比较多个股票时每个标的独立调用，避免不同上市时长被静默混合。
+
+`valuation-percentile-v1` 固定口径：`P1_P99` 使用 Type-7 分位点缩尾；`WEAK=(小于数+等于数)/N`，`MEAN=(小于数+0.5×等于数)/N`；当前值取有效窗口内最后一个真实数据日。`asOfDate` 或 `endDate` 落在尚未入库的交易日时，不得把请求日伪装成数据日。
 
 ## 精度与口径测试
 

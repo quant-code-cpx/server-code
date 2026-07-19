@@ -8,22 +8,22 @@ MVP 继续在当前 NestJS/TypeScript 中执行确定性计算，并通过 BullM
 
 ## 2. 当前可复用能力
 
-| 能力                          | 真实实现                                                                                              | 现状与改造                                                                                                                                          |
-| ----------------------------- | ----------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 回测绩效                      | `src/apps/backtest/services/backtest-metrics.service.ts`                                              | 已算总/年化/基准/超额收益、波动、最大回撤、Sharpe、Sortino、Calmar、Alpha、Beta、信息比率、胜率、换手；需把 252 日与 2% 无风险利率变成版本化 policy |
-| 回测执行                      | `BacktestEngineService`、`BacktestExecutionService`、`src/queue/backtesting/backtesting.processor.ts` | 可继续用于明确创建的回测任务；不是 MVP 模型自由 Tool                                                                                                |
-| 回测结果                      | `BacktestRunService.getRunDetail/getEquity/getTrades/getPositions`                                    | 已 owner-scoped；封装为 `get_backtest_result`，先修复 null 被转 0                                                                                   |
-| 组合风险                      | `src/apps/portfolio/portfolio-risk.service.ts`                                                        | 行业、持仓集中度、市值、Beta 与聚合快照可复用；快照允许子维度失败，Tool 必须把 partial 明确暴露                                                     |
-| 因子分析                      | `src/apps/factor/services/factor-analysis.service.ts`、`factor-compute.service.ts`                    | 公式可复用；自定义因子租户与 attribution 越权修复前不对 Agent 开放                                                                                  |
-| 技术指标                      | `src/apps/stock/stock-analysis.service.ts`、`src/apps/stock/utils/technical-indicators.ts`            | 可作为后续确定性 Tool；必须固定调整方式、窗口和算法版本                                                                                             |
-| 行业估值分位                  | `src/apps/industry-rotation/industry-rotation.service.ts`                                             | 可复用分位思路；股票历史估值 Tool 需独立、测试化实现                                                                                                |
-| Monte Carlo/Walk-forward/归因 | `src/apps/backtest/services/` 对应 Service                                                            | 长任务，放后续受控 Workflow；不在交互请求线程执行                                                                                                   |
+| 能力                          | 真实实现                                                                                              | 现状与改造                                                                                                                                  |
+| ----------------------------- | ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| 回测绩效                      | `src/apps/backtest/services/backtest-metrics.service.ts`                                              | 既有回测 API 保持兼容；Batch 009 在 `src/apps/agent/quant/performance-metrics.ts` 新增独立 `performance-metrics-v1`，不静默改变历史结果口径 |
+| 回测执行                      | `BacktestEngineService`、`BacktestExecutionService`、`src/queue/backtesting/backtesting.processor.ts` | 可继续用于明确创建的回测任务；不是 MVP 模型自由 Tool                                                                                        |
+| 回测结果                      | `BacktestRunService.getRunDetail/getEquity/getTrades/getPositions`                                    | 已 owner-scoped；封装为 `get_backtest_result`，先修复 null 被转 0                                                                           |
+| 组合风险                      | `src/apps/portfolio/portfolio-risk.service.ts`                                                        | 行业、持仓集中度、市值、Beta 与聚合快照可复用；快照允许子维度失败，Tool 必须把 partial 明确暴露                                             |
+| 因子分析                      | `src/apps/factor/services/factor-analysis.service.ts`、`factor-compute.service.ts`                    | 公式可复用；自定义因子租户与 attribution 越权修复前不对 Agent 开放                                                                          |
+| 技术指标                      | `src/apps/stock/stock-analysis.service.ts`、`src/apps/stock/utils/technical-indicators.ts`            | 可作为后续确定性 Tool；必须固定调整方式、窗口和算法版本                                                                                     |
+| 行业估值分位                  | `src/apps/industry-rotation/industry-rotation.service.ts`                                             | 可复用分位思路；股票历史估值 Tool 需独立、测试化实现                                                                                        |
+| Monte Carlo/Walk-forward/归因 | `src/apps/backtest/services/` 对应 Service                                                            | 长任务，放后续受控 Workflow；不在交互请求线程执行                                                                                           |
 
 ## 3. MVP 计算边界
 
 ### `compute_performance_metrics`
 
-输入/输出以 [Tool 目录](../tools/README.md) 为准。实现由 `BacktestToolFacade` 调用一个纯 `PerformanceMetricsCalculator`，显式固定：
+输入/输出以 [Tool 目录](../tools/README.md) 为准。实现由 `compute_performance_metrics` adapter 调用纯函数 `computePerformanceMetrics`，显式固定：
 
 - 输入序列日期、频率、收益 scale、基准对齐方式、无风险利率、年化交易日数和缺失策略。
 - 只输出 canonical `metrics` 中被请求的总收益、CAGR、年化波动、Sharpe、Sortino、最大回撤、Calmar、胜率、VaR95/CVaR95；Alpha/Beta/信息比率属于现有回测结果或后续 Schema，不在此 Tool 中暗加字段。
@@ -108,25 +108,22 @@ type ComputeProvenance = {
 
 ## 8. 文件落点
 
-MVP 新增：
+MVP 已落地：
 
 ```text
-src/apps/backtest/performance-metrics.calculator.ts
 src/apps/backtest/backtest-tool.facade.ts
-src/apps/factor/valuation-percentile.calculator.ts
-src/apps/factor/factor-tool.facade.ts
-src/apps/agent/tools/adapters/compute-performance-metrics.tool.ts
-src/apps/agent/tools/adapters/compute-valuation-percentile.tool.ts
-src/apps/agent/tools/adapters/get-portfolio-risk.tool.ts
-src/apps/agent/tools/adapters/get-backtest-result.tool.ts
+src/apps/portfolio/portfolio-tool.facade.ts
+src/apps/stock/valuation-tool.facade.ts
+src/apps/agent/quant/performance-metrics.ts
+src/apps/agent/quant/valuation-percentile.ts
+src/apps/agent/tools/adapters/quant-tools.ts
 ```
 
-修改：
+本批修改：
 
-- `src/apps/backtest/services/backtest-metrics.service.ts`：委托纯 Calculator，保留现有 API 兼容层。
-- `src/apps/backtest/backtest.module.ts`、`src/apps/factor/factor.module.ts`、`src/apps/portfolio/portfolio.module.ts`：只导出稳定 Facade。
-- `src/queue/backtesting/backtesting.processor.ts` 与回测 Service：加入协作取消和 checkpoint。
-- `prisma/research/factor.prisma` 与相关 Service：在开放因子能力前完成 owner/visibility 模型改造。
+- `src/apps/backtest/backtest.module.ts`、`src/apps/portfolio/portfolio.module.ts`、`src/apps/stock/stock.module.ts`：导出稳定 Facade。
+- `src/apps/portfolio/portfolio-risk.service.ts`：按真实估值数据日查询，并按共有交易日对齐 Beta。
+- 既有 `BacktestMetricsService`、回测执行/取消、因子 owner/visibility 本批不改；协作取消和因子权限仍由后续专门批次处理。
 
 ## 9. 测试与验收
 

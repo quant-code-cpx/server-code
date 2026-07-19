@@ -31,7 +31,9 @@
     "rebuild:financial-history": "ts-node -r tsconfig-paths/register -T scripts/rebuild-financial-history.ts",
     "repair:market-period-pct-change": "pnpm run prisma:generate && ts-node -r tsconfig-paths/register src/tushare/scripts/repair-market-period-pct-change.ts",
     "verify:moneyflow": "ts-node -T scripts/verify-moneyflow-window.ts",
-    "swagger:generate": "ts-node -r tsconfig-paths/register -T scripts/generate-swagger.ts"
+    "swagger:generate": "ts-node -r tsconfig-paths/register -T scripts/generate-swagger.ts",
+    "agent:contracts:generate": "ts-node -r tsconfig-paths/register scripts/export-agent-contracts.ts",
+    "agent:contracts:check": "ts-node -r tsconfig-paths/register scripts/export-agent-contracts.ts --check"
   },
   "dependencies": {
     "@nestjs/bullmq": "^11.0.2",

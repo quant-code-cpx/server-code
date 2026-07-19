@@ -1,6 +1,6 @@
 ---
 batch: 1
-status: pending
+status: in_progress
 type: fullstack
 depends_on: []
 blocks: ["batch-002-conversation-and-message-schema", "batch-003-agent-audit-and-citation-schema", "batch-004-model-gateway-foundation", "batch-006-tool-registry-and-policy", "batch-013-conversation-rest-api", "batch-015-frontend-stream-client-and-contracts"]
@@ -146,6 +146,14 @@ estimated_scope: medium
 ## 24. 完成定义
 
 公共契约、生成脚本、两端测试与 drift gate 合入；API 文档链接到生成入口。
+
+当前进度（2026-07-19）：
+
+- 已实现后端状态、14 个 SSE 事件、6 类 MessageBlock、15 个 Tool key、REST DTO 与 6001–6031/6099 错误码契约。
+- 已增加 JSON Schema/前端 TypeScript 生成器和 drift 检查；前端仅消费生成结果，无手写重复定义。
+- 已增加 `@RawStreamResponse()`，`TransformInterceptor` 可按 handler/controller metadata 跳过统一 JSON 包装。
+- 后端契约与 interceptor 共 2 suites / 20 tests 通过，Nest build 通过；前端 ESLint、7 个契约测试与 Vite production build 通过。
+- 尚待前后端实现 commit 证据写入后，再将本批次 frontmatter 更新为 `completed`。
 
 ## 25. 回滚方案
 

@@ -1,13 +1,22 @@
 import { CallHandler, ExecutionContext } from '@nestjs/common'
 import { of, firstValueFrom } from 'rxjs'
-import { TransformInterceptor } from '../transform.interceptor'
+import { RAW_STREAM_RESPONSE_KEY } from 'src/common/decorators/raw-stream-response.decorator'
 import { ResponseModel } from 'src/common/models/response.model'
+import { TransformInterceptor } from '../transform.interceptor'
 
 function makeCallHandler(returnValue: unknown): CallHandler {
   return { handle: () => of(returnValue) }
 }
 
-const mockContext = {} as ExecutionContext
+function makeContext(url = '/api/test', handler: () => unknown = () => undefined): ExecutionContext {
+  return {
+    switchToHttp: () => ({ getRequest: () => ({ url }) }),
+    getHandler: () => handler,
+    getClass: () => class TestController {},
+  } as unknown as ExecutionContext
+}
+
+const mockContext = makeContext()
 const interceptor = new TransformInterceptor()
 
 describe('TransformInterceptor', () => {
@@ -47,9 +56,7 @@ describe('TransformInterceptor', () => {
   })
 
   it('wraps a string value in ResponseModel.success', async () => {
-    const result = (await firstValueFrom(
-      interceptor.intercept(mockContext, makeCallHandler('hello')),
-    )) as ResponseModel
+    const result = (await firstValueFrom(interceptor.intercept(mockContext, makeCallHandler('hello')))) as ResponseModel
 
     expect(result).toBeInstanceOf(ResponseModel)
     expect(result.data).toBe('hello')
@@ -61,6 +68,25 @@ describe('TransformInterceptor', () => {
 
     expect(result).toBe(errorModel)
     expect((result as ResponseModel).code).toBe(9001)
+  })
+
+  it('passes through @RawStreamResponse handler output unchanged', async () => {
+    const handler = () => undefined
+    Reflect.defineMetadata(RAW_STREAM_RESPONSE_KEY, true, handler)
+    const stream = { pipe: jest.fn() }
+
+    const result = await firstValueFrom(
+      interceptor.intercept(makeContext('/api/agent/runs/events', handler), makeCallHandler(stream)),
+    )
+
+    expect(result).toBe(stream)
+  })
+
+  it('passes through metrics path unchanged', async () => {
+    const metrics = '# HELP process_cpu_seconds_total'
+    const result = await firstValueFrom(interceptor.intercept(makeContext('/metrics'), makeCallHandler(metrics)))
+
+    expect(result).toBe(metrics)
   })
 
   // ── [EDGE] 特殊数据类型 ───────────────────────────────────────────────────

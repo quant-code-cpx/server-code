@@ -1,0 +1,3132 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://quant.local/schemas/agent-contracts-1.0.json",
+  "title": "Quant Agent Public Contracts",
+  "schemaVersion": "1.0",
+  "definitions": {
+    "AgentSseEvent": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "schemaVersion",
+            "eventId",
+            "sequence",
+            "type",
+            "runId",
+            "conversationId",
+            "occurredAt",
+            "traceId",
+            "payload"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": "1.0"
+            },
+            "eventId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "sequence": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "type": {
+              "const": "message.created"
+            },
+            "runId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "conversationId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "messageId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "occurredAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "traceId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "payload": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "messageId",
+                "role",
+                "status"
+              ],
+              "properties": {
+                "messageId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128
+                },
+                "role": {
+                  "enum": [
+                    "USER",
+                    "ASSISTANT",
+                    "SYSTEM"
+                  ]
+                },
+                "status": {
+                  "enum": [
+                    "PENDING",
+                    "STREAMING",
+                    "COMPLETED",
+                    "FAILED",
+                    "CANCELLED"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "schemaVersion",
+            "eventId",
+            "sequence",
+            "type",
+            "runId",
+            "conversationId",
+            "occurredAt",
+            "traceId",
+            "payload"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": "1.0"
+            },
+            "eventId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "sequence": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "type": {
+              "const": "agent.started"
+            },
+            "runId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "conversationId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "messageId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "occurredAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "traceId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "payload": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "workflowKey",
+                "workflowVersion",
+                "modelPolicy"
+              ],
+              "properties": {
+                "workflowKey": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128
+                },
+                "workflowVersion": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                },
+                "modelPolicy": {
+                  "enum": [
+                    "AUTO",
+                    "MANUAL"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "schemaVersion",
+            "eventId",
+            "sequence",
+            "type",
+            "runId",
+            "conversationId",
+            "occurredAt",
+            "traceId",
+            "payload"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": "1.0"
+            },
+            "eventId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "sequence": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "type": {
+              "const": "agent.planning"
+            },
+            "runId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "conversationId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "messageId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "occurredAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "traceId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "payload": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "intent",
+                "capabilities",
+                "planSummary"
+              ],
+              "properties": {
+                "intent": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 500
+                },
+                "capabilities": {
+                  "type": "array",
+                  "maxItems": 20,
+                  "items": {
+                    "enum": [
+                      "INTERNAL_DATA",
+                      "QUANT_COMPUTE",
+                      "WEB_SEARCH"
+                    ]
+                  }
+                },
+                "planSummary": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 4000
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "schemaVersion",
+            "eventId",
+            "sequence",
+            "type",
+            "runId",
+            "conversationId",
+            "occurredAt",
+            "traceId",
+            "payload"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": "1.0"
+            },
+            "eventId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "sequence": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "type": {
+              "const": "agent.progress"
+            },
+            "runId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "conversationId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "messageId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "occurredAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "traceId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "payload": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "stepKey",
+                "label",
+                "completed",
+                "total"
+              ],
+              "properties": {
+                "stepKey": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128
+                },
+                "label": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 500
+                },
+                "completed": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "total": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "schemaVersion",
+            "eventId",
+            "sequence",
+            "type",
+            "runId",
+            "conversationId",
+            "occurredAt",
+            "traceId",
+            "payload"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": "1.0"
+            },
+            "eventId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "sequence": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "type": {
+              "const": "tool.started"
+            },
+            "runId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "conversationId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "messageId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "occurredAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "traceId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "payload": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "toolCallId",
+                "toolName",
+                "inputSummary",
+                "attempt"
+              ],
+              "properties": {
+                "toolCallId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128
+                },
+                "toolName": {
+                  "enum": [
+                    "resolve_security",
+                    "get_stock_price_history",
+                    "get_stock_overview",
+                    "get_financial_statements",
+                    "get_financial_indicators",
+                    "get_stock_moneyflow",
+                    "get_market_snapshot",
+                    "get_sector_membership",
+                    "get_user_watchlist",
+                    "get_portfolio_risk",
+                    "get_backtest_result",
+                    "compute_performance_metrics",
+                    "compute_valuation_percentile",
+                    "search_web",
+                    "fetch_web_page"
+                  ]
+                },
+                "inputSummary": {
+                  "type": "string",
+                  "maxLength": 4000
+                },
+                "attempt": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "schemaVersion",
+            "eventId",
+            "sequence",
+            "type",
+            "runId",
+            "conversationId",
+            "occurredAt",
+            "traceId",
+            "payload"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": "1.0"
+            },
+            "eventId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "sequence": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "type": {
+              "const": "tool.completed"
+            },
+            "runId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "conversationId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "messageId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "occurredAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "traceId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "payload": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "toolCallId",
+                "outputSummary",
+                "rowCount",
+                "truncated",
+                "asOf",
+                "citationIds",
+                "durationMs"
+              ],
+              "properties": {
+                "toolCallId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128
+                },
+                "outputSummary": {
+                  "type": "string",
+                  "maxLength": 4000
+                },
+                "rowCount": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "truncated": {
+                  "type": "boolean"
+                },
+                "asOf": {
+                  "type": "string",
+                  "format": "date"
+                },
+                "citationIds": {
+                  "type": "array",
+                  "maxItems": 200,
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  }
+                },
+                "durationMs": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "schemaVersion",
+            "eventId",
+            "sequence",
+            "type",
+            "runId",
+            "conversationId",
+            "occurredAt",
+            "traceId",
+            "payload"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": "1.0"
+            },
+            "eventId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "sequence": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "type": {
+              "const": "tool.failed"
+            },
+            "runId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "conversationId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "messageId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "occurredAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "traceId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "payload": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "toolCallId",
+                "error",
+                "attempt",
+                "willRetry"
+              ],
+              "properties": {
+                "toolCallId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128
+                },
+                "error": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "code",
+                    "message",
+                    "retryable",
+                    "category"
+                  ],
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 9999
+                    },
+                    "message": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 1000
+                    },
+                    "retryable": {
+                      "type": "boolean"
+                    },
+                    "category": {
+                      "enum": [
+                        "VALIDATION",
+                        "AUTH",
+                        "MODEL",
+                        "TOOL",
+                        "SEARCH",
+                        "TIMEOUT",
+                        "INTERNAL"
+                      ]
+                    },
+                    "safeDetails": {
+                      "type": "object"
+                    }
+                  }
+                },
+                "attempt": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                },
+                "willRetry": {
+                  "type": "boolean"
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "schemaVersion",
+            "eventId",
+            "sequence",
+            "type",
+            "runId",
+            "conversationId",
+            "occurredAt",
+            "traceId",
+            "payload"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": "1.0"
+            },
+            "eventId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "sequence": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "type": {
+              "const": "model.started"
+            },
+            "runId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "conversationId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "messageId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "occurredAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "traceId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "payload": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "modelCallId",
+                "provider",
+                "model",
+                "purpose"
+              ],
+              "properties": {
+                "modelCallId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128
+                },
+                "provider": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128
+                },
+                "model": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256
+                },
+                "purpose": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 500
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "schemaVersion",
+            "eventId",
+            "sequence",
+            "type",
+            "runId",
+            "conversationId",
+            "occurredAt",
+            "traceId",
+            "payload"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": "1.0"
+            },
+            "eventId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "sequence": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "type": {
+              "const": "model.delta"
+            },
+            "runId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "conversationId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "messageId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "occurredAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "traceId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "payload": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "modelCallId",
+                "blockIndex",
+                "delta"
+              ],
+              "properties": {
+                "modelCallId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128
+                },
+                "blockIndex": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "delta": {
+                  "type": "string",
+                  "maxLength": 100000
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "schemaVersion",
+            "eventId",
+            "sequence",
+            "type",
+            "runId",
+            "conversationId",
+            "occurredAt",
+            "traceId",
+            "payload"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": "1.0"
+            },
+            "eventId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "sequence": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "type": {
+              "const": "citation.created"
+            },
+            "runId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "conversationId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "messageId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "occurredAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "traceId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "payload": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "citation"
+              ],
+              "properties": {
+                "citation": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "citationId",
+                    "sourceId",
+                    "sourceType",
+                    "title",
+                    "retrievedAt",
+                    "locator",
+                    "contentHash"
+                  ],
+                  "properties": {
+                    "citationId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    },
+                    "sourceId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    },
+                    "sourceType": {
+                      "enum": [
+                        "DATABASE",
+                        "PROGRAM_CALCULATION",
+                        "OFFICIAL",
+                        "MEDIA",
+                        "INSTITUTION",
+                        "MODEL_INFERENCE"
+                      ]
+                    },
+                    "title": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 1000
+                    },
+                    "canonicalUrl": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 4096,
+                      "pattern": "^https://"
+                    },
+                    "publisher": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 500
+                    },
+                    "publishedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "retrievedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "locator": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "factId": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 128
+                        },
+                        "section": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 500
+                        },
+                        "paragraph": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "startOffset": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "endOffset": {
+                          "type": "integer",
+                          "minimum": 0
+                        }
+                      }
+                    },
+                    "contentHash": {
+                      "type": "string",
+                      "minLength": 16,
+                      "maxLength": 128
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "schemaVersion",
+            "eventId",
+            "sequence",
+            "type",
+            "runId",
+            "conversationId",
+            "occurredAt",
+            "traceId",
+            "payload"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": "1.0"
+            },
+            "eventId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "sequence": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "type": {
+              "const": "report.generated"
+            },
+            "runId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "conversationId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "messageId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "occurredAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "traceId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "payload": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "reportId",
+                "title",
+                "format"
+              ],
+              "properties": {
+                "reportId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128
+                },
+                "title": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 1000
+                },
+                "format": {
+                  "enum": [
+                    "MARKDOWN",
+                    "PDF"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "schemaVersion",
+            "eventId",
+            "sequence",
+            "type",
+            "runId",
+            "conversationId",
+            "occurredAt",
+            "traceId",
+            "payload"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": "1.0"
+            },
+            "eventId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "sequence": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "type": {
+              "const": "agent.completed"
+            },
+            "runId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "conversationId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "messageId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "occurredAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "traceId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "payload": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "finalMessageId",
+                "usage",
+                "cost",
+                "dataCutoff",
+                "warnings"
+              ],
+              "properties": {
+                "finalMessageId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128
+                },
+                "usage": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "inputTokens",
+                    "outputTokens",
+                    "totalTokens"
+                  ],
+                  "properties": {
+                    "inputTokens": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "outputTokens": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "totalTokens": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  }
+                },
+                "cost": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "amount",
+                    "currency"
+                  ],
+                  "properties": {
+                    "amount": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "currency": {
+                      "type": "string",
+                      "minLength": 3,
+                      "maxLength": 3
+                    }
+                  }
+                },
+                "dataCutoff": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "format": "date"
+                },
+                "warnings": {
+                  "type": "array",
+                  "maxItems": 100,
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 1000
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "schemaVersion",
+            "eventId",
+            "sequence",
+            "type",
+            "runId",
+            "conversationId",
+            "occurredAt",
+            "traceId",
+            "payload"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": "1.0"
+            },
+            "eventId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "sequence": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "type": {
+              "const": "agent.failed"
+            },
+            "runId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "conversationId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "messageId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "occurredAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "traceId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "payload": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "error",
+                "failedStep",
+                "retryable"
+              ],
+              "properties": {
+                "error": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "code",
+                    "message",
+                    "retryable",
+                    "category"
+                  ],
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 9999
+                    },
+                    "message": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 1000
+                    },
+                    "retryable": {
+                      "type": "boolean"
+                    },
+                    "category": {
+                      "enum": [
+                        "VALIDATION",
+                        "AUTH",
+                        "MODEL",
+                        "TOOL",
+                        "SEARCH",
+                        "TIMEOUT",
+                        "INTERNAL"
+                      ]
+                    },
+                    "safeDetails": {
+                      "type": "object"
+                    }
+                  }
+                },
+                "failedStep": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "maxLength": 128
+                },
+                "retryable": {
+                  "type": "boolean"
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "schemaVersion",
+            "eventId",
+            "sequence",
+            "type",
+            "runId",
+            "conversationId",
+            "occurredAt",
+            "traceId",
+            "payload"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": "1.0"
+            },
+            "eventId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "sequence": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "type": {
+              "const": "agent.cancelled"
+            },
+            "runId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "conversationId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "messageId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "occurredAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "traceId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "payload": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "cancelledBy",
+                "reason"
+              ],
+              "properties": {
+                "cancelledBy": {
+                  "enum": [
+                    "USER",
+                    "SYSTEM",
+                    "TIMEOUT"
+                  ]
+                },
+                "reason": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 1000
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "MessageBlock": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "blockId",
+            "schemaVersion",
+            "type",
+            "text"
+          ],
+          "properties": {
+            "blockId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "schemaVersion": {
+              "const": 1
+            },
+            "title": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500
+            },
+            "provenance": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "sourceType",
+                "citationIds",
+                "asOf",
+                "timezone"
+              ],
+              "properties": {
+                "sourceType": {
+                  "enum": [
+                    "DATABASE",
+                    "PROGRAM_CALCULATION",
+                    "OFFICIAL",
+                    "MEDIA",
+                    "INSTITUTION",
+                    "MODEL_INFERENCE"
+                  ]
+                },
+                "citationIds": {
+                  "type": "array",
+                  "maxItems": 200,
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  }
+                },
+                "asOf": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "retrievedAt"
+                  ],
+                  "properties": {
+                    "tradeDate": {
+                      "type": "string",
+                      "format": "date"
+                    },
+                    "reportPeriod": {
+                      "type": "string",
+                      "format": "date"
+                    },
+                    "announcementDate": {
+                      "type": "string",
+                      "format": "date"
+                    },
+                    "availableAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "retrievedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  }
+                },
+                "timezone": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 64
+                },
+                "currency": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 16
+                },
+                "unit": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 32
+                },
+                "scale": {
+                  "enum": [
+                    "PERCENT",
+                    "DECIMAL"
+                  ]
+                },
+                "adjustment": {
+                  "enum": [
+                    "NONE",
+                    "FORWARD",
+                    "BACKWARD"
+                  ]
+                },
+                "dataVersion": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128
+                },
+                "algorithmVersion": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128
+                },
+                "qualityFlags": {
+                  "type": "array",
+                  "maxItems": 100,
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  }
+                }
+              }
+            },
+            "type": {
+              "const": "MARKDOWN"
+            },
+            "text": {
+              "type": "string",
+              "maxLength": 200000
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "blockId",
+            "schemaVersion",
+            "type",
+            "columns",
+            "rows",
+            "rowKey",
+            "truncated",
+            "provenance"
+          ],
+          "properties": {
+            "blockId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "schemaVersion": {
+              "const": 1
+            },
+            "title": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500
+            },
+            "provenance": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "sourceType",
+                "citationIds",
+                "asOf",
+                "timezone"
+              ],
+              "properties": {
+                "sourceType": {
+                  "enum": [
+                    "DATABASE",
+                    "PROGRAM_CALCULATION",
+                    "OFFICIAL",
+                    "MEDIA",
+                    "INSTITUTION",
+                    "MODEL_INFERENCE"
+                  ]
+                },
+                "citationIds": {
+                  "type": "array",
+                  "maxItems": 200,
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  }
+                },
+                "asOf": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "retrievedAt"
+                  ],
+                  "properties": {
+                    "tradeDate": {
+                      "type": "string",
+                      "format": "date"
+                    },
+                    "reportPeriod": {
+                      "type": "string",
+                      "format": "date"
+                    },
+                    "announcementDate": {
+                      "type": "string",
+                      "format": "date"
+                    },
+                    "availableAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "retrievedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  }
+                },
+                "timezone": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 64
+                },
+                "currency": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 16
+                },
+                "unit": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 32
+                },
+                "scale": {
+                  "enum": [
+                    "PERCENT",
+                    "DECIMAL"
+                  ]
+                },
+                "adjustment": {
+                  "enum": [
+                    "NONE",
+                    "FORWARD",
+                    "BACKWARD"
+                  ]
+                },
+                "dataVersion": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128
+                },
+                "algorithmVersion": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128
+                },
+                "qualityFlags": {
+                  "type": "array",
+                  "maxItems": 100,
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  }
+                }
+              }
+            },
+            "type": {
+              "const": "TABLE"
+            },
+            "columns": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 30,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "key",
+                  "label",
+                  "valueType"
+                ],
+                "properties": {
+                  "key": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^(?!(?:__proto__|prototype|constructor)$).+$"
+                  },
+                  "label": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "valueType": {
+                    "enum": [
+                      "STRING",
+                      "NUMBER",
+                      "DATE",
+                      "DATETIME",
+                      "BOOLEAN"
+                    ]
+                  },
+                  "unit": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 32
+                  },
+                  "scale": {
+                    "enum": [
+                      "PERCENT",
+                      "DECIMAL"
+                    ]
+                  },
+                  "align": {
+                    "enum": [
+                      "LEFT",
+                      "RIGHT",
+                      "CENTER"
+                    ]
+                  }
+                }
+              }
+            },
+            "rows": {
+              "type": "array",
+              "maxItems": 500,
+              "items": {
+                "type": "object"
+              }
+            },
+            "rowKey": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^(?!(?:__proto__|prototype|constructor)$).+$"
+            },
+            "truncated": {
+              "type": "boolean"
+            },
+            "totalRows": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "blockId",
+            "schemaVersion",
+            "type",
+            "chart",
+            "xAxisType",
+            "series",
+            "provenance"
+          ],
+          "properties": {
+            "blockId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "schemaVersion": {
+              "const": 1
+            },
+            "title": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500
+            },
+            "provenance": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "sourceType",
+                "citationIds",
+                "asOf",
+                "timezone"
+              ],
+              "properties": {
+                "sourceType": {
+                  "enum": [
+                    "DATABASE",
+                    "PROGRAM_CALCULATION",
+                    "OFFICIAL",
+                    "MEDIA",
+                    "INSTITUTION",
+                    "MODEL_INFERENCE"
+                  ]
+                },
+                "citationIds": {
+                  "type": "array",
+                  "maxItems": 200,
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  }
+                },
+                "asOf": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "retrievedAt"
+                  ],
+                  "properties": {
+                    "tradeDate": {
+                      "type": "string",
+                      "format": "date"
+                    },
+                    "reportPeriod": {
+                      "type": "string",
+                      "format": "date"
+                    },
+                    "announcementDate": {
+                      "type": "string",
+                      "format": "date"
+                    },
+                    "availableAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "retrievedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  }
+                },
+                "timezone": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 64
+                },
+                "currency": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 16
+                },
+                "unit": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 32
+                },
+                "scale": {
+                  "enum": [
+                    "PERCENT",
+                    "DECIMAL"
+                  ]
+                },
+                "adjustment": {
+                  "enum": [
+                    "NONE",
+                    "FORWARD",
+                    "BACKWARD"
+                  ]
+                },
+                "dataVersion": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128
+                },
+                "algorithmVersion": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128
+                },
+                "qualityFlags": {
+                  "type": "array",
+                  "maxItems": 100,
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  }
+                }
+              }
+            },
+            "type": {
+              "const": "CHART"
+            },
+            "chart": {
+              "enum": [
+                "LINE",
+                "BAR",
+                "AREA",
+                "HEATMAP"
+              ]
+            },
+            "xAxisType": {
+              "enum": [
+                "CATEGORY",
+                "DATETIME",
+                "NUMBER"
+              ]
+            },
+            "series": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 20,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "key",
+                  "name",
+                  "points"
+                ],
+                "properties": {
+                  "key": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^(?!(?:__proto__|prototype|constructor)$).+$"
+                  },
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "points": {
+                    "type": "array",
+                    "maxItems": 2000,
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "x",
+                        "y"
+                      ],
+                      "properties": {
+                        "x": {
+                          "type": [
+                            "string",
+                            "number"
+                          ]
+                        },
+                        "y": {
+                          "type": [
+                            "number",
+                            "null"
+                          ]
+                        }
+                      }
+                    }
+                  },
+                  "unit": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 32
+                  },
+                  "scale": {
+                    "enum": [
+                      "PERCENT",
+                      "DECIMAL"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "blockId",
+            "schemaVersion",
+            "type",
+            "tsCode",
+            "frequency",
+            "adjustment",
+            "priceUnit",
+            "volumeUnit",
+            "amountUnit",
+            "bars",
+            "provenance"
+          ],
+          "properties": {
+            "blockId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "schemaVersion": {
+              "const": 1
+            },
+            "title": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500
+            },
+            "provenance": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "sourceType",
+                "citationIds",
+                "asOf",
+                "timezone"
+              ],
+              "properties": {
+                "sourceType": {
+                  "enum": [
+                    "DATABASE",
+                    "PROGRAM_CALCULATION",
+                    "OFFICIAL",
+                    "MEDIA",
+                    "INSTITUTION",
+                    "MODEL_INFERENCE"
+                  ]
+                },
+                "citationIds": {
+                  "type": "array",
+                  "maxItems": 200,
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  }
+                },
+                "asOf": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "retrievedAt"
+                  ],
+                  "properties": {
+                    "tradeDate": {
+                      "type": "string",
+                      "format": "date"
+                    },
+                    "reportPeriod": {
+                      "type": "string",
+                      "format": "date"
+                    },
+                    "announcementDate": {
+                      "type": "string",
+                      "format": "date"
+                    },
+                    "availableAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "retrievedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  }
+                },
+                "timezone": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 64
+                },
+                "currency": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 16
+                },
+                "unit": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 32
+                },
+                "scale": {
+                  "enum": [
+                    "PERCENT",
+                    "DECIMAL"
+                  ]
+                },
+                "adjustment": {
+                  "enum": [
+                    "NONE",
+                    "FORWARD",
+                    "BACKWARD"
+                  ]
+                },
+                "dataVersion": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128
+                },
+                "algorithmVersion": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128
+                },
+                "qualityFlags": {
+                  "type": "array",
+                  "maxItems": 100,
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  }
+                }
+              }
+            },
+            "type": {
+              "const": "KLINE"
+            },
+            "tsCode": {
+              "type": "string",
+              "pattern": "^[0-9A-Z]{5,8}\\.(SH|SZ|BJ|HK)$",
+              "maxLength": 12
+            },
+            "frequency": {
+              "enum": [
+                "DAILY",
+                "WEEKLY",
+                "MONTHLY"
+              ]
+            },
+            "adjustment": {
+              "enum": [
+                "NONE",
+                "FORWARD",
+                "BACKWARD"
+              ]
+            },
+            "priceUnit": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 32
+            },
+            "volumeUnit": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 32
+            },
+            "amountUnit": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 32
+            },
+            "bars": {
+              "type": "array",
+              "maxItems": 5000,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "tradeDate",
+                  "open",
+                  "high",
+                  "low",
+                  "close",
+                  "volume",
+                  "amount"
+                ],
+                "properties": {
+                  "tradeDate": {
+                    "type": "string",
+                    "format": "date"
+                  },
+                  "open": {
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "high": {
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "low": {
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "close": {
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "volume": {
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "amount": {
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "blockId",
+            "schemaVersion",
+            "type",
+            "tsCode",
+            "periods",
+            "provenance"
+          ],
+          "properties": {
+            "blockId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "schemaVersion": {
+              "const": 1
+            },
+            "title": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500
+            },
+            "provenance": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "sourceType",
+                "citationIds",
+                "asOf",
+                "timezone"
+              ],
+              "properties": {
+                "sourceType": {
+                  "enum": [
+                    "DATABASE",
+                    "PROGRAM_CALCULATION",
+                    "OFFICIAL",
+                    "MEDIA",
+                    "INSTITUTION",
+                    "MODEL_INFERENCE"
+                  ]
+                },
+                "citationIds": {
+                  "type": "array",
+                  "maxItems": 200,
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  }
+                },
+                "asOf": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "retrievedAt"
+                  ],
+                  "properties": {
+                    "tradeDate": {
+                      "type": "string",
+                      "format": "date"
+                    },
+                    "reportPeriod": {
+                      "type": "string",
+                      "format": "date"
+                    },
+                    "announcementDate": {
+                      "type": "string",
+                      "format": "date"
+                    },
+                    "availableAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "retrievedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  }
+                },
+                "timezone": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 64
+                },
+                "currency": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 16
+                },
+                "unit": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 32
+                },
+                "scale": {
+                  "enum": [
+                    "PERCENT",
+                    "DECIMAL"
+                  ]
+                },
+                "adjustment": {
+                  "enum": [
+                    "NONE",
+                    "FORWARD",
+                    "BACKWARD"
+                  ]
+                },
+                "dataVersion": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128
+                },
+                "algorithmVersion": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128
+                },
+                "qualityFlags": {
+                  "type": "array",
+                  "maxItems": 100,
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  }
+                }
+              }
+            },
+            "type": {
+              "const": "FINANCIAL_METRICS"
+            },
+            "tsCode": {
+              "type": "string",
+              "pattern": "^[0-9A-Z]{5,8}\\.(SH|SZ|BJ|HK)$",
+              "maxLength": 12
+            },
+            "periods": {
+              "type": "array",
+              "maxItems": 20,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "reportPeriod",
+                  "metrics"
+                ],
+                "properties": {
+                  "reportPeriod": {
+                    "type": "string",
+                    "format": "date"
+                  },
+                  "announcementDate": {
+                    "type": "string",
+                    "format": "date"
+                  },
+                  "availableAt": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "reportType": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64
+                  },
+                  "metrics": {
+                    "type": "array",
+                    "maxItems": 30,
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "key",
+                        "label",
+                        "value"
+                      ],
+                      "properties": {
+                        "key": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 128,
+                          "pattern": "^(?!(?:__proto__|prototype|constructor)$).+$"
+                        },
+                        "label": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 200
+                        },
+                        "value": {
+                          "type": [
+                            "number",
+                            "null"
+                          ]
+                        },
+                        "unit": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 32
+                        },
+                        "scale": {
+                          "enum": [
+                            "PERCENT",
+                            "DECIMAL"
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "blockId",
+            "schemaVersion",
+            "type",
+            "level",
+            "code",
+            "text",
+            "provenance"
+          ],
+          "properties": {
+            "blockId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "schemaVersion": {
+              "const": 1
+            },
+            "title": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500
+            },
+            "provenance": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "sourceType",
+                "citationIds",
+                "asOf",
+                "timezone"
+              ],
+              "properties": {
+                "sourceType": {
+                  "enum": [
+                    "DATABASE",
+                    "PROGRAM_CALCULATION",
+                    "OFFICIAL",
+                    "MEDIA",
+                    "INSTITUTION",
+                    "MODEL_INFERENCE"
+                  ]
+                },
+                "citationIds": {
+                  "type": "array",
+                  "maxItems": 200,
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  }
+                },
+                "asOf": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "retrievedAt"
+                  ],
+                  "properties": {
+                    "tradeDate": {
+                      "type": "string",
+                      "format": "date"
+                    },
+                    "reportPeriod": {
+                      "type": "string",
+                      "format": "date"
+                    },
+                    "announcementDate": {
+                      "type": "string",
+                      "format": "date"
+                    },
+                    "availableAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "retrievedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  }
+                },
+                "timezone": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 64
+                },
+                "currency": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 16
+                },
+                "unit": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 32
+                },
+                "scale": {
+                  "enum": [
+                    "PERCENT",
+                    "DECIMAL"
+                  ]
+                },
+                "adjustment": {
+                  "enum": [
+                    "NONE",
+                    "FORWARD",
+                    "BACKWARD"
+                  ]
+                },
+                "dataVersion": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128
+                },
+                "algorithmVersion": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128
+                },
+                "qualityFlags": {
+                  "type": "array",
+                  "maxItems": 100,
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  }
+                }
+              }
+            },
+            "type": {
+              "const": "RISK_NOTICE"
+            },
+            "level": {
+              "enum": [
+                "INFO",
+                "WARNING",
+                "CRITICAL"
+              ]
+            },
+            "code": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "text": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 10000
+            },
+            "relatedBlockIds": {
+              "type": "array",
+              "maxItems": 100,
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128
+              }
+            }
+          }
+        }
+      ]
+    },
+    "DataProvenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sourceType",
+        "citationIds",
+        "asOf",
+        "timezone"
+      ],
+      "properties": {
+        "sourceType": {
+          "enum": [
+            "DATABASE",
+            "PROGRAM_CALCULATION",
+            "OFFICIAL",
+            "MEDIA",
+            "INSTITUTION",
+            "MODEL_INFERENCE"
+          ]
+        },
+        "citationIds": {
+          "type": "array",
+          "maxItems": 200,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        },
+        "asOf": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "retrievedAt"
+          ],
+          "properties": {
+            "tradeDate": {
+              "type": "string",
+              "format": "date"
+            },
+            "reportPeriod": {
+              "type": "string",
+              "format": "date"
+            },
+            "announcementDate": {
+              "type": "string",
+              "format": "date"
+            },
+            "availableAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "retrievedAt": {
+              "type": "string",
+              "format": "date-time"
+            }
+          }
+        },
+        "timezone": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "currency": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 16
+        },
+        "unit": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32
+        },
+        "scale": {
+          "enum": [
+            "PERCENT",
+            "DECIMAL"
+          ]
+        },
+        "adjustment": {
+          "enum": [
+            "NONE",
+            "FORWARD",
+            "BACKWARD"
+          ]
+        },
+        "dataVersion": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "algorithmVersion": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "qualityFlags": {
+          "type": "array",
+          "maxItems": 100,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        }
+      }
+    },
+    "Citation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "citationId",
+        "sourceId",
+        "sourceType",
+        "title",
+        "retrievedAt",
+        "locator",
+        "contentHash"
+      ],
+      "properties": {
+        "citationId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "sourceId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "sourceType": {
+          "enum": [
+            "DATABASE",
+            "PROGRAM_CALCULATION",
+            "OFFICIAL",
+            "MEDIA",
+            "INSTITUTION",
+            "MODEL_INFERENCE"
+          ]
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "canonicalUrl": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096,
+          "pattern": "^https://"
+        },
+        "publisher": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "publishedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "retrievedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "locator": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "factId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "section": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500
+            },
+            "paragraph": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "startOffset": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "endOffset": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "contentHash": {
+          "type": "string",
+          "minLength": 16,
+          "maxLength": 128
+        }
+      }
+    }
+  },
+  "enums": {
+    "conversationStatus": [
+      "ACTIVE",
+      "ARCHIVED"
+    ],
+    "messageRole": [
+      "USER",
+      "ASSISTANT",
+      "SYSTEM"
+    ],
+    "messageStatus": [
+      "PENDING",
+      "STREAMING",
+      "COMPLETED",
+      "FAILED",
+      "CANCELLED"
+    ],
+    "runStatus": [
+      "QUEUED",
+      "RUNNING",
+      "CANCEL_REQUESTED",
+      "COMPLETED",
+      "FAILED",
+      "CANCELLED"
+    ],
+    "stepStatus": [
+      "PENDING",
+      "RUNNING",
+      "COMPLETED",
+      "FAILED",
+      "CANCELLED",
+      "SKIPPED"
+    ],
+    "toolCallStatus": [
+      "PENDING",
+      "AUTHORIZING",
+      "RUNNING",
+      "RETRY_WAIT",
+      "SUCCEEDED",
+      "FAILED",
+      "CANCELLED",
+      "REJECTED"
+    ],
+    "modelCallStatus": [
+      "PENDING",
+      "STREAMING",
+      "RETRY_WAIT",
+      "SUCCEEDED",
+      "FAILED",
+      "CANCELLED"
+    ],
+    "modelPolicy": [
+      "AUTO",
+      "MANUAL"
+    ],
+    "capability": [
+      "INTERNAL_DATA",
+      "QUANT_COMPUTE",
+      "WEB_SEARCH"
+    ],
+    "toolKey": [
+      "resolve_security",
+      "get_stock_price_history",
+      "get_stock_overview",
+      "get_financial_statements",
+      "get_financial_indicators",
+      "get_stock_moneyflow",
+      "get_market_snapshot",
+      "get_sector_membership",
+      "get_user_watchlist",
+      "get_portfolio_risk",
+      "get_backtest_result",
+      "compute_performance_metrics",
+      "compute_valuation_percentile",
+      "search_web",
+      "fetch_web_page"
+    ]
+  },
+  "errors": [
+    {
+      "code": 6001,
+      "key": "AI_CONVERSATION_NOT_FOUND",
+      "httpStatus": 404,
+      "retryable": false,
+      "message": "会话不存在或无权访问"
+    },
+    {
+      "code": 6002,
+      "key": "AI_RUN_NOT_FOUND",
+      "httpStatus": 404,
+      "retryable": false,
+      "message": "Agent Run 不存在或无权访问"
+    },
+    {
+      "code": 6003,
+      "key": "AI_RUN_NOT_CANCELLABLE",
+      "httpStatus": 409,
+      "retryable": false,
+      "message": "Agent Run 当前不可取消"
+    },
+    {
+      "code": 6004,
+      "key": "AI_DUPLICATE_REQUEST_CONFLICT",
+      "httpStatus": 409,
+      "retryable": false,
+      "message": "幂等请求内容冲突"
+    },
+    {
+      "code": 6005,
+      "key": "AI_MODEL_NOT_AVAILABLE",
+      "httpStatus": 503,
+      "retryable": true,
+      "message": "模型暂不可用"
+    },
+    {
+      "code": 6006,
+      "key": "AI_MODEL_RATE_LIMITED",
+      "httpStatus": 429,
+      "retryable": true,
+      "message": "模型调用频率受限"
+    },
+    {
+      "code": 6007,
+      "key": "AI_MODEL_TIMEOUT",
+      "httpStatus": 504,
+      "retryable": true,
+      "message": "模型调用超时"
+    },
+    {
+      "code": 6008,
+      "key": "AI_TOOL_NOT_FOUND",
+      "httpStatus": 400,
+      "retryable": false,
+      "message": "Tool 未注册"
+    },
+    {
+      "code": 6009,
+      "key": "AI_TOOL_FORBIDDEN",
+      "httpStatus": 403,
+      "retryable": false,
+      "message": "无权使用该 Tool"
+    },
+    {
+      "code": 6010,
+      "key": "AI_TOOL_VALIDATION_FAILED",
+      "httpStatus": 400,
+      "retryable": false,
+      "message": "Tool 参数校验失败"
+    },
+    {
+      "code": 6011,
+      "key": "AI_TOOL_TIMEOUT",
+      "httpStatus": 504,
+      "retryable": true,
+      "message": "Tool 执行超时"
+    },
+    {
+      "code": 6012,
+      "key": "AI_TOOL_RESULT_LIMIT_EXCEEDED",
+      "httpStatus": 422,
+      "retryable": false,
+      "message": "Tool 结果超过限制"
+    },
+    {
+      "code": 6013,
+      "key": "AI_DATA_NOT_AVAILABLE",
+      "httpStatus": 422,
+      "retryable": false,
+      "message": "指定截止日无可用数据"
+    },
+    {
+      "code": 6014,
+      "key": "AI_DATA_STALE",
+      "httpStatus": 409,
+      "retryable": false,
+      "message": "数据时效不满足要求"
+    },
+    {
+      "code": 6015,
+      "key": "AI_SEARCH_FAILED",
+      "httpStatus": 502,
+      "retryable": true,
+      "message": "联网搜索失败"
+    },
+    {
+      "code": 6016,
+      "key": "AI_WEB_SOURCE_BLOCKED",
+      "httpStatus": 422,
+      "retryable": false,
+      "message": "网页来源被安全策略拦截"
+    },
+    {
+      "code": 6017,
+      "key": "AI_CITATION_INVALID",
+      "httpStatus": 422,
+      "retryable": false,
+      "message": "引用验证失败"
+    },
+    {
+      "code": 6018,
+      "key": "AI_CONTEXT_TOO_LARGE",
+      "httpStatus": 422,
+      "retryable": false,
+      "message": "上下文超过模型限制"
+    },
+    {
+      "code": 6019,
+      "key": "AI_COST_QUOTA_EXCEEDED",
+      "httpStatus": 429,
+      "retryable": false,
+      "message": "Agent 成本额度不足"
+    },
+    {
+      "code": 6020,
+      "key": "AI_RUN_TIMEOUT",
+      "httpStatus": 504,
+      "retryable": true,
+      "message": "Agent Run 超时"
+    },
+    {
+      "code": 6021,
+      "key": "AI_SCHEDULE_INVALID",
+      "httpStatus": 400,
+      "retryable": false,
+      "message": "Agent 计划配置无效"
+    },
+    {
+      "code": 6022,
+      "key": "AI_NOTIFICATION_CHANNEL_INVALID",
+      "httpStatus": 400,
+      "retryable": false,
+      "message": "通知通道配置无效"
+    },
+    {
+      "code": 6023,
+      "key": "AI_NOTIFICATION_DELIVERY_FAILED",
+      "httpStatus": 502,
+      "retryable": true,
+      "message": "通知发送失败"
+    },
+    {
+      "code": 6024,
+      "key": "AI_WORKFLOW_VERSION_MISSING",
+      "httpStatus": 409,
+      "retryable": false,
+      "message": "工作流版本不存在"
+    },
+    {
+      "code": 6025,
+      "key": "AI_PROMPT_VERSION_MISSING",
+      "httpStatus": 409,
+      "retryable": false,
+      "message": "Prompt 版本不存在"
+    },
+    {
+      "code": 6026,
+      "key": "AI_TOOL_RATE_LIMITED",
+      "httpStatus": 429,
+      "retryable": true,
+      "message": "Tool 调用频率受限"
+    },
+    {
+      "code": 6027,
+      "key": "AI_TOOL_UPSTREAM_FAILED",
+      "httpStatus": 502,
+      "retryable": true,
+      "message": "Tool 上游服务失败"
+    },
+    {
+      "code": 6028,
+      "key": "AI_DATA_QUALITY_FAILED",
+      "httpStatus": 422,
+      "retryable": false,
+      "message": "数据质量门禁失败"
+    },
+    {
+      "code": 6029,
+      "key": "AI_TOOL_OUTPUT_INVALID",
+      "httpStatus": 502,
+      "retryable": false,
+      "message": "Tool 输出协议无效"
+    },
+    {
+      "code": 6030,
+      "key": "AI_CONFIRMATION_REQUIRED",
+      "httpStatus": 409,
+      "retryable": false,
+      "message": "操作需要用户确认"
+    },
+    {
+      "code": 6031,
+      "key": "AI_RUN_CANCELLED",
+      "httpStatus": 409,
+      "retryable": false,
+      "message": "Agent Run 已取消"
+    },
+    {
+      "code": 6099,
+      "key": "AI_INTERNAL_ERROR",
+      "httpStatus": 500,
+      "retryable": true,
+      "message": "Agent 内部错误"
+    }
+  ]
+}

@@ -1,6 +1,6 @@
 ---
 batch: 6
-status: pending
+status: completed
 type: backend
 depends_on: ["batch-001-agent-public-contracts", "batch-003-agent-audit-and-citation-schema"]
 blocks: ["batch-007-stock-market-query-tools", "batch-008-financial-fund-flow-tools", "batch-009-deterministic-quant-tools", "batch-010-web-search-and-citations", "batch-011-agent-orchestrator-workflow", "batch-025-ai-observability-cost-and-evaluation", "batch-028-controlled-sql-explorer"]
@@ -148,7 +148,11 @@ estimated_scope: large
 
 ## 24. 完成定义
 
-contracts、registry、policy、executor、validator、审计/指标 hook 和完整测试合入。
+- 实现 commit：`05004dc feat(agent): add tool registry and executor`。
+- 已合入 contracts、默认拒绝 Registry、Policy、JSON Schema validator、Executor、retry/timeout/cancel、审计状态转换、observer hook 和 per-run limiter。
+- Tool、Audit、Contracts、Model Gateway、Execution 相关回归共 76/76 通过；production build、增量 ESLint/Prettier、契约生成检查和 `git diff --check` 通过。
+- 开发容器增量编译 `Found 0 errors`；app/PostgreSQL/Redis healthy；`/health` 返回 ok。
+- 证据：[测试方案](../../../design/Agent工具注册策略与执行器测试方案-20260719.md)、[测试执行报告](../../../Agent工具注册策略与执行器测试执行报告-20260719.md)。
 
 ## 25. 回滚方案
 

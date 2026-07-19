@@ -26,6 +26,8 @@ const baseConfig = {
   defaultTimeoutMs: 10_000,
   maxResultBytes: 256_000,
   maxConcurrentPerRun: 3,
+  priceMaxBars: 5_000,
+  marketCacheTtlSeconds: 300,
 } as IAgentToolsConfig
 
 function context(overrides: Partial<ToolExecutionContext> = {}): ToolExecutionContext {

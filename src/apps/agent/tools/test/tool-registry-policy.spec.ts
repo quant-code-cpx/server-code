@@ -18,6 +18,8 @@ const enabledConfig = {
   defaultTimeoutMs: 10_000,
   maxResultBytes: 256_000,
   maxConcurrentPerRun: 3,
+  priceMaxBars: 5_000,
+  marketCacheTtlSeconds: 300,
 } as IAgentToolsConfig
 
 function result(toolCallId: string): ToolResult<{ rows: Array<{ tsCode: string; name: string }> }> {
@@ -113,6 +115,8 @@ describe('Agent Tool config / Registry / Schema / Policy', () => {
       defaultTimeoutMs: 10_000,
       maxResultBytes: 256_000,
       maxConcurrentPerRun: 3,
+      priceMaxBars: 5_000,
+      marketCacheTtlSeconds: 300,
     })
     expect(
       buildAgentToolsConfig({ AGENT_TOOLS_ENABLED: 'search_web,resolve_security,search_web' }).enabledTools,

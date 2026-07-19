@@ -62,7 +62,10 @@ export class StockDetailService {
             where: { tsCode, ...(targetDate ? { tradeDate: { lte: targetDate } } : {}) },
             orderBy: { tradeDate: 'desc' },
           }),
-          this.prisma.express.findFirst({ where: { tsCode }, orderBy: { annDate: 'desc' } }),
+          this.prisma.express.findFirst({
+            where: { tsCode, ...(targetDate ? { annDate: { lte: targetDate } } : {}) },
+            orderBy: { annDate: 'desc' },
+          }),
         ])
 
         if (!basic) return null
@@ -219,8 +222,13 @@ export class StockDetailService {
             t.pct_chg     AS "pctChg",
             af.adj_factor AS "adjFactor"
           FROM ${tableName} t
-          LEFT JOIN stock_adjustment_factors af
-            ON af.ts_code = t.ts_code AND af.trade_date = t.trade_date
+          LEFT JOIN LATERAL (
+            SELECT adj_factor
+            FROM stock_adjustment_factors
+            WHERE ts_code = t.ts_code AND trade_date <= t.trade_date
+            ORDER BY trade_date DESC
+            LIMIT 1
+          ) af ON true
           WHERE t.ts_code = ${tsCode}
             AND t.trade_date <= ${cutoff}
           ORDER BY t.trade_date DESC
@@ -240,8 +248,13 @@ export class StockDetailService {
           t.pct_chg     AS "pctChg",
           af.adj_factor AS "adjFactor"
         FROM ${tableName} t
-        LEFT JOIN stock_adjustment_factors af
-          ON af.ts_code = t.ts_code AND af.trade_date = t.trade_date
+        LEFT JOIN LATERAL (
+          SELECT adj_factor
+          FROM stock_adjustment_factors
+          WHERE ts_code = t.ts_code AND trade_date <= t.trade_date
+          ORDER BY trade_date DESC
+          LIMIT 1
+        ) af ON true
         WHERE t.ts_code = ${tsCode}
           AND t.trade_date >= ${startDate}
           AND t.trade_date <= ${endDate}
@@ -259,12 +272,12 @@ export class StockDetailService {
     const latestAdj = [...rows].reverse().find((r) => r.adjFactor !== null)?.adjFactor ?? 1
 
     const toItem = (row: ChartRow) => {
-      // null adj_factor 视为与最近已知因子相同（无除权），而非错误地回退到 1
-      const factor = row.adjFactor ?? latestAdj
+      // SQL 已向前查找不晚于 K 线日期的最近因子；完全缺失时不使用未来因子。
+      const factor = row.adjFactor ?? 1
       let adjMultiplier = 1
 
       if (adjustType === AdjustType.QFQ) {
-        adjMultiplier = factor > 0 ? latestAdj / factor : 1
+        adjMultiplier = factor > 0 && latestAdj > 0 ? factor / latestAdj : 1
       } else if (adjustType === AdjustType.HFQ) {
         adjMultiplier = factor
       }

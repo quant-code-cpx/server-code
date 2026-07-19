@@ -9,6 +9,8 @@ export interface AgentToolsConfigEnvironment {
   AGENT_TOOL_DEFAULT_TIMEOUT_MS?: string
   AGENT_TOOL_MAX_RESULT_BYTES?: string
   AGENT_TOOL_MAX_CONCURRENT_PER_RUN?: string
+  AGENT_TOOL_PRICE_MAX_BARS?: string
+  AGENT_TOOL_MARKET_CACHE_TTL_SECONDS?: string
 }
 
 export function buildAgentToolsConfig(env: AgentToolsConfigEnvironment) {
@@ -35,6 +37,14 @@ export function buildAgentToolsConfig(env: AgentToolsConfigEnvironment) {
       3,
       1,
       50,
+    ),
+    priceMaxBars: parseInteger(env.AGENT_TOOL_PRICE_MAX_BARS, 'AGENT_TOOL_PRICE_MAX_BARS', 5_000, 1, 5_000),
+    marketCacheTtlSeconds: parseInteger(
+      env.AGENT_TOOL_MARKET_CACHE_TTL_SECONDS,
+      'AGENT_TOOL_MARKET_CACHE_TTL_SECONDS',
+      300,
+      1,
+      86_400,
     ),
   }
 }

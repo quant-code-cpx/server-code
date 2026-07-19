@@ -89,6 +89,7 @@ model AiMessage {
   user          User           @relation(fields: [userId], references: [id], onDelete: Restrict)
   parentMessage AiMessage?     @relation("AiMessageVersions", fields: [parentMessageId], references: [id], onDelete: Restrict)
   versions      AiMessage[]    @relation("AiMessageVersions")
+  citations     AiCitation[]
 
   @@unique([conversationId, clientRequestId], map: "ai_messages_conversation_client_request_key")
   @@unique([parentMessageId, version], map: "ai_messages_parent_version_key")

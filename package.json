@@ -21,6 +21,7 @@
     "test:api": "jest 'src/apps/.*/test/.*api\\.spec\\.ts$' test/fresh --runInBand",
     "test:integration": "jest 'src/apps/.*/test/.*integration\\.spec\\.ts$' --runInBand",
     "test:agent-conversation:integration": "cross-env RUN_AGENT_DB_INTEGRATION=true jest src/apps/agent/conversation/test/agent-conversation.repository.spec.ts --runInBand",
+    "test:agent-audit:integration": "cross-env RUN_AGENT_DB_INTEGRATION=true jest src/apps/agent/audit/test/agent-audit.repository.spec.ts --runInBand",
     "test:integration:redis": "cross-env RUN_REDIS_INTEGRATION=true jest src/apps/auth/test/auth.integration.spec.ts --runInBand",
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",

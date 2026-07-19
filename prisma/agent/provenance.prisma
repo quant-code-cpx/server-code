@@ -1,0 +1,97 @@
+// Agent 网页来源快照与消息引用。
+
+enum AiSourceType {
+  DATABASE
+  PROGRAM_CALCULATION
+  OFFICIAL
+  MEDIA
+  INSTITUTION
+  MODEL_INFERENCE
+
+  @@map("ai_source_type")
+}
+
+enum AiSearchFetchStatus {
+  METADATA_ONLY
+  FETCHED
+  BLOCKED
+  FAILED
+
+  @@map("ai_search_fetch_status")
+}
+
+enum AiConclusionLevel {
+  FACT
+  PROGRAM_CALCULATION
+  MODEL_INFERENCE
+  SCENARIO
+
+  @@map("ai_conclusion_level")
+}
+
+model AiSearchSource {
+  id                      String              @id @default(cuid()) @db.VarChar(32)
+  firstSeenUserId         Int                 @map("first_seen_user_id")
+  firstSeenRunId          String?             @map("first_seen_run_id") @db.VarChar(32)
+  sourceType              AiSourceType        @map("source_type")
+  canonicalUrl            String              @map("canonical_url") @db.VarChar(4096)
+  canonicalUrlHash        String              @map("canonical_url_hash") @db.Char(64)
+  canonicalizationVersion String              @map("canonicalization_version") @db.VarChar(40)
+  title                   String              @db.VarChar(1000)
+  publisher               String?             @db.VarChar(500)
+  author                  String?             @db.VarChar(500)
+  publishedAt             DateTime?           @map("published_at") @db.Timestamptz(3)
+  fetchedAt               DateTime            @map("fetched_at") @db.Timestamptz(3)
+  contentHash             String              @map("content_hash") @db.Char(64)
+  objectRef               String?             @map("object_ref") @db.VarChar(500)
+  mimeType                String?             @map("mime_type") @db.VarChar(128)
+  language                String?             @db.VarChar(32)
+  license                 String?             @db.VarChar(200)
+  robotsStatus            String?             @map("robots_status") @db.VarChar(32)
+  fetchStatus             AiSearchFetchStatus @default(METADATA_ONLY) @map("fetch_status")
+  metadata                Json                @default("{}") @db.JsonB
+  createdAt               DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  citations AiCitation[]
+
+  @@unique([canonicalUrlHash, contentHash], map: "ai_search_sources_url_content_hash_key")
+  @@index([canonicalUrlHash, fetchedAt(sort: Desc)], map: "ai_search_sources_url_fetched_idx")
+  @@index([sourceType, fetchedAt(sort: Desc)], map: "ai_search_sources_type_fetched_idx")
+  @@map("ai_search_sources")
+}
+
+model AiCitation {
+  id                BigInt            @id @default(autoincrement())
+  publicId          String            @unique(map: "ai_citations_public_id_key") @default(cuid()) @map("public_id") @db.VarChar(32)
+  userId            Int               @map("user_id")
+  messageId         String            @map("message_id") @db.VarChar(32)
+  blockId           String            @map("block_id") @db.VarChar(128)
+  claimKey          String            @map("claim_key") @db.VarChar(128)
+  conclusionLevel   AiConclusionLevel @map("conclusion_level")
+  sourceType        AiSourceType      @map("source_type")
+  searchSourceId    String?           @map("search_source_id") @db.VarChar(32)
+  toolCallId        String?           @map("tool_call_id") @db.VarChar(32)
+  sourceTitle       String            @map("source_title") @db.VarChar(1000)
+  canonicalUrl      String?           @map("canonical_url") @db.VarChar(4096)
+  publisher         String?           @db.VarChar(500)
+  sourcePublishedAt DateTime?         @map("source_published_at") @db.Timestamptz(3)
+  retrievedAt       DateTime          @map("retrieved_at") @db.Timestamptz(3)
+  locator           Json              @db.JsonB
+  startOffset       Int?              @map("start_offset")
+  endOffset         Int?              @map("end_offset")
+  contentHash       String            @map("content_hash") @db.Char(64)
+  quoteHash         String?           @map("quote_hash") @db.Char(64)
+  citationKeyHash   String            @map("citation_key_hash") @db.Char(64)
+  createdAt         DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  message      AiMessage       @relation(fields: [messageId], references: [id], onDelete: Restrict)
+  searchSource AiSearchSource? @relation(fields: [searchSourceId], references: [id], onDelete: Restrict)
+  toolCall     AiToolCall?     @relation(fields: [toolCallId], references: [id], onDelete: Restrict)
+
+  @@unique([messageId, citationKeyHash], map: "ai_citations_message_key_hash_key")
+  @@index([messageId, id], map: "ai_citations_message_id_idx")
+  @@index([searchSourceId], map: "ai_citations_search_source_idx")
+  @@index([toolCallId], map: "ai_citations_tool_call_idx")
+  @@index([userId, createdAt(sort: Desc)], map: "ai_citations_user_created_idx")
+  @@map("ai_citations")
+}

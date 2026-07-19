@@ -1,0 +1,179 @@
+// Agent Tool/Model 审计与 Prompt/Workflow 不可变版本。
+
+enum AiToolCallStatus {
+  PENDING
+  AUTHORIZING
+  RUNNING
+  RETRY_WAIT
+  SUCCEEDED
+  FAILED
+  CANCELLED
+  REJECTED
+
+  @@map("ai_tool_call_status")
+}
+
+enum AiModelCallStatus {
+  PENDING
+  STREAMING
+  RETRY_WAIT
+  SUCCEEDED
+  FAILED
+  CANCELLED
+
+  @@map("ai_model_call_status")
+}
+
+enum AiVersionStatus {
+  DRAFT
+  PUBLISHED
+  RETIRED
+
+  @@map("ai_version_status")
+}
+
+enum AiAuditPayloadMode {
+  HASH_ONLY
+  ENCRYPTED_REF
+
+  @@map("ai_audit_payload_mode")
+}
+
+model AiPromptVersion {
+  id           String          @id @default(cuid()) @db.VarChar(32)
+  promptKey    String          @map("prompt_key") @db.VarChar(128)
+  version      Int
+  status       AiVersionStatus @default(DRAFT)
+  template     String          @db.Text
+  inputSchema  Json            @default("{}") @map("input_schema") @db.JsonB
+  outputSchema Json            @default("{}") @map("output_schema") @db.JsonB
+  contentHash  String          @map("content_hash") @db.Char(64)
+  createdBy    Int             @map("created_by")
+  publishedBy  Int?            @map("published_by")
+  createdAt    DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime        @updatedAt @map("updated_at") @db.Timestamptz(3)
+  publishedAt  DateTime?       @map("published_at") @db.Timestamptz(3)
+  retiredAt    DateTime?       @map("retired_at") @db.Timestamptz(3)
+
+  modelCalls AiModelCall[]
+
+  @@unique([promptKey, version], map: "ai_prompt_versions_key_version_key")
+  @@unique([promptKey, contentHash], map: "ai_prompt_versions_key_content_hash_key")
+  @@index([status, promptKey, version(sort: Desc)], map: "ai_prompt_versions_status_key_version_idx")
+  @@map("ai_prompt_versions")
+}
+
+model AiWorkflowVersion {
+  id             String          @id @default(cuid()) @db.VarChar(32)
+  workflowKey    String          @map("workflow_key") @db.VarChar(128)
+  version        Int
+  status         AiVersionStatus @default(DRAFT)
+  definition     Json            @db.JsonB
+  toolAllowlist  Json            @default("[]") @map("tool_allowlist") @db.JsonB
+  inputSchema    Json            @default("{}") @map("input_schema") @db.JsonB
+  outputSchema   Json            @default("{}") @map("output_schema") @db.JsonB
+  contentHash    String          @map("content_hash") @db.Char(64)
+  createdBy      Int             @map("created_by")
+  publishedBy    Int?            @map("published_by")
+  createdAt      DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime        @updatedAt @map("updated_at") @db.Timestamptz(3)
+  publishedAt    DateTime?       @map("published_at") @db.Timestamptz(3)
+  retiredAt      DateTime?       @map("retired_at") @db.Timestamptz(3)
+
+  @@unique([workflowKey, version], map: "ai_workflow_versions_key_version_key")
+  @@unique([workflowKey, contentHash], map: "ai_workflow_versions_key_content_hash_key")
+  @@index([status, workflowKey, version(sort: Desc)], map: "ai_workflow_versions_status_key_version_idx")
+  @@map("ai_workflow_versions")
+}
+
+model AiToolCall {
+  id                String             @id @default(cuid()) @db.VarChar(32)
+  userId            Int                @map("user_id")
+  scopeId           String             @map("scope_id") @db.VarChar(64)
+  runId             String?            @map("run_id") @db.VarChar(32)
+  stepId            String?            @map("step_id") @db.VarChar(32)
+  logicalNodeKey    String             @map("logical_node_key") @db.VarChar(128)
+  invocationIndex   Int                @default(0) @map("invocation_index")
+  toolName          String             @map("tool_name") @db.VarChar(96)
+  toolVersion       String             @map("tool_version") @db.VarChar(40)
+  status            AiToolCallStatus   @default(PENDING)
+  attemptCount      Int                @default(1) @map("attempt_count")
+  payloadMode       AiAuditPayloadMode @default(HASH_ONLY) @map("payload_mode")
+  inputSummary      Json               @default("{}") @map("input_summary") @db.JsonB
+  inputHash         String             @map("input_hash") @db.Char(64)
+  inputRef          String?            @map("input_ref") @db.VarChar(500)
+  outputSummary     Json?              @map("output_summary") @db.JsonB
+  outputHash        String?            @map("output_hash") @db.Char(64)
+  outputRef         String?            @map("output_ref") @db.VarChar(500)
+  dataAsOf          DateTime?          @map("data_as_of") @db.Date
+  dataThrough       DateTime?          @map("data_through") @db.Date
+  marketTimezone    String?            @map("market_timezone") @db.VarChar(64)
+  dataVersion       String?            @map("data_version") @db.VarChar(160)
+  qualityFlags      Json               @default("[]") @map("quality_flags") @db.JsonB
+  sourceTasks       Json               @default("[]") @map("source_tasks") @db.JsonB
+  rowCount          Int?               @map("row_count")
+  truncated         Boolean            @default(false)
+  errorCode         Int?               @map("error_code")
+  errorClass        String?            @map("error_class") @db.VarChar(128)
+  errorMessage      String?            @map("error_message") @db.VarChar(1000)
+  startedAt         DateTime           @default(now()) @map("started_at") @db.Timestamptz(3)
+  finishedAt        DateTime?          @map("finished_at") @db.Timestamptz(3)
+  durationMs        Int?               @map("duration_ms")
+  createdAt         DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime           @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  citations AiCitation[]
+
+  @@unique([userId, scopeId, logicalNodeKey, invocationIndex], map: "ai_tool_calls_scope_node_invocation_key")
+  @@index([runId, startedAt], map: "ai_tool_calls_run_started_idx")
+  @@index([userId, scopeId, startedAt], map: "ai_tool_calls_user_scope_started_idx")
+  @@index([status, startedAt], map: "ai_tool_calls_status_started_idx")
+  @@map("ai_tool_calls")
+}
+
+model AiModelCall {
+  id                String             @id @default(cuid()) @db.VarChar(32)
+  userId            Int                @map("user_id")
+  scopeId           String             @map("scope_id") @db.VarChar(64)
+  runId             String?            @map("run_id") @db.VarChar(32)
+  stepId            String?            @map("step_id") @db.VarChar(32)
+  promptVersionId   String             @map("prompt_version_id") @db.VarChar(32)
+  provider          String             @db.VarChar(64)
+  model             String             @db.VarChar(128)
+  purpose           String             @db.VarChar(32)
+  providerRequestId String?            @map("provider_request_id") @db.VarChar(160)
+  status            AiModelCallStatus  @default(PENDING)
+  attemptCount      Int                @default(1) @map("attempt_count")
+  payloadMode       AiAuditPayloadMode @default(HASH_ONLY) @map("payload_mode")
+  requestSummary    Json               @default("{}") @map("request_summary") @db.JsonB
+  requestHash       String             @map("request_hash") @db.Char(64)
+  requestRef        String?            @map("request_ref") @db.VarChar(500)
+  outputSummary     Json?              @map("output_summary") @db.JsonB
+  responseHash      String?            @map("response_hash") @db.Char(64)
+  responseRef       String?            @map("response_ref") @db.VarChar(500)
+  inputTokens       Int?               @map("input_tokens")
+  outputTokens      Int?               @map("output_tokens")
+  cachedTokens      Int?               @map("cached_tokens")
+  reasoningTokens   Int?               @map("reasoning_tokens")
+  cost              Decimal?           @db.Decimal(18, 8)
+  costCurrency      String?            @map("cost_currency") @db.Char(3)
+  costEstimated     Boolean            @default(false) @map("cost_estimated")
+  latencyMs         Int?               @map("latency_ms")
+  finishReason      String?            @map("finish_reason") @db.VarChar(80)
+  errorCode         Int?               @map("error_code")
+  errorClass        String?            @map("error_class") @db.VarChar(128)
+  errorMessage      String?            @map("error_message") @db.VarChar(1000)
+  startedAt         DateTime           @default(now()) @map("started_at") @db.Timestamptz(3)
+  finishedAt        DateTime?          @map("finished_at") @db.Timestamptz(3)
+  createdAt         DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime           @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  promptVersion AiPromptVersion @relation(fields: [promptVersionId], references: [id], onDelete: Restrict)
+
+  @@unique([userId, scopeId, provider, model, purpose, attemptCount], map: "ai_model_calls_scope_model_attempt_key")
+  @@index([runId, startedAt], map: "ai_model_calls_run_started_idx")
+  @@index([userId, scopeId, startedAt], map: "ai_model_calls_user_scope_started_idx")
+  @@index([provider, model, startedAt], map: "ai_model_calls_provider_model_started_idx")
+  @@index([status, startedAt], map: "ai_model_calls_status_started_idx")
+  @@map("ai_model_calls")
+}

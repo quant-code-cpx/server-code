@@ -10,12 +10,35 @@
 ```
 docs/
 ├── README.md                ← 本文件（文档导航索引）
+├── agent/                   ← AI Agent 总体架构、协议、数据库、Tool、工作流与 30 个实施批次
 ├── 待办清单.md              ← 统一 TODO List（功能 + 工程 + 产品痛点）
 ├── design/                  ← 待实现功能设计文档（面向 AI 代码生成模型）
 ├── operations/              ← 部署与运维
 └── archive/                 ← 历史快照 + 已实现设计文档归档
     └── design/              ← 已实现的功能设计文档（31 篇）
 ```
+
+---
+
+## 🤖 agent/ — AI Agent 可落地方案
+
+基于当前 NestJS 后端、同级 React 前端、111 个 Prisma Model、运行库与 Tushare 同步链的实仓扫描。该方案取代 `design/AI智能助手接入方案-后端设计.md` 作为后续 Agent 实施依据；旧文档保留为历史比较材料。
+
+| 入口 | 说明 | 状态 |
+| --- | --- | --- |
+| [Agent 方案总览](agent/README.md) | 目标、架构图、MVP、风险、未确认项、完整目录导航 | 📋 需求稿 |
+| [当前项目分析](agent/overview/current-project-analysis.md) | 前后端、数据库、同步、部署与已实证风险 | 📋 需求稿 |
+| [数据能力盘点](agent/overview/data-capability-inventory.md) | 真实 Model/表、数据量、覆盖、索引、质量与 Tool 映射 | 📋 需求稿 |
+| [前端方案](agent/frontend/README.md) | React/MUI 页面、流式状态、富响应和恢复 | 📋 需求稿 |
+| [后端方案](agent/backend/README.md) | NestJS 编排、模型网关、Tool、队列、记忆、安全和部署 | 📋 需求稿 |
+| [公共 API 协议](agent/api/README.md) | REST、POST SSE、WebSocket 边界和错误码 | 📋 需求稿 |
+| [数据库方案](agent/database/README.md) | 现有结构、Agent 新表、索引、迁移与 lineage | 📋 需求稿 |
+| [Tool 方案](agent/tools/README.md) | 15 个 MVP Tool、JSON Schema、权限与审计 | 📋 需求稿 |
+| [工作流方案](agent/workflows/README.md) | 交互、股票研究、新闻、定时、预警和回测 | 📋 需求稿 |
+| [ADR 索引](agent/decisions/README.md) | 9 项核心架构决策 | 📋 需求稿 |
+| [实施任务](agent/tasks/README.md) | 30 个独立批次、依赖、并行和验收标准 | 🗓️ 规划中 |
+
+Agent 子目录按用户要求使用英文路径/文件名，正文仍为中文；这是本仓库“除 README 外文档中文命名”约定的明确例外。
 
 ---
 
@@ -42,7 +65,7 @@ docs/
 | [数据扩展第一批-后端设计](design/数据扩展第一批-后端设计.md)             | Tushare 第一批数据扩展（forecast / stk_holdernumber / hk_hold / index_dailybasic）                   | 🔧 待实现 |
 | [数据扩展第二批-后端设计](design/数据扩展第二批-后端设计.md)             | Tushare 第二批数据扩展（stk_holdertrade / pledge_stat / fina_audit / disclosure_date）               | 🔧 待实现 |
 | [数据扩展第三批-后端设计](design/数据扩展第三批-后端设计.md)             | Tushare 第三批数据扩展（fina_mainbz / index_classify+member / repurchase / cb_basic+cb_daily）       | 🔧 待实现 |
-| [AI智能助手接入方案-后端设计](design/AI智能助手接入方案-后端设计.md)     | AI 智能助手 4 套方案对比（多模型路由 / MCP Server / LangChain / 混合方案）                           | 🗓️ 规划中 |
+| [AI智能助手接入方案-后端设计](design/AI智能助手接入方案-后端设计.md)     | 早期 4 套方案比较；已由 [Agent 可落地方案](agent/README.md) 取代                                      | 📋 需求稿 |
 | [股票模块需求](design/股票模块需求.md)                                   | 股票信息模块需求细化（讨论稿）                                                                       | 📋 需求稿 |
 
 ### 测试设计

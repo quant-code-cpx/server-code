@@ -56,6 +56,7 @@ model AiPromptVersion {
   retiredAt    DateTime?       @map("retired_at") @db.Timestamptz(3)
 
   modelCalls AiModelCall[]
+  agentRuns  AiAgentRun[]  @relation("AiRunPromptVersion")
 
   @@unique([promptKey, version], map: "ai_prompt_versions_key_version_key")
   @@unique([promptKey, contentHash], map: "ai_prompt_versions_key_content_hash_key")
@@ -80,6 +81,8 @@ model AiWorkflowVersion {
   publishedAt    DateTime?       @map("published_at") @db.Timestamptz(3)
   retiredAt      DateTime?       @map("retired_at") @db.Timestamptz(3)
 
+  agentRuns AiAgentRun[] @relation("AiRunWorkflowVersion")
+
   @@unique([workflowKey, version], map: "ai_workflow_versions_key_version_key")
   @@unique([workflowKey, contentHash], map: "ai_workflow_versions_key_content_hash_key")
   @@index([status, workflowKey, version(sort: Desc)], map: "ai_workflow_versions_status_key_version_idx")
@@ -90,8 +93,8 @@ model AiToolCall {
   id                String             @id @default(cuid()) @db.VarChar(32)
   userId            Int                @map("user_id")
   scopeId           String             @map("scope_id") @db.VarChar(64)
-  runId             String?            @map("run_id") @db.VarChar(32)
-  stepId            String?            @map("step_id") @db.VarChar(32)
+  runId             String             @map("run_id") @db.VarChar(32)
+  stepId            String             @map("step_id") @db.VarChar(32)
   logicalNodeKey    String             @map("logical_node_key") @db.VarChar(128)
   invocationIndex   Int                @default(0) @map("invocation_index")
   toolName          String             @map("tool_name") @db.VarChar(96)
@@ -122,6 +125,8 @@ model AiToolCall {
   createdAt         DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt         DateTime           @updatedAt @map("updated_at") @db.Timestamptz(3)
 
+  run       AiAgentRun   @relation("AiToolCallRun", fields: [runId], references: [id], onDelete: Restrict)
+  step      AiAgentStep  @relation("AiToolCallStep", fields: [stepId, runId], references: [id, runId], onDelete: Restrict)
   citations AiCitation[]
 
   @@unique([userId, scopeId, logicalNodeKey, invocationIndex], map: "ai_tool_calls_scope_node_invocation_key")
@@ -135,7 +140,7 @@ model AiModelCall {
   id                String             @id @default(cuid()) @db.VarChar(32)
   userId            Int                @map("user_id")
   scopeId           String             @map("scope_id") @db.VarChar(64)
-  runId             String?            @map("run_id") @db.VarChar(32)
+  runId             String             @map("run_id") @db.VarChar(32)
   stepId            String?            @map("step_id") @db.VarChar(32)
   promptVersionId   String             @map("prompt_version_id") @db.VarChar(32)
   provider          String             @db.VarChar(64)
@@ -168,6 +173,8 @@ model AiModelCall {
   createdAt         DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt         DateTime           @updatedAt @map("updated_at") @db.Timestamptz(3)
 
+  run           AiAgentRun      @relation("AiModelCallRun", fields: [runId], references: [id], onDelete: Restrict)
+  step          AiAgentStep?    @relation("AiModelCallStep", fields: [stepId, runId], references: [id, runId], onDelete: Restrict)
   promptVersion AiPromptVersion @relation(fields: [promptVersionId], references: [id], onDelete: Restrict)
 
   @@unique([userId, scopeId, provider, model, purpose, attemptCount], map: "ai_model_calls_scope_model_attempt_key")

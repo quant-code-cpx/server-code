@@ -44,8 +44,8 @@ export class AgentAuditValidationError extends Error {
 export interface BeginToolCallCommand {
   userId: number
   scopeId: string
-  runId?: string | null
-  stepId?: string | null
+  runId: string
+  stepId: string
   logicalNodeKey: string
   invocationIndex?: number
   toolName: string
@@ -79,7 +79,7 @@ export interface AuditFailureCommand {
 export interface BeginModelCallCommand {
   userId: number
   scopeId: string
-  runId?: string | null
+  runId: string
   stepId?: string | null
   promptVersionId: string
   provider: string
@@ -137,6 +137,8 @@ export class AgentAuditRepository {
   async beginToolCall(command: BeginToolCallCommand): Promise<AiToolCall> {
     const startedAt = Date.now()
     const scopeId = requireText(command.scopeId, 'scopeId', 64)
+    const runId = requireText(command.runId, 'runId', 32)
+    const stepId = requireText(command.stepId, 'stepId', 32)
     const logicalNodeKey = requireText(command.logicalNodeKey, 'logicalNodeKey', 128)
     const toolName = requireText(command.toolName, 'toolName', 96)
     const toolVersion = requireText(command.toolVersion, 'toolVersion', 40)
@@ -151,8 +153,8 @@ export class AgentAuditRepository {
         data: {
           userId: command.userId,
           scopeId,
-          runId: optionalText(command.runId, 32),
-          stepId: optionalText(command.stepId, 32),
+          runId,
+          stepId,
           logicalNodeKey,
           invocationIndex,
           toolName,
@@ -176,8 +178,8 @@ export class AgentAuditRepository {
         existing.toolName !== toolName ||
         existing.toolVersion !== toolVersion ||
         existing.inputHash !== input.hash ||
-        existing.runId !== optionalText(command.runId, 32) ||
-        existing.stepId !== optionalText(command.stepId, 32) ||
+        existing.runId !== runId ||
+        existing.stepId !== stepId ||
         existing.payloadMode !== payloadMode ||
         existing.inputRef !== inputRef
       ) {
@@ -262,6 +264,8 @@ export class AgentAuditRepository {
   async beginModelCall(command: BeginModelCallCommand): Promise<AiModelCall> {
     const startedAt = Date.now()
     const scopeId = requireText(command.scopeId, 'scopeId', 64)
+    const runId = requireText(command.runId, 'runId', 32)
+    const stepId = optionalText(command.stepId, 32)
     const provider = requireText(command.provider, 'provider', 64)
     const model = requireText(command.model, 'model', 128)
     const purpose = requireText(command.purpose, 'purpose', 32)
@@ -276,8 +280,8 @@ export class AgentAuditRepository {
         data: {
           userId: command.userId,
           scopeId,
-          runId: optionalText(command.runId, 32),
-          stepId: optionalText(command.stepId, 32),
+          runId,
+          stepId,
           promptVersionId: requireText(command.promptVersionId, 'promptVersionId', 32),
           provider,
           model,
@@ -302,8 +306,8 @@ export class AgentAuditRepository {
         !existing ||
         existing.requestHash !== request.hash ||
         existing.promptVersionId !== command.promptVersionId ||
-        existing.runId !== optionalText(command.runId, 32) ||
-        existing.stepId !== optionalText(command.stepId, 32) ||
+        existing.runId !== runId ||
+        existing.stepId !== stepId ||
         existing.payloadMode !== payloadMode ||
         existing.requestRef !== requestRef
       ) {

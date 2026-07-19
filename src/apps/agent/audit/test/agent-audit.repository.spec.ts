@@ -4,14 +4,19 @@ import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   AiConclusionLevel,
+  AiAgentStepKind,
   AiMessageRole,
   AiMessageStatus,
+  AiModelPolicy,
   AiModelCallStatus,
   AiSearchFetchStatus,
   AiSourceType,
   AiToolCallStatus,
+  AiVersionStatus,
   Prisma,
   PrismaClient,
+  type AiAgentRun,
+  type AiAgentStep,
   type AiMessage,
   type User,
 } from '@prisma/client'
@@ -111,6 +116,10 @@ integrationDescribe('Agent 审计/引用 Repository — 临时数据库集成测
   let userA: User
   let userB: User
   let messageA: AiMessage
+  let runA: AiAgentRun
+  let runB: AiAgentRun
+  let stepA: AiAgentStep
+  let stepB: AiAgentStep
   let databaseName = ''
 
   const logger = {
@@ -156,6 +165,119 @@ integrationDescribe('Agent 审计/引用 Repository — 临时数据库集成测
         completedAt: new Date(),
       },
     })
+    const triggerA = await client.aiMessage.create({
+      data: {
+        userId: userA.id,
+        conversationId: conversation.id,
+        role: AiMessageRole.USER,
+        status: AiMessageStatus.COMPLETED,
+        contentText: '审计测试请求',
+        contentBlocks: [],
+        clientRequestId: randomUUID(),
+        completedAt: new Date(),
+      },
+    })
+    const publishedAt = new Date()
+    const fixturePrompt = await client.aiPromptVersion.create({
+      data: {
+        promptKey: `audit-fixture-prompt-${randomUUID()}`,
+        version: 1,
+        status: AiVersionStatus.PUBLISHED,
+        template: 'Audit fixture prompt',
+        contentHash: sha256('audit-fixture-prompt'),
+        createdBy: userA.id,
+        publishedBy: userA.id,
+        publishedAt,
+      },
+    })
+    const fixtureWorkflow = await client.aiWorkflowVersion.create({
+      data: {
+        workflowKey: `audit-fixture-workflow-${randomUUID()}`,
+        version: 1,
+        status: AiVersionStatus.PUBLISHED,
+        definition: { nodes: ['audit'] },
+        contentHash: sha256('audit-fixture-workflow'),
+        createdBy: userA.id,
+        publishedBy: userA.id,
+        publishedAt,
+      },
+    })
+    runA = await client.aiAgentRun.create({
+      data: {
+        userId: userA.id,
+        conversationId: conversation.id,
+        triggerMessageId: triggerA.id,
+        responseMessageId: messageA.id,
+        clientRequestId: randomUUID(),
+        requestHash: sha256('audit-run-a'),
+        traceId: `trace_${randomUUID()}`,
+        workflowVersionId: fixtureWorkflow.id,
+        promptVersionId: fixturePrompt.id,
+        toolPolicyVersion: 'audit-policy-v1',
+        modelPolicy: AiModelPolicy.AUTO,
+        deadlineAt: new Date(Date.now() + 180_000),
+      },
+    })
+    stepA = await client.aiAgentStep.create({
+      data: {
+        runId: runA.id,
+        stepKey: 'audit-step-a',
+        kind: AiAgentStepKind.TOOL,
+        ordinal: 0,
+        inputHash: sha256('{}'),
+      },
+    })
+
+    const conversationB = await client.aiConversation.create({
+      data: { userId: userB.id, title: '审计租户 B', clientRequestId: randomUUID() },
+    })
+    const triggerB = await client.aiMessage.create({
+      data: {
+        userId: userB.id,
+        conversationId: conversationB.id,
+        role: AiMessageRole.USER,
+        status: AiMessageStatus.COMPLETED,
+        contentText: '租户 B 审计请求',
+        contentBlocks: [],
+        clientRequestId: randomUUID(),
+        completedAt: new Date(),
+      },
+    })
+    const responseB = await client.aiMessage.create({
+      data: {
+        userId: userB.id,
+        conversationId: conversationB.id,
+        role: AiMessageRole.ASSISTANT,
+        status: AiMessageStatus.PENDING,
+        contentBlocks: [],
+        clientRequestId: randomUUID(),
+      },
+    })
+    runB = await client.aiAgentRun.create({
+      data: {
+        userId: userB.id,
+        conversationId: conversationB.id,
+        triggerMessageId: triggerB.id,
+        responseMessageId: responseB.id,
+        clientRequestId: randomUUID(),
+        requestHash: sha256('audit-run-b'),
+        traceId: `trace_${randomUUID()}`,
+        workflowVersionId: fixtureWorkflow.id,
+        promptVersionId: fixturePrompt.id,
+        toolPolicyVersion: 'audit-policy-v1',
+        modelPolicy: AiModelPolicy.AUTO,
+        deadlineAt: new Date(Date.now() + 180_000),
+      },
+    })
+    stepB = await client.aiAgentStep.create({
+      data: {
+        runId: runB.id,
+        stepKey: 'audit-step-b',
+        kind: AiAgentStepKind.TOOL,
+        ordinal: 0,
+        inputHash: sha256('{}'),
+      },
+    })
     auditRepository = new AgentAuditRepository(client as unknown as PrismaService, logger)
     citationRepository = new CitationRepository(client as unknown as PrismaService, logger)
   }, 240_000)
@@ -175,6 +297,8 @@ integrationDescribe('Agent 审计/引用 Repository — 临时数据库集成测
     const command = {
       userId: userA.id,
       scopeId: randomUUID(),
+      runId: runA.id,
+      stepId: stepA.id,
       logicalNodeKey: 'market-history',
       toolName: 'get_stock_price_history',
       toolVersion: '1.0.0',
@@ -227,6 +351,8 @@ integrationDescribe('Agent 审计/引用 Repository — 临时数据库集成测
     const call = await auditRepository.beginModelCall({
       userId: userA.id,
       scopeId: randomUUID(),
+      runId: runA.id,
+      stepId: stepA.id,
       promptVersionId: published.id,
       provider: 'openai-compatible',
       model: 'research-model',
@@ -274,6 +400,8 @@ integrationDescribe('Agent 审计/引用 Repository — 临时数据库集成测
     const call = await auditRepository.beginToolCall({
       userId: userA.id,
       scopeId: randomUUID(),
+      runId: runA.id,
+      stepId: stepA.id,
       logicalNodeKey: 'failure-case',
       toolName: 'get_market_snapshot',
       toolVersion: '1.0.0',
@@ -338,6 +466,8 @@ integrationDescribe('Agent 审计/引用 Repository — 临时数据库集成测
     const tool = await auditRepository.beginToolCall({
       userId: userA.id,
       scopeId: randomUUID(),
+      runId: runA.id,
+      stepId: stepA.id,
       logicalNodeKey: 'citation-tool',
       toolName: 'get_financial_indicators',
       toolVersion: '1.0.0',
@@ -413,6 +543,8 @@ integrationDescribe('Agent 审计/引用 Repository — 临时数据库集成测
     const otherTenantTool = await auditRepository.beginToolCall({
       userId: userB.id,
       scopeId: randomUUID(),
+      runId: runB.id,
+      stepId: stepB.id,
       logicalNodeKey: 'cross-tenant-tool',
       toolName: 'get_stock_overview',
       toolVersion: '1.0.0',

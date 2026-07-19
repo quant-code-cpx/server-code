@@ -1,0 +1,174 @@
+// Agent Run、Step、持久事件与事件发布 outbox 状态。
+
+enum AiAgentRunStatus {
+  QUEUED
+  RUNNING
+  CANCEL_REQUESTED
+  COMPLETED
+  FAILED
+  CANCELLED
+
+  @@map("ai_agent_run_status")
+}
+
+enum AiAgentStepStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELLED
+  SKIPPED
+
+  @@map("ai_agent_step_status")
+}
+
+enum AiAgentStepKind {
+  PLAN
+  TOOL
+  MODEL
+  VALIDATION
+  WAIT
+  FINALIZE
+
+  @@map("ai_agent_step_kind")
+}
+
+enum AiRunEventVisibility {
+  USER
+  OPERATOR
+  INTERNAL
+
+  @@map("ai_run_event_visibility")
+}
+
+enum AiRunEventPublishStatus {
+  PENDING
+  PUBLISHED
+  RETRY
+  DEAD
+
+  @@map("ai_run_event_publish_status")
+}
+
+model AiAgentRun {
+  id                String           @id @default(cuid()) @db.VarChar(32)
+  userId            Int              @map("user_id")
+  conversationId    String           @map("conversation_id") @db.VarChar(32)
+  triggerMessageId  String           @map("trigger_message_id") @db.VarChar(32)
+  responseMessageId String           @map("response_message_id") @db.VarChar(32)
+  clientRequestId   String           @map("client_request_id") @db.VarChar(128)
+  requestHash       String           @map("request_hash") @db.Char(64)
+  traceId           String           @map("trace_id") @db.VarChar(128)
+  status            AiAgentRunStatus @default(QUEUED)
+  statusVersion     Int              @default(1) @map("status_version")
+  workflowVersionId String           @map("workflow_version_id") @db.VarChar(32)
+  promptVersionId   String           @map("prompt_version_id") @db.VarChar(32)
+  toolPolicyVersion String           @map("tool_policy_version") @db.VarChar(40)
+  modelPolicy       AiModelPolicy    @default(AUTO) @map("model_policy")
+  preferredModel    String?          @map("preferred_model") @db.VarChar(128)
+  inputSnapshot     Json             @default("{}") @map("input_snapshot") @db.JsonB
+  budget            Json             @default("{}") @db.JsonB
+  resultSummary     Json?            @map("result_summary") @db.JsonB
+  errorCode         Int?             @map("error_code")
+  errorClass        String?          @map("error_class") @db.VarChar(128)
+  errorMessage      String?          @map("error_message") @db.VarChar(1000)
+  attempt           Int              @default(0)
+  maxAttempts       Int              @default(1) @map("max_attempts")
+  nextEventSequence BigInt           @default(1) @map("next_event_sequence")
+  checkpoint        Json             @default("{}") @db.JsonB
+  checkpointVersion Int              @default(0) @map("checkpoint_version")
+  cancelRequestedAt DateTime?        @map("cancel_requested_at") @db.Timestamptz(3)
+  cancelRequestedBy Int?             @map("cancel_requested_by")
+  cancelReason      String?          @map("cancel_reason") @db.VarChar(500)
+  leaseOwner        String?          @map("lease_owner") @db.VarChar(128)
+  leaseExpiresAt    DateTime?        @map("lease_expires_at") @db.Timestamptz(3)
+  heartbeatAt       DateTime?        @map("heartbeat_at") @db.Timestamptz(3)
+  deadlineAt        DateTime         @map("deadline_at") @db.Timestamptz(3)
+  queuedAt          DateTime         @default(now()) @map("queued_at") @db.Timestamptz(3)
+  startedAt         DateTime?        @map("started_at") @db.Timestamptz(3)
+  endedAt           DateTime?        @map("ended_at") @db.Timestamptz(3)
+  createdAt         DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime         @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user            User              @relation(fields: [userId], references: [id], onDelete: Restrict)
+  conversation    AiConversation    @relation(fields: [conversationId], references: [id], onDelete: Restrict)
+  triggerMessage  AiMessage         @relation("AiAgentRunTriggerMessage", fields: [triggerMessageId], references: [id], onDelete: Restrict)
+  responseMessage AiMessage         @relation("AiAgentRunResponseMessage", fields: [responseMessageId], references: [id], onDelete: Restrict)
+  workflowVersion AiWorkflowVersion @relation("AiRunWorkflowVersion", fields: [workflowVersionId], references: [id], onDelete: Restrict)
+  promptVersion   AiPromptVersion   @relation("AiRunPromptVersion", fields: [promptVersionId], references: [id], onDelete: Restrict)
+  steps           AiAgentStep[]
+  events          AiRunEvent[]
+  toolCalls       AiToolCall[]      @relation("AiToolCallRun")
+  modelCalls      AiModelCall[]     @relation("AiModelCallRun")
+
+  @@unique([userId, clientRequestId], map: "ai_agent_runs_user_client_request_key")
+  @@index([conversationId, createdAt(sort: Desc), id(sort: Desc)], map: "ai_agent_runs_conversation_created_idx")
+  @@index([userId, status, createdAt(sort: Desc), id(sort: Desc)], map: "ai_agent_runs_user_status_created_idx")
+  @@index([leaseExpiresAt, createdAt], map: "ai_agent_runs_lease_created_idx")
+  @@index([deadlineAt, status], map: "ai_agent_runs_deadline_status_idx")
+  @@map("ai_agent_runs")
+}
+
+model AiAgentStep {
+  id            String            @id @default(cuid()) @db.VarChar(32)
+  runId         String            @map("run_id") @db.VarChar(32)
+  parentStepId  String?           @map("parent_step_id") @db.VarChar(32)
+  stepKey       String            @map("step_key") @db.VarChar(128)
+  kind          AiAgentStepKind
+  ordinal       Int
+  attempt       Int               @default(1)
+  status        AiAgentStepStatus @default(PENDING)
+  inputSummary  Json              @default("{}") @map("input_summary") @db.JsonB
+  inputHash     String            @map("input_hash") @db.Char(64)
+  outputSummary Json?             @map("output_summary") @db.JsonB
+  outputHash    String?           @map("output_hash") @db.Char(64)
+  errorCode     Int?              @map("error_code")
+  errorClass    String?           @map("error_class") @db.VarChar(128)
+  errorMessage  String?           @map("error_message") @db.VarChar(1000)
+  startedAt     DateTime?         @map("started_at") @db.Timestamptz(3)
+  endedAt       DateTime?         @map("ended_at") @db.Timestamptz(3)
+  createdAt     DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  run        AiAgentRun    @relation(fields: [runId], references: [id], onDelete: Restrict)
+  parentStep AiAgentStep?  @relation("AiAgentStepTree", fields: [parentStepId, runId], references: [id, runId], onDelete: Restrict)
+  childSteps AiAgentStep[] @relation("AiAgentStepTree")
+  events     AiRunEvent[]
+  toolCalls  AiToolCall[]  @relation("AiToolCallStep")
+  modelCalls AiModelCall[] @relation("AiModelCallStep")
+
+  @@unique([runId, stepKey, attempt], map: "ai_agent_steps_run_key_attempt_key")
+  @@unique([id, runId], map: "ai_agent_steps_id_run_key")
+  @@index([runId, ordinal, id], map: "ai_agent_steps_run_ordinal_idx")
+  @@index([runId, status, updatedAt], map: "ai_agent_steps_run_status_updated_idx")
+  @@map("ai_agent_steps")
+}
+
+model AiRunEvent {
+  id                  BigInt                  @id @default(autoincrement())
+  publicId            String                  @unique(map: "ai_run_events_public_id_key") @default(cuid()) @map("public_id") @db.VarChar(32)
+  runId               String                  @map("run_id") @db.VarChar(32)
+  stepId              String?                 @map("step_id") @db.VarChar(32)
+  sequence            BigInt
+  eventType           String                  @map("event_type") @db.VarChar(64)
+  visibility          AiRunEventVisibility    @default(USER)
+  traceId             String                  @map("trace_id") @db.VarChar(128)
+  payload             Json                    @db.JsonB
+  publishStatus       AiRunEventPublishStatus @default(PENDING) @map("publish_status")
+  publishAttempts     Int                     @default(0) @map("publish_attempts")
+  nextPublishAt       DateTime                @default(now()) @map("next_publish_at") @db.Timestamptz(3)
+  publishLeaseOwner   String?                 @map("publish_lease_owner") @db.VarChar(128)
+  publishLeaseExpires DateTime?               @map("publish_lease_expires_at") @db.Timestamptz(3)
+  publishedAt         DateTime?               @map("published_at") @db.Timestamptz(3)
+  occurredAt          DateTime                @default(now()) @map("occurred_at") @db.Timestamptz(3)
+
+  run  AiAgentRun   @relation(fields: [runId], references: [id], onDelete: Restrict)
+  step AiAgentStep? @relation(fields: [stepId, runId], references: [id, runId], onDelete: Restrict)
+
+  @@unique([runId, sequence], map: "ai_run_events_run_sequence_key")
+  @@index([runId, sequence], map: "ai_run_events_run_sequence_idx")
+  @@index([runId, occurredAt, id], map: "ai_run_events_run_occurred_idx")
+  @@index([occurredAt, id], map: "ai_run_events_cleanup_idx")
+  @@index([publishStatus, nextPublishAt, id], map: "ai_run_events_publish_idx")
+  @@map("ai_run_events")
+}

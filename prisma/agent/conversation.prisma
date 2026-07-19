@@ -59,6 +59,7 @@ model AiConversation {
 
   user     User        @relation(fields: [userId], references: [id], onDelete: Restrict)
   messages AiMessage[]
+  agentRuns AiAgentRun[]
 
   @@unique([userId, clientRequestId], map: "ai_conversations_user_client_request_key")
   @@index([userId, status, lastMessageAt(sort: Desc), id(sort: Desc)], map: "ai_conversations_user_status_cursor_idx")
@@ -90,6 +91,8 @@ model AiMessage {
   parentMessage AiMessage?     @relation("AiMessageVersions", fields: [parentMessageId], references: [id], onDelete: Restrict)
   versions      AiMessage[]    @relation("AiMessageVersions")
   citations     AiCitation[]
+  triggeredRuns AiAgentRun[]   @relation("AiAgentRunTriggerMessage")
+  responseRuns  AiAgentRun[]   @relation("AiAgentRunResponseMessage")
 
   @@unique([conversationId, clientRequestId], map: "ai_messages_conversation_client_request_key")
   @@unique([parentMessageId, version], map: "ai_messages_parent_version_key")

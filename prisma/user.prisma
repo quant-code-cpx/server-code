@@ -46,6 +46,7 @@ model User {
   notificationPreferences NotificationPreference[]     // 通知偏好
   aiConversations    AiConversation[]                  // Agent 会话
   aiMessages         AiMessage[]                       // Agent 消息（冗余 userId 强化租户查询）
+  aiAgentRuns        AiAgentRun[]                      // Agent Run 权威状态
   createdAt      DateTime   @default(now())
   updatedAt      DateTime   @updatedAt
 

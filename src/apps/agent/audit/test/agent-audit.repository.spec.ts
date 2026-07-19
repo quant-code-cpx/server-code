@@ -508,6 +508,11 @@ integrationDescribe('Agent 审计/引用 Repository — 临时数据库集成测
     expect(first.canonicalUrl).toBe('https://example.com/report?symbol=600000')
     expect(first.canonicalUrl).not.toContain('user:pass')
     expect(first.canonicalUrl).not.toContain('token')
+    expect(await citationRepository.findSearchSourceById(first.id)).toMatchObject({
+      id: first.id,
+      canonicalUrl: first.canonicalUrl,
+      contentHash,
+    })
     expect(
       await client!.aiSearchSource.count({ where: { canonicalUrlHash: first.canonicalUrlHash, contentHash } }),
     ).toBe(1)

@@ -17,8 +17,10 @@ import { PortfolioModule } from 'src/apps/portfolio/portfolio.module'
 import { PortfolioToolFacade } from 'src/apps/portfolio/portfolio-tool.facade'
 import { BacktestModule } from 'src/apps/backtest/backtest.module'
 import { BacktestToolFacade } from 'src/apps/backtest/backtest-tool.facade'
-import { AgentAuditRepository } from './audit/agent-audit.repository'
-import { CitationRepository } from './audit/citation.repository'
+import { WebFetchService } from 'src/apps/web-search/web-fetch.service'
+import { WebSearchModule } from 'src/apps/web-search/web-search.module'
+import { WebSearchService } from 'src/apps/web-search/web-search.service'
+import { AgentAuditModule } from './audit/agent-audit.module'
 import { AgentConversationRepository } from './conversation/agent-conversation.repository'
 import { AgentMessageRepository } from './conversation/agent-message.repository'
 import { AgentExecutionModule } from './execution/agent-execution.module'
@@ -32,12 +34,15 @@ import { ToolSchemaValidator } from './tools/tool-schema-validator'
 import { createStockMarketToolDefinitions } from './tools/adapters/stock-market-tools'
 import { createFinancialToolDefinitions } from './tools/adapters/financial-tools'
 import { createQuantToolDefinitions } from './tools/adapters/quant-tools'
+import { createWebResearchToolDefinitions } from './tools/adapters/web-research-tools'
 
 @Module({
   imports: [
     ConfigModule.forFeature(AgentToolsConfig),
     ModelGatewayModule,
     AgentExecutionModule,
+    AgentAuditModule,
+    WebSearchModule,
     StockModule,
     MarketModule,
     IndustryModule,
@@ -48,8 +53,6 @@ import { createQuantToolDefinitions } from './tools/adapters/quant-tools'
   providers: [
     AgentConversationRepository,
     AgentMessageRepository,
-    AgentAuditRepository,
-    CitationRepository,
     ToolSchemaValidator,
     ToolRegistryService,
     ToolPolicyService,
@@ -67,6 +70,8 @@ import { createQuantToolDefinitions } from './tools/adapters/quant-tools'
         PortfolioToolFacade,
         BacktestToolFacade,
         ValuationToolFacade,
+        WebSearchService,
+        WebFetchService,
         AgentToolsConfig.KEY,
       ],
       useFactory: (
@@ -79,12 +84,15 @@ import { createQuantToolDefinitions } from './tools/adapters/quant-tools'
         portfolio: PortfolioToolFacade,
         backtest: BacktestToolFacade,
         valuation: ValuationToolFacade,
+        webSearch: WebSearchService,
+        webFetch: WebFetchService,
         config: IAgentToolsConfig,
       ) =>
         Object.freeze([
           ...createStockMarketToolDefinitions({ stock, market, sector, watchlist, config }),
           ...createFinancialToolDefinitions({ financial, moneyflow, config }),
           ...createQuantToolDefinitions({ portfolio, backtest, valuation, config }),
+          ...createWebResearchToolDefinitions({ search: webSearch, fetch: webFetch }),
         ]),
     },
     { provide: TOOL_EXECUTION_OBSERVER, useValue: Object.freeze({}) },
@@ -92,10 +100,9 @@ import { createQuantToolDefinitions } from './tools/adapters/quant-tools'
   exports: [
     ModelGatewayModule,
     AgentExecutionModule,
+    AgentAuditModule,
     AgentConversationRepository,
     AgentMessageRepository,
-    AgentAuditRepository,
-    CitationRepository,
     ToolRegistryService,
     ToolPolicyService,
     ToolRunLimiterService,

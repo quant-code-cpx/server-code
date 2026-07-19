@@ -39,6 +39,7 @@ import { CalendarModule } from './apps/calendar/calendar.module'
 import { FundModule } from './apps/fund/fund.module'
 import { MetricsModule } from './shared/metrics/metrics.module'
 import { AgentModule } from './apps/agent/agent.module'
+import { WebSearchModule } from './apps/web-search/web-search.module'
 
 @Module({
   imports: [
@@ -102,6 +103,7 @@ import { AgentModule } from './apps/agent/agent.module'
     ExportModule,
     CalendarModule,
     FundModule,
+    WebSearchModule,
     AgentModule,
 
     // ── 队列模块（BullMQ 回测任务） ──

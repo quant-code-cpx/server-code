@@ -157,6 +157,12 @@ export class CitationRepository {
     return rows
   }
 
+  async findSearchSourceById(sourceId: string): Promise<AiSearchSource> {
+    const source = await this.prisma.aiSearchSource.findUnique({ where: { id: sourceId.trim() } })
+    if (!source) throw new AgentAuditNotFoundError('搜索来源')
+    return source
+  }
+
   private logOperation(operation: string, startedAt: number, rowCount: number): void {
     this.logger.log({ operation, durationMs: Date.now() - startedAt, rowCount }, CitationRepository.name)
   }

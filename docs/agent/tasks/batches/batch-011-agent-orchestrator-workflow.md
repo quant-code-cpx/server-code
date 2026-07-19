@@ -1,10 +1,31 @@
 ---
 batch: 11
-status: pending
+status: completed
 type: backend
-depends_on: ["batch-004-model-gateway-foundation", "batch-005-run-state-and-event-store", "batch-006-tool-registry-and-policy", "batch-007-stock-market-query-tools", "batch-008-financial-fund-flow-tools", "batch-009-deterministic-quant-tools", "batch-010-web-search-and-citations"]
-blocks: ["batch-012-agent-bullmq-worker", "batch-018-mvp-e2e-and-model-regression", "batch-019-conversation-summary-and-memory", "batch-020-scheduled-agent-tasks", "batch-023-multi-provider-routing-and-fallback"]
-parallel_with: ["batch-015-frontend-stream-client-and-contracts", "batch-016-frontend-chat-shell", "batch-017-frontend-rich-response-blocks"]
+depends_on:
+  [
+    'batch-004-model-gateway-foundation',
+    'batch-005-run-state-and-event-store',
+    'batch-006-tool-registry-and-policy',
+    'batch-007-stock-market-query-tools',
+    'batch-008-financial-fund-flow-tools',
+    'batch-009-deterministic-quant-tools',
+    'batch-010-web-search-and-citations',
+  ]
+blocks:
+  [
+    'batch-012-agent-bullmq-worker',
+    'batch-018-mvp-e2e-and-model-regression',
+    'batch-019-conversation-summary-and-memory',
+    'batch-020-scheduled-agent-tasks',
+    'batch-023-multi-provider-routing-and-fallback',
+  ]
+parallel_with:
+  [
+    'batch-015-frontend-stream-client-and-contracts',
+    'batch-016-frontend-chat-shell',
+    'batch-017-frontend-rich-response-blocks',
+  ]
 recommended_executor: backend-coding-agent
 recommended_reasoning_level: very-high
 estimated_scope: large
@@ -138,7 +159,15 @@ estimated_scope: large
 
 ## 24. 完成定义
 
-引擎、registry、v1 workflow/nodes、版本发布、fake 端到端与故障测试合入。
+- [x] 固定 8 节点工作流、Registry、Engine、Orchestrator 与 lease heartbeat 已实现。
+- [x] Research Plan strict schema、canonical Tool 白名单、capability 收窄、DAG/预算校验与 READ Tool 有限并行已实现。
+- [x] Model 仅通过 `ModelGatewayPort`，Tool 仅通过 `ToolExecutorService`；模型调用审计、Tool 调用审计与公开事件已接通。
+- [x] checkpoint/Step 恢复复用已完成结果；取消、deadline、lease、步数、Tool、并行、Token、成本预算均有节点前后门禁。
+- [x] 引用覆盖校验与一次 repair 已实现；最终消息、引用、complete Step、`agent.completed` 与 Run 终态同事务提交。
+- [x] `stock_research@1` 与 `stock_research_system@1` 发布脚本已实现并在真实 PostgreSQL 幂等发布，hash 与服务器快照一致。
+- [x] 不新增 Controller、BullMQ Worker、HTTP/SSE、LangGraph、多 Agent 或数据库 migration；默认 Tool allowlist 仍为空。
+- [x] 专项、回归、真实 DB、构建、协议、lint、格式、容器 health/ready 验证通过；详见[执行报告](../../../Agent编排器与版本化工作流测试执行报告-20260720.md)。
+- [x] 实现提交：`20cc3df feat(agent): add versioned workflow orchestrator`。
 
 ## 25. 回滚方案
 

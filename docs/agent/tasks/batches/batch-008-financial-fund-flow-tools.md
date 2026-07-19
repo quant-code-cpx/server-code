@@ -1,10 +1,17 @@
 ---
 batch: 8
-status: pending
+status: completed
 type: backend
-depends_on: ["batch-000-platform-data-readiness", "batch-006-tool-registry-and-policy"]
-blocks: ["batch-011-agent-orchestrator-workflow"]
-parallel_with: ["batch-007-stock-market-query-tools", "batch-009-deterministic-quant-tools", "batch-010-web-search-and-citations", "batch-015-frontend-stream-client-and-contracts", "batch-016-frontend-chat-shell"]
+depends_on: ['batch-000-platform-data-readiness', 'batch-006-tool-registry-and-policy']
+blocks: ['batch-011-agent-orchestrator-workflow']
+parallel_with:
+  [
+    'batch-007-stock-market-query-tools',
+    'batch-009-deterministic-quant-tools',
+    'batch-010-web-search-and-citations',
+    'batch-015-frontend-stream-client-and-contracts',
+    'batch-016-frontend-chat-shell',
+  ]
 recommended_executor: backend-coding-agent
 recommended_reasoning_level: very-high
 estimated_scope: large
@@ -137,7 +144,16 @@ estimated_scope: large
 
 ## 24. 完成定义
 
-Facades、adapters、allowlist、口径文档、查询计划及自动测试合入。
+- [x] `FinancialToolFacade`、`MoneyflowToolFacade` 与三个 strict Tool definitions 已完成；adapter 不直接注入 Prisma 或调用内部 HTTP。
+- [x] 三表按 `fAnnDate ?? annDate` 做历史可得日过滤，同报告期按 updateFlag/可得日/同步时间/ID 稳定选版并返回 revision warning。
+- [x] 利润表和现金流对可加流量字段派生单季值；资产负债表保持 `POINT_IN_TIME`；null 不转 0。
+- [x] 30 个财务指标 allowlist 返回 canonical/source field/unit；FinaIndicator 历史修订能力缺口显式告警。
+- [x] Moneyflow 日期范围下推，保留官方 `net_mf_amount`，可选四档买卖，最大 250 日且结果升序有界。
+- [x] 实现提交：`2d81ed1 feat(agent): add financial and moneyflow query tools`。
+- [x] 专项 21/21、Batch 006 27/27、Batch 007 26/26、Stock 227/227、production build、legacy ESLint、contracts 与格式门禁通过。
+- [x] Income/Indicator/Moneyflow EXPLAIN 分别为 0.395ms/1.408ms/0.456ms，全部命中索引；20 Run 真实 DB LOAD 错误率 0。
+- [x] 新 app 容器 `Found 0 errors`，App/PostgreSQL/Redis healthy，`/health` 与 `/ready` 均为 ok。
+- [x] Tool inventory、[测试方案](../../../design/Agent财务与个股资金流工具测试方案-20260719.md)、[执行报告](../../../Agent财务与个股资金流工具测试执行报告-20260720.md)与 `docs/README.md` 已同步。
 
 ## 25. 回滚方案
 

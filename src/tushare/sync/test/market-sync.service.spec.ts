@@ -59,6 +59,22 @@ function buildMockApi() {
   }
 }
 
+function dailyApiRow() {
+  return {
+    ts_code: '000001.SZ',
+    trade_date: '20240101',
+    open: 10,
+    high: 11,
+    low: 9.8,
+    close: 10.5,
+    pre_close: 10,
+    change: 0.5,
+    pct_chg: 5,
+    vol: 1000,
+    amount: 10000,
+  }
+}
+
 function createService(api = buildMockApi(), helper = buildMockHelper()): MarketSyncService {
   // @ts-ignore 局部 mock，跳过 DI
   return new MarketSyncService(api as MarketApiService, helper as SyncHelperService)
@@ -194,6 +210,48 @@ describe('MarketSyncService', () => {
 
       // 不应抛出异常
       await expect(service.syncDaily('20240102', 'incremental')).resolves.toBeUndefined()
+    })
+
+    it('精确重试应绕过历史成功日志和最新进度，只处理失败目标日期', async () => {
+      const helper = buildMockHelper()
+      helper.isTaskSyncedForTradeDate.mockResolvedValue(true)
+      helper.getResumeKey.mockResolvedValue('20240201')
+      helper.getLatestDateString.mockResolvedValue('20240201')
+      helper.getOpenTradeDatesBetween.mockResolvedValue(['20240101'])
+      const api = buildMockApi()
+      api.getDailyByTradeDate.mockResolvedValue([dailyApiRow()])
+      const service = createService(api, helper)
+
+      await service.syncDaily('20240101', 'incremental', {
+        trigger: 'manual',
+        mode: 'incremental',
+        targetTradeDate: '20240101',
+        retryExactTarget: true,
+      })
+
+      expect(helper.isTaskSyncedForTradeDate).not.toHaveBeenCalled()
+      expect(helper.getResumeKey).not.toHaveBeenCalled()
+      expect(helper.getOpenTradeDatesBetween).toHaveBeenCalledWith('20240101', '20240101')
+      expect(api.getDailyByTradeDate).toHaveBeenCalledWith('20240101')
+      expect(helper.markCompleted).not.toHaveBeenCalled()
+    })
+
+    it('精确重试返回 0 行时必须失败，不能记录假成功', async () => {
+      const helper = buildMockHelper()
+      helper.getOpenTradeDatesBetween.mockResolvedValue(['20240101'])
+      const service = createService(buildMockApi(), helper)
+
+      await expect(
+        service.syncDaily('20240101', 'incremental', {
+          trigger: 'manual',
+          mode: 'incremental',
+          targetTradeDate: '20240101',
+          retryExactTarget: true,
+        }),
+      ).rejects.toThrow('返回 0 行')
+
+      expect(helper.replaceTradeDateRows).not.toHaveBeenCalled()
+      expect(helper.writeSyncLog).not.toHaveBeenCalled()
     })
   })
 

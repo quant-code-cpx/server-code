@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common'
 import { Cron, CronExpression } from '@nestjs/schedule'
-import { TushareSyncRetryStatus, TushareSyncTask } from '@prisma/client'
+import { Prisma, TushareSyncRetryStatus, TushareSyncStatus, TushareSyncTask } from '@prisma/client'
 import { TushareSyncTaskName } from 'src/constant/tushare.constant'
 import { PrismaService } from 'src/shared/prisma.service'
 import { TushareSyncRegistryService } from './sync-registry.service'
@@ -74,19 +74,28 @@ export class SyncRetryService {
 
       try {
         this.logger.log(`[重试队列] 重试 ${taskName} / key=${item.failedKey ?? 'n/a'} (第 ${item.retryCount + 1} 次)`)
+        const attemptStartedAt = new Date()
 
-        // 执行 plan（以 manual + incremental 模式，传入分片键作为目标交易日）
+        // 精确执行失败分片，禁止被任务最新进度或历史成功日志短路。
         await plan.execute({
           trigger: 'manual',
           mode: 'incremental',
           targetTradeDate: item.failedKey ?? undefined,
+          retryExactTarget: true,
         })
+
+        const persistedRows = await this.verifyPersistedRows(taskName, item.failedKey, attemptStartedAt)
+        if (persistedRows <= 0) {
+          throw new Error(`重试未验证真实落库: task=${taskName}, key=${item.failedKey ?? 'n/a'}, rows=${persistedRows}`)
+        }
 
         await this.prisma.tushareSyncRetryQueue.update({
           where: { id: item.id },
           data: { status: TushareSyncRetryStatus.SUCCEEDED },
         })
-        this.logger.log(`[重试队列] ${taskName} / key=${item.failedKey ?? 'n/a'} 重试成功`)
+        this.logger.log(
+          `[重试队列] ${taskName} / key=${item.failedKey ?? 'n/a'} 重试成功，验证落库 ${persistedRows} 行`,
+        )
       } catch (error) {
         const msg = (error as Error).message
         this.logger.error(`[重试队列] ${taskName} / key=${item.failedKey ?? 'n/a'} 重试失败: ${msg}`)
@@ -137,5 +146,38 @@ export class SyncRetryService {
           .catch((e) => this.logger.error(`[补数复查] ${dataSet} timeliness 检查失败: ${(e as Error).message}`))
       }
     }
+  }
+
+  private async verifyPersistedRows(
+    taskName: TushareSyncTaskName,
+    failedKey: string | null,
+    attemptStartedAt: Date,
+  ): Promise<number> {
+    const expectedTradeDate = failedKey && /^\d{8}$/.test(failedKey) ? this.parseTradeDate(failedKey) : undefined
+    const log = await this.prisma.tushareSyncLog.findFirst({
+      where: {
+        task: TushareSyncTask[taskName],
+        status: TushareSyncStatus.SUCCESS,
+        startedAt: { gte: attemptStartedAt },
+      },
+      orderBy: { startedAt: 'desc' },
+      select: { payload: true, tradeDate: true },
+    })
+
+    if (expectedTradeDate && log?.tradeDate && log.tradeDate.getTime() !== expectedTradeDate.getTime()) return 0
+    return this.readRowCount(log?.payload)
+  }
+
+  private readRowCount(payload: Prisma.JsonValue | null | undefined): number {
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return 0
+    const value = payload['rowCount']
+    return typeof value === 'number' && Number.isFinite(value) ? value : 0
+  }
+
+  private parseTradeDate(value: string): Date {
+    const year = Number(value.slice(0, 4))
+    const month = Number(value.slice(4, 6))
+    const day = Number(value.slice(6, 8))
+    return new Date(Date.UTC(year, month - 1, day))
   }
 }

@@ -325,13 +325,25 @@ export class SyncHelperService {
       grouped.set(key, date)
     })
 
-    // 排除进行中的当前周/月，避免将未结束的周期末日期误报为数据缺失
-    // （例如：周三时本周还未产生周线收盘数据，不应将本周期纳入完整性检查）
-    // 例外：盘后（hasPassedSyncCutoff=true）表示当日收盘数据已就绪，当前周/月已结束，应包含
-    const today = this.getCurrentShanghaiDay(this.getCurrentShanghaiDateString())
+    // 排除进行中的当前周/月。仅“当日已收盘”不足以说明周/月结束：
+    // 周三盘后仍有周四、周五，月中盘后仍有后续交易日。
+    const todayDate = this.getCurrentShanghaiDateString()
+    const today = this.getCurrentShanghaiDay(todayDate)
     const currentPeriodKey = unit === 'week' ? `${today.isoWeekYear()}-${today.isoWeek()}` : today.format('YYYY-MM')
-    if (!this.hasPassedSyncCutoff()) {
-      grouped.delete(currentPeriodKey)
+    const currentPeriodLastOpenDate = grouped.get(currentPeriodKey)
+    if (currentPeriodLastOpenDate) {
+      const currentPeriodEnd = this.getCurrentShanghaiDay(currentPeriodLastOpenDate)
+        .endOf(unit === 'week' ? 'isoWeek' : 'month')
+        .format('YYYYMMDD')
+      const laterOpenDates = await this.getOpenTradeDatesBetween(
+        this.addDays(currentPeriodLastOpenDate, 1),
+        currentPeriodEnd,
+      )
+      const currentTradingDayNotClosed = currentPeriodLastOpenDate === todayDate && !this.hasPassedSyncCutoff()
+
+      if (laterOpenDates.length > 0 || currentTradingDayNotClosed) {
+        grouped.delete(currentPeriodKey)
+      }
     }
 
     return Array.from(grouped.values())

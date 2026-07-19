@@ -284,6 +284,7 @@ export class MarketSyncService {
       },
       resolveDates: (start) => this.helper.getOpenTradeDatesBetween(start, targetTradeDate),
       onProgress: context?.onProgress,
+      retryExactTarget: context?.retryExactTarget,
     })
     await this.helper.flushValidationLogs(collector)
   }
@@ -308,6 +309,7 @@ export class MarketSyncService {
       },
       resolveDates: (start) => this.helper.getPeriodEndTradeDates(start, targetTradeDate, 'week'),
       onProgress: context?.onProgress,
+      retryExactTarget: context?.retryExactTarget,
     })
     await this.helper.flushValidationLogs(collector)
   }
@@ -332,6 +334,7 @@ export class MarketSyncService {
       },
       resolveDates: (start) => this.helper.getPeriodEndTradeDates(start, targetTradeDate, 'month'),
       onProgress: context?.onProgress,
+      retryExactTarget: context?.retryExactTarget,
     })
     await this.helper.flushValidationLogs(collector)
   }
@@ -528,11 +531,22 @@ export class MarketSyncService {
     fetchAndMap: (tradeDate: string) => Promise<unknown[]>
     resolveDates: (startDate: string) => Promise<string[]>
     onProgress?: (completed: number, total: number, currentKey?: string) => void
+    retryExactTarget?: boolean
   }): Promise<void> {
-    const { task, label, modelName, targetTradeDate, fullSync = false, fetchAndMap, resolveDates, onProgress } = opts
+    const {
+      task,
+      label,
+      modelName,
+      targetTradeDate,
+      fullSync = false,
+      fetchAndMap,
+      resolveDates,
+      onProgress,
+      retryExactTarget = false,
+    } = opts
 
     // 1. 目标交易日已同步则跳过（避免"今天已经跑过一次 25 号数据"导致 26 号盘后被误跳过）
-    if (!fullSync && (await this.helper.isTaskSyncedForTradeDate(task, targetTradeDate))) {
+    if (!fullSync && !retryExactTarget && (await this.helper.isTaskSyncedForTradeDate(task, targetTradeDate))) {
       this.logger.log(`[${label}] 目标交易日 ${targetTradeDate} 已同步，跳过`)
       return
     }
@@ -541,7 +555,10 @@ export class MarketSyncService {
 
     // 2. 计算起始日期（全量同步时先重置断点）
     let startDate: string
-    if (fullSync) {
+    if (retryExactTarget) {
+      startDate = targetTradeDate
+      this.logger.log(`[${label}] 精确重试目标分片 ${targetTradeDate}`)
+    } else if (fullSync) {
       await this.helper.resetProgress(task)
       startDate = this.helper.syncStartDate
     } else {
@@ -565,6 +582,9 @@ export class MarketSyncService {
     // 3. 获取待同步的交易日
     const tradeDates = await resolveDates(startDate)
     if (!tradeDates.length) {
+      if (retryExactTarget) {
+        throw new Error(`[${label}] 精确重试目标 ${targetTradeDate} 不是已结束交易周期`)
+      }
       this.logger.log(`[${label}] ${startDate} ~ ${targetTradeDate} 间无交易日，跳过`)
       await this.helper.markCompleted(task)
       return
@@ -583,6 +603,9 @@ export class MarketSyncService {
     for (const [i, td] of tradeDates.entries()) {
       try {
         const mapped = await fetchAndMap(td)
+        if (retryExactTarget && mapped.length === 0) {
+          throw new Error(`[${label}] 精确重试目标 ${td} 返回 0 行，拒绝标记成功`)
+        }
         totalRows += await this.helper.replaceTradeDateRows(modelName, this.helper.toDate(td), mapped)
 
         // 进度日志
@@ -591,7 +614,7 @@ export class MarketSyncService {
         }
 
         // 断点续传：每 CHECKPOINT_INTERVAL 个成功日期写一次（最后一个也写）
-        if ((i + 1) % CHECKPOINT_INTERVAL === 0 || i === tradeDates.length - 1) {
+        if (!retryExactTarget && ((i + 1) % CHECKPOINT_INTERVAL === 0 || i === tradeDates.length - 1)) {
           await this.helper.updateProgress(task, td, i + 1, tradeDates.length)
         }
 
@@ -600,6 +623,7 @@ export class MarketSyncService {
       } catch (error) {
         const msg = (error as Error).message
         this.logger.error(`[${label}] ${td} 同步失败: ${msg}`)
+        if (retryExactTarget) throw error
         failed.push({ date: td, error: msg })
       }
     }
@@ -634,7 +658,9 @@ export class MarketSyncService {
     }
 
     // 6. 标记完成 + 写入同步日志
-    await this.helper.markCompleted(task)
+    if (!retryExactTarget) {
+      await this.helper.markCompleted(task)
+    }
     const finalStatus = stillFailed.length > 0 ? TushareSyncExecutionStatus.FAILED : TushareSyncExecutionStatus.SUCCESS
     await this.helper.writeSyncLog(
       task,

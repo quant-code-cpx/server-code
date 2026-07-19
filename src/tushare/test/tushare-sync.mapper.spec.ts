@@ -14,11 +14,14 @@ import {
   mapAdjFactorRecord,
   mapDailyBasicRecord,
   mapDailyRecord,
+  mapMonthlyRecord,
   mapMoneyflowRecord,
   mapStockBasicRecord,
   mapMoneyflowIndDcRecord,
   mapMoneyflowMktDcRecord,
   mapTradeCalRecord,
+  mapWeeklyRecord,
+  normalizePctChange,
 } from 'src/tushare/tushare-sync.mapper'
 
 // ValidationCollector 为可选参数，单元测试中传入 undefined 即可
@@ -134,9 +137,7 @@ describe('tushare-sync.mapper', () => {
     })
 
     it('数值字段为空字符串时应映射为 null', () => {
-      const result = mapDailyRecord(
-        dailyRecord({ open: '', high: '', low: '', close: '', vol: '', amount: '' }),
-      )
+      const result = mapDailyRecord(dailyRecord({ open: '', high: '', low: '', close: '', vol: '', amount: '' }))
       expect(result).not.toBeNull()
       expect(result!.open).toBeNull()
       expect(result!.high).toBeNull()
@@ -148,6 +149,29 @@ describe('tushare-sync.mapper', () => {
 
     it('不传 collector 时不应抛出异常', () => {
       expect(() => mapDailyRecord(dailyRecord(), undefined)).not.toThrow()
+    })
+  })
+
+  describe('行情涨跌幅口径', () => {
+    it('daily 已是百分数，不应再次放大', () => {
+      expect(normalizePctChange('daily', 3.85)).toBeCloseTo(3.85, 8)
+      expect(mapDailyRecord(dailyRecord({ pct_chg: '3.85' }))?.pctChg).toBeCloseTo(3.85, 8)
+    })
+
+    it('weekly 小数比例应转换成百分数', () => {
+      const result = mapWeeklyRecord(dailyRecord({ pct_chg: String(0.4 / 10.4) }))
+
+      expect(result?.pctChg).toBeCloseTo((0.4 / 10.4) * 100, 8)
+    })
+
+    it('monthly 小数比例应转换成百分数', () => {
+      const result = mapMonthlyRecord(dailyRecord({ pct_chg: '-0.025' }))
+
+      expect(result?.pctChg).toBeCloseTo(-2.5, 8)
+    })
+
+    it('null 保持 null，不伪造成 0', () => {
+      expect(normalizePctChange('weekly', null)).toBeNull()
     })
   })
 

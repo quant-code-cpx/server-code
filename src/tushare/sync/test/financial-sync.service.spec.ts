@@ -53,6 +53,11 @@ function buildPrismaMock() {
     forecast: {
       createMany: jest.fn(async () => ({ count: 0 })),
     },
+    dividend: {
+      count: jest.fn(async () => 0),
+      deleteMany: jest.fn(async () => ({ count: 0 })),
+      createMany: jest.fn(async () => ({ count: 0 })),
+    },
   }
 }
 
@@ -103,6 +108,7 @@ function buildMockApi() {
     getCashflowByTsCodeAndPeriod: jest.fn(async () => []),
     getExpressByDateRange: jest.fn(async () => []),
     getDividendByTsCode: jest.fn(async () => []),
+    getDividendByDateRange: jest.fn(async () => []),
     getFinaIndicatorByTsCode: jest.fn(async () => []),
     getFinaIndicatorByTsCodeAndPeriod: jest.fn(async () => []),
     getTop10HoldersByTsCodeAndPeriod: jest.fn(async () => []),
@@ -166,6 +172,33 @@ describe('FinancialSyncService', () => {
       expect(byTask.get(TushareSyncTaskName.FINA_INDICATOR)?.schedule?.cron).toBe('0 25 22 * * 6')
       expect(byTask.get(TushareSyncTaskName.TOP10_HOLDERS)?.schedule?.cron).toBe('0 30 22 * * 6')
       expect(byTask.get(TushareSyncTaskName.TOP10_FLOAT_HOLDERS)?.schedule?.cron).toBe('0 35 22 * * 6')
+    })
+  })
+
+  describe('syncDividend()', () => {
+    it('全量重复同步依赖自然唯一键跳过重复记录', async () => {
+      const prisma = buildPrismaMock()
+      prisma.stockBasic.findMany.mockResolvedValue([{ tsCode: '000001.SZ' }])
+      prisma.dividend.createMany.mockResolvedValueOnce({ count: 1 }).mockResolvedValueOnce({ count: 0 })
+      const helper = buildMockHelper(prisma)
+      const api = buildMockApi()
+      api.getDividendByTsCode.mockResolvedValue([
+        {
+          ts_code: '000001.SZ',
+          end_date: '20231231',
+          ann_date: null,
+          div_proc: '实施',
+          cash_div_tax: 0.3,
+        },
+      ])
+      const service = createService(api, helper)
+
+      await service.syncDividend('full')
+      await service.syncDividend('full')
+
+      expect(prisma.dividend.createMany).toHaveBeenCalledTimes(2)
+      expect(prisma.dividend.createMany).toHaveBeenNthCalledWith(1, expect.objectContaining({ skipDuplicates: true }))
+      expect(prisma.dividend.createMany).toHaveBeenNthCalledWith(2, expect.objectContaining({ skipDuplicates: true }))
     })
   })
 

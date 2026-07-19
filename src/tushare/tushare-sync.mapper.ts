@@ -238,9 +238,22 @@ function validateOhlcv(
   }
 }
 
+export type MarketPriceFrequency = 'daily' | 'weekly' | 'monthly'
+
+/**
+ * 统一行情涨跌幅为百分数口径。
+ *
+ * Tushare daily 返回百分数（3.85 表示 3.85%），weekly/monthly 返回
+ * 小数比例（0.0385 表示 3.85%）。数据库和业务服务统一保存百分数。
+ */
+export function normalizePctChange(frequency: MarketPriceFrequency, rawPctChange: number | null): number | null {
+  if (rawPctChange == null) return null
+  return frequency === 'daily' ? rawPctChange : rawPctChange * 100
+}
+
 function mapOhlcvRecord<
   T extends Prisma.DailyCreateManyInput | Prisma.WeeklyCreateManyInput | Prisma.MonthlyCreateManyInput,
->(record: TushareRecord, collector?: ValidationCollector): Omit<T, 'syncedAt'> | null {
+>(record: TushareRecord, frequency: MarketPriceFrequency, collector?: ValidationCollector): Omit<T, 'syncedAt'> | null {
   const tsCode = readString(record, 'ts_code')
   const tradeDate = readDate(record, 'trade_date')
   if (!tsCode || !tradeDate) {
@@ -264,7 +277,7 @@ function mapOhlcvRecord<
     close: readNumber(record, 'close'),
     preClose: readNumber(record, 'pre_close'),
     change: readNumber(record, 'change'),
-    pctChg: readNumber(record, 'pct_chg'),
+    pctChg: normalizePctChange(frequency, readNumber(record, 'pct_chg')),
     vol: readNumber(record, 'vol'),
     amount: readNumber(record, 'amount'),
   }
@@ -280,21 +293,21 @@ export function mapDailyRecord(
   record: TushareRecord,
   collector?: ValidationCollector,
 ): Prisma.DailyCreateManyInput | null {
-  return mapOhlcvRecord<Prisma.DailyCreateManyInput>(record, collector)
+  return mapOhlcvRecord<Prisma.DailyCreateManyInput>(record, 'daily', collector)
 }
 
 export function mapWeeklyRecord(
   record: TushareRecord,
   collector?: ValidationCollector,
 ): Prisma.WeeklyCreateManyInput | null {
-  return mapOhlcvRecord<Prisma.WeeklyCreateManyInput>(record, collector)
+  return mapOhlcvRecord<Prisma.WeeklyCreateManyInput>(record, 'weekly', collector)
 }
 
 export function mapMonthlyRecord(
   record: TushareRecord,
   collector?: ValidationCollector,
 ): Prisma.MonthlyCreateManyInput | null {
-  return mapOhlcvRecord<Prisma.MonthlyCreateManyInput>(record, collector)
+  return mapOhlcvRecord<Prisma.MonthlyCreateManyInput>(record, 'monthly', collector)
 }
 
 export function mapAdjFactorRecord(

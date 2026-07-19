@@ -253,3 +253,53 @@ describe('SyncHelperService — buildPendingQuarterPeriods', () => {
     }
   })
 })
+
+describe('SyncHelperService — getPeriodEndTradeDates', () => {
+  it('周三盘后仍有后续交易日时，不把本周误判为已结束', async () => {
+    const svc = createService()
+    jest.spyOn(svc, 'getCurrentShanghaiDateString').mockReturnValue('20260715')
+    jest.spyOn(svc, 'getCurrentShanghaiNow').mockReturnValue({ hour: () => 19, minute: () => 0 } as never)
+    jest
+      .spyOn(svc, 'getOpenTradeDatesBetween')
+      .mockResolvedValueOnce(['20260713', '20260714', '20260715'])
+      .mockResolvedValueOnce(['20260716', '20260717'])
+
+    await expect(svc.getPeriodEndTradeDates('20260713', '20260715', 'week')).resolves.toEqual([])
+  })
+
+  it('周五收盘且本周无后续交易日时，返回本周最后交易日', async () => {
+    const svc = createService()
+    jest.spyOn(svc, 'getCurrentShanghaiDateString').mockReturnValue('20260717')
+    jest.spyOn(svc, 'getCurrentShanghaiNow').mockReturnValue({ hour: () => 19, minute: () => 0 } as never)
+    jest
+      .spyOn(svc, 'getOpenTradeDatesBetween')
+      .mockResolvedValueOnce(['20260713', '20260714', '20260715', '20260716', '20260717'])
+      .mockResolvedValueOnce([])
+
+    await expect(svc.getPeriodEndTradeDates('20260713', '20260717', 'week')).resolves.toEqual(['20260717'])
+  })
+
+  it('最后交易日尚未收盘时，不返回当前周期', async () => {
+    const svc = createService()
+    jest.spyOn(svc, 'getCurrentShanghaiDateString').mockReturnValue('20260717')
+    jest.spyOn(svc, 'getCurrentShanghaiNow').mockReturnValue({ hour: () => 14, minute: () => 0 } as never)
+    jest
+      .spyOn(svc, 'getOpenTradeDatesBetween')
+      .mockResolvedValueOnce(['20260713', '20260714', '20260715', '20260716', '20260717'])
+      .mockResolvedValueOnce([])
+
+    await expect(svc.getPeriodEndTradeDates('20260713', '20260717', 'week')).resolves.toEqual([])
+  })
+
+  it('月末节假日时，返回此前最后一个已收盘交易日', async () => {
+    const svc = createService()
+    jest.spyOn(svc, 'getCurrentShanghaiDateString').mockReturnValue('20260731')
+    jest.spyOn(svc, 'getCurrentShanghaiNow').mockReturnValue({ hour: () => 10, minute: () => 0 } as never)
+    jest
+      .spyOn(svc, 'getOpenTradeDatesBetween')
+      .mockResolvedValueOnce(['20260729', '20260730'])
+      .mockResolvedValueOnce([])
+
+    await expect(svc.getPeriodEndTradeDates('20260701', '20260731', 'month')).resolves.toEqual(['20260730'])
+  })
+})

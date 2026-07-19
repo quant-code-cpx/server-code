@@ -26,6 +26,8 @@ export interface TushareSyncPlanContext {
   trigger: TushareSyncTrigger
   mode: TushareSyncMode
   targetTradeDate?: string
+  /** 重试失败分片时只处理 targetTradeDate，禁止被最新进度或成功日志短路。 */
+  retryExactTarget?: boolean
   /**
    * 进度回调（可选），sync service 在调用 execute 前注入。
    * 各分类同步服务在循环体中每完成一个分片（日期/季度/页）时调用。

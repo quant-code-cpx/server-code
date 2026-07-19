@@ -1,6 +1,6 @@
 ---
 batch: 1
-status: in_progress
+status: completed
 type: fullstack
 depends_on: []
 blocks: ["batch-002-conversation-and-message-schema", "batch-003-agent-audit-and-citation-schema", "batch-004-model-gateway-foundation", "batch-006-tool-registry-and-policy", "batch-013-conversation-rest-api", "batch-015-frontend-stream-client-and-contracts"]
@@ -153,7 +153,7 @@ estimated_scope: medium
 - 已增加 JSON Schema/前端 TypeScript 生成器和 drift 检查；前端仅消费生成结果，无手写重复定义。
 - 已增加 `@RawStreamResponse()`，`TransformInterceptor` 可按 handler/controller metadata 跳过统一 JSON 包装。
 - 后端契约与 interceptor 共 2 suites / 20 tests 通过，Nest build 通过；前端 ESLint、7 个契约测试与 Vite production build 通过。
-- 尚待前后端实现 commit 证据写入后，再将本批次 frontmatter 更新为 `completed`。
+- 后端实现 commit：`584c8a6 feat(agent): establish public contracts`；前端实现 commit：`0cbe1e7 feat(agent): add generated public contracts`。
 
 ## 25. 回滚方案
 

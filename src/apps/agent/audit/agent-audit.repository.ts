@@ -53,6 +53,7 @@ export interface BeginToolCallCommand {
   input: unknown
   payloadMode?: AiAuditPayloadMode
   inputRef?: string | null
+  initialStatus?: AiToolCallStatus
 }
 
 export interface CompleteToolCallCommand {
@@ -74,6 +75,10 @@ export interface AuditFailureCommand {
   errorCode?: number | null
   errorMessage?: unknown
   durationMs?: number | null
+}
+
+export interface RetryToolCallCommand extends AuditFailureCommand {
+  expectedAttempt: number
 }
 
 export interface BeginModelCallCommand {
@@ -127,6 +132,16 @@ export interface CreateWorkflowDraftCommand {
   createdBy: number
 }
 
+const TOOL_CALL_INITIAL_STATUSES = new Set<AiToolCallStatus>([
+  AiToolCallStatus.PENDING,
+  AiToolCallStatus.AUTHORIZING,
+  AiToolCallStatus.RUNNING,
+])
+const TOOL_CALL_CAN_START_STATUSES = new Set<AiToolCallStatus>([
+  AiToolCallStatus.AUTHORIZING,
+  AiToolCallStatus.RETRY_WAIT,
+])
+
 @Injectable()
 export class AgentAuditRepository {
   constructor(
@@ -145,6 +160,10 @@ export class AgentAuditRepository {
     const invocationIndex = command.invocationIndex ?? 0
     requireNonNegativeInteger(invocationIndex, 'invocationIndex')
     const payloadMode = command.payloadMode ?? AiAuditPayloadMode.HASH_ONLY
+    const initialStatus = command.initialStatus ?? AiToolCallStatus.RUNNING
+    if (!TOOL_CALL_INITIAL_STATUSES.has(initialStatus)) {
+      throw new AgentAuditValidationError('Tool 调用 initialStatus 非法')
+    }
     const inputRef = validatePayloadRef(payloadMode, command.inputRef, 'inputRef')
     const input = sanitizeContainer(command.input, true)
 
@@ -159,7 +178,7 @@ export class AgentAuditRepository {
           invocationIndex,
           toolName,
           toolVersion,
-          status: AiToolCallStatus.RUNNING,
+          status: initialStatus,
           payloadMode,
           inputSummary: toJsonInput(input.summary),
           inputHash: input.hash,
@@ -188,6 +207,73 @@ export class AgentAuditRepository {
       this.logOperation('beginToolCall', startedAt, 0)
       return existing
     }
+  }
+
+  async markToolCallRunning(userId: number, callId: string, attemptCount: number): Promise<AiToolCall> {
+    requirePositiveInteger(attemptCount, 'attemptCount')
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw(Prisma.sql`SELECT id FROM ai_tool_calls WHERE id = ${callId} FOR UPDATE`)
+      const call = await tx.aiToolCall.findFirst({ where: { id: callId, userId } })
+      if (!call) throw new AgentAuditNotFoundError('Tool 调用')
+      if (call.status === AiToolCallStatus.RUNNING && call.attemptCount === attemptCount) return call
+      if (call.status === AiToolCallStatus.AUTHORIZING && attemptCount !== call.attemptCount) {
+        throw new AgentAuditConflictError('Tool 首次执行 attemptCount 冲突')
+      }
+      if (call.status === AiToolCallStatus.RETRY_WAIT && attemptCount !== call.attemptCount + 1) {
+        throw new AgentAuditConflictError('Tool 重试 attemptCount 必须递增 1')
+      }
+      if (!TOOL_CALL_CAN_START_STATUSES.has(call.status)) {
+        throw new AgentAuditConflictError(`Tool 调用状态 ${call.status} 不可进入 RUNNING`)
+      }
+      return tx.aiToolCall.update({
+        where: { id: call.id },
+        data: {
+          status: AiToolCallStatus.RUNNING,
+          attemptCount,
+          errorCode: null,
+          errorClass: null,
+          errorMessage: null,
+        },
+      })
+    })
+  }
+
+  async markToolCallRetryWait(userId: number, callId: string, command: RetryToolCallCommand): Promise<AiToolCall> {
+    requirePositiveInteger(command.expectedAttempt, 'expectedAttempt')
+    validateOptionalNonNegativeInteger(command.durationMs, 'durationMs')
+    const errorClass = requireText(command.errorClass, 'errorClass', 128)
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw(Prisma.sql`SELECT id FROM ai_tool_calls WHERE id = ${callId} FOR UPDATE`)
+      const call = await tx.aiToolCall.findFirst({ where: { id: callId, userId } })
+      if (!call) throw new AgentAuditNotFoundError('Tool 调用')
+      if (call.status === AiToolCallStatus.RETRY_WAIT && call.attemptCount === command.expectedAttempt) {
+        if (call.errorClass !== errorClass || call.errorCode !== (command.errorCode ?? null)) {
+          throw new AgentAuditConflictError('Tool retry attempt 已记录不同错误')
+        }
+        return call
+      }
+      if (call.status !== AiToolCallStatus.RUNNING || call.attemptCount !== command.expectedAttempt) {
+        throw new AgentAuditConflictError('Tool retry attempt 状态冲突')
+      }
+      return tx.aiToolCall.update({
+        where: { id: call.id },
+        data: {
+          status: AiToolCallStatus.RETRY_WAIT,
+          errorClass,
+          errorCode: command.errorCode ?? null,
+          errorMessage: command.errorMessage == null ? null : sanitizeAuditErrorMessage(command.errorMessage),
+          durationMs: command.durationMs ?? null,
+        },
+      })
+    })
+  }
+
+  async rejectToolCall(userId: number, callId: string, command: AuditFailureCommand): Promise<AiToolCall> {
+    return this.finishToolCallWithoutOutput(userId, callId, AiToolCallStatus.REJECTED, command)
+  }
+
+  async cancelToolCall(userId: number, callId: string, command: AuditFailureCommand): Promise<AiToolCall> {
+    return this.finishToolCallWithoutOutput(userId, callId, AiToolCallStatus.CANCELLED, command)
   }
 
   async completeToolCall(userId: number, callId: string, command: CompleteToolCallCommand): Promise<AiToolCall> {
@@ -258,6 +344,34 @@ export class AgentAuditRepository {
       })
       this.logOperation('failToolCall', startedAt, 1)
       return updated
+    })
+  }
+
+  private async finishToolCallWithoutOutput(
+    userId: number,
+    callId: string,
+    targetStatus: 'REJECTED' | 'CANCELLED',
+    command: AuditFailureCommand,
+  ): Promise<AiToolCall> {
+    const errorClass = requireText(command.errorClass, 'errorClass', 128)
+    validateOptionalNonNegativeInteger(command.durationMs, 'durationMs')
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw(Prisma.sql`SELECT id FROM ai_tool_calls WHERE id = ${callId} FOR UPDATE`)
+      const call = await tx.aiToolCall.findFirst({ where: { id: callId, userId } })
+      if (!call) throw new AgentAuditNotFoundError('Tool 调用')
+      if (call.status === targetStatus) return call
+      assertToolCallCanFinish(call.status)
+      return tx.aiToolCall.update({
+        where: { id: call.id },
+        data: {
+          status: targetStatus,
+          errorClass,
+          errorCode: command.errorCode ?? null,
+          errorMessage: command.errorMessage == null ? null : sanitizeAuditErrorMessage(command.errorMessage),
+          finishedAt: new Date(),
+          durationMs: command.durationMs ?? Math.max(0, Date.now() - call.startedAt.getTime()),
+        },
+      })
     })
   }
 

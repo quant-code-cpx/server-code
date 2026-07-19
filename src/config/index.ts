@@ -4,6 +4,7 @@ import { RedisConfig, IRedisConfig } from './redis.config'
 import { TushareConfig, ITushareConfig } from './tushare.config'
 import { ModelConfig, IModelConfig } from './model.config'
 import { AgentExecutionConfig, IAgentExecutionConfig } from './agent-execution.config'
+import { AgentToolsConfig, IAgentToolsConfig } from './agent-tools.config'
 
 export * from './app.config'
 export * from './token.config'
@@ -11,6 +12,7 @@ export * from './redis.config'
 export * from './tushare.config'
 export * from './model.config'
 export * from './agent-execution.config'
+export * from './agent-tools.config'
 
 export type AllConfigType = {
   app: IAppConfig
@@ -19,6 +21,7 @@ export type AllConfigType = {
   tushare: ITushareConfig
   agentModel: IModelConfig
   agentExecution: IAgentExecutionConfig
+  agentTools: IAgentToolsConfig
 }
 
 const configs = {
@@ -28,6 +31,7 @@ const configs = {
   TushareConfig,
   ModelConfig,
   AgentExecutionConfig,
+  AgentToolsConfig,
 }
 
 export default configs

@@ -337,6 +337,66 @@ integrationDescribe('Agent 审计/引用 Repository — 临时数据库集成测
     ).rejects.toThrow('terminal AI tool call is immutable')
   })
 
+  it('Tool 授权、重试、恢复、取消与拒绝状态按数据库状态机持久化', async () => {
+    const retrying = await auditRepository.beginToolCall({
+      userId: userA.id,
+      scopeId: randomUUID(),
+      runId: runA.id,
+      stepId: stepA.id,
+      logicalNodeKey: 'retrying-tool',
+      toolName: 'resolve_security',
+      toolVersion: '1',
+      input: { query: '浦发银行' },
+      initialStatus: AiToolCallStatus.AUTHORIZING,
+    })
+    expect(retrying.status).toBe(AiToolCallStatus.AUTHORIZING)
+    const running = await auditRepository.markToolCallRunning(userA.id, retrying.id, 1)
+    expect(running.status).toBe(AiToolCallStatus.RUNNING)
+    const retryWait = await auditRepository.markToolCallRetryWait(userA.id, retrying.id, {
+      expectedAttempt: 1,
+      errorClass: 'UPSTREAM_FAILED',
+      errorCode: 6027,
+      errorMessage: 'safe upstream failure',
+    })
+    expect(retryWait).toMatchObject({ status: AiToolCallStatus.RETRY_WAIT, attemptCount: 1 })
+    await expect(
+      auditRepository.markToolCallRetryWait(userA.id, retrying.id, {
+        expectedAttempt: 1,
+        errorClass: 'RATE_LIMITED',
+        errorCode: 6026,
+      }),
+    ).rejects.toBeInstanceOf(AgentAuditConflictError)
+    const secondAttempt = await auditRepository.markToolCallRunning(userA.id, retrying.id, 2)
+    expect(secondAttempt).toMatchObject({ status: AiToolCallStatus.RUNNING, attemptCount: 2, errorClass: null })
+    const cancelled = await auditRepository.cancelToolCall(userA.id, retrying.id, {
+      errorClass: 'CANCELLED',
+      errorCode: 6031,
+      errorMessage: 'Tool 调用已取消',
+    })
+    expect(cancelled.status).toBe(AiToolCallStatus.CANCELLED)
+
+    const rejected = await auditRepository.beginToolCall({
+      userId: userA.id,
+      scopeId: randomUUID(),
+      runId: runA.id,
+      stepId: stepA.id,
+      logicalNodeKey: 'rejected-tool',
+      toolName: 'resolve_security',
+      toolVersion: '1',
+      input: { query: '伪造 userId', userId: userB.id },
+      initialStatus: AiToolCallStatus.AUTHORIZING,
+    })
+    const rejectedTerminal = await auditRepository.rejectToolCall(userA.id, rejected.id, {
+      errorClass: 'INVALID_ARGUMENT',
+      errorCode: 6010,
+      errorMessage: 'Tool 参数校验失败',
+    })
+    expect(rejectedTerminal.status).toBe(AiToolCallStatus.REJECTED)
+    await expect(auditRepository.markToolCallRunning(userA.id, rejected.id, 1)).rejects.toBeInstanceOf(
+      AgentAuditConflictError,
+    )
+  })
+
   it('模型调用保留 Decimal(18,8) 精度；重复完成不重复计费，不同输出拒绝', async () => {
     const prompt = await auditRepository.createPromptDraft({
       promptKey: `research-${randomUUID()}`,

@@ -8,6 +8,7 @@ import { AgentToolsConfig, IAgentToolsConfig } from './agent-tools.config'
 import { WebSearchConfig, IWebSearchConfig } from './web-search.config'
 import { AgentQueueConfig, IAgentQueueConfig } from './agent-queue.config'
 import { ProcessRoleConfig, IProcessRoleConfig } from './process-role.config'
+import { AgentApiConfig, IAgentApiConfig } from './agent-api.config'
 
 export * from './app.config'
 export * from './token.config'
@@ -19,6 +20,7 @@ export * from './agent-tools.config'
 export * from './web-search.config'
 export * from './agent-queue.config'
 export * from './process-role.config'
+export * from './agent-api.config'
 
 export type AllConfigType = {
   app: IAppConfig
@@ -31,6 +33,7 @@ export type AllConfigType = {
   webSearch: IWebSearchConfig
   agentQueue: IAgentQueueConfig
   processRole: IProcessRoleConfig
+  agentApi: IAgentApiConfig
 }
 
 const configs = {
@@ -44,6 +47,7 @@ const configs = {
   WebSearchConfig,
   AgentQueueConfig,
   ProcessRoleConfig,
+  AgentApiConfig,
 }
 
 export default configs

@@ -3,6 +3,8 @@ import { ConfigModule } from '@nestjs/config'
 import { AgentToolsConfig } from 'src/config/agent-tools.config'
 import type { IAgentToolsConfig } from 'src/config/agent-tools.config'
 import { AgentExecutionConfig } from 'src/config/agent-execution.config'
+import { AgentApiConfig } from 'src/config/agent-api.config'
+import { AgentQueueProducerModule } from 'src/queue/agent/agent-queue-producer.module'
 import { StockModule } from 'src/apps/stock/stock.module'
 import { MarketModule } from 'src/apps/market/market.module'
 import { IndustryModule } from 'src/apps/industry/industry.module'
@@ -55,11 +57,20 @@ import { WorkflowModelService } from './workflow/workflow-model.service'
 import { AGENT_WORKFLOW_DEFINITIONS, WorkflowRegistryService } from './workflow/workflow-registry.service'
 import { WorkflowToolService } from './workflow/workflow-tool.service'
 import { STOCK_RESEARCH_WORKFLOW_V1 } from './workflow/workflows/stock-research.v1'
+import { AgentController } from './api/agent.controller'
+import { AgentStrictBodyGuard } from './api/agent-strict-body.guard'
+import { AgentErrorInterceptor } from './api/agent-error.interceptor'
+import { AgentRestReadRepository } from './api/agent-rest-read.repository'
+import { AgentConversationService } from './application/agent-conversation.service'
+import { AgentRunService } from './application/agent-run.service'
+import { AgentInteractionRepository } from './application/agent-interaction.repository'
 
 @Module({
   imports: [
     ConfigModule.forFeature(AgentToolsConfig),
     ConfigModule.forFeature(AgentExecutionConfig),
+    ConfigModule.forFeature(AgentApiConfig),
+    AgentQueueProducerModule,
     ModelGatewayModule,
     AgentExecutionModule,
     AgentAuditModule,
@@ -71,9 +82,16 @@ import { STOCK_RESEARCH_WORKFLOW_V1 } from './workflow/workflows/stock-research.
     PortfolioModule,
     BacktestModule,
   ],
+  controllers: [AgentController],
   providers: [
     AgentConversationRepository,
     AgentMessageRepository,
+    AgentRestReadRepository,
+    AgentInteractionRepository,
+    AgentConversationService,
+    AgentRunService,
+    AgentStrictBodyGuard,
+    AgentErrorInterceptor,
     ToolSchemaValidator,
     ToolRegistryService,
     ToolPolicyService,

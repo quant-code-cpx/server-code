@@ -5,17 +5,11 @@ import { ErrorEnum } from 'src/constant/response-code.constant'
 import { RequestContextService } from 'src/shared/context/request-context.service'
 import { LoggerService } from 'src/shared/logger/logger.service'
 import { TushareApiError } from 'src/tushare/api/tushare-client.service'
+import { AgentHttpException } from 'src/apps/agent/api/agent-http.exception'
 
 interface ExceptionBody {
   message?: string | string[]
   data?: unknown
-}
-
-interface ExceptionLike {
-  message?: string
-  response?: unknown
-  status?: number
-  statusCode?: number
 }
 
 @Catch()
@@ -55,7 +49,9 @@ export class GlobalExceptionsFilter implements ExceptionFilter {
     }
 
     let apiErrorCode: number
-    if (exception instanceof BusinessException) {
+    if (exception instanceof AgentHttpException) {
+      apiErrorCode = exception.definition.code
+    } else if (exception instanceof BusinessException) {
       apiErrorCode = exception.getErrorCode()
     } else if (exception instanceof TushareApiError) {
       apiErrorCode = this.parseErrorCode(ErrorEnum.TUSHARE_API_ERROR)

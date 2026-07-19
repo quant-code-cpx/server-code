@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common'
-import { AiConversationStatus, Prisma } from '@prisma/client'
+import { AiConversationStatus, AiModelPolicy, Prisma } from '@prisma/client'
 import { LoggerService } from 'src/shared/logger/logger.service'
 import { PrismaService } from 'src/shared/prisma.service'
 import {
@@ -104,6 +104,26 @@ export class AgentConversationRepository {
     })
     this.logOperation('archiveConversation', startedAt, result.count)
     if (!conversation) throw new AgentConversationNotFoundError()
+    return conversation
+  }
+
+  async updateModelPolicy(
+    userId: number,
+    conversationId: string,
+    modelPolicy: AiModelPolicy,
+    preferredModel: string | null,
+  ): Promise<PersistedAiConversation> {
+    const startedAt = Date.now()
+    const result = await this.prisma.aiConversation.updateMany({
+      where: { id: conversationId, userId, status: { not: AiConversationStatus.DELETED } },
+      data: { modelPolicy, preferredModel },
+    })
+    if (result.count !== 1) throw new AgentConversationNotFoundError()
+    const conversation = await this.prisma.aiConversation.findFirst({
+      where: { id: conversationId, userId, status: { not: AiConversationStatus.DELETED } },
+    })
+    if (!conversation) throw new AgentConversationNotFoundError()
+    this.logOperation('updateModelPolicy', startedAt, 1)
     return conversation
   }
 

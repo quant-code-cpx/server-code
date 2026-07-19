@@ -1,10 +1,17 @@
 ---
 batch: 7
-status: pending
+status: completed
 type: backend
-depends_on: ["batch-000-platform-data-readiness", "batch-006-tool-registry-and-policy"]
-blocks: ["batch-011-agent-orchestrator-workflow"]
-parallel_with: ["batch-008-financial-fund-flow-tools", "batch-009-deterministic-quant-tools", "batch-010-web-search-and-citations", "batch-015-frontend-stream-client-and-contracts", "batch-016-frontend-chat-shell"]
+depends_on: ['batch-000-platform-data-readiness', 'batch-006-tool-registry-and-policy']
+blocks: ['batch-011-agent-orchestrator-workflow']
+parallel_with:
+  [
+    'batch-008-financial-fund-flow-tools',
+    'batch-009-deterministic-quant-tools',
+    'batch-010-web-search-and-citations',
+    'batch-015-frontend-stream-client-and-contracts',
+    'batch-016-frontend-chat-shell',
+  ]
 recommended_executor: backend-coding-agent
 recommended_reasoning_level: high
 estimated_scope: large
@@ -142,7 +149,15 @@ estimated_scope: large
 
 ## 24. 完成定义
 
-Facades、Module exports、adapters、schemas、测试、查询计划和 Tool inventory 状态同步完成。
+- [x] 四个领域 Facade、六个 strict Tool definitions 与 Module exports 已完成；adapter 不经内部 HTTP，也不直接注入 Prisma。
+- [x] `resolve_security` 覆盖 STOCK/INDEX/FUND/OPTION；行情实现 NONE/FORWARD/BACKWARD、日周月、字段白名单和最近 N 条截断。
+- [x] QFQ 修为 `raw * factor / latestFactor`，周/月 `pctChange` 保持百分数；历史 overview 的快报公告日不晚于请求时点。
+- [x] Market section 独立 `asOf/status`；THS 历史概念成分 fail-closed；Watchlist 强制 owner 条件且不缓存私有结果。
+- [x] 实现提交：`497caa7 feat(agent): add stock market query tools`。
+- [x] 专项 26/26、Batch 006 Tool 27/27、Stock/Market/Index/Industry/Watchlist 487/487、production build、legacy ESLint、contracts 和格式门禁通过。
+- [x] 日线查询命中 `stock_daily_prices_pkey` backward index scan；估值与复权因子命中各自复合主键；1001 bars 热态执行 18.673ms。
+- [x] 开发容器编译 `Found 0 errors`，App/PostgreSQL/Redis healthy，`/health` 与 `/ready` 均为 ok。
+- [x] Tool inventory、[测试方案](../../../design/Agent股票市场与自选股工具测试方案-20260719.md)、[执行报告](../../../Agent股票市场与自选股工具测试执行报告-20260719.md)与 `docs/README.md` 已同步。
 
 ## 25. 回滚方案
 

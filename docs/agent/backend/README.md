@@ -15,22 +15,23 @@
 
 ## 导航
 
-| 文档                                              | 单一职责                                                             |
-| ------------------------------------------------- | -------------------------------------------------------------------- |
-| [后端架构](./architecture.md)                     | 模块边界、进程边界、依赖方向与架构取舍                               |
-| [Agent 编排器](./agent-orchestrator.md)           | Run 状态机、工作流、检查点、重试和取消                               |
-| [模型网关](./model-gateway.md)                    | 多供应商抽象、路由、降级、成本和流式适配                             |
-| [Tool 系统](./tool-system.md)                     | Registry、Policy、执行管线、权限和审计                               |
-| [金融数据服务](./financial-data-service.md)       | 真实股票、市场、财务、用户数据 Service 的 Facade 边界                |
-| [量化计算服务](./quantitative-compute-service.md) | 确定性计算、回测、异步计算与 Python 边界                             |
-| [联网搜索服务](./web-search-service.md)           | 搜索、抓取、来源验证、引用和外部内容隔离                             |
-| [会话与记忆](./conversation-and-memory.md)        | 原始消息、上下文预算、摘要、长期记忆和恢复                           |
-| [调度与通知](./scheduler-and-notification.md)     | 定时/条件任务、唯一执行、渠道投递和去重                              |
-| [API 落地](./api-design.md)                       | NestJS Controller、DTO、POST-SSE 与现有拦截器适配                    |
-| [数据库接线](./database-design.md)                | Repository、事务、Outbox、租约与 Prisma 模块接线（由数据库方案维护） |
-| [可观测性](./observability.md)                    | 日志、指标、Trace、审计和评测                                        |
-| [安全](./security.md)                             | 认证、租户隔离、Tool/模型/搜索安全和上线门禁                         |
-| [部署](./deployment.md)                           | 本地、个人和多用户运行拓扑、密钥、备份与扩缩容（由部署方案维护）     |
+| 文档                                                           | 单一职责                                                             |
+| -------------------------------------------------------------- | -------------------------------------------------------------------- |
+| [后端架构](./architecture.md)                                  | 模块边界、进程边界、依赖方向与架构取舍                               |
+| [Agent 编排器](./agent-orchestrator.md)                        | Run 状态机、工作流、检查点、重试和取消                               |
+| [模型网关](./model-gateway.md)                                 | 多供应商抽象、路由、降级、成本和流式适配                             |
+| [Tool 系统](./tool-system.md)                                  | Registry、Policy、执行管线、权限和审计                               |
+| [金融数据服务](./financial-data-service.md)                    | 真实股票、市场、财务、用户数据 Service 的 Facade 边界                |
+| [量化计算服务](./quantitative-compute-service.md)              | 确定性计算、回测、异步计算与 Python 边界                             |
+| [联网搜索服务](./web-search-service.md)                        | 搜索、抓取、来源验证、引用和外部内容隔离                             |
+| [会话与记忆](./conversation-and-memory.md)                     | 原始消息、上下文预算、摘要、长期记忆和恢复                           |
+| [调度与通知](./scheduler-and-notification.md)                  | 定时/条件任务、唯一执行、渠道投递和去重                              |
+| [API 落地](./api-design.md)                                    | NestJS Controller、DTO、POST-SSE 与现有拦截器适配                    |
+| [数据库接线](./database-design.md)                             | Repository、事务、Outbox、租约与 Prisma 模块接线（由数据库方案维护） |
+| [可观测性](./observability.md)                                 | 日志、指标、Trace、审计和评测                                        |
+| [安全](./security.md)                                          | 认证、租户隔离、Tool/模型/搜索安全和上线门禁                         |
+| [部署](./deployment.md)                                        | 本地、个人和多用户运行拓扑、密钥、备份与扩缩容（由部署方案维护）     |
+| [智能体队列工作进程运行手册](./智能体队列工作进程-运行手册.md) | Agent BullMQ 入队、独立 Worker、恢复、监控、故障处理与回滚           |
 
 ## 明确结论
 
@@ -83,7 +84,7 @@
 4. **P0 点时性与回测偏差**：历史概览会混入当前最新快报，财务/因子未统一按公告可用日过滤；现有 ALL_A 使用当前上市股票、部分策略忽略 universe。未修复的历史回测只能返回 `BACKTEST_BIAS_UNVERIFIED`，不能作为已验证结论。
 5. **P0 同步成功语义不可信**：最新进度会短路更早失败日期并把 retry 标成功；空响应路径可删旧数据；部分分片失败仍可写 SUCCESS；现有时效检查把比较值误作滞后天数。Agent freshness gate 不能只读取同步日志 status。
 6. **P1 错误传输**：`BusinessException` 当前总是 HTTP 200，HTTP 错误指标无法识别业务失败；Agent 必须按[错误码](../api/error-codes.md)同时表达 HTTP 与业务语义。
-7. **P1 队列可靠性**：缓存、认证和 BullMQ 共用 Redis，现有淘汰策略与队列持久性不匹配；Agent 队列至少使用独立 logical DB/连接与非淘汰策略。
+7. **P1 队列可靠性**：Batch 012 已将默认 Redis 改为 `noeviction`，并支持 Agent 独立 Redis URL、namespace、outbox 与数据库恢复；生产仍须配置独立凭据/ACL/logical DB 或实例。
 8. **P1 调度重复**：当前 API、Worker、Socket.IO 和大量 Cron 同进程，多副本会重复执行；Agent Scheduler 必须先实现租约与幂等。
 
 ## 文档使用方式

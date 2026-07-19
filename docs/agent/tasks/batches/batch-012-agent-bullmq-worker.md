@@ -1,10 +1,23 @@
 ---
 batch: 12
-status: pending
+status: completed
 type: backend
-depends_on: ["batch-005-run-state-and-event-store", "batch-011-agent-orchestrator-workflow"]
-blocks: ["batch-013-conversation-rest-api", "batch-014-post-sse-stream-and-replay", "batch-018-mvp-e2e-and-model-regression", "batch-020-scheduled-agent-tasks", "batch-024-python-quant-compute-service", "batch-025-ai-observability-cost-and-evaluation"]
-parallel_with: ["batch-015-frontend-stream-client-and-contracts", "batch-016-frontend-chat-shell", "batch-017-frontend-rich-response-blocks"]
+depends_on: ['batch-005-run-state-and-event-store', 'batch-011-agent-orchestrator-workflow']
+blocks:
+  [
+    'batch-013-conversation-rest-api',
+    'batch-014-post-sse-stream-and-replay',
+    'batch-018-mvp-e2e-and-model-regression',
+    'batch-020-scheduled-agent-tasks',
+    'batch-024-python-quant-compute-service',
+    'batch-025-ai-observability-cost-and-evaluation',
+  ]
+parallel_with:
+  [
+    'batch-015-frontend-stream-client-and-contracts',
+    'batch-016-frontend-chat-shell',
+    'batch-017-frontend-rich-response-blocks',
+  ]
 recommended_executor: backend-coding-agent
 recommended_reasoning_level: very-high
 estimated_scope: large
@@ -127,8 +140,10 @@ worker 向 Tool/Model 传播 AbortSignal；cancel 后迟到结果不能完成 Ru
 ## 22. 执行命令
 
 - `pnpm test -- src/queue/agent/test/agent.processor.spec.ts`
+- `RUN_AGENT_QUEUE_INTEGRATION=true pnpm test -- src/queue/agent/test/agent-queue.integration.spec.ts --runInBand`
+- `RUN_AGENT_DB_INTEGRATION=true pnpm test -- src/apps/agent/execution/test/agent-execution.repository.spec.ts --runInBand`
 - `pnpm run build`
-- `docker compose up -d postgres redis`（测试环境）
+- `docker compose up -d database redis`（测试环境）
 
 ## 23. 验收标准
 
@@ -138,7 +153,17 @@ worker 向 Tool/Model 传播 AbortSignal；cancel 后迟到结果不能完成 Ru
 
 ## 24. 完成定义
 
-queue/outbox/processor/reconciler、进程入口、Compose、故障集成测试和运行手册合入。
+- [x] 新增 `agent-execution` queue、严格 `{ schemaVersion: 1, runId }` payload、`jobId=runId` 与稳定 payload hash；正文、用户上下文和未知字段不能进入 Redis。
+- [x] `AgentRunRepository.createRun()` 在创建 Run 的同一 PostgreSQL 事务写入 `AiJobOutbox`；migration、状态/时间/hash 约束和 `(status,nextAttemptAt,id)` 索引已部署。
+- [x] Producer 支持重复 enqueue 幂等、失败指数退避、waiting job 取消、失败/完成残留 job 清理；Redis 丢失后可从非终态 Run 重建。
+- [x] Processor 每次 delivery 生成新 worker identity，只调用 `AgentOrchestratorService.resume()`；业务 `COMPLETED/FAILED/CANCELLED` 不触发 BullMQ retry，lease/网络/进程类错误继续 retry。
+- [x] Reconciler 扫描 due outbox、`QUEUED` 与 lease-expired `RUNNING/CANCEL_REQUESTED` Run；不引入非法 `RUNNING → QUEUED` 状态转换。
+- [x] Worker shutdown、job timeout、heartbeat cancel 统一传播 `AbortSignal`；取消后迟到 Tool/Model 结果不能完成 Run。
+- [x] 新增 `PROCESS_ROLE=api|agent-worker|scheduler|all`、`worker.main.ts`、独立并发/timeout/reconcile 配置与可选 Compose `agent-worker` profile；Worker 不暴露 HTTP 端口且禁用 Tushare scheduler。
+- [x] Agent queue waiting/active/failed/delayed、stalled、enqueue lag、recovery 指标已接入；Redis 淘汰策略改为 BullMQ 要求的 `noeviction`。
+- [x] 专项单测 30/30、真实 Redis 2/2、独立 PostgreSQL 9/9、Agent/Portfolio/Backtest 627/627、Stock 229/229、build/contracts/Prisma/ESLint/Prettier、Docker health/ready 与真实 Worker restart 验证通过。
+- [x] 运行、恢复、监控和回滚步骤见[智能体队列工作进程运行手册](../../backend/智能体队列工作进程-运行手册.md)。
+- [x] 实现提交：`19069a7 feat(agent): add durable BullMQ worker recovery`。
 
 ## 25. 回滚方案
 

@@ -24,19 +24,20 @@ docs/
 
 基于当前 NestJS 后端、同级 React 前端、111 个 Prisma Model、运行库与 Tushare 同步链的实仓扫描。该方案取代 `design/AI智能助手接入方案-后端设计.md` 作为后续 Agent 实施依据；旧文档保留为历史比较材料。
 
-| 入口                                                        | 说明                                                      | 状态      |
-| ----------------------------------------------------------- | --------------------------------------------------------- | --------- |
-| [Agent 方案总览](agent/README.md)                           | 目标、架构图、MVP、风险、未确认项、完整目录导航           | 📋 需求稿 |
-| [当前项目分析](agent/overview/current-project-analysis.md)  | 前后端、数据库、同步、部署与已实证风险                    | 📋 需求稿 |
-| [数据能力盘点](agent/overview/data-capability-inventory.md) | 真实 Model/表、数据量、覆盖、索引、质量与 Tool 映射       | 📋 需求稿 |
-| [前端方案](agent/frontend/README.md)                        | React/MUI 页面、流式状态、富响应和恢复                    | 📋 需求稿 |
-| [后端方案](agent/backend/README.md)                         | NestJS 编排、模型网关、Tool、队列、记忆、安全和部署       | 📋 需求稿 |
-| [公共 API 协议](agent/api/README.md)                        | REST、POST SSE、WebSocket 边界和错误码                    | 📋 需求稿 |
-| [数据库方案](agent/database/README.md)                      | 现有结构、Agent 新表、索引、迁移与 lineage                | 📋 需求稿 |
-| [Tool 方案](agent/tools/README.md)                          | 15 个 MVP Tool、JSON Schema、权限与审计                   | 📋 需求稿 |
-| [工作流方案](agent/workflows/README.md)                     | 交互、股票研究、新闻、定时、预警和回测                    | 📋 需求稿 |
-| [ADR 索引](agent/decisions/README.md)                       | 9 项核心架构决策                                          | 📋 需求稿 |
-| [实施任务](agent/tasks/README.md)                           | 30 个独立批次、依赖、并行和验收标准；Batch 001–011 已完成 | 🔧 待实现 |
+| 入口                                                                       | 说明                                                       | 状态      |
+| -------------------------------------------------------------------------- | ---------------------------------------------------------- | --------- |
+| [Agent 方案总览](agent/README.md)                                          | 目标、架构图、MVP、风险、未确认项、完整目录导航            | 📋 需求稿 |
+| [当前项目分析](agent/overview/current-project-analysis.md)                 | 前后端、数据库、同步、部署与已实证风险                     | 📋 需求稿 |
+| [数据能力盘点](agent/overview/data-capability-inventory.md)                | 真实 Model/表、数据量、覆盖、索引、质量与 Tool 映射        | 📋 需求稿 |
+| [前端方案](agent/frontend/README.md)                                       | React/MUI 页面、流式状态、富响应和恢复                     | 📋 需求稿 |
+| [后端方案](agent/backend/README.md)                                        | NestJS 编排、模型网关、Tool、队列、记忆、安全和部署        | 📋 需求稿 |
+| [公共 API 协议](agent/api/README.md)                                       | REST、POST SSE、WebSocket 边界和错误码                     | 📋 需求稿 |
+| [数据库方案](agent/database/README.md)                                     | 现有结构、Agent 新表、索引、迁移与 lineage                 | 📋 需求稿 |
+| [Tool 方案](agent/tools/README.md)                                         | 15 个 MVP Tool、JSON Schema、权限与审计                    | 📋 需求稿 |
+| [工作流方案](agent/workflows/README.md)                                    | 交互、股票研究、新闻、定时、预警和回测                     | 📋 需求稿 |
+| [ADR 索引](agent/decisions/README.md)                                      | 9 项核心架构决策                                           | 📋 需求稿 |
+| [实施任务](agent/tasks/README.md)                                          | 30 个独立批次、依赖、并行和验收标准；Batch 001–012 已完成  | 🔧 待实现 |
+| [智能体队列工作进程运行手册](agent/backend/智能体队列工作进程-运行手册.md) | BullMQ 入队、独立 Worker、数据库恢复、监控、故障处理与回滚 | ✅ 已实现 |
 
 Agent 子目录按用户要求使用英文路径/文件名，正文仍为中文；这是本仓库“除 README 外文档中文命名”约定的明确例外。
 

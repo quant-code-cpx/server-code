@@ -1,6 +1,6 @@
 ---
 batch: 2
-status: pending
+status: in_progress
 type: database
 depends_on: ["batch-000-platform-data-readiness", "batch-001-agent-public-contracts"]
 blocks: ["batch-003-agent-audit-and-citation-schema", "batch-005-run-state-and-event-store", "batch-013-conversation-rest-api", "batch-019-conversation-summary-and-memory"]
@@ -51,6 +51,7 @@ estimated_scope: medium
 - `src/apps/agent/conversation/agent-message.repository.ts`
 - `src/apps/agent/conversation/test/agent-conversation.repository.spec.ts`
 - `prisma/migrations/20260720010000_add_ai_conversation_and_message/migration.sql`
+- `prisma/migrations/20260720011000_align_ai_updated_at_defaults/migration.sql`
 
 ## 8. 需要修改的文件
 
@@ -133,7 +134,7 @@ estimated_scope: medium
 
 - `pnpm prisma:generate`
 - `pnpm exec prisma migrate deploy`（临时数据库）
-- `pnpm test -- src/apps/agent/conversation/test/agent-conversation.repository.spec.ts`
+- `pnpm run test:agent-conversation:integration`
 - `pnpm run build`
 
 ## 23. 验收标准
@@ -145,6 +146,16 @@ estimated_scope: medium
 ## 24. 完成定义
 
 Prisma model、migration、repository、集成测试、数据字典和回滚说明全部完成。
+
+当前进度（2026-07-19）：
+
+- 已新增 `AiConversation`、`AiMessage` 和四个内部枚举；User 关系、租户字段、幂等唯一键、稳定游标索引及 `Restrict` FK 已落地。
+- 已增加完成消息内容检查、JSON 数组检查、版本/计数 CHECK 和已完成消息不可变 trigger；读取与写入均复用 Batch 001 runtime schema 校验内容块。
+- 已实现 user-scoped 会话创建/查询/归档、消息 append/list、并发幂等和 assistant sibling version；日志只记录 operation/duration/rowCount/conflict。
+- 临时空库完整执行 30 条 migration；7 个真实 PostgreSQL 集成测试通过，覆盖并发幂等、跨租户、归档、同毫秒游标、非法历史内容、并发版本和数据库约束。
+- 真实开发库两条新 migration 已 applied，Prisma schema drift 为 0；Nest build、Batch 001 的 20 个契约/Interceptor 测试通过，app/PostgreSQL/Redis 容器均 healthy。
+- 集成测试发现并修复 `pg_advisory_xact_lock()` 的 PostgreSQL `void` 结果无法由 Prisma `$queryRaw` 反序列化问题。
+- 尚待实现 commit 证据写入后，再将本批次 frontmatter 更新为 `completed`。
 
 ## 25. 回滚方案
 

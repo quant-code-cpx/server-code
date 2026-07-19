@@ -1,0 +1,98 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// Agent 会话与消息持久化
+//
+// Conversation 是用户级聚合根；Message 采用 append-only 版本模型。
+// Run、Step、Tool、Citation 等审计关系由后续批次独立增加。
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum AiConversationStatus {
+  ACTIVE
+  ARCHIVED
+  DELETED
+
+  @@map("ai_conversation_status")
+}
+
+enum AiMessageRole {
+  USER
+  ASSISTANT
+  SYSTEM
+  TOOL
+
+  @@map("ai_message_role")
+}
+
+enum AiMessageStatus {
+  PENDING
+  STREAMING
+  COMPLETED
+  FAILED
+  CANCELLED
+
+  @@map("ai_message_status")
+}
+
+enum AiModelPolicy {
+  AUTO
+  MANUAL
+
+  @@map("ai_model_policy")
+}
+
+model AiConversation {
+  id              String               @id @default(cuid()) @db.VarChar(32)
+  userId          Int                  @map("user_id")
+  title           String               @db.VarChar(200)
+  status          AiConversationStatus @default(ACTIVE)
+  modelPolicy     AiModelPolicy        @default(AUTO) @map("model_policy")
+  preferredModel  String?              @map("preferred_model") @db.VarChar(128)
+  clientRequestId String?              @map("client_request_id") @db.VarChar(128)
+  summaryVersion  Int                  @default(0) @map("summary_version")
+  statusVersion   Int                  @default(1) @map("status_version")
+  messageCount    Int                  @default(0) @map("message_count")
+  lastMessageAt   DateTime             @default(now()) @map("last_message_at") @db.Timestamptz(3)
+  metadata        Json                 @default("{}") @db.JsonB
+  createdAt       DateTime             @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime             @updatedAt @map("updated_at") @db.Timestamptz(3)
+  archivedAt      DateTime?            @map("archived_at") @db.Timestamptz(3)
+  deletedAt       DateTime?            @map("deleted_at") @db.Timestamptz(3)
+
+  user     User        @relation(fields: [userId], references: [id], onDelete: Restrict)
+  messages AiMessage[]
+
+  @@unique([userId, clientRequestId], map: "ai_conversations_user_client_request_key")
+  @@index([userId, status, lastMessageAt(sort: Desc), id(sort: Desc)], map: "ai_conversations_user_status_cursor_idx")
+  @@map("ai_conversations")
+}
+
+model AiMessage {
+  id                   String          @id @default(cuid()) @db.VarChar(32)
+  conversationId       String          @map("conversation_id") @db.VarChar(32)
+  userId               Int             @map("user_id")
+  role                 AiMessageRole
+  status               AiMessageStatus @default(PENDING)
+  contentText          String?         @map("content_text") @db.Text
+  contentBlocks        Json            @default("[]") @map("content_blocks") @db.JsonB
+  contentSchemaVersion Int             @default(1) @map("content_schema_version")
+  attachments          Json            @default("[]") @db.JsonB
+  safetyLabels         Json            @default("[]") @map("safety_labels") @db.JsonB
+  parentMessageId      String?         @map("parent_message_id") @db.VarChar(32)
+  version              Int             @default(1)
+  clientRequestId      String?         @map("client_request_id") @db.VarChar(128)
+  modelName            String?         @map("model_name") @db.VarChar(128)
+  tokenCount           Int?            @map("token_count")
+  createdAt            DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt            DateTime        @updatedAt @map("updated_at") @db.Timestamptz(3)
+  completedAt          DateTime?       @map("completed_at") @db.Timestamptz(3)
+
+  conversation  AiConversation @relation(fields: [conversationId], references: [id], onDelete: Restrict)
+  user          User           @relation(fields: [userId], references: [id], onDelete: Restrict)
+  parentMessage AiMessage?     @relation("AiMessageVersions", fields: [parentMessageId], references: [id], onDelete: Restrict)
+  versions      AiMessage[]    @relation("AiMessageVersions")
+
+  @@unique([conversationId, clientRequestId], map: "ai_messages_conversation_client_request_key")
+  @@unique([parentMessageId, version], map: "ai_messages_parent_version_key")
+  @@index([conversationId, createdAt, id], map: "ai_messages_conversation_cursor_idx")
+  @@index([userId, createdAt(sort: Desc), id(sort: Desc)], map: "ai_messages_user_cursor_idx")
+  @@map("ai_messages")
+}

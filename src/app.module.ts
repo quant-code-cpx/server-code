@@ -38,6 +38,7 @@ import { ExportModule } from './apps/export/export.module'
 import { CalendarModule } from './apps/calendar/calendar.module'
 import { FundModule } from './apps/fund/fund.module'
 import { MetricsModule } from './shared/metrics/metrics.module'
+import { AgentModule } from './apps/agent/agent.module'
 
 @Module({
   imports: [
@@ -101,6 +102,7 @@ import { MetricsModule } from './shared/metrics/metrics.module'
     ExportModule,
     CalendarModule,
     FundModule,
+    AgentModule,
 
     // ── 队列模块（BullMQ 回测任务） ──
     QueueModule,

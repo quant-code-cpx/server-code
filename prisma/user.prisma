@@ -44,6 +44,8 @@ model User {
   reports            Report[]                          // 量化报告
   notifications      Notification[]                    // 站内消息
   notificationPreferences NotificationPreference[]     // 通知偏好
+  aiConversations    AiConversation[]                  // Agent 会话
+  aiMessages         AiMessage[]                       // Agent 消息（冗余 userId 强化租户查询）
   createdAt      DateTime   @default(now())
   updatedAt      DateTime   @updatedAt
 

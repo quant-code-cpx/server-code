@@ -88,6 +88,8 @@ export function createMockPrismaService() {
 
     // ── 业务 ──────────────────────────────────────────────────────────────
     user: buildModelMock(),
+    aiConversation: buildModelMock(),
+    aiMessage: buildModelMock(),
     watchlist: buildModelMock(),
     watchlistItem: buildModelMock(),
     strategy: buildModelMock(),

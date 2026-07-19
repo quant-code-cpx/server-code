@@ -1,10 +1,17 @@
 ---
 batch: 13
-status: pending
+status: completed
 type: backend
-depends_on: ["batch-001-agent-public-contracts", "batch-002-conversation-and-message-schema", "batch-003-agent-audit-and-citation-schema", "batch-005-run-state-and-event-store", "batch-012-agent-bullmq-worker"]
-blocks: ["batch-014-post-sse-stream-and-replay", "batch-018-mvp-e2e-and-model-regression"]
-parallel_with: ["batch-016-frontend-chat-shell", "batch-017-frontend-rich-response-blocks"]
+depends_on:
+  [
+    'batch-001-agent-public-contracts',
+    'batch-002-conversation-and-message-schema',
+    'batch-003-agent-audit-and-citation-schema',
+    'batch-005-run-state-and-event-store',
+    'batch-012-agent-bullmq-worker',
+  ]
+blocks: ['batch-014-post-sse-stream-and-replay', 'batch-018-mvp-e2e-and-model-regression']
+parallel_with: ['batch-016-frontend-chat-shell', 'batch-017-frontend-rich-response-blocks']
 recommended_executor: backend-coding-agent
 recommended_reasoning_level: high
 estimated_scope: large
@@ -139,7 +146,15 @@ estimated_scope: large
 
 ## 24. 完成定义
 
-Controller/application/DTO/Swagger、API tests、contract fixtures 和 API 文档一致性检查合入。
+- [x] 10 个 MVP 端点全部使用非空 `@Post`、HTTP 200、专用 class-validator DTO 和 Swagger response DTO。
+- [x] 会话、消息、Run、Tool 摘要 application service 与 user-scoped Repository 已实现；Controller 不直接访问 Prisma。
+- [x] `send/regenerate` 在单个 PostgreSQL 事务创建消息、Run、初始 Event 与 `AiJobOutbox`；事务后 BullMQ 失败由 outbox 恢复。
+- [x] `clientRequestId` 并发幂等、不同请求 hash 冲突、活跃 Run/每日成本配额和已发布 Workflow/Prompt pin 已实现。
+- [x] cancel CAS、终态幂等、waiting job 移除与 active AbortSignal 协作已接通，状态机不允许 `RUNNING → QUEUED`。
+- [x] Agent 严格 Body Guard、显式 HTTP/业务错误码、跨租户 not found 和 Tool payload 脱敏已实现。
+- [x] Controller/Supertest/application/真实 PostgreSQL/真实 Redis、Agent/Queue 回归、build、lint、容器与 JWT smoke 均通过。
+- [x] 测试方案、执行报告、REST API 文档和运行手册已同步。
+- [x] 实现提交：`1a4a8af feat(agent): add conversation and run REST API`。
 
 ## 25. 回滚方案
 

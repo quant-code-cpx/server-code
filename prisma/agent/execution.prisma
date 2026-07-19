@@ -50,6 +50,15 @@ enum AiRunEventPublishStatus {
   @@map("ai_run_event_publish_status")
 }
 
+enum AiJobOutboxStatus {
+  PENDING
+  PUBLISHED
+  RETRY
+  DEAD
+
+  @@map("ai_job_outbox_status")
+}
+
 model AiAgentRun {
   id                String           @id @default(cuid()) @db.VarChar(32)
   userId            Int              @map("user_id")
@@ -171,4 +180,22 @@ model AiRunEvent {
   @@index([occurredAt, id], map: "ai_run_events_cleanup_idx")
   @@index([publishStatus, nextPublishAt, id], map: "ai_run_events_publish_idx")
   @@map("ai_run_events")
+}
+
+model AiJobOutbox {
+  id            BigInt            @id @default(autoincrement())
+  aggregateId   String            @map("aggregate_id") @db.VarChar(32)
+  kind          String            @db.VarChar(64)
+  status        AiJobOutboxStatus @default(PENDING)
+  attempt       Int               @default(0)
+  nextAttemptAt DateTime          @default(now()) @map("next_attempt_at") @db.Timestamptz(3)
+  payloadHash   String            @map("payload_hash") @db.Char(64)
+  publishedAt   DateTime?         @map("published_at") @db.Timestamptz(3)
+  lastError     String?           @map("last_error") @db.VarChar(1000)
+  createdAt     DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([kind, aggregateId], map: "ai_job_outbox_kind_aggregate_key")
+  @@index([status, nextAttemptAt, id], map: "ai_job_outbox_publish_idx")
+  @@map("ai_job_outbox")
 }

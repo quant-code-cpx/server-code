@@ -4,7 +4,7 @@ import { ConfigService } from '@nestjs/config'
 import { ValidationPipe } from '@nestjs/common'
 import helmet from 'helmet'
 import { json, urlencoded } from 'express'
-const cookieParser = require('cookie-parser')
+import cookieParser from 'cookie-parser'
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger'
 import { IAppConfig, APP_CONFIG_TOKEN } from './config/app.config'
 import { LoggerService } from './shared/logger/logger.service'
@@ -13,6 +13,11 @@ import { LoggingInterceptor } from './lifecycle/interceptors/logging.interceptor
 import { HttpMetricsInterceptor } from './shared/metrics/http-metrics.interceptor'
 import { GlobalExceptionsFilter } from './lifecycle/filters/global.exception'
 import { REFRESH_TOKEN_COOKIE } from './constant/auth.constant'
+import {
+  PROCESS_ROLE_CONFIG_TOKEN,
+  assertProcessEntrypoint,
+  type IProcessRoleConfig,
+} from './config/process-role.config'
 
 async function bootstrap() {
   // BigInt 无法被 JSON.stringify 原生序列化，统一转为 Number
@@ -24,6 +29,9 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule, { bufferLogs: true })
 
   const configService = app.get(ConfigService)
+  const processRole = configService.get<IProcessRoleConfig>(PROCESS_ROLE_CONFIG_TOKEN)
+  if (!processRole) throw new Error('[ProcessRole] 配置缺失')
+  assertProcessEntrypoint('api', processRole.role)
   const loggerService = app.get(LoggerService)
   const { port, isDev, globalPrefix, logHttpRequests, logHttpBody } = configService.get<IAppConfig>(APP_CONFIG_TOKEN, {
     infer: true,

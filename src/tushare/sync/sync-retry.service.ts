@@ -6,6 +6,7 @@ import { PrismaService } from 'src/shared/prisma.service'
 import { TushareSyncRegistryService } from './sync-registry.service'
 import { DataQualityService } from './quality/data-quality.service'
 import { AutoRepairService } from './quality/auto-repair.service'
+import { buildProcessRoleConfig } from 'src/config/process-role.config'
 
 /** 最大同时处理的重试任务数（防止一次扫描大量重试任务造成 DB 和 Tushare 压力） */
 const MAX_RETRY_BATCH = 10
@@ -19,6 +20,7 @@ const MAX_RETRY_BATCH = 10
 @Injectable()
 export class SyncRetryService {
   private readonly logger = new Logger(SyncRetryService.name)
+  private readonly agentWorkerProcess = buildProcessRoleConfig(process.env).role === 'agent-worker'
 
   constructor(
     private readonly prisma: PrismaService,
@@ -29,6 +31,7 @@ export class SyncRetryService {
 
   @Cron(CronExpression.EVERY_5_MINUTES)
   async processPendingRetries() {
+    if (this.agentWorkerProcess) return
     const pendingItems = await this.prisma.tushareSyncRetryQueue.findMany({
       where: {
         status: TushareSyncRetryStatus.PENDING,

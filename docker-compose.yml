@@ -78,6 +78,7 @@ services:
     env_file: .env
     environment:
       NODE_ENV: development
+      PROCESS_ROLE: api
       # 使用 Docker 服务名作为主机名，覆盖 .env 中的 localhost 配置
       DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@database:5432/quant_db?schema=public
       REDIS_HOST: redis
@@ -105,6 +106,36 @@ services:
       timeout: 5s
       retries: 3
       start_period: 30s
+    restart: unless-stopped
+
+  # ── Agent BullMQ Worker（按需启用：--profile agent-worker）──────────────────
+  agent-worker:
+    profiles: ['agent-worker']
+    build:
+      context: .
+      dockerfile: dockerfiles/app/Dockerfile
+    container_name: quant_agent_worker
+    env_file: .env
+    environment:
+      NODE_ENV: development
+      PROCESS_ROLE: agent-worker
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@database:5432/quant_db?schema=public
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_USERNAME: default
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      TUSHARE_SYNC_ENABLED: 'false'
+    command: sh -c "pnpm exec prisma generate && pnpm exec prisma migrate deploy && pnpm start:worker:dev"
+    volumes:
+      - .:/app
+      - /app/node_modules
+    networks:
+      - quant-net
+    depends_on:
+      database:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     restart: unless-stopped
 
   # ── Prometheus（可观测性，仅 monitoring 配置启用）─────────────────────────

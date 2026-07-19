@@ -6,6 +6,11 @@ export const HTTP_REQUEST_ERRORS = 'http_request_errors_total'
 // BullMQ
 export const BULLMQ_QUEUE_DEPTH = 'bullmq_queue_depth'
 export const BULLMQ_ACTIVE_JOBS = 'bullmq_active_jobs'
+export const BULLMQ_FAILED_JOBS = 'bullmq_failed_jobs'
+export const BULLMQ_DELAYED_JOBS = 'bullmq_delayed_jobs'
+export const BULLMQ_STALLED_JOBS_TOTAL = 'bullmq_stalled_jobs_total'
+export const BULLMQ_ENQUEUE_LAG = 'bullmq_enqueue_lag_seconds'
+export const AGENT_RUN_RECOVERY_TOTAL = 'agent_run_recovery_total'
 
 // Prisma
 export const PRISMA_QUERY_DURATION = 'prisma_query_duration_seconds'

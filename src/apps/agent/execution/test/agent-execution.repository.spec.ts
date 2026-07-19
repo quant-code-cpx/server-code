@@ -6,6 +6,7 @@ import {
   AiAgentRunStatus,
   AiAgentStepKind,
   AiAgentStepStatus,
+  AiJobOutboxStatus,
   AiMessageRole,
   AiMessageStatus,
   AiModelPolicy,
@@ -203,6 +204,11 @@ integrationDescribe('Agent Run/Step/Event Repository - 独立 PostgreSQL 集成�
       await client!.aiAgentRun.count({ where: { userId: userA.id, clientRequestId: command.clientRequestId } }),
     ).toBe(1)
     expect(await client!.aiRunEvent.count({ where: { runId: first.id } })).toBe(1)
+    await expect(
+      client!.aiJobOutbox.findUniqueOrThrow({
+        where: { kind_aggregateId: { kind: 'AGENT_RUN_EXECUTION', aggregateId: first.id } },
+      }),
+    ).resolves.toMatchObject({ status: AiJobOutboxStatus.PENDING, attempt: 0, payloadHash: expect.any(String) })
     await expect(
       runs.createRun({
         ...command,

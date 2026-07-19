@@ -60,6 +60,7 @@ describe('Agent execution 配置与 payload 边界', () => {
   it('配置采用受控默认值，并拒绝越界或非整数', () => {
     expect(buildAgentExecutionConfig({})).toEqual({
       leaseMs: 30_000,
+      leaseHeartbeatMs: 10_000,
       replayLimit: 100,
       maxDurationMs: 180_000,
       maxSteps: 32,
@@ -69,6 +70,9 @@ describe('Agent execution 配置与 payload 边界', () => {
       maxCostPerRun: 10,
     })
     expect(() => buildAgentExecutionConfig({ AGENT_RUN_LEASE_MS: '999' })).toThrow('AGENT_RUN_LEASE_MS')
+    expect(() => buildAgentExecutionConfig({ AGENT_RUN_LEASE_MS: '1000', AGENT_LEASE_HEARTBEAT_MS: '1000' })).toThrow(
+      'AGENT_LEASE_HEARTBEAT_MS',
+    )
     expect(() => buildAgentExecutionConfig({ AGENT_EVENT_REPLAY_LIMIT: '1001' })).toThrow('AGENT_EVENT_REPLAY_LIMIT')
     expect(() => buildAgentExecutionConfig({ AGENT_RUN_MAX_DURATION_MS: 'NaN' })).toThrow('AGENT_RUN_MAX_DURATION_MS')
     expect(() => buildAgentExecutionConfig({ AGENT_MAX_STEPS: '7' })).toThrow('AGENT_MAX_STEPS')

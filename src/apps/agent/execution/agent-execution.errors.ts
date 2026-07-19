@@ -8,11 +8,33 @@ export class AgentRunNotFoundError extends Error {
 }
 
 export class AgentRunConflictError extends Error {
-  readonly code = 'AI_RUN_NOT_CANCELLABLE'
+  readonly code: string = 'AI_RUN_NOT_CANCELLABLE'
 
   constructor(message: string) {
     super(message)
     this.name = AgentRunConflictError.name
+  }
+}
+
+export type AgentRunClaimErrorReason =
+  | 'TERMINAL'
+  | 'DEADLINE_EXPIRED'
+  | 'LEASE_HELD'
+  | 'STALE_WORKER_ID'
+  | 'ATTEMPTS_EXHAUSTED'
+  | 'NOT_CLAIMABLE'
+  | 'CLAIM_CONFLICT'
+
+export class AgentRunClaimError extends AgentRunConflictError {
+  readonly code = 'AI_RUN_CLAIM_CONFLICT'
+
+  constructor(
+    readonly reason: AgentRunClaimErrorReason,
+    readonly retryable: boolean,
+    message: string,
+  ) {
+    super(message)
+    this.name = AgentRunClaimError.name
   }
 }
 

@@ -1,5 +1,4 @@
 import { TushareSyncRetryStatus, TushareSyncStatus, TushareSyncTask } from '@prisma/client'
-import { TushareSyncTaskName } from 'src/constant/tushare.constant'
 import { SyncRetryService } from '../sync-retry.service'
 
 function retryItem(overrides: Record<string, unknown> = {}) {
@@ -58,6 +57,19 @@ function createFixture(rowCount: number) {
 describe('SyncRetryService', () => {
   beforeEach(() => {
     jest.clearAllMocks()
+  })
+
+  it('agent-worker 进程不消费 Tushare scheduler retry', async () => {
+    const previousRole = process.env.PROCESS_ROLE
+    process.env.PROCESS_ROLE = 'agent-worker'
+    try {
+      const { service, prisma } = createFixture(100)
+      await service.processPendingRetries()
+      expect(prisma.tushareSyncRetryQueue.findMany).not.toHaveBeenCalled()
+    } finally {
+      if (previousRole === undefined) delete process.env.PROCESS_ROLE
+      else process.env.PROCESS_ROLE = previousRole
+    }
   })
 
   it('按失败 target 精确重试，不能被最新同步进度短路', async () => {

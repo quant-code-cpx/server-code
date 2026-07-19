@@ -4,6 +4,7 @@ export const AGENT_EXECUTION_CONFIG_TOKEN = 'agentExecution'
 
 export interface AgentExecutionConfigEnvironment {
   AGENT_RUN_LEASE_MS?: string
+  AGENT_LEASE_HEARTBEAT_MS?: string
   AGENT_EVENT_REPLAY_LIMIT?: string
   AGENT_RUN_MAX_DURATION_MS?: string
   AGENT_MAX_STEPS?: string
@@ -14,8 +15,20 @@ export interface AgentExecutionConfigEnvironment {
 }
 
 export function buildAgentExecutionConfig(env: AgentExecutionConfigEnvironment) {
+  const leaseMs = parseInteger(env.AGENT_RUN_LEASE_MS, 'AGENT_RUN_LEASE_MS', 30_000, 1_000, 300_000)
+  const leaseHeartbeatMs = parseInteger(
+    env.AGENT_LEASE_HEARTBEAT_MS,
+    'AGENT_LEASE_HEARTBEAT_MS',
+    Math.max(250, Math.floor(leaseMs / 3)),
+    250,
+    299_999,
+  )
+  if (leaseHeartbeatMs >= leaseMs) {
+    throw new Error('[AgentExecution] AGENT_LEASE_HEARTBEAT_MS 必须小于 AGENT_RUN_LEASE_MS')
+  }
   return {
-    leaseMs: parseInteger(env.AGENT_RUN_LEASE_MS, 'AGENT_RUN_LEASE_MS', 30_000, 1_000, 300_000),
+    leaseMs,
+    leaseHeartbeatMs,
     replayLimit: parseInteger(env.AGENT_EVENT_REPLAY_LIMIT, 'AGENT_EVENT_REPLAY_LIMIT', 100, 1, 1_000),
     maxDurationMs: parseInteger(
       env.AGENT_RUN_MAX_DURATION_MS,

@@ -254,18 +254,26 @@ export class WorkflowEngineService {
     command: ExecuteWorkflowCommand,
     handler: (signal: AbortSignal) => Promise<T>,
   ): Promise<T> {
-    await this.runs.heartbeat(command.run.id, command.workerId)
     const controller = new AbortController()
     const onParentAbort = () => controller.abort(command.signal?.reason)
     command.signal?.addEventListener('abort', onParentAbort, { once: true })
-    let heartbeatError: WorkflowLeaseError | null = null
+    let heartbeatError: WorkflowLeaseError | WorkflowCancelledError | null = null
     let heartbeatPending: Promise<void> = Promise.resolve()
-    const heartbeatEveryMs = Math.max(1_000, Math.floor(this.config.leaseMs / 3))
+    const refreshLease = async () => {
+      const run = await this.runs.heartbeat(command.run.id, command.workerId)
+      if (run.status === AiAgentRunStatus.CANCEL_REQUESTED) {
+        heartbeatError = new WorkflowCancelledError()
+        controller.abort(heartbeatError)
+      }
+    }
+    await refreshLease()
+    if (heartbeatError) throw heartbeatError
+    const heartbeatEveryMs = this.config.leaseHeartbeatMs
     const timer = setInterval(() => {
       heartbeatPending = heartbeatPending.then(async () => {
         if (heartbeatError) return
         try {
-          await this.runs.heartbeat(command.run.id, command.workerId)
+          await refreshLease()
         } catch {
           heartbeatError = new WorkflowLeaseError('Agent Run heartbeat 失败')
           controller.abort(heartbeatError)
@@ -277,6 +285,7 @@ export class WorkflowEngineService {
       const result = await handler(controller.signal)
       await heartbeatPending
       if (heartbeatError) throw heartbeatError
+      if (controller.signal.aborted) throw new WorkflowCancelledError('Worker 执行信号已取消')
       return result
     } catch (error) {
       await heartbeatPending

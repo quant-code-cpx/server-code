@@ -11,12 +11,15 @@ import {
   type AiAgentStep,
 } from '@prisma/client'
 import { AgentExecutionConfig, type IAgentExecutionConfig } from 'src/config/agent-execution.config'
+import { createAgentJob, hashAgentJob } from 'src/queue/agent/agent-job.interface'
+import { AGENT_JOB_OUTBOX_KIND } from 'src/queue/agent/agent.queue.constants'
 import { LoggerService } from 'src/shared/logger/logger.service'
 import { PrismaService } from 'src/shared/prisma.service'
 import { canonicalJson, sha256 } from '../audit/agent-audit-sanitizer'
 import { AgentEventRepository } from './agent-event.repository'
 import {
   AgentExecutionValidationError,
+  AgentRunClaimError,
   AgentRunConflictError,
   AgentRunIdempotencyConflictError,
   AgentRunNotFoundError,
@@ -115,6 +118,14 @@ export class AgentRunRepository {
             status: AiMessageStatus.PENDING,
           },
         })
+        const job = createAgentJob(created.id)
+        await tx.aiJobOutbox.create({
+          data: {
+            aggregateId: created.id,
+            kind: AGENT_JOB_OUTBOX_KIND,
+            payloadHash: hashAgentJob(job),
+          },
+        })
         return tx.aiAgentRun.findUniqueOrThrow({ where: { id: created.id } })
       })
       this.logOperation('createRun', startedAt, 1, run.id)
@@ -165,21 +176,23 @@ export class AgentRunRepository {
     const run = await this.prisma.$transaction(async (tx) => {
       const locked = await this.events.lockRun(tx, id)
       if (this.stateMachine.isTerminalRunStatus(locked.run.status)) {
-        throw new AgentRunConflictError('终态 Agent Run 不可领取')
+        throw new AgentRunClaimError('TERMINAL', false, '终态 Agent Run 不可领取')
       }
-      if (locked.deadlineExpired) throw new AgentRunConflictError('Agent Run deadline 已到期')
+      if (locked.deadlineExpired) {
+        throw new AgentRunClaimError('DEADLINE_EXPIRED', false, 'Agent Run deadline 已到期')
+      }
       if (locked.leaseValid) {
         if (locked.run.leaseOwner === owner) return locked.run
-        throw new AgentRunConflictError('Agent Run 已由其他 Worker 持有')
+        throw new AgentRunClaimError('LEASE_HELD', true, 'Agent Run 已由其他 Worker 持有')
       }
       if (locked.run.leaseOwner === owner && locked.run.leaseExpiresAt) {
-        throw new AgentRunConflictError('过期 lease 必须由新 Worker identity 接管')
+        throw new AgentRunClaimError('STALE_WORKER_ID', true, '过期 lease 必须由新 Worker identity 接管')
       }
       if (locked.run.attempt >= locked.run.maxAttempts) {
-        throw new AgentRunConflictError('Agent Run 已达到最大领取次数')
+        throw new AgentRunClaimError('ATTEMPTS_EXHAUSTED', false, 'Agent Run 已达到最大领取次数')
       }
       if (!CLAIMABLE_RUN_STATUSES.has(locked.run.status)) {
-        throw new AgentRunConflictError(`Agent Run 状态 ${locked.run.status} 不可领取`)
+        throw new AgentRunClaimError('NOT_CLAIMABLE', false, `Agent Run 状态 ${locked.run.status} 不可领取`)
       }
 
       if (locked.run.status === AiAgentRunStatus.QUEUED) {
@@ -209,7 +222,7 @@ export class AgentRunRepository {
           "updated_at" = clock_timestamp()
         WHERE "id" = ${id}
       `)
-      if (updated !== 1) throw new AgentRunConflictError('Agent Run 领取冲突')
+      if (updated !== 1) throw new AgentRunClaimError('CLAIM_CONFLICT', true, 'Agent Run 领取冲突')
       return tx.aiAgentRun.findUniqueOrThrow({ where: { id } })
     })
     this.logOperation('claimRun', startedAt, 1, run.id)

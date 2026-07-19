@@ -421,8 +421,16 @@ export class PortfolioRiskService {
     })
   }
 
-  private resolveTradeDate(asOfDate?: string): Promise<Date | null> {
-    return this.portfolioService.getLatestTradeDate(asOfDate ? new Date(`${asOfDate}T00:00:00.000Z`) : undefined)
+  private async resolveTradeDate(asOfDate?: string): Promise<Date | null> {
+    const currentDate = new Date(`${currentShanghaiDate()}T00:00:00.000Z`)
+    const requestedDate = asOfDate ? new Date(`${asOfDate}T00:00:00.000Z`) : currentDate
+    const upperBound = requestedDate < currentDate ? requestedDate : currentDate
+    const latest = await this.prisma.dailyBasic.findFirst({
+      where: { tradeDate: { lte: upperBound } },
+      orderBy: { tradeDate: 'desc' },
+      select: { tradeDate: true },
+    })
+    return latest?.tradeDate ?? null
   }
 
   private formatNullableDate(value: Date | null): string {
@@ -470,4 +478,13 @@ export function calculateAlignedBeta(
     beta: Math.round((covariance(stock, benchmark) / benchmarkVariance) * 10_000) / 10_000,
     dataPoints: aligned.length,
   }
+}
+
+function currentShanghaiDate(): string {
+  return new Intl.DateTimeFormat('sv-SE', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date())
 }

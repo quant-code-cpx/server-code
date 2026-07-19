@@ -1,6 +1,6 @@
 ---
 batch: 10
-status: pending
+status: completed
 type: backend
 depends_on: ["batch-003-agent-audit-and-citation-schema", "batch-006-tool-registry-and-policy"]
 blocks: ["batch-011-agent-orchestrator-workflow", "batch-025-ai-observability-cost-and-evaluation"]
@@ -142,7 +142,19 @@ estimated_scope: large
 
 ## 24. 完成定义
 
-provider/fake、search/fetch、SSRF policy、两 Tool、引用存储、测试和供应商 discovery checklist 合入。
+- [x] Provider-neutral port、默认 `disabled`、测试 `fake` 与配置 gate 后的 Brave adapter 已实现。
+- [x] `search_web`、`fetch_web_page` strict schema、READ/idempotent policy 和 `PUBLIC_WEB` scope 已注册。
+- [x] HMAC token 绑定 `sourceId/userId/runId/urlHash/expiry`；模型不能提交 URL，跨用户/Run/过期/篡改均拒绝。
+- [x] 生产仅 HTTPS 默认端口；HTTP 只能注入精确隔离 fixture，不能由环境配置放开。
+- [x] 初始 URL 与每次 redirect 都重新校验 userinfo、协议、端口、hostname、DNS、私网/metadata/IPv6 地址。
+- [x] HTTP 客户端使用已校验 DNS 地址完成 lookup pinning；不携带 cookie/auth，限制 redirect/MIME/压缩前后字节/总超时。
+- [x] HTML 静态正文、metadata、contentHash、提取版本、paragraph/offset locator 和 Prompt Injection risk flag 已实现。
+- [x] 搜索 metadata 与抓取快照通过 `CitationRepository` 写入 `AiSearchSource`；`EXCHANGE/REGULATOR/COMPANY` 映射现有 `OFFICIAL` enum，无 migration。
+- [x] 默认 `AGENT_SEARCH_PROVIDER=disabled`、`AGENT_TOOLS_ENABLED` 为空；缺 API key 应用正常启动。
+- [x] 专项 7 suites、16/16；Agent/Portfolio/Backtest 38 suites、588/588；Stock 11 suites、229/229。
+- [x] build、contracts、legacy ESLint、Prettier、`git diff --check` 通过；真实 HTTPS 抓取成功。
+- [x] App/PostgreSQL/Redis healthy；容器内 `/health`、`/ready` 为 ok；[执行报告](../../../Agent受控联网搜索与引用测试执行报告-20260720.md)与 `docs/README.md` 已同步。
+- [x] 实现提交：`497cf8a feat(agent): add controlled web research tools`。
 
 ## 25. 回滚方案
 

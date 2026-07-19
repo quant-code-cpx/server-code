@@ -9,6 +9,8 @@ import { StockFinancialService } from './stock-financial.service'
 import { StockScreenerService } from './stock-screener.service'
 import { TushareModule } from 'src/tushare/tushare.module'
 import { StockToolFacade } from './stock-tool.facade'
+import { FinancialToolFacade } from './financial-tool.facade'
+import { MoneyflowToolFacade } from './moneyflow-tool.facade'
 
 @Module({
   imports: [TushareModule],
@@ -22,7 +24,9 @@ import { StockToolFacade } from './stock-tool.facade'
     StockFinancialService,
     StockScreenerService,
     StockToolFacade,
+    FinancialToolFacade,
+    MoneyflowToolFacade,
   ],
-  exports: [StockService, StockListService, StockToolFacade],
+  exports: [StockService, StockListService, StockToolFacade, FinancialToolFacade, MoneyflowToolFacade],
 })
 export class StockModule {}

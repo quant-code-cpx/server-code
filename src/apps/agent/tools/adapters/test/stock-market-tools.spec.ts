@@ -23,6 +23,8 @@ const config = {
   maxConcurrentPerRun: 3,
   priceMaxBars: 5_000,
   marketCacheTtlSeconds: 300,
+  financialMaxPeriods: 20,
+  moneyflowMaxDays: 250,
 }
 
 function context(overrides: Partial<ToolAccessContext> = {}): ToolAccessContext {

@@ -20,6 +20,8 @@ const enabledConfig = {
   maxConcurrentPerRun: 3,
   priceMaxBars: 5_000,
   marketCacheTtlSeconds: 300,
+  financialMaxPeriods: 20,
+  moneyflowMaxDays: 250,
 } as IAgentToolsConfig
 
 function result(toolCallId: string): ToolResult<{ rows: Array<{ tsCode: string; name: string }> }> {
@@ -117,12 +119,19 @@ describe('Agent Tool config / Registry / Schema / Policy', () => {
       maxConcurrentPerRun: 3,
       priceMaxBars: 5_000,
       marketCacheTtlSeconds: 300,
+      financialMaxPeriods: 20,
+      moneyflowMaxDays: 250,
     })
     expect(
       buildAgentToolsConfig({ AGENT_TOOLS_ENABLED: 'search_web,resolve_security,search_web' }).enabledTools,
     ).toEqual(['resolve_security', 'search_web'])
     expect(() => buildAgentToolsConfig({ AGENT_TOOLS_ENABLED: 'query_database' })).toThrow('未知 Tool')
     expect(() => buildAgentToolsConfig({ AGENT_TOOL_MAX_CALLS_PER_RUN: '0' })).toThrow('1-1000')
+    expect(
+      buildAgentToolsConfig({ AGENT_TOOL_FINANCIAL_MAX_PERIODS: '12', AGENT_TOOL_MONEYFLOW_MAX_DAYS: '120' }),
+    ).toMatchObject({ financialMaxPeriods: 12, moneyflowMaxDays: 120 })
+    expect(() => buildAgentToolsConfig({ AGENT_TOOL_FINANCIAL_MAX_PERIODS: '21' })).toThrow('1-20')
+    expect(() => buildAgentToolsConfig({ AGENT_TOOL_MONEYFLOW_MAX_DAYS: '251' })).toThrow('1-250')
   })
 
   it('Registry fail-fast 拒绝重复、非 READ、非幂等、缺上限和宽松 input schema', () => {

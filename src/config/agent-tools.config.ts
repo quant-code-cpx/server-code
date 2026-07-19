@@ -11,6 +11,8 @@ export interface AgentToolsConfigEnvironment {
   AGENT_TOOL_MAX_CONCURRENT_PER_RUN?: string
   AGENT_TOOL_PRICE_MAX_BARS?: string
   AGENT_TOOL_MARKET_CACHE_TTL_SECONDS?: string
+  AGENT_TOOL_FINANCIAL_MAX_PERIODS?: string
+  AGENT_TOOL_MONEYFLOW_MAX_DAYS?: string
 }
 
 export function buildAgentToolsConfig(env: AgentToolsConfigEnvironment) {
@@ -46,6 +48,14 @@ export function buildAgentToolsConfig(env: AgentToolsConfigEnvironment) {
       1,
       86_400,
     ),
+    financialMaxPeriods: parseInteger(
+      env.AGENT_TOOL_FINANCIAL_MAX_PERIODS,
+      'AGENT_TOOL_FINANCIAL_MAX_PERIODS',
+      20,
+      1,
+      20,
+    ),
+    moneyflowMaxDays: parseInteger(env.AGENT_TOOL_MONEYFLOW_MAX_DAYS, 'AGENT_TOOL_MONEYFLOW_MAX_DAYS', 250, 1, 250),
   }
 }
 

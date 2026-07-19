@@ -10,6 +10,8 @@ import { StockToolFacade } from 'src/apps/stock/stock-tool.facade'
 import { MarketToolFacade } from 'src/apps/market/market-tool.facade'
 import { SectorToolFacade } from 'src/apps/industry/sector-tool.facade'
 import { WatchlistToolFacade } from 'src/apps/watchlist/watchlist-tool.facade'
+import { FinancialToolFacade } from 'src/apps/stock/financial-tool.facade'
+import { MoneyflowToolFacade } from 'src/apps/stock/moneyflow-tool.facade'
 import { AgentAuditRepository } from './audit/agent-audit.repository'
 import { CitationRepository } from './audit/citation.repository'
 import { AgentConversationRepository } from './conversation/agent-conversation.repository'
@@ -23,6 +25,7 @@ import { ToolPolicyService } from './tools/tool-policy.service'
 import { ToolRunLimiterService } from './tools/tool-run-limiter.service'
 import { ToolSchemaValidator } from './tools/tool-schema-validator'
 import { createStockMarketToolDefinitions } from './tools/adapters/stock-market-tools'
+import { createFinancialToolDefinitions } from './tools/adapters/financial-tools'
 
 @Module({
   imports: [
@@ -46,14 +49,28 @@ import { createStockMarketToolDefinitions } from './tools/adapters/stock-market-
     ToolExecutorService,
     {
       provide: AGENT_TOOL_DEFINITIONS,
-      inject: [StockToolFacade, MarketToolFacade, SectorToolFacade, WatchlistToolFacade, AgentToolsConfig.KEY],
+      inject: [
+        StockToolFacade,
+        MarketToolFacade,
+        SectorToolFacade,
+        WatchlistToolFacade,
+        FinancialToolFacade,
+        MoneyflowToolFacade,
+        AgentToolsConfig.KEY,
+      ],
       useFactory: (
         stock: StockToolFacade,
         market: MarketToolFacade,
         sector: SectorToolFacade,
         watchlist: WatchlistToolFacade,
+        financial: FinancialToolFacade,
+        moneyflow: MoneyflowToolFacade,
         config: IAgentToolsConfig,
-      ) => createStockMarketToolDefinitions({ stock, market, sector, watchlist, config }),
+      ) =>
+        Object.freeze([
+          ...createStockMarketToolDefinitions({ stock, market, sector, watchlist, config }),
+          ...createFinancialToolDefinitions({ financial, moneyflow, config }),
+        ]),
     },
     { provide: TOOL_EXECUTION_OBSERVER, useValue: Object.freeze({}) },
   ],

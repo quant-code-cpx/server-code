@@ -25,6 +25,7 @@
     "test:agent-execution:integration": "cross-env RUN_AGENT_DB_INTEGRATION=true jest src/apps/agent/execution/test/agent-execution.repository.spec.ts --runInBand",
     "test:agent-tools": "jest src/apps/agent/tools/test --runInBand",
     "test:agent-stock-market-tools": "jest src/apps/agent/tools/adapters/test/stock-market-tools.spec.ts src/apps/stock/test/stock-tool.facade.spec.ts src/apps/market/test/market-tool.facade.spec.ts src/apps/industry/test/sector-tool.facade.spec.ts src/apps/watchlist/test/watchlist-tool.facade.spec.ts --runInBand",
+    "test:agent-financial-tools": "jest src/apps/agent/tools/adapters/test/financial-tools.spec.ts src/apps/stock/test/financial-tool.facade.spec.ts src/apps/stock/test/moneyflow-tool.facade.spec.ts --runInBand",
     "test:integration:redis": "cross-env RUN_REDIS_INTEGRATION=true jest src/apps/auth/test/auth.integration.spec.ts --runInBand",
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",

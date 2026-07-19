@@ -876,6 +876,7 @@ export const CORE_INDEX_CODES = [
   // 上交所
   '000001.SH', // 上证指数
   '000010.SH', // 上证180
+  '000680.SH', // 科创综指
   '000688.SH', // 科创50
   '000698.SH', // 科创100（需 Tushare 验证）
   // 深交所
@@ -902,6 +903,7 @@ export const CORE_INDEX_NAME_MAP: Record<string, string> = {
   // 上交所
   '000001.SH': '上证指数',
   '000010.SH': '上证180',
+  '000680.SH': '科创综指',
   '000688.SH': '科创50',
   '000698.SH': '科创100',
   // 深交所
@@ -928,6 +930,7 @@ export const CORE_INDEX_BASE_MAP: Record<string, { baseDate: string; basePoint: 
   // 上交所
   '000001.SH': { baseDate: '19901219', basePoint: 100 },
   '000010.SH': { baseDate: '20020628', basePoint: 3299.06 },
+  '000680.SH': { baseDate: '20191231', basePoint: 1000 },
   '000688.SH': { baseDate: '20191231', basePoint: 1000 },
   '000698.SH': { baseDate: '20221230', basePoint: 1000 },
   // 深交所

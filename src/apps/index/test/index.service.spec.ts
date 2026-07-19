@@ -246,6 +246,17 @@ describe('IndexService', () => {
       expect(cy!.name).toBe('创业板指')
     })
 
+    it('包含科创综指与科创50', async () => {
+      const result = await service.getIndexList()
+
+      expect(result).toEqual(
+        expect.arrayContaining([
+          { tsCode: '000680.SH', name: '科创综指' },
+          { tsCode: '000688.SH', name: '科创50' },
+        ]),
+      )
+    })
+
     it('每个指数有非空 name', async () => {
       const result = await service.getIndexList()
       result.forEach((r) => {

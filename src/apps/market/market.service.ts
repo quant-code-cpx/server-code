@@ -352,28 +352,33 @@ export class MarketService {
     const latestDateStr = dayjs(latestDate).tz('Asia/Shanghai').format('YYYYMMDD')
     const cacheKey = `market:index-trend:${tsCode}:${period}:${latestDateStr}`
 
-    return this.rememberMarketCache(cacheKey, MARKET_STANDARD_CACHE_TTL_SECONDS, async () => {
-      const startDate = this.periodToStartDate(latestDate, period as IndexTrendPeriod)
+    return this.rememberMarketCache(
+      cacheKey,
+      MARKET_STANDARD_CACHE_TTL_SECONDS,
+      async () => {
+        const startDate = this.periodToStartDate(latestDate, period as IndexTrendPeriod)
 
-      const rows = await this.prisma.indexDaily.findMany({
-        where: { tsCode, tradeDate: { gte: startDate } },
-        orderBy: { tradeDate: 'asc' },
-        select: { tradeDate: true, close: true, pctChg: true, vol: true, amount: true },
-      })
+        const rows = await this.prisma.indexDaily.findMany({
+          where: { tsCode, tradeDate: { gte: startDate } },
+          orderBy: { tradeDate: 'asc' },
+          select: { tradeDate: true, close: true, pctChg: true, vol: true, amount: true },
+        })
 
-      return {
-        tsCode,
-        name: CORE_INDEX_NAME_MAP[tsCode] ?? tsCode,
-        period,
-        data: rows.map((r) => ({
-          tradeDate: dayjs(r.tradeDate).format('YYYY-MM-DD'),
-          close: r.close,
-          pctChg: r.pctChg,
-          vol: r.vol,
-          amount: r.amount,
-        })),
-      }
-    })
+        return {
+          tsCode,
+          name: CORE_INDEX_NAME_MAP[tsCode] ?? tsCode,
+          period,
+          data: rows.map((r) => ({
+            tradeDate: dayjs(r.tradeDate).format('YYYY-MM-DD'),
+            close: r.close,
+            pctChg: r.pctChg,
+            vol: r.vol,
+            amount: r.amount,
+          })),
+        }
+      },
+      (result) => result.data.length === 0,
+    )
   }
 
   // ─── 批量指数行情 + 迷你走势 ────────────────────────────────────────────────

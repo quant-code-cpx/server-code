@@ -57,7 +57,9 @@ function buildPrismaMock() {
 
 function buildCacheMock() {
   return {
-    rememberJson: jest.fn(({ loader }: { loader: () => Promise<unknown> }) => loader()),
+    rememberJson: jest.fn(({ loader }: { loader: () => Promise<unknown>; skipCacheIf?: (value: unknown) => boolean }) =>
+      loader(),
+    ),
   }
 }
 
@@ -206,6 +208,42 @@ describe('MarketService', () => {
       const result = await service.getIndexQuote({})
 
       expect(result).toEqual([])
+    })
+  })
+
+  // ── getIndexTrend() ───────────────────────────────────────────────────────
+
+  describe('getIndexTrend()', () => {
+    it('新指数尚未回补时不缓存空走势，后续同步完成可立即读到数据', async () => {
+      const latestTradeDate = new Date('2026-07-10T00:00:00.000Z')
+      mockPrisma.indexDaily.findFirst.mockResolvedValueOnce({ tradeDate: latestTradeDate })
+      mockPrisma.indexDaily.findMany.mockResolvedValueOnce([])
+
+      const result = await service.getIndexTrend({ ts_code: '000680.SH', period: '1m' })
+      const cacheOptions = mockCache.rememberJson.mock.calls[0][0]
+
+      expect(result).toMatchObject({ tsCode: '000680.SH', name: '科创综指', data: [] })
+      expect(cacheOptions.skipCacheIf?.(result)).toBe(true)
+    })
+
+    it('已有走势数据时保留缓存', async () => {
+      const latestTradeDate = new Date('2026-07-10T00:00:00.000Z')
+      mockPrisma.indexDaily.findFirst.mockResolvedValueOnce({ tradeDate: latestTradeDate })
+      mockPrisma.indexDaily.findMany.mockResolvedValueOnce([
+        {
+          tradeDate: latestTradeDate,
+          close: 2348.7458,
+          pctChg: -4.499,
+          vol: 79504717,
+          amount: 603444791.407,
+        },
+      ])
+
+      const result = await service.getIndexTrend({ ts_code: '000680.SH', period: '1m' })
+      const cacheOptions = mockCache.rememberJson.mock.calls[0][0]
+
+      expect(result.data).toHaveLength(1)
+      expect(cacheOptions.skipCacheIf?.(result)).toBe(false)
     })
   })
 

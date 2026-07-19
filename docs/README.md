@@ -36,7 +36,7 @@ docs/
 | [Tool 方案](agent/tools/README.md) | 15 个 MVP Tool、JSON Schema、权限与审计 | 📋 需求稿 |
 | [工作流方案](agent/workflows/README.md) | 交互、股票研究、新闻、定时、预警和回测 | 📋 需求稿 |
 | [ADR 索引](agent/decisions/README.md) | 9 项核心架构决策 | 📋 需求稿 |
-| [实施任务](agent/tasks/README.md) | 30 个独立批次、依赖、并行和验收标准 | 🗓️ 规划中 |
+| [实施任务](agent/tasks/README.md) | 30 个独立批次、依赖、并行和验收标准；Batch 001–004 已完成 | 🔧 待实现 |
 
 Agent 子目录按用户要求使用英文路径/文件名，正文仍为中文；这是本仓库“除 README 外文档中文命名”约定的明确例外。
 

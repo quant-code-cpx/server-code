@@ -1,6 +1,6 @@
 ---
 batch: 4
-status: pending
+status: completed
 type: backend
 depends_on: ["batch-001-agent-public-contracts"]
 blocks: ["batch-011-agent-orchestrator-workflow", "batch-023-multi-provider-routing-and-fallback", "batch-025-ai-observability-cost-and-evaluation"]
@@ -143,6 +143,18 @@ estimated_scope: medium
 ## 24. 完成定义
 
 端口、首 adapter、fake、配置、contract test、错误/指标 hook 和安全说明合入。
+
+当前进度（2026-07-19）：
+
+- 已实现 provider-neutral `ModelGatewayPort`、DI token、capability registry、deterministic fake provider 和 OpenAI-compatible Chat Completions adapter；未引入供应商 SDK。
+- adapter 支持 SSE UTF-8 增量解码、流式文本、Tool call fragment 合并及完整 JSON 校验、usage/finish/request ID 归一化。
+- 已实现 strict JSON Schema 预校验与结构化输出校验；非法结构最多执行一次受控 repair，仍失败则返回 `INVALID_OUTPUT`。
+- timeout、用户 `AbortSignal`、429/5xx 有限重试和“首个可见输出后禁止重试”已落地；错误统一分类为 AUTH/RATE_LIMIT/TIMEOUT/UNAVAILABLE/CONTENT/INVALID_OUTPUT。
+- 配置与运行时边界严格校验；生产 base URL 强制 HTTPS + origin allowlist，HTTP redirect fail-closed；日志不记录 key、Prompt、provider body 或 hidden reasoning。
+- Model Gateway 测试 16/16、Batch 001 canonical contract 回归 9/9、frozen lock、Prettier、ESLint 和生产 Nest build 通过。
+- 开发容器增量编译 `Found 0 errors`，Nest 启动成功，app/PostgreSQL/Redis 均 healthy，`/health` 返回 ok。
+- 真实 provider smoke test 未执行：当前未提供显式 provider key；集成行为由 loopback mock HTTP 覆盖，不向 CI 或仓库注入真实凭据。
+- 实现 commit：`6f5595f feat(agent): add model gateway foundation`。
 
 ## 25. 回滚方案
 

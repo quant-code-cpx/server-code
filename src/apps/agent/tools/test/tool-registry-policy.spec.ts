@@ -121,6 +121,8 @@ describe('Agent Tool config / Registry / Schema / Policy', () => {
       marketCacheTtlSeconds: 300,
       financialMaxPeriods: 20,
       moneyflowMaxDays: 250,
+      quantMaxPoints: 10_000,
+      valuationMinSamples: 60,
     })
     expect(
       buildAgentToolsConfig({ AGENT_TOOLS_ENABLED: 'search_web,resolve_security,search_web' }).enabledTools,
@@ -132,6 +134,11 @@ describe('Agent Tool config / Registry / Schema / Policy', () => {
     ).toMatchObject({ financialMaxPeriods: 12, moneyflowMaxDays: 120 })
     expect(() => buildAgentToolsConfig({ AGENT_TOOL_FINANCIAL_MAX_PERIODS: '21' })).toThrow('1-20')
     expect(() => buildAgentToolsConfig({ AGENT_TOOL_MONEYFLOW_MAX_DAYS: '251' })).toThrow('1-250')
+    expect(buildAgentToolsConfig({ AGENT_QUANT_MAX_POINTS: '5000', AGENT_VALUATION_MIN_SAMPLES: '120' })).toMatchObject(
+      { quantMaxPoints: 5_000, valuationMinSamples: 120 },
+    )
+    expect(() => buildAgentToolsConfig({ AGENT_QUANT_MAX_POINTS: '10001' })).toThrow('2-10000')
+    expect(() => buildAgentToolsConfig({ AGENT_VALUATION_MIN_SAMPLES: '1' })).toThrow('2-2600')
   })
 
   it('Registry fail-fast 拒绝重复、非 READ、非幂等、缺上限和宽松 input schema', () => {

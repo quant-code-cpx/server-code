@@ -9,6 +9,7 @@ import { PortfolioPerformanceService } from './services/portfolio-performance.se
 import { PortfolioTradeLogService } from './services/portfolio-trade-log.service'
 import { WebsocketModule } from 'src/websocket/websocket.module'
 import { SignalModule } from 'src/apps/signal/signal.module'
+import { PortfolioToolFacade } from './portfolio-tool.facade'
 
 @Module({
   imports: [WebsocketModule, forwardRef(() => SignalModule)],
@@ -21,7 +22,8 @@ import { SignalModule } from 'src/apps/signal/signal.module'
     RebalancePlanService,
     PortfolioPerformanceService,
     PortfolioTradeLogService,
+    PortfolioToolFacade,
   ],
-  exports: [PortfolioService],
+  exports: [PortfolioService, PortfolioToolFacade],
 })
 export class PortfolioModule {}

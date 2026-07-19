@@ -13,6 +13,8 @@ export interface AgentToolsConfigEnvironment {
   AGENT_TOOL_MARKET_CACHE_TTL_SECONDS?: string
   AGENT_TOOL_FINANCIAL_MAX_PERIODS?: string
   AGENT_TOOL_MONEYFLOW_MAX_DAYS?: string
+  AGENT_QUANT_MAX_POINTS?: string
+  AGENT_VALUATION_MIN_SAMPLES?: string
 }
 
 export function buildAgentToolsConfig(env: AgentToolsConfigEnvironment) {
@@ -56,6 +58,8 @@ export function buildAgentToolsConfig(env: AgentToolsConfigEnvironment) {
       20,
     ),
     moneyflowMaxDays: parseInteger(env.AGENT_TOOL_MONEYFLOW_MAX_DAYS, 'AGENT_TOOL_MONEYFLOW_MAX_DAYS', 250, 1, 250),
+    quantMaxPoints: parseInteger(env.AGENT_QUANT_MAX_POINTS, 'AGENT_QUANT_MAX_POINTS', 10_000, 2, 10_000),
+    valuationMinSamples: parseInteger(env.AGENT_VALUATION_MIN_SAMPLES, 'AGENT_VALUATION_MIN_SAMPLES', 60, 2, 2_600),
   }
 }
 

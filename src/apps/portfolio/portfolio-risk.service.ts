@@ -23,40 +23,43 @@ export class PortfolioRiskService {
 
   // ─── 行业分布 ─────────────────────────────────────────────────────────────
 
-  async getIndustryDistribution(portfolioId: string, userId: number) {
+  async getIndustryDistribution(portfolioId: string, userId: number, asOfDate?: string) {
     await this.portfolioService.assertOwner(portfolioId, userId)
-    const key = `${CACHE_KEY_PREFIX.PORTFOLIO_RISK}:ind:${portfolioId}`
-    return this.rememberCache(key, TTL_RISK, () => this.calcIndustryDistribution(portfolioId))
+    const latestDate = await this.resolveTradeDate(asOfDate)
+    const key = `${CACHE_KEY_PREFIX.PORTFOLIO_RISK}:ind:${portfolioId}:${this.formatNullableDate(latestDate)}`
+    return this.rememberCache(key, TTL_RISK, () => this.calcIndustryDistribution(portfolioId, latestDate))
   }
 
   // ─── 仓位集中度 ───────────────────────────────────────────────────────────
 
-  async getPositionConcentration(portfolioId: string, userId: number) {
+  async getPositionConcentration(portfolioId: string, userId: number, asOfDate?: string) {
     await this.portfolioService.assertOwner(portfolioId, userId)
-    const key = `${CACHE_KEY_PREFIX.PORTFOLIO_RISK}:pos:${portfolioId}`
-    return this.rememberCache(key, TTL_RISK, () => this.calcPositionConcentration(portfolioId))
+    const latestDate = await this.resolveTradeDate(asOfDate)
+    const key = `${CACHE_KEY_PREFIX.PORTFOLIO_RISK}:pos:${portfolioId}:${this.formatNullableDate(latestDate)}`
+    return this.rememberCache(key, TTL_RISK, () => this.calcPositionConcentration(portfolioId, latestDate))
   }
 
   // ─── 市值分布 ─────────────────────────────────────────────────────────────
 
-  async getMarketCapDistribution(portfolioId: string, userId: number) {
+  async getMarketCapDistribution(portfolioId: string, userId: number, asOfDate?: string) {
     await this.portfolioService.assertOwner(portfolioId, userId)
-    const key = `${CACHE_KEY_PREFIX.PORTFOLIO_RISK}:cap:${portfolioId}`
-    return this.rememberCache(key, TTL_RISK, () => this.calcMarketCapDistribution(portfolioId))
+    const latestDate = await this.resolveTradeDate(asOfDate)
+    const key = `${CACHE_KEY_PREFIX.PORTFOLIO_RISK}:cap:${portfolioId}:${this.formatNullableDate(latestDate)}`
+    return this.rememberCache(key, TTL_RISK, () => this.calcMarketCapDistribution(portfolioId, latestDate))
   }
 
   // ─── Beta 分析 ────────────────────────────────────────────────────────────
 
-  async getBetaAnalysis(portfolioId: string, userId: number) {
+  async getBetaAnalysis(portfolioId: string, userId: number, asOfDate?: string) {
     await this.portfolioService.assertOwner(portfolioId, userId)
-    const key = `${CACHE_KEY_PREFIX.PORTFOLIO_RISK}:beta:${portfolioId}`
-    return this.rememberCache(key, TTL_BETA, () => this.calcBetaAnalysis(portfolioId))
+    const latestDate = await this.resolveTradeDate(asOfDate)
+    const key = `${CACHE_KEY_PREFIX.PORTFOLIO_RISK}:beta:${portfolioId}:${this.formatNullableDate(latestDate)}`
+    return this.rememberCache(key, TTL_BETA, () => this.calcBetaAnalysis(portfolioId, latestDate))
   }
 
   // ─── 计算方法 ─────────────────────────────────────────────────────────────
 
-  private async calcIndustryDistribution(portfolioId: string) {
-    const latestDate = await this.portfolioService.getLatestTradeDate()
+  private async calcIndustryDistribution(portfolioId: string, latestDate: Date | null) {
     const tradeDateStr = latestDate ? this.formatDate(latestDate) : null
 
     type IndustryRow = {
@@ -113,8 +116,7 @@ export class PortfolioRiskService {
     }
   }
 
-  private async calcPositionConcentration(portfolioId: string) {
-    const latestDate = await this.portfolioService.getLatestTradeDate()
+  private async calcPositionConcentration(portfolioId: string, latestDate: Date | null) {
     const tradeDateStr = latestDate ? this.formatDate(latestDate) : null
 
     type PositionRow = {
@@ -182,8 +184,7 @@ export class PortfolioRiskService {
     }
   }
 
-  private async calcMarketCapDistribution(portfolioId: string) {
-    const latestDate = await this.portfolioService.getLatestTradeDate()
+  private async calcMarketCapDistribution(portfolioId: string, latestDate: Date | null) {
     const tradeDateStr = latestDate ? this.formatDate(latestDate) : null
 
     type CapRow = {
@@ -272,8 +273,7 @@ export class PortfolioRiskService {
     }
   }
 
-  private async calcBetaAnalysis(portfolioId: string) {
-    const latestDate = await this.portfolioService.getLatestTradeDate()
+  private async calcBetaAnalysis(portfolioId: string, latestDate: Date | null) {
     if (!latestDate) return { tradeDate: null, portfolioBeta: null, holdings: [] }
 
     const tradeDateStr = this.formatDate(latestDate)
@@ -288,11 +288,11 @@ export class PortfolioRiskService {
     const tsCodes = holdings.map((h) => h.tsCode)
 
     // 查 BETA_WINDOW 天的基准收益率
-    type PriceRow = { ts_code: string; pct_chg: unknown }
+    type PriceRow = { ts_code: string; trade_date: Date; pct_chg: unknown }
     const [stockRows, benchRows] = await Promise.all([
       this.prisma.$queryRawUnsafe<PriceRow[]>(
         `
-        SELECT ts_code, pct_chg
+        SELECT ts_code, trade_date, pct_chg
         FROM stock_daily_prices
         WHERE ts_code = ANY($1::text[])
           AND trade_date <= $2::date
@@ -304,7 +304,7 @@ export class PortfolioRiskService {
       ),
       this.prisma.$queryRawUnsafe<PriceRow[]>(
         `
-        SELECT ts_code, pct_chg
+        SELECT ts_code, trade_date, pct_chg
         FROM index_daily_prices
         WHERE ts_code = $1
           AND trade_date <= $2::date
@@ -318,14 +318,13 @@ export class PortfolioRiskService {
       ),
     ])
 
-    const benchReturns = benchRows.map((r) => Number(r.pct_chg))
-    const benchVar = variance(benchReturns)
+    const benchReturns = new Map(benchRows.map((row) => [this.formatDate(row.trade_date), Number(row.pct_chg)]))
 
     // 按股票分组，截取最近 BETA_WINDOW 条
-    const stockMap = new Map<string, number[]>()
+    const stockMap = new Map<string, Array<{ tradeDate: string; value: number }>>()
     for (const r of stockRows) {
       const arr = stockMap.get(r.ts_code) ?? []
-      if (arr.length < BETA_WINDOW) arr.push(Number(r.pct_chg))
+      if (arr.length < BETA_WINDOW) arr.push({ tradeDate: this.formatDate(r.trade_date), value: Number(r.pct_chg) })
       stockMap.set(r.ts_code, arr)
     }
 
@@ -341,16 +340,8 @@ export class PortfolioRiskService {
     }
 
     for (const h of holdings) {
-      const returns = stockMap.get(h.tsCode) ?? []
-      const dataPoints = Math.min(returns.length, benchReturns.length)
-
-      let beta: number | null = null
-      if (dataPoints >= BETA_MIN_DAYS && benchVar > 0) {
-        const stockR = returns.slice(0, dataPoints)
-        const benchR = benchReturns.slice(0, dataPoints)
-        const cov = covariance(stockR, benchR)
-        beta = Math.round((cov / benchVar) * 10000) / 10000
-      }
+      const aligned = calculateAlignedBeta(stockMap.get(h.tsCode) ?? [], benchReturns, BETA_MIN_DAYS)
+      const { beta, dataPoints } = aligned
 
       holdingBetas.push({ tsCode: h.tsCode, stockName: h.stockName, beta, dataPoints })
     }
@@ -386,10 +377,10 @@ export class PortfolioRiskService {
   }
 
   /** 聚合快照 — 单次返回行业、持仓、市值、Beta，单维度失败不影响其他维度 */
-  async getRiskSnapshot(portfolioId: string, userId: number) {
+  async getRiskSnapshot(portfolioId: string, userId: number, asOfDate?: string) {
     await this.portfolioService.assertOwner(portfolioId, userId)
     const lastUpdated = new Date().toISOString()
-    const latestDate = await this.portfolioService.getLatestTradeDate()
+    const latestDate = await this.resolveTradeDate(asOfDate)
     const isTradingDay = !!latestDate
 
     const settle = <T>(p: Promise<T>) =>
@@ -398,10 +389,10 @@ export class PortfolioRiskService {
         .catch((e: unknown) => ({ ok: false as const, error: e instanceof Error ? e.message : String(e) }))
 
     const [indResult, posResult, capResult, betaResult] = await Promise.all([
-      settle(this.calcIndustryDistribution(portfolioId)),
-      settle(this.calcPositionConcentration(portfolioId)),
-      settle(this.calcMarketCapDistribution(portfolioId)),
-      settle(this.calcBetaAnalysis(portfolioId)),
+      settle(this.calcIndustryDistribution(portfolioId, latestDate)),
+      settle(this.calcPositionConcentration(portfolioId, latestDate)),
+      settle(this.calcMarketCapDistribution(portfolioId, latestDate)),
+      settle(this.calcBetaAnalysis(portfolioId, latestDate)),
     ])
 
     const errors: Record<string, string> = {}
@@ -429,6 +420,14 @@ export class PortfolioRiskService {
       loader,
     })
   }
+
+  private resolveTradeDate(asOfDate?: string): Promise<Date | null> {
+    return this.portfolioService.getLatestTradeDate(asOfDate ? new Date(`${asOfDate}T00:00:00.000Z`) : undefined)
+  }
+
+  private formatNullableDate(value: Date | null): string {
+    return value ? this.formatDate(value) : 'none'
+  }
 }
 
 // ─── 统计工具 ─────────────────────────────────────────────────────────────────
@@ -449,4 +448,26 @@ function covariance(a: number[], b: number[]): number {
   const ma = mean(a.slice(0, n))
   const mb = mean(b.slice(0, n))
   return a.slice(0, n).reduce((s, v, i) => s + (v - ma) * (b[i] - mb), 0) / n
+}
+
+export function calculateAlignedBeta(
+  stockReturns: Array<{ tradeDate: string; value: number }>,
+  benchmarkReturns: ReadonlyMap<string, number>,
+  minimumDays: number,
+): { beta: number | null; dataPoints: number } {
+  const aligned = stockReturns.flatMap((point) => {
+    const benchmark = benchmarkReturns.get(point.tradeDate)
+    return Number.isFinite(point.value) && benchmark != null && Number.isFinite(benchmark)
+      ? [{ stock: point.value, benchmark }]
+      : []
+  })
+  if (aligned.length < minimumDays) return { beta: null, dataPoints: aligned.length }
+  const stock = aligned.map((point) => point.stock)
+  const benchmark = aligned.map((point) => point.benchmark)
+  const benchmarkVariance = variance(benchmark)
+  if (benchmarkVariance <= 0) return { beta: null, dataPoints: aligned.length }
+  return {
+    beta: Math.round((covariance(stock, benchmark) / benchmarkVariance) * 10_000) / 10_000,
+    dataPoints: aligned.length,
+  }
 }

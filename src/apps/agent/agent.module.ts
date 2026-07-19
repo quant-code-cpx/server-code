@@ -12,6 +12,11 @@ import { SectorToolFacade } from 'src/apps/industry/sector-tool.facade'
 import { WatchlistToolFacade } from 'src/apps/watchlist/watchlist-tool.facade'
 import { FinancialToolFacade } from 'src/apps/stock/financial-tool.facade'
 import { MoneyflowToolFacade } from 'src/apps/stock/moneyflow-tool.facade'
+import { ValuationToolFacade } from 'src/apps/stock/valuation-tool.facade'
+import { PortfolioModule } from 'src/apps/portfolio/portfolio.module'
+import { PortfolioToolFacade } from 'src/apps/portfolio/portfolio-tool.facade'
+import { BacktestModule } from 'src/apps/backtest/backtest.module'
+import { BacktestToolFacade } from 'src/apps/backtest/backtest-tool.facade'
 import { AgentAuditRepository } from './audit/agent-audit.repository'
 import { CitationRepository } from './audit/citation.repository'
 import { AgentConversationRepository } from './conversation/agent-conversation.repository'
@@ -26,6 +31,7 @@ import { ToolRunLimiterService } from './tools/tool-run-limiter.service'
 import { ToolSchemaValidator } from './tools/tool-schema-validator'
 import { createStockMarketToolDefinitions } from './tools/adapters/stock-market-tools'
 import { createFinancialToolDefinitions } from './tools/adapters/financial-tools'
+import { createQuantToolDefinitions } from './tools/adapters/quant-tools'
 
 @Module({
   imports: [
@@ -36,6 +42,8 @@ import { createFinancialToolDefinitions } from './tools/adapters/financial-tools
     MarketModule,
     IndustryModule,
     WatchlistModule,
+    PortfolioModule,
+    BacktestModule,
   ],
   providers: [
     AgentConversationRepository,
@@ -56,6 +64,9 @@ import { createFinancialToolDefinitions } from './tools/adapters/financial-tools
         WatchlistToolFacade,
         FinancialToolFacade,
         MoneyflowToolFacade,
+        PortfolioToolFacade,
+        BacktestToolFacade,
+        ValuationToolFacade,
         AgentToolsConfig.KEY,
       ],
       useFactory: (
@@ -65,11 +76,15 @@ import { createFinancialToolDefinitions } from './tools/adapters/financial-tools
         watchlist: WatchlistToolFacade,
         financial: FinancialToolFacade,
         moneyflow: MoneyflowToolFacade,
+        portfolio: PortfolioToolFacade,
+        backtest: BacktestToolFacade,
+        valuation: ValuationToolFacade,
         config: IAgentToolsConfig,
       ) =>
         Object.freeze([
           ...createStockMarketToolDefinitions({ stock, market, sector, watchlist, config }),
           ...createFinancialToolDefinitions({ financial, moneyflow, config }),
+          ...createQuantToolDefinitions({ portfolio, backtest, valuation, config }),
         ]),
     },
     { provide: TOOL_EXECUTION_OBSERVER, useValue: Object.freeze({}) },

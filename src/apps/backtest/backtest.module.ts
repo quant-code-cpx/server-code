@@ -17,6 +17,7 @@ import { BacktestMonteCarloService } from './services/backtest-monte-carlo.servi
 import { BacktestAttributionService } from './services/backtest-attribution.service'
 import { BacktestCostSensitivityService } from './services/backtest-cost-sensitivity.service'
 import { BacktestParamSensitivityService } from './services/backtest-param-sensitivity.service'
+import { BacktestToolFacade } from './backtest-tool.facade'
 
 @Module({
   imports: [BullModule.registerQueue({ name: BACKTESTING_QUEUE }), WebsocketModule],
@@ -36,6 +37,7 @@ import { BacktestParamSensitivityService } from './services/backtest-param-sensi
     BacktestAttributionService,
     BacktestCostSensitivityService,
     BacktestParamSensitivityService,
+    BacktestToolFacade,
   ],
   exports: [
     BacktestRunService,
@@ -45,6 +47,7 @@ import { BacktestParamSensitivityService } from './services/backtest-param-sensi
     BacktestComparisonService,
     BacktestStrategyRegistryService,
     BacktestDataService,
+    BacktestToolFacade,
   ],
 })
 export class BacktestModule {}

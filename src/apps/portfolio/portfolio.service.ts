@@ -1,5 +1,8 @@
 import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common'
 import { Decimal } from '@prisma/client/runtime/library'
+import dayjs from 'dayjs'
+import timezone from 'dayjs/plugin/timezone'
+import utc from 'dayjs/plugin/utc'
 import { PrismaService } from 'src/shared/prisma.service'
 import { CacheService } from 'src/shared/cache.service'
 import { CACHE_KEY_PREFIX, CACHE_NAMESPACE } from 'src/constant/cache.constant'
@@ -9,6 +12,9 @@ import { AddHoldingDto } from './dto/add-holding.dto'
 import { UpdateHoldingDto } from './dto/update-holding.dto'
 import { PortfolioPnlHistoryDto } from './dto/portfolio-pnl.dto'
 import { PortfolioTradeLogService } from './services/portfolio-trade-log.service'
+
+dayjs.extend(utc)
+dayjs.extend(timezone)
 
 // TTL 常量
 const TTL_5MIN = 5 * 60
@@ -212,9 +218,12 @@ export class PortfolioService {
   }
 
   /** 查询最近可用交易日 */
-  async getLatestTradeDate(): Promise<Date | null> {
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
+  async getLatestTradeDate(onOrBefore?: Date): Promise<Date | null> {
+    const currentDay = new Date(`${dayjs().tz('Asia/Shanghai').format('YYYY-MM-DD')}T00:00:00.000Z`)
+    const requestedDay = onOrBefore
+      ? new Date(`${dayjs(onOrBefore).tz('Asia/Shanghai').format('YYYY-MM-DD')}T00:00:00.000Z`)
+      : currentDay
+    const today = requestedDay < currentDay ? requestedDay : currentDay
     const cal = await this.prisma.tradeCal.findFirst({
       where: { isOpen: '1', calDate: { lte: today } },
       orderBy: { calDate: 'desc' },

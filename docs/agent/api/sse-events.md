@@ -5,7 +5,7 @@
 前端使用 `fetch('/api/agent/runs/events', { method: 'POST', headers, body, signal })`，逐行解析 SSE。不得使用原生 `EventSource`。服务端新增 `@RawStreamResponse()` 元数据，使原始流绕过 `TransformInterceptor`。
 
 ```text
-id: 42
+id: evt_01J...
 event: tool.completed
 retry: 3000
 data: {"schemaVersion":"1.0","eventId":"evt_01J...","sequence":42,"type":"tool.completed","runId":"run_01J...","conversationId":"cm_01J...","messageId":"msg_01K...","occurredAt":"2026-07-19T02:11:31.102Z","traceId":"tr_01J...","payload":{...}}
@@ -33,22 +33,22 @@ type AgentEvent<TType extends AgentEventType, TPayload> = {
 
 ## 3. 事件字典
 
-| 事件 | 关键 payload | 说明 |
-| --- | --- | --- |
-| `message.created` | `messageId, role, status` | assistant 占位消息已持久化 |
-| `agent.started` | `workflowKey, workflowVersion, modelPolicy` | Run 开始 |
-| `agent.planning` | `intent, capabilities, planSummary` | 仅公开阶段摘要，不暴露隐藏推理 |
-| `agent.progress` | `stepKey, label, completed, total` | 可确定进度；未知总量时 `total=null` |
-| `tool.started` | `toolCallId, toolName, inputSummary, attempt` | Tool 输入已校验、权限已通过 |
-| `tool.completed` | `toolCallId, outputSummary, rowCount, truncated, asOf, citationIds, durationMs` | 结构化结果完成 |
-| `tool.failed` | `toolCallId, error, attempt, willRetry` | 不允许模型补造数据 |
-| `model.started` | `modelCallId, provider, model, purpose` | 一次模型调用开始 |
-| `model.delta` | `modelCallId, blockIndex, delta` | 仅可展示文本增量 |
-| `citation.created` | `citation` | 引用完成验证并持久化 |
-| `report.generated` | `reportId, title, format` | 研究报告已保存 |
-| `agent.completed` | `finalMessageId, usage, cost, dataCutoff, warnings` | 成功终态 |
-| `agent.failed` | `error, failedStep, retryable` | 失败终态 |
-| `agent.cancelled` | `cancelledBy, reason` | 取消终态 |
+| 事件               | 关键 payload                                                                    | 说明                                |
+| ------------------ | ------------------------------------------------------------------------------- | ----------------------------------- |
+| `message.created`  | `messageId, role, status`                                                       | assistant 占位消息已持久化          |
+| `agent.started`    | `workflowKey, workflowVersion, modelPolicy`                                     | Run 开始                            |
+| `agent.planning`   | `intent, capabilities, planSummary`                                             | 仅公开阶段摘要，不暴露隐藏推理      |
+| `agent.progress`   | `stepKey, label, completed, total`                                              | 可确定进度；未知总量时 `total=null` |
+| `tool.started`     | `toolCallId, toolName, inputSummary, attempt`                                   | Tool 输入已校验、权限已通过         |
+| `tool.completed`   | `toolCallId, outputSummary, rowCount, truncated, asOf, citationIds, durationMs` | 结构化结果完成                      |
+| `tool.failed`      | `toolCallId, error, attempt, willRetry`                                         | 不允许模型补造数据                  |
+| `model.started`    | `modelCallId, provider, model, purpose`                                         | 一次模型调用开始                    |
+| `model.delta`      | `modelCallId, blockIndex, delta`                                                | 仅可展示文本增量                    |
+| `citation.created` | `citation`                                                                      | 引用完成验证并持久化                |
+| `report.generated` | `reportId, title, format`                                                       | 研究报告已保存                      |
+| `agent.completed`  | `finalMessageId, usage, cost, dataCutoff, warnings`                             | 成功终态                            |
+| `agent.failed`     | `error, failedStep, retryable`                                                  | 失败终态                            |
+| `agent.cancelled`  | `cancelledBy, reason`                                                           | 取消终态                            |
 
 错误结构：
 
@@ -93,6 +93,7 @@ Tool 可多次、串行或并行出现。模型也可经历“规划模型 → T
 - `model.delta` 每 100 ms 或 1 KiB 合并一次再持久化，降低写放大；完整正文持续更新 `AiMessage.content`。
 - 建议默认值（待合规确认）：热事件保留 7 天；终态/Tool/引用审计表按各自生命周期保存，生产上线前由数据保留、隐私和合规评审确认。
 - 刷新后先查 Run 状态，再以 `Last-Event-ID` 或 `afterSequence` 重连。若事件已清理，服务端发当前快照后继续实时流。
+- SSE `id` 固定为持久事件的 `eventId`。服务端只在 Body 指定的同一 `runId` 内解析 `Last-Event-ID`，再映射为权威 sequence；跨 Run 或不存在的 eventId 返回 400。
 - Header 和 Body 都传游标时，以 `Last-Event-ID` 对应 sequence 为准。
 - 无业务事件 15 秒发送 `: heartbeat` 注释；heartbeat 不占 sequence、不落库。
 

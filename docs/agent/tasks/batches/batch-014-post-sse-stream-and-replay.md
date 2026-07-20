@@ -1,10 +1,10 @@
 ---
 batch: 14
-status: pending
+status: completed
 type: backend
-depends_on: ["batch-005-run-state-and-event-store", "batch-012-agent-bullmq-worker", "batch-013-conversation-rest-api"]
-blocks: ["batch-018-mvp-e2e-and-model-regression", "batch-025-ai-observability-cost-and-evaluation"]
-parallel_with: ["batch-016-frontend-chat-shell", "batch-017-frontend-rich-response-blocks"]
+depends_on: ['batch-005-run-state-and-event-store', 'batch-012-agent-bullmq-worker', 'batch-013-conversation-rest-api']
+blocks: ['batch-018-mvp-e2e-and-model-regression', 'batch-025-ai-observability-cost-and-evaluation']
+parallel_with: ['batch-016-frontend-chat-shell', 'batch-017-frontend-rich-response-blocks']
 recommended_executor: backend-coding-agent
 recommended_reasoning_level: very-high
 estimated_scope: large
@@ -60,7 +60,9 @@ estimated_scope: large
 
 ## 9. 数据库变更
 
-不新增表。replay 查询 `(runId,sequence)`；实时 tail 可以用 Redis pub/sub/PG notify 加速，但丢通知时轮询/重放保证正确性。
+不新增表。replay 查询 `(runId,sequence)`；实时 tail 使用 PostgreSQL 轮询，因此天然支持多 API 实例且不依赖 Redis 通知正确性。
+
+上线前增加三条数据修复 migration：删除历史 `run.cancel_requested` INTERNAL 事件并压实公共 sequence；移除错误写入 payload 的 `schemaVersion`；把 `agent.started` 和 `agent.completed.usage` 回填为公共协议字段。
 
 ## 10. API 变更
 
@@ -139,6 +141,17 @@ Tool/model 事件来自持久 event store，不直接从 adapter socket 推给 C
 ## 24. 完成定义
 
 POST SSE、replay/tail、interceptor/metrics 适配、e2e 故障测试与代理要求文档合入。
+
+当前进度（2026-07-20）：
+
+- 已实现 `POST /api/agent/runs/events` raw fetch-SSE；Bearer JWT、严格 Body、owner 校验均在写 headers 前完成。
+- `Last-Event-ID=eventId` 在同 Run 内解析并优先于 `afterSequence`；high-water replay 后以 PostgreSQL polling tail，断线恢复不依赖 Redis。
+- 已实现 14 个事件严格 serializer、heartbeat、终态关闭、JWT 到期/客户端 Abort、idle timeout、每用户连接上限、buffer bytes 与 drain timeout 慢消费者断开。
+- Transform、HTTP logging/metrics 和异常过滤器已适配 raw stream；新增 active/replay/bytes/duration/disconnect 指标，日志不记录事件正文。
+- 修复旧事件公共 sequence gap、payload `schemaVersion`、`agent.started` 内部 FK 和 token usage 误脱敏，并由三条 migration 回填历史数据。
+- Agent 非集成回归 171/171；独立 PostgreSQL 12/12；真实 HTTP 历史 replay 18/18，`Last-Event-ID` 只补最后一条；停 Worker 后同连接等待 22.558 秒并 live 收齐 1–18。
+- 实现 commit：`9829572 feat(agent): add durable POST SSE streaming`。
+- 测试方案与执行报告：`docs/design/Agent事件流测试方案-20260720.md`、`docs/Agent事件流测试执行报告-20260720.md`。
 
 ## 25. 回滚方案
 

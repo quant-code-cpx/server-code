@@ -1,4 +1,4 @@
-import { ApiProperty } from '@nestjs/swagger'
+import { ApiHideProperty, ApiProperty } from '@nestjs/swagger'
 import { SUCCESS_CODE } from 'src/constant/response-code.constant'
 
 /**
@@ -8,7 +8,7 @@ export class ResponseModel<T = unknown> {
   @ApiProperty({ type: 'number', default: SUCCESS_CODE })
   code: number
 
-  @ApiProperty()
+  @ApiHideProperty()
   data?: T
 
   @ApiProperty({ type: 'string', default: '' })

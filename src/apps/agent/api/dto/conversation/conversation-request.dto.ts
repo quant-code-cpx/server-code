@@ -55,12 +55,12 @@ export class ListConversationsDto {
   @IsInt()
   @Min(1)
   @Max(100)
-  limit = 30
+  limit: number = 30
 
   @ApiPropertyOptional({ default: false })
   @IsOptional()
   @IsBoolean()
-  includeArchived = false
+  includeArchived: boolean = false
 }
 
 export class ConversationDetailDto {
@@ -82,7 +82,7 @@ export class ListConversationMessagesDto extends ConversationDetailDto {
   @IsInt()
   @Min(1)
   @Max(100)
-  limit = 50
+  limit: number = 50
 }
 
 export class UpdateConversationModelDto extends ConversationDetailDto {

@@ -1,6 +1,6 @@
 import { Controller, Post, Body, Res, UseGuards } from '@nestjs/common'
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger'
-import { Response } from 'express'
+import type { Response } from 'express'
 import { JwtAuthGuard } from 'src/lifecycle/guard/jwt-auth.guard'
 import { ApiSuccessRawResponse } from 'src/common/decorators/api-success-response.decorator'
 import { CurrentUser } from 'src/common/decorators/current-user.decorator'

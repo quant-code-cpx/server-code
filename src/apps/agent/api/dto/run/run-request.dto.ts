@@ -100,5 +100,5 @@ export class ListAgentToolCallsDto extends AgentRunStatusDto {
   @ApiPropertyOptional({ default: false, description: '普通用户端点始终只返回脱敏摘要' })
   @IsOptional()
   @IsBoolean()
-  includePayload = false
+  includePayload: boolean = false
 }

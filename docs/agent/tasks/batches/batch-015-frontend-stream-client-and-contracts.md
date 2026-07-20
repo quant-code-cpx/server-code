@@ -1,6 +1,6 @@
 ---
 batch: 15
-status: pending
+status: completed
 type: frontend
 depends_on: ["batch-001-agent-public-contracts"]
 blocks: ["batch-016-frontend-chat-shell", "batch-017-frontend-rich-response-blocks", "batch-018-mvp-e2e-and-model-regression"]
@@ -181,6 +181,19 @@ estimated_scope: medium
 ## 24. 完成定义
 
 生成脚本与类型、`authenticatedFetch`、Agent JSON/stream API、纯 parser、错误适配、MSW fixture、CI 漂移门禁和故障测试全部合入；Batch 016 可直接以 reducer 消费已验证事件。
+
+当前进度（2026-07-20）：
+
+- 已建立稳定 Agent-only OpenAPI artifact，共 11 条 `/agent/**` 路径；生成器拒绝空 Agent 输入，`api:agent:check` 对 artifact 与最新后端 Swagger 均通过。
+- 已实现 `authenticatedFetch`、JSON facade、错误适配、纯字节 SSE parser 和 POST Fetch stream；支持共享 refresh Promise、晚到 401、Abort、heartbeat stale、有限退避、sequence gap、去重、Last-Event-ID 和三种终态。
+- 已强制校验 SSE `id === eventId`、`event === type`，剥离未知顶层字段，并在终态/协议错误后取消底层 reader。
+- 后端补齐 Swagger 默认标量类型、泛型响应 data schema 和 `import type`，不改变 DTO 验证或业务行为。
+- Batch 015 定向 64/64、公共契约 7/7、后端 Agent 171/171；前端 ESLint、TypeScript、production build 与后端 build 通过。
+- 真实新 Run 收到 sequence 1–18 并 `agent.completed`；以 sequence 17 的 eventId 仅恢复 sequence 18；active connections 最终为 0。
+- 前端全量 Vitest 为 433/463；30 个失败已在 detached HEAD `0cbe1e7` 原样复现并登记为既有测试债，不属于本批回归。
+- 后端修复 commit：`2bb48f1 fix(agent): correct OpenAPI contract metadata`。
+- 前端实现 commit：`fd45d3f feat(agent): add resilient frontend stream client`；文档 commit：`aa0d808 docs(agent): complete batch 015`。
+- 测试方案与执行报告位于前端仓库 `docs/testing/Agent流客户端与公共契约-测试方案.md`、`docs/testing/reports/Agent流客户端与公共契约-round1-2026-07-20.md`。
 
 ## 25. 回滚方案
 

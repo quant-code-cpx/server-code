@@ -36,7 +36,7 @@ docs/
 | [Tool 方案](agent/tools/README.md)                                         | 15 个 MVP Tool、JSON Schema、权限与审计                      | 📋 需求稿 |
 | [工作流方案](agent/workflows/README.md)                                    | 交互、股票研究、新闻、定时、预警和回测                       | 📋 需求稿 |
 | [ADR 索引](agent/decisions/README.md)                                      | 9 项核心架构决策                                             | 📋 需求稿 |
-| [实施任务](agent/tasks/README.md)                                          | 30 个独立批次、依赖、并行和验收标准；Batch 001–014 已完成    | 🔧 待实现 |
+| [实施任务](agent/tasks/README.md)                                          | 30 个独立批次、依赖、并行和验收标准；Batch 001–015 已完成    | 🔧 待实现 |
 | [智能体队列工作进程运行手册](agent/backend/智能体队列工作进程-运行手册.md) | BullMQ 入队、独立 Worker、数据库恢复、监控、故障处理与回滚   | ✅ 已实现 |
 | [智能体 REST 接口运行手册](agent/backend/智能体REST接口-运行手册.md)       | 会话、消息、Run、严格 DTO、幂等、配额、取消与 outbox 恢复    | ✅ 已实现 |
 | [智能体事件流运行手册](agent/backend/智能体事件流-运行手册.md)             | POST-SSE、eventId 游标、持久重放、背压、指标、迁移与故障判断 | ✅ 已实现 |

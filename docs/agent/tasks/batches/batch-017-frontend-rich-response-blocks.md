@@ -1,6 +1,6 @@
 ---
 batch: 17
-status: pending
+status: completed
 type: frontend
 depends_on: ["batch-015-frontend-stream-client-and-contracts", "batch-016-frontend-chat-shell"]
 blocks: ["batch-018-mvp-e2e-and-model-regression", "batch-022-research-report-and-investment-journal"]
@@ -187,7 +187,7 @@ Agent 回答从纯文本升级为可核验的量化研究结果。用户能检�
 
 - `yarn --cwd ../client-code test src/components/markdown/__tests__/markdown.test.tsx src/components/stock-kline/__tests__/stock-kline.test.tsx src/sections/agent/__tests__/block-renderer.test.tsx src/sections/agent/__tests__/tool-call-card.test.tsx src/sections/agent/__tests__/citation-list.test.tsx`
 - `yarn --cwd ../client-code test src/components/chart/__tests__ src/sections/research-note`
-- `yarn --cwd ../client-code e2e e2e/agent-rich-response.spec.ts`
+- `yarn --cwd ../client-code e2e e2e/agent-rich-response.e2e.ts`
 - `yarn --cwd ../client-code lint`
 - `yarn --cwd ../client-code build`
 
@@ -202,6 +202,18 @@ Agent 回答从纯文本升级为可核验的量化研究结果。用户能检�
 ## 24. 完成定义
 
 共享 Markdown、白名单 renderer、Tool/引用/provenance、Table/Chart/Kline/财务/风险组件、股票详情适配、安全/性能/可访问性测试和 E2E fixture 全部合入。
+
+当前进度（2026-07-20）：
+
+- 前端代码提交：`b410eef feat(agent): add rich response blocks`。
+- 研究笔记与 Agent 已共用禁止 raw HTML/危险 URL/远程图片的安全 Markdown/GFM renderer。
+- 生成契约 `MessageBlock` 先经 runtime parser 与更小前端展示预算，再由固定映射渲染六类 canonical block；未知、畸形、过新和超限块局部降级。
+- Tool 摘要使用既有 `listToolCalls(includePayload=false)` 并改为用户展开后按需加载；引用和 provenance 展示来源、时点、单位、scale、复权与 quality flags。
+- Table/Chart/Kline/Financial/Risk 均提供金融格式、安全/可访问替代；股票详情复用共享 StockKline 外壳，保留原均线、缩放、平移和历史懒加载。
+- 富响应定向 Vitest 22/22、Agent Playwright 3/3、OpenAPI 漂移检查、ESLint 和 production build 均通过；build 为 10.05s。
+- 全量 Vitest 505/507，剩余 2 项为 Batch 017 前已存在的登录 aria name 与 jsdom Emotion 高度测试债。
+- `390×844` 富回答验收通过，无页面横向溢出；真实浏览器回归发现并修复 Apex x 轴 formatter 接收 `undefined` 时的崩溃。
+- 前端设计、测试方案和报告：`docs/design/智能体富响应块-前端设计.md`、`docs/testing/智能体富响应块-测试方案.md`、`docs/testing/reports/智能体富响应块-round1-2026-07-20.md`。
 
 ## 25. 回滚方案
 

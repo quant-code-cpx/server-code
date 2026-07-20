@@ -73,7 +73,7 @@ MVP 不含多 Agent、向量数据库、独立 Python、任意 SQL、自动交�
 |  014 | [POST SSE 流、重放与背压](./batches/batch-014-post-sse-stream-and-replay.md)                    | MVP             | backend   | completed |
 |  015 | [前端流客户端与公共契约](./batches/batch-015-frontend-stream-client-and-contracts.md)           | MVP             | frontend  | completed |
 |  016 | [前端 AI 对话壳](./batches/batch-016-frontend-chat-shell.md)                                    | MVP             | frontend  | completed |
-|  017 | [前端富响应内容块](./batches/batch-017-frontend-rich-response-blocks.md)                        | MVP             | frontend  | pending   |
+|  017 | [前端富响应内容块](./batches/batch-017-frontend-rich-response-blocks.md)                        | MVP             | frontend  | completed |
 |  018 | [MVP 端到端、金融口径与模型回归](./batches/batch-018-mvp-e2e-and-model-regression.md)           | MVP acceptance  | testing   | pending   |
 |  019 | [会话摘要与显式用户记忆](./batches/batch-019-conversation-summary-and-memory.md)                | Phase 2         | backend   | pending   |
 |  020 | [定时与条件 Agent 任务](./batches/batch-020-scheduled-agent-tasks.md)                           | Phase 2         | backend   | pending   |

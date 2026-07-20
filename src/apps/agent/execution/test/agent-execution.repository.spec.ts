@@ -9,6 +9,7 @@ import {
   AiJobOutboxStatus,
   AiMessageRole,
   AiMessageStatus,
+  AiModelCallStatus,
   AiModelPolicy,
   AiVersionStatus,
   Prisma,
@@ -31,6 +32,7 @@ import {
 import type { CreateAgentRunCommand } from '../agent-execution.types'
 import { AgentRunRepository } from '../agent-run.repository'
 import { AgentStateMachineService } from '../agent-state-machine.service'
+import { toAgentSseEvent } from '../../streaming/sse-event.serializer'
 
 const runIntegration = process.env.RUN_AGENT_DB_INTEGRATION === 'true'
 const integrationDescribe = runIntegration ? describe : describe.skip
@@ -235,6 +237,202 @@ integrationDescribe('Agent Run/Step/Event Repository - 独立 PostgreSQL 集成�
     ).rejects.toThrow('AI Agent Run owner/message scope mismatch')
   })
 
+  it('SSE high-water、eventId 游标和有界 replay 均绑定 owner Run', async () => {
+    const created = await runs.createRun(await makeRunCommand())
+    const claimed = await runs.claimRun(created.id, 'worker-stream-cursor')
+    const snapshot = await events.getStreamRun(userA.id, created.id)
+    const initial = await events.replay(userA.id, created.id, 0, 10, 1)
+    const tail = await events.readStreamBatch(userA.id, created.id, 1, 10, snapshot.latestEventSequence)
+
+    expect(snapshot).toMatchObject({
+      id: created.id,
+      conversationId: created.conversationId,
+      responseMessageId: created.responseMessageId,
+      status: claimed.status,
+      latestEventSequence: 2n,
+    })
+    expect(initial.map((event) => Number(event.sequence))).toEqual([1])
+    expect(tail.events.map((event) => Number(event.sequence))).toEqual([2])
+    await expect(events.resolveStreamCursor(userA.id, created.id, initial[0].publicId)).resolves.toBe(1n)
+    await expect(events.resolveStreamCursor(userA.id, created.id, 'evt_missing')).resolves.toBeNull()
+    await expect(events.getStreamRun(userB.id, created.id)).rejects.toBeInstanceOf(AgentRunNotFoundError)
+  })
+
+  it('SSE 数据迁移可删除历史 INTERNAL cancel event，并压实终态 Run sequence', async () => {
+    const created = await runs.createRun(await makeRunCommand())
+    const claimed = await runs.claimRun(created.id, 'worker-hidden-cancel-repair')
+    await client!.aiAgentRun.update({ where: { id: created.id }, data: { nextEventSequence: 4n } })
+    await client!.aiRunEvent.create({
+      data: {
+        runId: created.id,
+        sequence: 3n,
+        eventType: 'run.cancel_requested',
+        visibility: 'INTERNAL',
+        traceId: created.traceId,
+        payload: { requestedBy: userA.id, reason: '历史取消请求' },
+      },
+    })
+    await client!.aiAgentRun.update({ where: { id: created.id }, data: { nextEventSequence: 5n } })
+    await client!.aiRunEvent.create({
+      data: {
+        runId: created.id,
+        sequence: 4n,
+        eventType: 'agent.cancelled',
+        traceId: created.traceId,
+        payload: { cancelledBy: 'USER', reason: '历史取消完成', schemaVersion: '1.0' },
+      },
+    })
+    await client!.aiAgentRun.update({
+      where: { id: created.id },
+      data: {
+        status: AiAgentRunStatus.CANCEL_REQUESTED,
+        statusVersion: claimed.statusVersion + 1,
+        cancelRequestedAt: new Date(),
+        cancelRequestedBy: userA.id,
+        cancelReason: '历史取消请求',
+      },
+    })
+    await client!.aiAgentRun.update({
+      where: { id: created.id },
+      data: {
+        status: AiAgentRunStatus.CANCELLED,
+        statusVersion: claimed.statusVersion + 2,
+        endedAt: new Date(),
+        leaseOwner: null,
+        leaseExpiresAt: null,
+        heartbeatAt: null,
+      },
+    })
+
+    const migration = readFileSync(
+      join(process.cwd(), 'prisma/migrations/20260720050000_compact_agent_user_event_sequences/migration.sql'),
+      'utf8',
+    )
+    const statements = migration
+      .split(';')
+      .map((statement) => statement.trim())
+      .filter(Boolean)
+    await client!.$transaction(async (tx) => {
+      for (const statement of statements) await tx.$executeRawUnsafe(statement)
+    })
+    const payloadMigration = readFileSync(
+      join(process.cwd(), 'prisma/migrations/20260720051000_remove_agent_event_payload_schema_version/migration.sql'),
+      'utf8',
+    )
+    const payloadStatements = payloadMigration
+      .split(';')
+      .map((statement) => statement.trim())
+      .filter(Boolean)
+    await client!.$transaction(async (tx) => {
+      for (const statement of payloadStatements) await tx.$executeRawUnsafe(statement)
+    })
+
+    const repairedEvents = await client!.aiRunEvent.findMany({
+      where: { runId: created.id },
+      orderBy: { sequence: 'asc' },
+    })
+    expect(repairedEvents.map((event) => [Number(event.sequence), event.eventType])).toEqual([
+      [1, 'message.created'],
+      [2, 'agent.started'],
+      [3, 'agent.cancelled'],
+    ])
+    expect(repairedEvents.some((event) => Object.prototype.hasOwnProperty.call(event.payload, 'schemaVersion'))).toBe(
+      false,
+    )
+    await expect(client!.aiAgentRun.findUniqueOrThrow({ where: { id: created.id } })).resolves.toMatchObject({
+      status: AiAgentRunStatus.CANCELLED,
+      nextEventSequence: 4n,
+    })
+  })
+
+  it('SSE payload 迁移把 agent.started 和 completed usage 修复为公共契约', async () => {
+    const created = await runs.createRun(await makeRunCommand())
+    const claimed = await runs.claimRun(created.id, 'worker-stream-payload-repair')
+    await client!.$executeRawUnsafe('ALTER TABLE "ai_run_events" DISABLE TRIGGER "ai_run_events_integrity_trigger"')
+    await client!.aiRunEvent.updateMany({
+      where: { runId: created.id, eventType: 'agent.started' },
+      data: { payload: { workflowVersionId: created.workflowVersionId, modelPolicy: created.modelPolicy } },
+    })
+    await client!.$executeRawUnsafe('ALTER TABLE "ai_run_events" ENABLE TRIGGER "ai_run_events_integrity_trigger"')
+    await client!.aiModelCall.create({
+      data: {
+        userId: userA.id,
+        scopeId: created.id,
+        runId: created.id,
+        promptVersionId: created.promptVersionId,
+        provider: 'fake',
+        model: 'fake-deterministic-v1',
+        purpose: 'final_answer',
+        status: AiModelCallStatus.SUCCEEDED,
+        requestHash: 'a'.repeat(64),
+        responseHash: 'b'.repeat(64),
+        inputTokens: 12,
+        outputTokens: 3,
+        finishedAt: new Date(),
+      },
+    })
+    await client!.aiAgentRun.update({ where: { id: created.id }, data: { nextEventSequence: 4n } })
+    await client!.aiRunEvent.create({
+      data: {
+        runId: created.id,
+        sequence: 3n,
+        eventType: 'agent.completed',
+        traceId: created.traceId,
+        payload: {
+          finalMessageId: created.responseMessageId,
+          usage: { inputTokens: '[REDACTED]', outputTokens: '[REDACTED]', totalTokens: '[REDACTED]' },
+          cost: { amount: 0, currency: 'CNY' },
+          dataCutoff: null,
+          warnings: [],
+        },
+      },
+    })
+    await client!.aiAgentRun.update({
+      where: { id: created.id },
+      data: {
+        status: AiAgentRunStatus.COMPLETED,
+        statusVersion: claimed.statusVersion + 1,
+        resultSummary: {
+          workflowKey: workflowVersion.workflowKey,
+          workflowVersion: workflowVersion.version,
+          budget: { inputTokens: '[REDACTED]', outputTokens: '[REDACTED]' },
+        },
+        endedAt: new Date(),
+        leaseOwner: null,
+        leaseExpiresAt: null,
+        heartbeatAt: null,
+      },
+    })
+
+    const migration = readFileSync(
+      join(process.cwd(), 'prisma/migrations/20260720052000_align_agent_stream_event_payloads/migration.sql'),
+      'utf8',
+    )
+    await client!.$transaction(async (tx) => {
+      for (const statement of migration
+        .split(';')
+        .map((value) => value.trim())
+        .filter(Boolean)) {
+        await tx.$executeRawUnsafe(statement)
+      }
+    })
+
+    const snapshot = await events.getStreamRun(userA.id, created.id)
+    const repaired = await events.replay(userA.id, created.id, 0, 10)
+    expect(repaired.find((event) => event.eventType === 'agent.started')?.payload).toEqual({
+      workflowKey: workflowVersion.workflowKey,
+      workflowVersion: workflowVersion.version,
+      modelPolicy: created.modelPolicy,
+    })
+    expect(repaired.find((event) => event.eventType === 'agent.completed')?.payload).toMatchObject({
+      usage: { inputTokens: 12, outputTokens: 3, totalTokens: 15 },
+    })
+    expect(() => repaired.map((event) => toAgentSseEvent(event, snapshot))).not.toThrow()
+    await expect(client!.aiAgentRun.findUniqueOrThrow({ where: { id: created.id } })).resolves.toMatchObject({
+      resultSummary: { budget: { inputTokens: 12, outputTokens: 3 } },
+    })
+  })
+
   it('领取、Step、checkpoint、完成与 replay 构成可恢复闭环，终态后禁止迟到写入', async () => {
     const created = await runs.createRun(await makeRunCommand())
     const claimed = await runs.claimRun(created.id, 'worker-happy')
@@ -337,6 +535,9 @@ integrationDescribe('Agent Run/Step/Event Repository - 独立 PostgreSQL 集成�
     expect(queuedCancelled.status).toBe(AiAgentRunStatus.CANCELLED)
     expect(repeatedQueuedCancel.statusVersion).toBe(queuedCancelled.statusVersion)
     expect(await client!.aiRunEvent.count({ where: { runId: queued.id } })).toBe(2)
+    await expect(
+      client!.aiRunEvent.findFirstOrThrow({ where: { runId: queued.id, eventType: 'agent.cancelled' } }),
+    ).resolves.toMatchObject({ payload: { cancelledBy: 'USER', reason: '用户撤销' } })
 
     const running = await runs.createRun(await makeRunCommand())
     const claimed = await runs.claimRun(running.id, 'worker-cancel')
@@ -363,7 +564,7 @@ integrationDescribe('Agent Run/Step/Event Repository - 独立 PostgreSQL 集成�
       event: {
         eventType: 'agent.cancelled',
         traceId: running.traceId,
-        payload: { cancelledBy: userA.id, reason: '停止研究' },
+        payload: { cancelledBy: 'USER', reason: '停止研究' },
       },
     })
     expect(cancelled.status).toBe(AiAgentRunStatus.CANCELLED)
@@ -432,11 +633,12 @@ integrationDescribe('Agent Run/Step/Event Repository - 独立 PostgreSQL 集成�
 
     expect([AiAgentRunStatus.CANCEL_REQUESTED, AiAgentRunStatus.COMPLETED]).toContain(final.status)
     expect(final.statusVersion).toBe(3)
-    expect(storedEvents.map((event) => Number(event.sequence))).toEqual([1, 2, 3])
     if (final.status === AiAgentRunStatus.CANCEL_REQUESTED) {
-      expect(storedEvents.at(-1)?.eventType).toBe('run.cancel_requested')
+      expect(storedEvents.map((event) => Number(event.sequence))).toEqual([1, 2])
+      expect(storedEvents.some((event) => event.eventType === 'run.cancel_requested')).toBe(false)
       expect(storedEvents.some((event) => event.eventType === 'agent.completed')).toBe(false)
     } else {
+      expect(storedEvents.map((event) => Number(event.sequence))).toEqual([1, 2, 3])
       expect(storedEvents.at(-1)?.eventType).toBe('agent.completed')
     }
   })

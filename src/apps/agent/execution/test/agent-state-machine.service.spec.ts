@@ -82,7 +82,7 @@ describe('Agent execution 配置与 payload 边界', () => {
     expect(() => buildAgentExecutionConfig({ AGENT_MAX_COST_PER_RUN: 'Infinity' })).toThrow('AGENT_MAX_COST_PER_RUN')
   })
 
-  it('checkpoint/event payload 递归脱敏 secret 与 hidden reasoning，并固定 schemaVersion', () => {
+  it('checkpoint/event payload 递归脱敏 secret 与 hidden reasoning，并移除顶层保留字段 schemaVersion', () => {
     const checkpoint = sanitizeExecutionObject(
       {
         node: 'verify',
@@ -95,6 +95,9 @@ describe('Agent execution 配置与 payload 边界', () => {
     const event = sanitizeEventPayload({
       schemaVersion: '9.9',
       apiKey: 'private-key',
+      accessToken: 'private-token',
+      inputTokens: 12,
+      outputTokens: 3,
       result: { refId: 'citation_1' },
     })
     const snapshot = JSON.stringify({ checkpoint, event })
@@ -102,7 +105,10 @@ describe('Agent execution 配置与 payload 边界', () => {
     expect(snapshot).not.toContain('private-token')
     expect(snapshot).not.toContain('private chain of thought')
     expect(snapshot).not.toContain('private-key')
-    expect(event.schemaVersion).toBe('1.0')
+    expect(event.schemaVersion).toBeUndefined()
+    expect(event.inputTokens).toBe(12)
+    expect(event.outputTokens).toBe(3)
+    expect(event.accessToken).toBe('[REDACTED]')
   })
 
   it('非 object 或脱敏后仍超过 256KB 的 payload 在写库前拒绝', () => {

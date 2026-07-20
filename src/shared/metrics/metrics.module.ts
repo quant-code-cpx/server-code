@@ -17,6 +17,13 @@ import {
   BULLMQ_STALLED_JOBS_TOTAL,
   BULLMQ_ENQUEUE_LAG,
   AGENT_RUN_RECOVERY_TOTAL,
+  AGENT_SSE_ACTIVE_CONNECTIONS,
+  AGENT_SSE_CONNECTIONS_TOTAL,
+  AGENT_SSE_EVENTS_TOTAL,
+  AGENT_SSE_BYTES_TOTAL,
+  AGENT_SSE_DURATION,
+  AGENT_SSE_REPLAY_LAG,
+  AGENT_SSE_DISCONNECTS_TOTAL,
   PRISMA_QUERY_DURATION,
   PRISMA_QUERY_TOTAL,
   PRISMA_QUERY_DURATION_TOKEN,
@@ -97,6 +104,40 @@ import { HttpMetricsInterceptor } from './http-metrics.interceptor'
       help: 'Total number of Agent Run reconciliation outcomes',
       labelNames: ['result'],
     }),
+    makeGaugeProvider({
+      name: AGENT_SSE_ACTIVE_CONNECTIONS,
+      help: 'Number of active Agent POST-SSE connections',
+    }),
+    makeCounterProvider({
+      name: AGENT_SSE_CONNECTIONS_TOTAL,
+      help: 'Total number of Agent POST-SSE connection attempts',
+      labelNames: ['result'],
+    }),
+    makeCounterProvider({
+      name: AGENT_SSE_EVENTS_TOTAL,
+      help: 'Total number of Agent SSE events sent',
+      labelNames: ['phase'],
+    }),
+    makeCounterProvider({
+      name: AGENT_SSE_BYTES_TOTAL,
+      help: 'Total number of Agent SSE bytes queued for clients',
+    }),
+    makeHistogramProvider({
+      name: AGENT_SSE_DURATION,
+      help: 'Agent POST-SSE connection duration in seconds',
+      labelNames: ['reason'],
+      buckets: [0.1, 0.5, 1, 5, 15, 30, 60, 180, 300, 900],
+    }),
+    makeHistogramProvider({
+      name: AGENT_SSE_REPLAY_LAG,
+      help: 'Number of committed Agent events behind at connection time',
+      buckets: [0, 1, 2, 5, 10, 25, 50, 100, 250, 500, 1000],
+    }),
+    makeCounterProvider({
+      name: AGENT_SSE_DISCONNECTS_TOTAL,
+      help: 'Total number of Agent POST-SSE connection terminations',
+      labelNames: ['reason'],
+    }),
 
     // ── Prisma 查询指标 ──
     makeHistogramProvider({
@@ -165,6 +206,13 @@ import { HttpMetricsInterceptor } from './http-metrics.interceptor'
     getToken(BULLMQ_STALLED_JOBS_TOTAL),
     getToken(BULLMQ_ENQUEUE_LAG),
     getToken(AGENT_RUN_RECOVERY_TOTAL),
+    getToken(AGENT_SSE_ACTIVE_CONNECTIONS),
+    getToken(AGENT_SSE_CONNECTIONS_TOTAL),
+    getToken(AGENT_SSE_EVENTS_TOTAL),
+    getToken(AGENT_SSE_BYTES_TOTAL),
+    getToken(AGENT_SSE_DURATION),
+    getToken(AGENT_SSE_REPLAY_LAG),
+    getToken(AGENT_SSE_DISCONNECTS_TOTAL),
     getToken(PRISMA_QUERY_DURATION),
     getToken(PRISMA_QUERY_TOTAL),
     PRISMA_QUERY_DURATION_TOKEN,

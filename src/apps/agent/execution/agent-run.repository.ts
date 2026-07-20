@@ -5,7 +5,6 @@ import {
   AiMessageRole,
   AiMessageStatus,
   AiModelPolicy,
-  AiRunEventVisibility,
   Prisma,
   type AiAgentRun,
   type AiAgentStep,
@@ -196,11 +195,16 @@ export class AgentRunRepository {
       }
 
       if (locked.run.status === AiAgentRunStatus.QUEUED) {
+        const workflowVersion = await tx.aiWorkflowVersion.findUniqueOrThrow({
+          where: { id: locked.run.workflowVersionId },
+          select: { workflowKey: true, version: true },
+        })
         await this.events.appendInTransaction(tx, locked.run, {
           eventType: 'agent.started',
           traceId: locked.run.traceId,
           payload: {
-            workflowVersionId: locked.run.workflowVersionId,
+            workflowKey: workflowVersion.workflowKey,
+            workflowVersion: workflowVersion.version,
             modelPolicy: locked.run.modelPolicy,
           },
         })
@@ -323,7 +327,7 @@ export class AgentRunRepository {
         await this.events.appendInTransaction(tx, locked.run, {
           eventType: 'agent.cancelled',
           traceId: locked.run.traceId,
-          payload: { cancelledBy: command.userId, reason },
+          payload: { cancelledBy: 'USER', reason },
         })
         return tx.aiAgentRun.update({
           where: { id },
@@ -339,12 +343,6 @@ export class AgentRunRepository {
       }
 
       this.stateMachine.assertRunTransition(locked.run.status, AiAgentRunStatus.CANCEL_REQUESTED)
-      await this.events.appendInTransaction(tx, locked.run, {
-        eventType: 'run.cancel_requested',
-        traceId: locked.run.traceId,
-        visibility: AiRunEventVisibility.INTERNAL,
-        payload: { requestedBy: command.userId, reason },
-      })
       return tx.aiAgentRun.update({
         where: { id },
         data: {

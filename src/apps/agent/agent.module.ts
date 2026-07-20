@@ -4,6 +4,7 @@ import { AgentToolsConfig } from 'src/config/agent-tools.config'
 import type { IAgentToolsConfig } from 'src/config/agent-tools.config'
 import { AgentExecutionConfig } from 'src/config/agent-execution.config'
 import { AgentApiConfig } from 'src/config/agent-api.config'
+import { AgentStreamConfig } from 'src/config/agent-stream.config'
 import { AgentQueueProducerModule } from 'src/queue/agent/agent-queue-producer.module'
 import { StockModule } from 'src/apps/stock/stock.module'
 import { MarketModule } from 'src/apps/market/market.module'
@@ -64,12 +65,16 @@ import { AgentRestReadRepository } from './api/agent-rest-read.repository'
 import { AgentConversationService } from './application/agent-conversation.service'
 import { AgentRunService } from './application/agent-run.service'
 import { AgentInteractionRepository } from './application/agent-interaction.repository'
+import { AgentStreamController } from './api/agent-stream.controller'
+import { AgentStreamMetricsService } from './streaming/agent-stream-metrics.service'
+import { AgentStreamService } from './streaming/agent-stream.service'
 
 @Module({
   imports: [
     ConfigModule.forFeature(AgentToolsConfig),
     ConfigModule.forFeature(AgentExecutionConfig),
     ConfigModule.forFeature(AgentApiConfig),
+    ConfigModule.forFeature(AgentStreamConfig),
     AgentQueueProducerModule,
     ModelGatewayModule,
     AgentExecutionModule,
@@ -82,7 +87,7 @@ import { AgentInteractionRepository } from './application/agent-interaction.repo
     PortfolioModule,
     BacktestModule,
   ],
-  controllers: [AgentController],
+  controllers: [AgentController, AgentStreamController],
   providers: [
     AgentConversationRepository,
     AgentMessageRepository,
@@ -92,6 +97,8 @@ import { AgentInteractionRepository } from './application/agent-interaction.repo
     AgentRunService,
     AgentStrictBodyGuard,
     AgentErrorInterceptor,
+    AgentStreamMetricsService,
+    AgentStreamService,
     ToolSchemaValidator,
     ToolRegistryService,
     ToolPolicyService,

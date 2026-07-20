@@ -19,6 +19,19 @@ export interface LockedAgentRun {
   deadlineExpired: boolean
 }
 
+export interface AgentStreamRunSnapshot {
+  id: string
+  conversationId: string
+  responseMessageId: string | null
+  status: AiAgentRunStatus
+  latestEventSequence: bigint
+}
+
+export interface AgentStreamBatch {
+  run: AgentStreamRunSnapshot
+  events: AiRunEvent[]
+}
+
 type EventRunCounter = Pick<AiAgentRun, 'id' | 'nextEventSequence' | 'status'>
 
 const TERMINAL_RUN_STATUSES = [AiAgentRunStatus.COMPLETED, AiAgentRunStatus.FAILED, AiAgentRunStatus.CANCELLED] as const
@@ -52,26 +65,69 @@ export class AgentEventRepository {
     runId: string,
     afterSequence: number | bigint = 0,
     limit = this.config.replayLimit,
+    throughSequence?: number | bigint,
   ): Promise<AiRunEvent[]> {
     const startedAt = Date.now()
+    const batch = await this.readStreamBatch(userId, runId, afterSequence, limit, throughSequence)
+    this.logOperation('replay', startedAt, batch.events.length)
+    return batch.events
+  }
+
+  async getStreamRun(userId: number, runId: string): Promise<AgentStreamRunSnapshot> {
+    requirePositiveInteger(userId, 'userId')
+    const normalizedRunId = requireText(runId, 'runId', 32)
+    const run = await this.prisma.aiAgentRun.findFirst({
+      where: { id: normalizedRunId, userId },
+      select: {
+        id: true,
+        conversationId: true,
+        responseMessageId: true,
+        status: true,
+        nextEventSequence: true,
+      },
+    })
+    if (!run) throw new AgentRunNotFoundError()
+    return toStreamRunSnapshot(run)
+  }
+
+  async resolveStreamCursor(userId: number, runId: string, eventId: string): Promise<bigint | null> {
+    const run = await this.getStreamRun(userId, runId)
+    const normalizedEventId = requireText(eventId, 'Last-Event-ID', 32)
+    const event = await this.prisma.aiRunEvent.findFirst({
+      where: {
+        runId: run.id,
+        publicId: normalizedEventId,
+        visibility: AiRunEventVisibility.USER,
+      },
+      select: { sequence: true },
+    })
+    return event?.sequence ?? null
+  }
+
+  async readStreamBatch(
+    userId: number,
+    runId: string,
+    afterSequence: number | bigint,
+    limit = this.config.replayLimit,
+    throughSequence?: number | bigint,
+  ): Promise<AgentStreamBatch> {
     requirePositiveInteger(userId, 'userId')
     const normalizedRunId = requireText(runId, 'runId', 32)
     const cursor = normalizeSequence(afterSequence)
+    const through = throughSequence == null ? null : normalizeSequence(throughSequence)
     requirePositiveInteger(limit, 'limit', this.config.replayLimit)
 
-    const run = await this.prisma.aiAgentRun.findFirst({ where: { id: normalizedRunId, userId }, select: { id: true } })
-    if (!run) throw new AgentRunNotFoundError()
+    const run = await this.getStreamRun(userId, normalizedRunId)
     const events = await this.prisma.aiRunEvent.findMany({
       where: {
         runId: normalizedRunId,
-        sequence: { gt: cursor },
+        sequence: { gt: cursor, ...(through == null ? {} : { lte: through }) },
         visibility: AiRunEventVisibility.USER,
       },
       orderBy: { sequence: 'asc' },
       take: limit,
     })
-    this.logOperation('replay', startedAt, events.length)
-    return events
+    return { run, events }
   }
 
   async lockRun(tx: Prisma.TransactionClient, runId: string): Promise<LockedAgentRun> {
@@ -134,6 +190,22 @@ export class AgentEventRepository {
 
   private logOperation(operation: string, startedAt: number, rowCount: number): void {
     this.logger.log({ operation, durationMs: Date.now() - startedAt, rowCount }, AgentEventRepository.name)
+  }
+}
+
+function toStreamRunSnapshot(run: {
+  id: string
+  conversationId: string
+  responseMessageId: string | null
+  status: AiAgentRunStatus
+  nextEventSequence: bigint
+}): AgentStreamRunSnapshot {
+  return {
+    id: run.id,
+    conversationId: run.conversationId,
+    responseMessageId: run.responseMessageId,
+    status: run.status,
+    latestEventSequence: run.nextEventSequence - 1n,
   }
 }
 

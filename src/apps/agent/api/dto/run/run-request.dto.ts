@@ -12,6 +12,7 @@ import {
   IsString,
   IsUUID,
   Matches,
+  Max,
   MaxLength,
   Min,
   MinLength,
@@ -78,6 +79,14 @@ export class AgentRunStatusDto {
   @IsString()
   @Matches(AGENT_ID_PATTERN)
   runId: string
+}
+
+export class AgentRunEventsDto extends AgentRunStatusDto {
+  @ApiProperty({ minimum: 0, maximum: Number.MAX_SAFE_INTEGER })
+  @IsInt()
+  @Min(0)
+  @Max(Number.MAX_SAFE_INTEGER)
+  afterSequence: number
 }
 
 export class CancelAgentRunDto extends AgentRunStatusDto {

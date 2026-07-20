@@ -31,6 +31,20 @@ export class GlobalExceptionsFilter implements ExceptionFilter {
     let data = responseBody?.data
     let message = this.resolveMessage(exception, responseBody)
 
+    if (response.headersSent) {
+      this.loggerService.error(
+        {
+          message: exception instanceof Error ? exception.message : String(exception ?? 'unknown'),
+          traceId: RequestContextService.getTraceId(),
+          path: url,
+        },
+        exception instanceof Error ? exception.stack : undefined,
+        'GlobalExceptionsFilter',
+      )
+      if (!response.writableEnded) response.end()
+      return
+    }
+
     if (status === HttpStatus.INTERNAL_SERVER_ERROR && !(exception instanceof BusinessException)) {
       const traceId = RequestContextService.getTraceId()
       this.loggerService.error(

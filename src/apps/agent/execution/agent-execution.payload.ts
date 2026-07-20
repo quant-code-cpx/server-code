@@ -24,7 +24,8 @@ export function sanitizeExecutionObject(
 
 export function sanitizeEventPayload(value: unknown): Record<string, unknown> {
   const payload = sanitizeExecutionObject(value, 'event payload', MAX_AGENT_EVENT_PAYLOAD_BYTES)
-  const normalized = { ...payload, schemaVersion: '1.0' }
+  const normalized = { ...payload }
+  delete normalized.schemaVersion
   assertPayloadSize(normalized, 'event payload', MAX_AGENT_EVENT_PAYLOAD_BYTES)
   return normalized
 }

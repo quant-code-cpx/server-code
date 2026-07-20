@@ -40,6 +40,14 @@ const FORBIDDEN_PROMPT_KEYS = new Set([
   'messages',
 ])
 const SENSITIVE_QUERY_PARTS = [...SENSITIVE_KEY_PARTS, 'signature', 'session', 'accesskey', 'clientkey']
+const SAFE_TOKEN_USAGE_KEYS = new Set([
+  'inputtokens',
+  'outputtokens',
+  'totaltokens',
+  'cachedtokens',
+  'reasoningtokens',
+  'tokencount',
+])
 
 export function sanitizeAuditPayload(value: unknown, options: AuditSanitizerOptions = {}): AuditJsonValue {
   const maxDepth = options.maxDepth ?? DEFAULT_MAX_DEPTH
@@ -140,6 +148,7 @@ function normalizeKey(key: string): string {
 
 function isSensitiveKey(key: string): boolean {
   const normalized = normalizeKey(key)
+  if (SAFE_TOKEN_USAGE_KEYS.has(normalized)) return false
   return FORBIDDEN_PROMPT_KEYS.has(normalized) || SENSITIVE_KEY_PARTS.some((part) => normalized.includes(part))
 }
 

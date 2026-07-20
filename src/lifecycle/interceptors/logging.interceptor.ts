@@ -1,5 +1,6 @@
 import { CallHandler, ExecutionContext, Injectable, NestInterceptor } from '@nestjs/common'
 import { Observable, tap } from 'rxjs'
+import { RAW_STREAM_RESPONSE_KEY } from 'src/common/decorators/raw-stream-response.decorator'
 import { RequestContextService } from 'src/shared/context/request-context.service'
 import { LoggerService } from 'src/shared/logger/logger.service'
 
@@ -47,6 +48,51 @@ export class LoggingInterceptor implements NestInterceptor {
 
     const start = Date.now()
 
+    if (isRawStream(context)) {
+      const requestContext = RequestContextService.getCurrentContext()
+      let recorded = false
+      const record = (error?: unknown) => {
+        if (recorded) return
+        recorded = true
+        response.removeListener?.('finish', onFinish)
+        response.removeListener?.('close', onClose)
+        const latency = Date.now() - start
+        if (error) {
+          this.loggerService.warn(
+            {
+              message: `${method} ${url} ERROR ${latency}ms`,
+              latency,
+              ip,
+              userAgent,
+              traceId: requestContext?.traceId,
+              userId: requestContext?.userId,
+              error: error instanceof Error ? error.message : String(error),
+            },
+            'HTTP',
+          )
+          return
+        }
+        const statusCode = response.statusCode
+        this.loggerService.log(
+          {
+            message: `${method} ${url} ${statusCode} ${latency}ms`,
+            latency,
+            statusCode,
+            ip,
+            userAgent,
+            traceId: requestContext?.traceId,
+            userId: requestContext?.userId,
+          },
+          'HTTP',
+        )
+      }
+      const onFinish = () => record()
+      const onClose = () => record()
+      response.once?.('finish', onFinish)
+      response.once?.('close', onClose)
+      return next.handle().pipe(tap({ error: (error) => record(error) }))
+    }
+
     return next.handle().pipe(
       tap({
         next: () => {
@@ -90,4 +136,13 @@ export class LoggingInterceptor implements NestInterceptor {
       }),
     )
   }
+}
+
+function isRawStream(context: ExecutionContext): boolean {
+  const handler = context.getHandler?.()
+  const controller = context.getClass?.()
+  return (
+    Boolean(handler && Reflect.getMetadata(RAW_STREAM_RESPONSE_KEY, handler)) ||
+    Boolean(controller && Reflect.getMetadata(RAW_STREAM_RESPONSE_KEY, controller))
+  )
 }

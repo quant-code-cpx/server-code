@@ -1,5 +1,7 @@
 import { ExecutionContext } from '@nestjs/common'
+import { EventEmitter } from 'node:events'
 import { firstValueFrom } from 'rxjs'
+import { RAW_STREAM_RESPONSE_KEY } from 'src/common/decorators/raw-stream-response.decorator'
 import { HttpMetricsInterceptor } from '../http-metrics.interceptor'
 import { makeCallHandler, makeCallHandlerWithError } from 'test/helpers/call-handler'
 
@@ -13,7 +15,10 @@ function makeMetrics() {
   return { durationHistogram, requestCounter, errorCounter, endTimer }
 }
 
-function makeInterceptor(metrics = makeMetrics()): { interceptor: HttpMetricsInterceptor; metrics: ReturnType<typeof makeMetrics> } {
+function makeInterceptor(metrics = makeMetrics()): {
+  interceptor: HttpMetricsInterceptor
+  metrics: ReturnType<typeof makeMetrics>
+} {
   const interceptor = new HttpMetricsInterceptor(
     metrics.durationHistogram as never,
     metrics.requestCounter as never,
@@ -22,12 +27,14 @@ function makeInterceptor(metrics = makeMetrics()): { interceptor: HttpMetricsInt
   return { interceptor, metrics }
 }
 
-function makeContext(overrides: {
-  method?: string
-  url?: string
-  statusCode?: number
-  route?: { path: string } | undefined
-} = {}): ExecutionContext {
+function makeContext(
+  overrides: {
+    method?: string
+    url?: string
+    statusCode?: number
+    route?: { path: string } | undefined
+  } = {},
+): ExecutionContext {
   const { method = 'POST', url = '/api/test', statusCode = 200 } = overrides
   const hasRoute = 'route' in overrides
   const request: Record<string, unknown> = { method, url }
@@ -75,9 +82,7 @@ describe('HttpMetricsInterceptor', () => {
 
       await firstValueFrom(interceptor.intercept(ctx, makeCallHandler({})))
 
-      expect(metrics.endTimer).toHaveBeenCalledWith(
-        expect.objectContaining({ status_code: '200' }),
-      )
+      expect(metrics.endTimer).toHaveBeenCalledWith(expect.objectContaining({ status_code: '200' }))
     })
 
     it('[BIZ] 4xx 错误响应 → 同时记录 requestCounter + errorCounter', async () => {
@@ -86,13 +91,29 @@ describe('HttpMetricsInterceptor', () => {
 
       await firstValueFrom(interceptor.intercept(ctx, makeCallHandler({})))
 
-      expect(metrics.requestCounter.inc).toHaveBeenCalledWith(
-        expect.objectContaining({ status_code: '400' }),
-      )
-      expect(metrics.errorCounter.inc).toHaveBeenCalledWith(
-        expect.objectContaining({ status_code: '400' }),
-      )
+      expect(metrics.requestCounter.inc).toHaveBeenCalledWith(expect.objectContaining({ status_code: '400' }))
+      expect(metrics.errorCounter.inc).toHaveBeenCalledWith(expect.objectContaining({ status_code: '400' }))
     })
+  })
+
+  it('raw stream 直到 response finish 才结算 HTTP latency', async () => {
+    const { interceptor, metrics } = makeInterceptor()
+    const handler = () => undefined
+    Reflect.defineMetadata(RAW_STREAM_RESPONSE_KEY, true, handler)
+    const response = Object.assign(new EventEmitter(), { statusCode: 200 })
+    const request = { method: 'POST', url: '/api/agent/runs/events', route: { path: 'runs/events' } }
+    const context = {
+      getHandler: () => handler,
+      getClass: () => class AgentStreamController {},
+      switchToHttp: () => ({ getRequest: () => request, getResponse: () => response }),
+    } as unknown as ExecutionContext
+
+    await firstValueFrom(interceptor.intercept(context, makeCallHandler(undefined)))
+    expect(metrics.endTimer).not.toHaveBeenCalled()
+
+    response.emit('finish')
+    expect(metrics.endTimer).toHaveBeenCalledWith(expect.objectContaining({ status_code: '200' }))
+    expect(metrics.requestCounter.inc).toHaveBeenCalledTimes(1)
   })
 
   describe('[ERR] 异常路径计量', () => {
@@ -103,12 +124,8 @@ describe('HttpMetricsInterceptor', () => {
 
       await expect(firstValueFrom(interceptor.intercept(ctx, makeCallHandlerWithError(error)))).rejects.toEqual(error)
 
-      expect(metrics.requestCounter.inc).toHaveBeenCalledWith(
-        expect.objectContaining({ status_code: '500' }),
-      )
-      expect(metrics.errorCounter.inc).toHaveBeenCalledWith(
-        expect.objectContaining({ status_code: '500' }),
-      )
+      expect(metrics.requestCounter.inc).toHaveBeenCalledWith(expect.objectContaining({ status_code: '500' }))
+      expect(metrics.errorCounter.inc).toHaveBeenCalledWith(expect.objectContaining({ status_code: '500' }))
     })
 
     it('[ERR] 抛出无 status 字段的 Error → 默认 status_code = "500"', async () => {
@@ -119,9 +136,7 @@ describe('HttpMetricsInterceptor', () => {
         firstValueFrom(interceptor.intercept(ctx, makeCallHandlerWithError(new Error('boom')))),
       ).rejects.toThrow('boom')
 
-      expect(metrics.errorCounter.inc).toHaveBeenCalledWith(
-        expect.objectContaining({ status_code: '500' }),
-      )
+      expect(metrics.errorCounter.inc).toHaveBeenCalledWith(expect.objectContaining({ status_code: '500' }))
     })
   })
 
@@ -161,9 +176,7 @@ describe('HttpMetricsInterceptor', () => {
       await firstValueFrom(interceptor.intercept(ctx, makeCallHandler({})))
 
       // 修复后行为：route label = 'UNKNOWN'，不包含动态 ID
-      expect(metrics.durationHistogram.startTimer).toHaveBeenCalledWith(
-        expect.objectContaining({ route: 'UNKNOWN' }),
-      )
+      expect(metrics.durationHistogram.startTimer).toHaveBeenCalledWith(expect.objectContaining({ route: 'UNKNOWN' }))
     })
 
     it('[BIZ] request.route.path 存在时使用路由模式而非真实 URL', async () => {

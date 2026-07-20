@@ -2,6 +2,7 @@ import { CallHandler, ExecutionContext, Injectable, NestInterceptor } from '@nes
 import { InjectMetric } from '@willsoto/nestjs-prometheus'
 import { Counter, Histogram } from 'prom-client'
 import { Observable, tap } from 'rxjs'
+import { RAW_STREAM_RESPONSE_KEY } from 'src/common/decorators/raw-stream-response.decorator'
 import { HTTP_REQUEST_DURATION, HTTP_REQUEST_TOTAL, HTTP_REQUEST_ERRORS } from './metrics.constants'
 
 /** 健康检查等不需要计量的路径 */
@@ -25,6 +26,30 @@ export class HttpMetricsInterceptor implements NestInterceptor {
 
     const route = this.extractRoute(context)
     const endTimer = this.durationHistogram.startTimer({ method, route })
+
+    if (isRawStream(context)) {
+      const response = context.switchToHttp().getResponse()
+      let recorded = false
+      const record = (statusCode: number) => {
+        if (recorded) return
+        recorded = true
+        response.removeListener?.('finish', onFinish)
+        response.removeListener?.('close', onClose)
+        const labels = { method, route, status_code: String(statusCode) }
+        endTimer(labels)
+        this.requestCounter.inc(labels)
+        if (statusCode >= 400) this.errorCounter.inc(labels)
+      }
+      const onFinish = () => record(response.statusCode)
+      const onClose = () => record(response.statusCode)
+      response.once?.('finish', onFinish)
+      response.once?.('close', onClose)
+      return next.handle().pipe(
+        tap({
+          error: (error: { status?: number }) => record(error?.status ?? 500),
+        }),
+      )
+    }
 
     return next.handle().pipe(
       tap({
@@ -56,4 +81,13 @@ export class HttpMetricsInterceptor implements NestInterceptor {
     const request = context.switchToHttp().getRequest()
     return (request.route?.path as string) || 'UNKNOWN'
   }
+}
+
+function isRawStream(context: ExecutionContext): boolean {
+  const handler = context.getHandler?.()
+  const controller = context.getClass?.()
+  return (
+    Boolean(handler && Reflect.getMetadata(RAW_STREAM_RESPONSE_KEY, handler)) ||
+    Boolean(controller && Reflect.getMetadata(RAW_STREAM_RESPONSE_KEY, controller))
+  )
 }

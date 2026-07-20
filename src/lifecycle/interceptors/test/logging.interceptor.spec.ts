@@ -1,5 +1,7 @@
 import { ExecutionContext } from '@nestjs/common'
+import { EventEmitter } from 'node:events'
 import { firstValueFrom } from 'rxjs'
+import { RAW_STREAM_RESPONSE_KEY } from 'src/common/decorators/raw-stream-response.decorator'
 import { LoggingInterceptor } from '../logging.interceptor'
 import { LoggerService } from 'src/shared/logger/logger.service'
 import { RequestContextService } from 'src/shared/context/request-context.service'
@@ -16,15 +18,24 @@ function makeLogger() {
   } as unknown as jest.Mocked<LoggerService>
 }
 
-function makeContext(overrides: {
-  method?: string
-  url?: string
-  ip?: string
-  body?: Record<string, unknown>
-  userAgent?: string
-  statusCode?: number
-} = {}): ExecutionContext {
-  const { method = 'POST', url = '/api/test', ip = '127.0.0.1', body = {}, userAgent = 'jest', statusCode = 200 } = overrides
+function makeContext(
+  overrides: {
+    method?: string
+    url?: string
+    ip?: string
+    body?: Record<string, unknown>
+    userAgent?: string
+    statusCode?: number
+  } = {},
+): ExecutionContext {
+  const {
+    method = 'POST',
+    url = '/api/test',
+    ip = '127.0.0.1',
+    body = {},
+    userAgent = 'jest',
+    statusCode = 200,
+  } = overrides
   const request = {
     method,
     url,
@@ -43,6 +54,35 @@ function makeContext(overrides: {
 
 describe('LoggingInterceptor', () => {
   afterEach(() => jest.clearAllMocks())
+
+  it('raw stream 直到 response close 才记录完成日志', async () => {
+    const logger = makeLogger()
+    const interceptor = new LoggingInterceptor(logger)
+    const handler = () => undefined
+    Reflect.defineMetadata(RAW_STREAM_RESPONSE_KEY, true, handler)
+    const response = Object.assign(new EventEmitter(), { statusCode: 200 })
+    const request = {
+      method: 'POST',
+      url: '/api/agent/runs/events',
+      ip: '127.0.0.1',
+      body: { runId: 'run_fixture', afterSequence: 0 },
+      get: jest.fn().mockReturnValue('jest'),
+    }
+    const context = {
+      getHandler: () => handler,
+      getClass: () => class AgentStreamController {},
+      switchToHttp: () => ({ getRequest: () => request, getResponse: () => response }),
+    } as unknown as ExecutionContext
+
+    await firstValueFrom(interceptor.intercept(context, makeCallHandler(undefined)))
+    expect(logger.log).not.toHaveBeenCalled()
+
+    response.emit('close')
+    expect(logger.log).toHaveBeenCalledWith(
+      expect.objectContaining({ message: expect.stringContaining('POST /api/agent/runs/events 200') }),
+      'HTTP',
+    )
+  })
 
   // ── sanitizeBody 行为（通过 interceptor 间接测试） ─────────────────────────
 
@@ -187,16 +227,15 @@ describe('LoggingInterceptor', () => {
       const ctx = makeContext({ url: '/api/test' })
       const boom = new Error('downstream error')
 
-      await expect(
-        firstValueFrom(interceptor.intercept(ctx, makeCallHandlerWithError(boom))),
-      ).rejects.toThrow('downstream error')
+      await expect(firstValueFrom(interceptor.intercept(ctx, makeCallHandlerWithError(boom)))).rejects.toThrow(
+        'downstream error',
+      )
 
       expect(logger.warn).toHaveBeenCalledTimes(1)
       const warnArg = logger.warn.mock.calls[0][0] as Record<string, unknown>
       expect(warnArg.error).toBe('downstream error')
-      expect((warnArg.message as string)).toContain('ERROR')
+      expect(warnArg.message as string).toContain('ERROR')
       expect(logger.log).not.toHaveBeenCalled()
     })
   })
-
 })

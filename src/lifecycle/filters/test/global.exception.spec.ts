@@ -34,6 +34,25 @@ function createFilter(isDev = false): GlobalExceptionsFilter {
 }
 
 describe('GlobalExceptionsFilter', () => {
+  it('raw stream 已发送 headers 后不再写 JSON，只安全结束响应', () => {
+    const filter = createFilter()
+    const end = jest.fn()
+    const response = {
+      headersSent: true,
+      writableEnded: false,
+      end,
+      status: jest.fn().mockReturnThis(),
+      json: jest.fn(),
+    }
+    const host = {
+      switchToHttp: () => ({ getRequest: () => ({ url: '/api/agent/runs/events' }), getResponse: () => response }),
+    } as unknown as ArgumentsHost
+
+    expect(() => filter.catch(new Error('stream failed'), host)).not.toThrow()
+    expect(response.json).not.toHaveBeenCalled()
+    expect(end).toHaveBeenCalledTimes(1)
+  })
+
   it('handles HttpException with status 400', () => {
     const filter = createFilter()
     const { host, mockResponse } = makeHost()
@@ -218,4 +237,3 @@ describe('GlobalExceptionsFilter', () => {
     expect(mockResponse.status).toHaveBeenCalledWith(500)
   })
 })
-

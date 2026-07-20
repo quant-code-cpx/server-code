@@ -28,7 +28,13 @@ export function ApiSuccessResponse<TModel extends Type<unknown>>(
   )
 }
 
-export function ApiSuccessRawResponse(dataSchema: Record<string, unknown>, options?: { description?: string }) {
+export function ApiSuccessRawResponse(
+  dataSchema: Record<string, unknown>,
+  options?: { description?: string; rawResponse?: boolean },
+) {
+  if (options?.rawResponse) {
+    return applyDecorators(ApiOkResponse({ description: options.description, schema: dataSchema }))
+  }
   return applyDecorators(
     ApiExtraModels(ResponseModel),
     ApiOkResponse({

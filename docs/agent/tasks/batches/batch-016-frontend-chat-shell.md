@@ -1,6 +1,6 @@
 ---
 batch: 16
-status: pending
+status: completed
 type: frontend
 depends_on: ["batch-015-frontend-stream-client-and-contracts"]
 blocks: ["batch-017-frontend-rich-response-blocks", "batch-018-mvp-e2e-and-model-regression"]
@@ -190,6 +190,18 @@ estimated_scope: large
 ## 24. 完成定义
 
 路由、导航、Provider/reducer/hooks、聊天壳组件、草稿、虚拟列表、基础错误恢复、单元/组件/Playwright 测试全部合入；Batch 017 可通过 BlockRenderer 替换基础消息正文。
+
+当前进度（2026-07-20）：
+
+- 已在 `../client-code` 完成 `/agent`、`/agent/:conversationId`、默认关闭的 `VITE_AGENT_ENABLED` route/nav 双门禁和 Agent 路由级 Provider。
+- reducer 使用 `byId + orderedIds`，完成乐观身份原位替换、请求/连接 generation、sequence 去重、终态与取消竞态保护。
+- 已完成首次发送建会话、POST-SSE 流、状态/消息权威快照恢复、显式取消、重新生成、模型偏好与页面切换仅断 reader。
+- 已完成桌面侧栏/移动 Drawer、`react-virtuoso` 消息区、纯文本安全消息、Run 状态栏和 IME/草稿 Composer。
+- 草稿按用户与会话写入版本化 `sessionStorage`；登出、401 与跨标签登出均清理 Agent 草稿。
+- Socket Context 只增加 `agent_run_updated` 失效入口，不把 WebSocket payload 当消息正文。
+- Agent 定向测试 86/86、Playwright 2/2、契约漂移检查、ESLint、TypeScript 与 production build 通过；全量 Vitest 489/491，剩余 2 项为已登记旧债。
+- 桌面与 `390×844` 浏览器验收通过，无横向溢出或 console error/warn。
+- 前端测试方案与报告：`docs/testing/Agent会话壳-测试方案.md`、`docs/testing/reports/Agent会话壳-round1-2026-07-20.md`。
 
 ## 25. 回滚方案
 

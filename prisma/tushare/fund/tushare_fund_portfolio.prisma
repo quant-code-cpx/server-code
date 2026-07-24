@@ -3,15 +3,15 @@
 // 用于机构持仓因子构建和"跟踪明星基金经理"策略。
 
 model FundPortfolio {
-  tsCode       String   @map("ts_code")        @db.VarChar(16)
-  annDate      DateTime @map("ann_date")        @db.Date
-  endDate      DateTime @map("end_date")        @db.Date
-  symbol       String                           @db.VarChar(16)
-  mkv          Float?                               // 持有股票市値（元）
-  amount       Float?                               // 持有股票数量（股）
-  stkMkvRatio  Float?   @map("stk_mkv_ratio")
-  stkFloatRatio Float?  @map("stk_float_ratio")
-  syncedAt     DateTime @default(now())         @map("synced_at")
+  tsCode        String   @map("ts_code") @db.VarChar(16)
+  annDate       DateTime @map("ann_date") @db.Date
+  endDate       DateTime @map("end_date") @db.Date
+  symbol        String   @db.VarChar(16)
+  mkv           Float? // 持有股票市値（元）
+  amount        Float? // 持有股票数量（股）
+  stkMkvRatio   Float?   @map("stk_mkv_ratio")
+  stkFloatRatio Float?   @map("stk_float_ratio")
+  syncedAt      DateTime @default(now()) @map("synced_at")
 
   @@id([tsCode, endDate, symbol])
   @@index([endDate])

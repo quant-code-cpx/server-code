@@ -1,6 +1,6 @@
 ---
 batch: 25
-status: pending
+status: completed
 type: backend
 depends_on: ["batch-004-model-gateway-foundation", "batch-005-run-state-and-event-store", "batch-006-tool-registry-and-policy", "batch-010-web-search-and-citations", "batch-012-agent-bullmq-worker", "batch-014-post-sse-stream-and-replay", "batch-018-mvp-e2e-and-model-regression"]
 blocks: ["batch-026-security-hardening-and-production-deployment", "batch-027-vector-retrieval-pilot", "batch-028-controlled-sql-explorer"]
@@ -142,6 +142,27 @@ estimated_scope: large
 ## 24. 完成定义
 
 指标字典、代码埋点、OTel、成本、评测表/runner、dashboard/alerts、测试和 runbook 合入。
+
+## 24.1 实施记录（2026-07-22）
+
+- `MetricsModule` 注册 Run、Workflow node、Model attempt/latency/TTFT/token/cost、Tool attempt/latency/result bytes/data age 和 metadata trace 指标；label 只使用 workflow、provider、model、purpose、tool、status 等受控枚举，不使用用户、Run、trace、URL 或错误正文。
+- `AgentTracingService` 为 workflow 与 node 记录 metadata-only span 日志和 `agent_trace_spans_total`；保留 traceId/runId 供结构化日志关联，不记录 Prompt、模型正文、Tool payload、密钥或持仓。
+- `AgentCostService` 优先使用 provider 报价；缺失时报版本化 price catalog；两者均不可用时返回 `unknown`，不伪造 0 成本。每个 Model attempt 独立审计与计量。
+- 新增 `AiEvaluationRun/AiEvaluationResult`、fake `mvp` 版本化数据集和 `eval:agent` runner。管理员只能通过 `run/status/detail` 读取版本、门禁和受控 evidence summary。
+- Prometheus 加载 `agent-alerts.yml` 的 9 条 Agent 告警规则；Grafana provision `Agent Overview` dashboard。运行、告警与评测操作见 [智能体可观测性运行手册](../../backend/智能体可观测性-运行手册.md)。
+- 发现并修复 `ToolExecutionObserver` 裸调用丢失实例 `this` 的问题；该问题会被隔离为 observer failure，导致 Tool 指标静默缺失。执行器现以 observer 实例为 receiver 调用，并增加有状态 observer 回归用例。
+
+### 已执行验证
+
+- `pnpm exec jest src/apps/agent/observability/test/agent-observability.spec.ts --runInBand`
+- `pnpm exec jest src/apps/agent/tools/test/tool-executor.service.spec.ts --runInBand`
+- `pnpm run eval:agent -- --provider=fake --suite=mvp`
+- `pnpm run test:agent:e2e`
+- `promtool check rules monitoring/prometheus/agent-alerts.yml`
+- Docker `app`、`agent-worker`、PostgreSQL、Redis、Prometheus、Grafana 健康检查，`/health`、`/metrics` 与 Grafana HTTP 探测。
+- `pnpm prisma migrate status`、`pnpm run build`、`git diff --check`。
+
+详细测试矩阵、缺陷和执行结果见 [测试方案](../../../design/智能体可观测性成本与评测测试方案-20260722.md) 与 [测试执行报告](../../../智能体可观测性成本与评测测试执行报告-20260722.md)。
 
 ## 25. 回滚方案
 

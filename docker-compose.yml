@@ -91,6 +91,7 @@ services:
       # 使用匿名 volume 覆盖容器内的 node_modules，
       # 防止主机的 node_modules（macOS）覆盖容器内（alpine）编译的原生模块
       - /app/node_modules
+    command: sh -c "pnpm exec prisma generate && pnpm exec prisma migrate deploy && pnpm start:dev"
     ports:
       - '${PORT:-3000}:3000'
     networks:
@@ -125,7 +126,66 @@ services:
       REDIS_USERNAME: default
       REDIS_PASSWORD: ${REDIS_PASSWORD}
       TUSHARE_SYNC_ENABLED: 'false'
+    command: sh -c "pnpm exec prisma generate && pnpm exec prisma migrate deploy && pnpm start:agent-worker:dev"
+    volumes:
+      - .:/app
+      - /app/node_modules
+    networks:
+      - quant-net
+    depends_on:
+      database:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ── 通用 BullMQ Worker（按需启用：--profile worker）────────────────────────
+  worker:
+    profiles: ['worker']
+    build:
+      context: .
+      dockerfile: dockerfiles/app/Dockerfile
+    container_name: quant_worker
+    env_file: .env
+    environment:
+      NODE_ENV: development
+      PROCESS_ROLE: worker
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@database:5432/quant_db?schema=public
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_USERNAME: default
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      TUSHARE_SYNC_ENABLED: 'false'
     command: sh -c "pnpm exec prisma generate && pnpm exec prisma migrate deploy && pnpm start:worker:dev"
+    volumes:
+      - .:/app
+      - /app/node_modules
+    networks:
+      - quant-net
+    depends_on:
+      database:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ── Scheduler（按需启用：--profile scheduler）────────────────────────────────
+  scheduler:
+    profiles: ['scheduler']
+    build:
+      context: .
+      dockerfile: dockerfiles/app/Dockerfile
+    container_name: quant_scheduler
+    env_file: .env
+    environment:
+      NODE_ENV: development
+      PROCESS_ROLE: scheduler
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@database:5432/quant_db?schema=public
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_USERNAME: default
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    command: sh -c "pnpm exec prisma generate && pnpm exec prisma migrate deploy && pnpm start:scheduler:dev"
     volumes:
       - .:/app
       - /app/node_modules
@@ -145,6 +205,7 @@ services:
     profiles: ['monitoring']
     volumes:
       - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/prometheus/agent-alerts.yml:/etc/prometheus/agent-alerts.yml:ro
       - prometheus_data:/prometheus
     ports:
       - '9090:9090'

@@ -5,7 +5,7 @@ import { buildAgentRedisConnection, AgentQueueModule } from '../agent-queue.modu
 import { AgentReconcilerService } from '../agent-reconciler.service'
 
 describe('Agent process role gate', () => {
-  it('开发默认 all，生产默认 api；显式 worker 只启用 worker', () => {
+  it('开发默认 all，生产默认 api；显式 role 只启用对应职责', () => {
     expect(buildProcessRoleConfig({ NODE_ENV: 'development' })).toMatchObject({
       role: 'all',
       apiEnabled: true,
@@ -19,13 +19,30 @@ describe('Agent process role gate', () => {
     expect(buildProcessRoleConfig({ PROCESS_ROLE: 'agent-worker' })).toMatchObject({
       apiEnabled: false,
       agentWorkerEnabled: true,
+      queueWorkerEnabled: false,
+      schedulerEnabled: false,
+    })
+    expect(buildProcessRoleConfig({ PROCESS_ROLE: 'worker' })).toMatchObject({
+      apiEnabled: false,
+      agentWorkerEnabled: false,
+      queueWorkerEnabled: true,
+      schedulerEnabled: false,
+    })
+    expect(buildProcessRoleConfig({ PROCESS_ROLE: 'scheduler' })).toMatchObject({
+      apiEnabled: false,
+      agentWorkerEnabled: false,
+      schedulerEnabled: true,
     })
   })
 
   it('拒绝非法 role 和错误入口', () => {
-    expect(() => buildProcessRoleConfig({ PROCESS_ROLE: 'worker' })).toThrow('PROCESS_ROLE')
+    expect(() => buildProcessRoleConfig({ PROCESS_ROLE: 'queue-worker' })).toThrow('PROCESS_ROLE')
     expect(() => assertProcessEntrypoint('api', 'agent-worker')).toThrow('api 入口')
+    expect(() => assertProcessEntrypoint('worker', 'api')).toThrow('worker 入口')
     expect(() => assertProcessEntrypoint('agent-worker', 'api')).toThrow('agent-worker 入口')
+    expect(() => assertProcessEntrypoint('scheduler', 'api')).toThrow('scheduler 入口')
+    expect(() => assertProcessEntrypoint('scheduler', 'scheduler')).not.toThrow()
+    expect(() => assertProcessEntrypoint('worker', 'worker')).not.toThrow()
     expect(() => assertProcessEntrypoint('api', 'all')).not.toThrow()
   })
 

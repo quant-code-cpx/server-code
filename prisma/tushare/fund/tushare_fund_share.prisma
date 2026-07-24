@@ -3,10 +3,10 @@
 // 用于 ETF 资金流向分析和机构行为研究。
 
 model FundShare {
-  tsCode    String   @map("ts_code")   @db.VarChar(16)
+  tsCode    String   @map("ts_code") @db.VarChar(16)
   tradeDate DateTime @map("trade_date") @db.Date
   fdShare   Float?   @map("fd_share")
-  syncedAt  DateTime @default(now())   @map("synced_at")
+  syncedAt  DateTime @default(now()) @map("synced_at")
 
   @@id([tsCode, tradeDate])
   @@index([tradeDate])

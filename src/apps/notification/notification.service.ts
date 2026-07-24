@@ -1,5 +1,5 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common'
-import { NotificationType, Prisma } from '@prisma/client'
+import { Notification, NotificationType, Prisma } from '@prisma/client'
 import { PrismaService } from 'src/shared/prisma.service'
 import { EventsGateway } from 'src/websocket/events.gateway'
 import {
@@ -17,6 +17,7 @@ export interface CreateNotificationInput {
   title: string
   body: string
   data?: Record<string, unknown>
+  deliveryId?: string
 }
 
 @Injectable()
@@ -28,33 +29,42 @@ export class NotificationService {
     private readonly eventsGateway: EventsGateway,
   ) {}
 
-  /**
-   * 创建通知并通过 WebSocket 实时推送给用户。
-   * fire-and-forget 调用方可以不 await。
-   */
-  async create(input: CreateNotificationInput): Promise<void> {
-    try {
-      // 检查用户是否屏蔽该类型通知
-      const pref = await this.prisma.notificationPreference.findUnique({
-        where: { userId_type: { userId: input.userId, type: input.type } },
-        select: { enabled: true },
-      })
-      if (pref?.enabled === false) {
-        this.logger.debug(`[Notification] 用户 ${input.userId} 已关闭 ${input.type} 类型通知，跳过`)
-        return
-      }
+  /** 持久化通知是权威结果；WebSocket 仅是失败可忽略的实时加速。 */
+  async create(input: CreateNotificationInput): Promise<Notification | null> {
+    const pref = await this.prisma.notificationPreference.findUnique({
+      where: { userId_type: { userId: input.userId, type: input.type } },
+      select: { enabled: true },
+    })
+    if (pref?.enabled === false) {
+      this.logger.debug(`[Notification] 用户 ${input.userId} 已关闭 ${input.type} 类型通知，跳过`)
+      return null
+    }
 
-      const notification = await this.prisma.notification.create({
+    if (input.deliveryId) {
+      const existing = await this.prisma.notification.findUnique({ where: { deliveryId: input.deliveryId } })
+      if (existing) return existing
+    }
+
+    let notification: Notification
+    try {
+      notification = await this.prisma.notification.create({
         data: {
           userId: input.userId,
           type: input.type,
           title: input.title,
           body: input.body,
           data: (input.data ?? {}) as Prisma.InputJsonValue,
+          ...(input.deliveryId ? { deliveryId: input.deliveryId } : {}),
         },
       })
+    } catch (error) {
+      if (input.deliveryId && error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        return this.prisma.notification.findUniqueOrThrow({ where: { deliveryId: input.deliveryId } })
+      }
+      throw error
+    }
 
-      // WebSocket 实时推送
+    try {
       this.eventsGateway.emitToUser(input.userId, 'notification', {
         id: notification.id,
         type: notification.type,
@@ -64,9 +74,13 @@ export class NotificationService {
         isRead: false,
         createdAt: notification.createdAt,
       })
-    } catch (error) {
-      this.logger.error(`[Notification] 创建通知失败: ${error instanceof Error ? error.message : String(error)}`)
+    } catch {
+      this.logger.warn(
+        { operation: 'notification.websocketEmit', notificationId: notification.id },
+        NotificationService.name,
+      )
     }
+    return notification
   }
 
   async list(userId: number, dto: ListNotificationsDto): Promise<NotificationListDataDto> {

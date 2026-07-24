@@ -1,15 +1,15 @@
 import { Injectable, Logger } from '@nestjs/common'
-import dayjs from 'dayjs'
-import timezone from 'dayjs/plugin/timezone'
-import utc from 'dayjs/plugin/utc'
+import { parseCompactTradeDateToUtcDate } from 'src/common/utils/trade-date.util'
 import { PrismaService } from 'src/shared/prisma.service'
 import { BacktestStrategyRegistryService } from 'src/apps/backtest/services/backtest-strategy-registry.service'
 import { BacktestDataService } from 'src/apps/backtest/services/backtest-data.service'
 import { EventsGateway } from 'src/websocket/events.gateway'
-import { BacktestConfig, BacktestStrategyType, DailyBar, UNIVERSE_INDEX_CODE } from 'src/apps/backtest/types/backtest-engine.types'
-
-dayjs.extend(utc)
-dayjs.extend(timezone)
+import {
+  BacktestConfig,
+  BacktestStrategyType,
+  DailyBar,
+  UNIVERSE_INDEX_CODE,
+} from 'src/apps/backtest/types/backtest-engine.types'
 
 @Injectable()
 export class SignalGenerationService {
@@ -36,7 +36,7 @@ export class SignalGenerationService {
     const activations = await this.prisma.signalActivation.findMany({
       where: {
         isActive: true,
-        NOT: { lastSignalDate: latestTradeDate },
+        OR: [{ lastSignalDate: null }, { lastSignalDate: { not: latestTradeDate } }],
       },
     })
 
@@ -45,16 +45,15 @@ export class SignalGenerationService {
       return
     }
 
-    this.logger.log(`开始为 ${activations.length} 个激活策略生成信号，交易日：${latestTradeDate.toISOString().slice(0, 10)}`)
+    this.logger.log(
+      `开始为 ${activations.length} 个激活策略生成信号，交易日：${latestTradeDate.toISOString().slice(0, 10)}`,
+    )
 
     for (const activation of activations) {
       try {
         await this.generateForActivation(activation.id, latestTradeDate)
       } catch (err) {
-        this.logger.error(
-          `策略 ${activation.strategyId} 信号生成失败：${(err as Error).message}`,
-          (err as Error).stack,
-        )
+        this.logger.error(`策略 ${activation.strategyId} 信号生成失败：${(err as Error).message}`, (err as Error).stack)
         // 不阻塞其他策略
       }
     }
@@ -191,7 +190,7 @@ export class SignalGenerationService {
 
   private async resolveTradeDate(targetTradeDateStr?: string): Promise<Date | null> {
     if (targetTradeDateStr) {
-      return dayjs.tz(targetTradeDateStr, 'YYYYMMDD', 'Asia/Shanghai').toDate()
+      return parseCompactTradeDateToUtcDate(targetTradeDateStr)
     }
     const today = new Date()
     today.setHours(23, 59, 59, 0)

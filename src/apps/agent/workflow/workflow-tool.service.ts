@@ -14,6 +14,7 @@ import type {
 } from './workflow.types'
 import { WorkflowBudgetService } from './workflow-budget.service'
 import { WorkflowCancelledError, WorkflowExecutionError, WorkflowValidationError } from './workflow.errors'
+import { resolveToolInputBindings, ToolResultBindingUnavailableError } from './tool-result-binding'
 
 export interface AuthorizedToolPlan {
   plan: CompiledResearchPlan
@@ -57,6 +58,7 @@ export class WorkflowToolService {
     context: LoadedWorkflowContext
     usage: WorkflowBudgetUsage
     limits: WorkflowBudgetLimits
+    workerId?: string
     signal?: AbortSignal
   }): Promise<WorkflowToolExecutionResult> {
     this.budgets.assertCanPlanToolCalls(command.usage, command.authorized.plan.toolCalls.length, command.limits)
@@ -64,6 +66,7 @@ export class WorkflowToolService {
     const invocationIndex = new Map(command.authorized.plan.toolCalls.map((call, index) => [call.id, index]))
     const facts: FactPacket[] = []
     const warnings: string[] = []
+    const resultsByCallId = new Map<string, ToolResult>()
     let attempted = 0
 
     for (const level of command.authorized.plan.executionLevels) {
@@ -71,6 +74,13 @@ export class WorkflowToolService {
         if (command.signal?.aborted) throw new WorkflowCancelledError()
         const call = callsById.get(id)
         if (!call) throw new WorkflowValidationError(`已编译 Tool 调用不存在：${id}`)
+        let input: Record<string, unknown>
+        try {
+          input = resolveToolInputBindings(call.input, call.dependsOn, resultsByCallId)
+        } catch (error) {
+          if (!call.optional || !(error instanceof ToolResultBindingUnavailableError)) throw error
+          return { call, skipped: error }
+        }
         const callNumber = attempted
         attempted += 1
         try {
@@ -80,7 +90,7 @@ export class WorkflowToolService {
               toolVersion: call.toolVersion,
               logicalNodeKey: 'execute_tools',
               invocationIndex: invocationIndex.get(id) ?? callNumber,
-              input: call.input,
+              input,
             },
             {
               userId: command.context.userId,
@@ -91,6 +101,7 @@ export class WorkflowToolService {
               runId: command.run.id,
               stepId: command.stepId,
               traceId: command.run.traceId,
+              workerId: command.workerId,
               workflowAllowedTools: command.authorized.allowedTools,
               allowedScopes: command.context.allowedScopes,
               callsUsed: command.usage.toolCalls + callNumber,
@@ -110,8 +121,15 @@ export class WorkflowToolService {
       })
 
       for (const outcome of outcomes) {
-        if ('result' in outcome) facts.push(toFactPacket(outcome.call.id, outcome.result))
-        else warnings.push(`可选 Tool ${outcome.call.toolKey} 失败：${safeErrorMessage(outcome.error)}`)
+        if ('result' in outcome) {
+          resultsByCallId.set(outcome.call.id, outcome.result)
+          facts.push(toFactPacket(outcome.call.id, outcome.result))
+          warnings.push(...outcome.result.warnings.map((warning) => warning.message))
+        } else if ('skipped' in outcome) {
+          warnings.push(`可选 Tool ${outcome.call.toolKey} 已跳过：${bindingErrorMessage(outcome.skipped)}`)
+        } else {
+          warnings.push(`可选 Tool ${outcome.call.toolKey} 失败：${safeErrorMessage(outcome.error)}`)
+        }
       }
     }
 
@@ -156,6 +174,11 @@ function safeErrorMessage(error: unknown): string {
   if (error instanceof ToolExecutionError) return error.result.message
   if (error instanceof WorkflowExecutionError) return error.message
   return 'Tool 执行失败'
+}
+
+function bindingErrorMessage(error: unknown): string {
+  if (error instanceof ToolResultBindingUnavailableError) return error.message
+  return '依赖 Tool 结果绑定失败'
 }
 
 async function mapLimit<T, R>(items: readonly T[], limit: number, handler: (item: T) => Promise<R>): Promise<R[]> {

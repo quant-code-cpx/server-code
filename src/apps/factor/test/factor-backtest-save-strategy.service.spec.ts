@@ -11,7 +11,7 @@
  * 7.  strategyConfig 校验：conditions 为空数组 → validateStrategyConfig 抛出
  * 8.  默认值填充：不传可选字段 → strategyConfig 使用默认值，backtestDefaults 正确填充
  * 9.  rebalanceDays 映射：20 → MONTHLY，1 → DAILY，8 → MONTHLY，30 → QUARTERLY
- * 10. universe 非空 → backtestDefaults.universe = 'CUSTOM'
+ * 10. universe 指数代码映射为回测引擎枚举，并保留原始代码
  */
 
 import { NotFoundException } from '@nestjs/common'
@@ -190,9 +190,9 @@ describe('FactorBacktestService.saveAsStrategy', () => {
     expect((createData.backtestDefaults as any).rebalanceFrequency).toBe(expected)
   })
 
-  // ── 10. universe 非空 ─────────────────────────────────────────────────────
+  // ── 10. universe 映射 ─────────────────────────────────────────────────────
 
-  it('传入 universe → backtestDefaults.universe = CUSTOM', async () => {
+  it('000300.SH → backtestDefaults.universe = HS300，并保留 universeCode', async () => {
     const dto = makeDto({ universe: '000300.SH' })
     prisma.factorDefinition.findUnique.mockResolvedValue({ name: 'pe_ttm', isEnabled: true })
     prisma.strategy.count.mockResolvedValue(0)
@@ -202,6 +202,16 @@ describe('FactorBacktestService.saveAsStrategy', () => {
     await svc.saveAsStrategy(dto, 1)
 
     const createData = prisma.strategy.create.mock.calls[0][0].data
-    expect((createData.backtestDefaults as any).universe).toBe('CUSTOM')
+    expect(createData.backtestDefaults).toMatchObject({ universe: 'HS300', universeCode: '000300.SH' })
+  })
+
+  it('回测引擎不支持的 universe → BadRequestException，且不创建策略', async () => {
+    const dto = makeDto({ universe: '999999.SH' })
+    prisma.factorDefinition.findUnique.mockResolvedValue({ name: 'pe_ttm', isEnabled: true })
+    prisma.strategy.count.mockResolvedValue(0)
+
+    await expect(svc.saveAsStrategy(dto, 1)).rejects.toThrow('回测暂不支持股票池 "999999.SH"')
+
+    expect(prisma.strategy.create).not.toHaveBeenCalled()
   })
 })

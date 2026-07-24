@@ -4,6 +4,7 @@ import { MarketAnomalyType, Prisma } from '@prisma/client'
 import dayjs from 'dayjs'
 import { formatDateToCompactTradeDate, parseCompactTradeDateToUtcDate } from 'src/common/utils/trade-date.util'
 import { PrismaService } from 'src/shared/prisma.service'
+import { DistributedCronLockService } from 'src/shared/scheduler/distributed-cron-lock.service'
 import { EventsGateway } from 'src/websocket/events.gateway'
 import {
   AnomalySortField,
@@ -24,6 +25,7 @@ export class MarketAnomalyService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly eventsGateway: EventsGateway,
+    private readonly cronLock: DistributedCronLockService,
   ) {}
 
   // ── 统计聚合（standalone，不依赖分页） ──────────────────────────────────────
@@ -301,12 +303,14 @@ export class MarketAnomalyService {
    */
   @Cron('0 0 19 * * 1-5', { timeZone: 'Asia/Shanghai' })
   async dailyScan() {
-    this.logger.log('定时任务：开始盘后异动监控扫描')
-    try {
-      await this.runScan()
-    } catch (err) {
-      this.logger.error('异动监控扫描异常', (err as Error).stack)
-    }
+    await this.cronLock.runIfScheduler('market-anomaly:daily', async () => {
+      this.logger.log('定时任务：开始盘后异动监控扫描')
+      try {
+        await this.runScan()
+      } catch (err) {
+        this.logger.error('异动监控扫描异常', (err as Error).stack)
+      }
+    })
   }
 
   async runScan(): Promise<{

@@ -1,95 +1,265 @@
-/**
- * E2E Flow 3 — 组合管理→风控全流程
- *
- * 覆盖场景：
- *   创建组合→加仓→加权均成本计算→今日 P&L→风控规则检查
- *   [E2E-B2] null P&L 不应污染 totalPnl（应跳过 null，不产生 NaN）
- *
- * 运行前提：
- *   - E2E_DATABASE_URL 指向独立测试数据库
- *   - Redis db=15 可连接
- *   - Tushare 行情 Fixture 数据已种入
- *   - 运行命令：pnpm test:e2e
- */
-import { INestApplication } from '@nestjs/common'
+import type { INestApplication } from '@nestjs/common'
+import type { PrismaService } from 'src/shared/prisma.service'
 
-// 跳过（E2E 测试需要真实数据库和 Redis）
-describe.skip('E2E Flow 3 — 组合管理与风控 (needs DB+Redis+fixture)', () => {
+import { PortfolioRiskRuleType, StockExchange, UserRole, UserStatus } from '@prisma/client'
+import request from 'supertest'
+import type { RedisClientType } from 'redis'
+
+import { AuthModule } from 'src/apps/auth/auth.module'
+import { PortfolioController } from 'src/apps/portfolio/portfolio.controller'
+import { PortfolioRiskService } from 'src/apps/portfolio/portfolio-risk.service'
+import { PortfolioService } from 'src/apps/portfolio/portfolio.service'
+import { RiskCheckService } from 'src/apps/portfolio/risk-check.service'
+import { BacktestPortfolioBridgeService } from 'src/apps/portfolio/services/backtest-portfolio-bridge.service'
+import { PortfolioPerformanceService } from 'src/apps/portfolio/services/portfolio-performance.service'
+import { PortfolioTradeLogService } from 'src/apps/portfolio/services/portfolio-trade-log.service'
+import { RebalancePlanService } from 'src/apps/portfolio/services/rebalance-plan.service'
+import { DriftDetectionService } from 'src/apps/signal/drift-detection.service'
+import { TokenService } from 'src/shared/token.service'
+import { EventsGateway } from 'src/websocket/events.gateway'
+import { createLegacyE2eApp } from './support/create-legacy-e2e-app'
+
+const TRADE_DATE = new Date('2026-07-20T00:00:00.000Z')
+
+describe('旧业务 E2E Flow 3 — 组合管理与风控', () => {
   let app: INestApplication
+  let prisma: PrismaService
+  let redis: RedisClientType
+  let ownerToken: string
+  let otherToken: string
 
-  // beforeAll: 启动应用、登录获取 token
-  // afterAll: 清理组合数据
-
-  // ── 组合 CRUD 与持仓管理 ──────────────────────────────────────────────────
-
-  describe('组合 CRUD 与持仓管理', () => {
-    it('[BIZ] POST /api/portfolio/create → 返回 portfolioId，holdings 为空', async () => {
-      // initialCash: 1_000_000
+  beforeAll(async () => {
+    const fixture = await createLegacyE2eApp({
+      imports: [AuthModule],
+      controllers: [PortfolioController],
+      providers: [
+        PortfolioService,
+        PortfolioRiskService,
+        RiskCheckService,
+        PortfolioTradeLogService,
+        { provide: EventsGateway, useValue: { emitToUser: jest.fn() } },
+        { provide: BacktestPortfolioBridgeService, useValue: {} },
+        { provide: RebalancePlanService, useValue: {} },
+        { provide: PortfolioPerformanceService, useValue: {} },
+        { provide: DriftDetectionService, useValue: {} },
+      ],
     })
+    app = fixture.app
+    prisma = fixture.prisma
+    redis = fixture.redis
+    await cleanPortfolioFixture(prisma)
+    await redis.flushDb()
 
-    it('[BIZ] POST /api/portfolio/:id/holdings → 加仓 000001.SZ 1000股@10.50', async () => {
-      // 验证：holdingValue = 1000 * 10.50 = 10,500
+    const [owner, other] = await Promise.all([
+      prisma.user.create({
+        data: {
+          account: 'legacy_portfolio_owner',
+          password: 'unused',
+          nickname: 'Portfolio Owner',
+          role: UserRole.USER,
+          status: UserStatus.ACTIVE,
+        },
+      }),
+      prisma.user.create({
+        data: {
+          account: 'legacy_portfolio_other',
+          password: 'unused',
+          nickname: 'Portfolio Other',
+          role: UserRole.USER,
+          status: UserStatus.ACTIVE,
+        },
+      }),
+    ])
+    const tokenService = app.get(TokenService)
+    ;[ownerToken, otherToken] = await Promise.all([
+      tokenService.generateAccessToken({
+        id: owner.id,
+        account: owner.account,
+        nickname: owner.nickname,
+        role: owner.role,
+      }),
+      tokenService.generateAccessToken({
+        id: other.id,
+        account: other.account,
+        nickname: other.nickname,
+        role: other.role,
+      }),
+    ])
+
+    await prisma.stockBasic.createMany({
+      data: [
+        { tsCode: '000001.SZ', symbol: '000001', name: '平安银行', industry: '银行' },
+        { tsCode: '600519.SH', symbol: '600519', name: '贵州茅台', industry: '白酒' },
+      ],
     })
-
-    it('[BIZ] 再次加仓 000001.SZ 500股@11.00 → 加权均成本 ≈ 10.667', async () => {
-      // 手算：(1000×10.50 + 500×11.00) / 1500
-      //       = (10500 + 5500) / 1500
-      //       = 16000 / 1500
-      //       ≈ 10.6667
+    await prisma.tradeCal.create({
+      data: { exchange: StockExchange.SSE, calDate: TRADE_DATE, isOpen: '1' },
     })
-
-    it('[BIZ] 减仓 000001.SZ 500股 → avgCost 不变（仍为 10.667）', async () => {
-      // 业务规则：减仓不修改加权成本价
+    await prisma.daily.create({
+      data: {
+        tsCode: '000001.SZ',
+        tradeDate: TRADE_DATE,
+        open: 10,
+        high: 11,
+        low: 10,
+        close: 11,
+        preClose: 10,
+        change: 1,
+        pctChg: 10,
+      },
     })
-
-    it('[BIZ] 今日 P&L = 昨日市值 × pctChg/100（基于 Fixture 数据手算验证）', async () => {
-      // 手算公式：yesterdayMV = close / (1 + pctChg/100) × quantity
-      //            todayPnl = yesterdayMV × pctChg/100
+    await prisma.dailyBasic.createMany({
+      data: [
+        { tsCode: '000001.SZ', tradeDate: TRADE_DATE, close: 11, totalMv: 100_000 },
+        { tsCode: '600519.SH', tradeDate: TRADE_DATE, close: 1800, totalMv: 1_000_000 },
+      ],
     })
   })
 
-  // ── E2E-B2 验证 ───────────────────────────────────────────────────────────
-
-  describe('[E2E-B2] P&L null 传播验证', () => {
-    it('[E2E-B2] 无行情数据的持仓（停牌股）不应污染 totalPnl → totalPnl 仅汇总有行情的持仓，不产生 NaN', async () => {
-      // 代码分析（portfolio.service.ts calcPnlToday）：
-      //   const todayPnl = mv != null && pctChg != null ? ... : null
-      //   if (todayPnl != null) totalPnl += todayPnl   ← 正确跳过 null
-      // 结论：E2E-B2 不存在，代码已用 if(todayPnl != null) 保护 totalPnl 不被 null 污染
-    })
+  afterAll(async () => {
+    await cleanPortfolioFixture(prisma)
+    await redis.flushDb()
+    await app.close()
   })
 
-  // ── 风控规则检查 ──────────────────────────────────────────────────────────
+  it('LEG-PF-BIZ-001/DATA-001：加权成本、减仓、缺行情 P&L 均符合手算', async () => {
+    const created = await post(ownerToken, '/api/portfolio/create', {
+      name: 'E2E 组合',
+      initialCash: 500_000,
+    })
+    expect(created.body.code).toBe(0)
+    const portfolioId = created.body.data.id as string
 
-  describe('风控规则检查', () => {
-    it('[BIZ] 创建集中度规则：单股权重 > 30% → 触发违规检查返回违规项', async () => {
-      // 设置规则 CONCENTRATION_LIMIT = 0.30
-      // 加仓使某股票市值超过总资产 30%
+    const first = await post(ownerToken, '/api/portfolio/holding/add', {
+      portfolioId,
+      tsCode: '000001.SZ',
+      quantity: 1000,
+      avgCost: 10.5,
+    })
+    const holdingId = first.body.data.id as string
+    expect(Number(first.body.data.avgCost)).toBeCloseTo(10.5, 4)
+
+    const second = await post(ownerToken, '/api/portfolio/holding/add', {
+      portfolioId,
+      tsCode: '000001.SZ',
+      quantity: 500,
+      avgCost: 11,
+    })
+    const weightedCost = (1000 * 10.5 + 500 * 11) / 1500
+    const storedWeightedCost = Math.round(weightedCost * 10_000) / 10_000
+    expect(second.body.data.quantity).toBe(1500)
+    expect(Number(second.body.data.avgCost)).toBe(storedWeightedCost)
+
+    const reduced = await post(ownerToken, '/api/portfolio/holding/update', {
+      holdingId,
+      quantity: 500,
+      avgCost: storedWeightedCost,
+    })
+    expect(reduced.body.data.quantity).toBe(500)
+    expect(Number(reduced.body.data.avgCost)).toBe(storedWeightedCost)
+
+    await post(ownerToken, '/api/portfolio/holding/add', {
+      portfolioId,
+      tsCode: '600519.SH',
+      quantity: 10,
+      avgCost: 1800,
     })
 
-    it('[BIZ] 调整持仓至 30% 以下 → 风控检查无违规项', async () => {})
+    const detail = await post(ownerToken, '/api/portfolio/detail', { portfolioId })
+    expect(detail.body.data.holdings).toHaveLength(2)
+    expect(detail.body.data.summary.totalCost).toBe(storedWeightedCost * 500 + 18_000)
 
-    it('[BIZ] 禁用规则 → 该规则不出现在检查结果中', async () => {})
-
-    it('[EDGE] 空组合执行风控检查 → 空违规列表，不报错', async () => {
-      // 边界：无持仓时各规则均合规
-    })
-
-    it('[EDGE] 组合只有一只股票且权重 = 100% → 集中度违规', async () => {
-      // 边界：单只股票，weight = 1.0 > 0.30
-    })
+    const pnl = await post(ownerToken, '/api/portfolio/pnl/today', { portfolioId })
+    expect(pnl.body.data.todayPnl).toBeCloseTo(500, 6)
+    expect(pnl.body.data.todayPnlPct).toBeCloseTo(0.1, 6)
+    expect(pnl.body.data.byHolding).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ tsCode: '000001.SZ', pctChg: 10, todayPnl: 500 }),
+        expect.objectContaining({ tsCode: '600519.SH', pctChg: null, todayPnl: null }),
+      ]),
+    )
+    expect(Number.isFinite(pnl.body.data.todayPnl)).toBe(true)
   })
 
-  // ── 持仓详情与盈亏汇总 ───────────────────────────────────────────────────
+  it('LEG-PF-BIZ-002：集中度规则触发、禁用与空组合边界正确', async () => {
+    const created = await post(ownerToken, '/api/portfolio/create', {
+      name: '风控组合',
+      initialCash: 100_000,
+    })
+    const portfolioId = created.body.data.id as string
+    await post(ownerToken, '/api/portfolio/holding/add', {
+      portfolioId,
+      tsCode: '600519.SH',
+      quantity: 10,
+      avgCost: 1800,
+    })
+    const rule = await post(ownerToken, '/api/portfolio/rule/upsert', {
+      portfolioId,
+      ruleType: PortfolioRiskRuleType.MAX_SINGLE_POSITION,
+      threshold: 0.3,
+    })
+    const ruleId = rule.body.data.id as string
 
-  describe('持仓详情与盈亏汇总', () => {
-    it('[BIZ] POST /api/portfolio/:id/detail → 持仓列表含 marketValue、unrealizedPnl', async () => {
-      // marketValue = close × quantity
-      // unrealizedPnl = marketValue - avgCost × quantity
+    const violated = await post(ownerToken, '/api/portfolio/risk/check', { portfolioId })
+    expect(violated.body.data.violations).toHaveLength(1)
+    expect(violated.body.data.violations[0]).toMatchObject({
+      ruleType: PortfolioRiskRuleType.MAX_SINGLE_POSITION,
+      actualValue: 1,
+      threshold: 0.3,
     })
 
-    it('[BIZ] POST /api/portfolio/:id/pnl/today → todayPnlPct = totalPnl / (totalMv - totalPnl)', async () => {
-      // 手算公式验证，基于 Fixture 数据
+    await post(ownerToken, '/api/portfolio/rule/update', {
+      ruleId,
+      threshold: 0.3,
+      isEnabled: false,
     })
+    const disabled = await post(ownerToken, '/api/portfolio/risk/check', { portfolioId })
+    expect(disabled.body.data.violations).toEqual([])
+
+    const empty = await post(ownerToken, '/api/portfolio/create', {
+      name: '空组合',
+      initialCash: 10_000,
+    })
+    const emptyCheck = await post(ownerToken, '/api/portfolio/risk/check', {
+      portfolioId: empty.body.data.id,
+    })
+    expect(emptyCheck.body.data.violations).toEqual([])
   })
+
+  it('LEG-PF-SEC-001：其他用户不能读取或修改组合', async () => {
+    const created = await post(ownerToken, '/api/portfolio/create', {
+      name: '私有组合',
+      initialCash: 10_000,
+    })
+    const portfolioId = created.body.data.id as string
+
+    await request(app.getHttpServer())
+      .post('/api/portfolio/detail')
+      .set('Authorization', `Bearer ${otherToken}`)
+      .send({ portfolioId })
+      .expect(403)
+    await request(app.getHttpServer())
+      .post('/api/portfolio/holding/add')
+      .set('Authorization', `Bearer ${otherToken}`)
+      .send({ portfolioId, tsCode: '000001.SZ', quantity: 100, avgCost: 10 })
+      .expect(403)
+  })
+
+  function post(token: string, path: string, body: Record<string, unknown>) {
+    return request(app.getHttpServer()).post(path).set('Authorization', `Bearer ${token}`).send(body).expect(201)
+  }
 })
+
+async function cleanPortfolioFixture(prisma: PrismaService): Promise<void> {
+  await prisma.riskViolationLog.deleteMany()
+  await prisma.portfolioRiskRule.deleteMany()
+  await prisma.portfolioTradeLog.deleteMany()
+  await prisma.portfolioHolding.deleteMany()
+  await prisma.portfolio.deleteMany()
+  await prisma.daily.deleteMany({ where: { tsCode: { in: ['000001.SZ', '600519.SH'] } } })
+  await prisma.dailyBasic.deleteMany({ where: { tsCode: { in: ['000001.SZ', '600519.SH'] } } })
+  await prisma.tradeCal.deleteMany({ where: { calDate: TRADE_DATE } })
+  await prisma.stockBasic.deleteMany({ where: { tsCode: { in: ['000001.SZ', '600519.SH'] } } })
+  await prisma.auditLog.deleteMany()
+  await prisma.user.deleteMany({ where: { account: { startsWith: 'legacy_portfolio_' } } })
+}

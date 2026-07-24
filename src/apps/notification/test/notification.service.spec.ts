@@ -38,6 +38,7 @@ function buildPrismaMock() {
         isRead: false,
         createdAt: new Date('2026-01-01'),
       })),
+      findUnique: jest.fn(async () => null),
       findMany: jest.fn(async () => []),
       findFirst: jest.fn(async () => null),
       count: jest.fn(async () => 0),
@@ -94,6 +95,20 @@ describe('NotificationService', () => {
 
       expect(prisma.notification.create).toHaveBeenCalledTimes(1)
       expect(gateway.emitToUser).toHaveBeenCalledWith(3, 'notification', expect.anything())
+    })
+
+    it('WebSocket emit 失败不回滚已经持久化的通知', async () => {
+      const prisma = buildPrismaMock()
+      const gateway = buildGatewayMock()
+      gateway.emitToUser.mockImplementation(() => {
+        throw new Error('socket unavailable')
+      })
+      const svc = createService(prisma, gateway)
+
+      await expect(
+        svc.create({ userId: 4, type: NotificationType.SYSTEM, title: '研究完成', body: '请在系统内查看。' }),
+      ).resolves.toMatchObject({ id: 1 })
+      expect(prisma.notification.create).toHaveBeenCalledTimes(1)
     })
   })
 

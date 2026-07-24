@@ -9,46 +9,51 @@
 
 // 账号状态
 enum UserStatus {
-  ACTIVE      // 正常（可以登录）
+  ACTIVE // 正常（可以登录）
   DEACTIVATED // 禁用（管理员操作，暂时停用）
-  DELETED     // 已注销（逻辑删除，不可恢复）
+  DELETED // 已注销（逻辑删除，不可恢复）
 }
 
 // 用户角色（权限从高到低）
 enum UserRole {
   SUPER_ADMIN // 超级管理员（顶级权限，有且仅有一个）
-  ADMIN       // 管理员
-  USER        // 普通用户
+  ADMIN // 管理员
+  USER // 普通用户
 }
 
 model User {
-  id             Int        @id @default(autoincrement())
-  account        String     @unique @db.VarChar(64)   // 登录账号（唯一）
-  password       String     @db.VarChar(255)          // 密码（bcrypt 加密存储）
-  nickname       String     @db.VarChar(64)           // 昵称
-  role           UserRole   @default(USER)             // 用户角色
-  status         UserStatus @default(ACTIVE)           // 账号状态
-  email          String?    @db.VarChar(128)          // 邮箱（可选）
-  wechat         String?    @db.VarChar(64)           // 微信号（可选）
-  lastLoginAt    DateTime?                             // 最后登录时间
-  backtestQuota  Int        @default(3)               // 回测任务数量限制（管理员以上可修改）
-  watchlistLimit Int        @default(10)              // 监控股票数量限制（管理员以上不受限制）
-  preferences    Json       @default("{}")           // 用户界面偏好（如列配置）
-  screenerStrategies ScreenerStrategy[]               // 用户自定义选股策略
-  watchlists         Watchlist[]                       // 自选股组
-  researchNotes      ResearchNote[]                    // 研究笔记
-  screenerSubscriptions ScreenerSubscription[]         // 条件订阅
-  strategyDrafts     StrategyDraft[]                   // 策略草稿
-  strategies         Strategy[]                        // 策略模板
-  portfolios         Portfolio[]                        // 虚拟投资组合
-  reports            Report[]                          // 量化报告
-  notifications      Notification[]                    // 站内消息
-  notificationPreferences NotificationPreference[]     // 通知偏好
-  aiConversations    AiConversation[]                  // Agent 会话
-  aiMessages         AiMessage[]                       // Agent 消息（冗余 userId 强化租户查询）
-  aiAgentRuns        AiAgentRun[]                      // Agent Run 权威状态
-  createdAt      DateTime   @default(now())
-  updatedAt      DateTime   @updatedAt
+  id                       Int                      @id @default(autoincrement())
+  account                  String                   @unique @db.VarChar(64) // 登录账号（唯一）
+  password                 String                   @db.VarChar(255) // 密码（bcrypt 加密存储）
+  nickname                 String                   @db.VarChar(64) // 昵称
+  role                     UserRole                 @default(USER) // 用户角色
+  status                   UserStatus               @default(ACTIVE) // 账号状态
+  email                    String?                  @db.VarChar(128) // 邮箱（可选）
+  wechat                   String?                  @db.VarChar(64) // 微信号（可选）
+  lastLoginAt              DateTime? // 最后登录时间
+  backtestQuota            Int                      @default(3) // 回测任务数量限制（管理员以上可修改）
+  watchlistLimit           Int                      @default(10) // 监控股票数量限制（管理员以上不受限制）
+  preferences              Json                     @default("{}") // 用户界面偏好（如列配置）
+  screenerStrategies       ScreenerStrategy[] // 用户自定义选股策略
+  watchlists               Watchlist[] // 自选股组
+  researchNotes            ResearchNote[] // 研究笔记
+  screenerSubscriptions    ScreenerSubscription[] // 条件订阅
+  strategyDrafts           StrategyDraft[] // 策略草稿
+  strategies               Strategy[] // 策略模板
+  portfolios               Portfolio[] // 虚拟投资组合
+  reports                  Report[] // 量化报告
+  notifications            Notification[] // 站内消息
+  notificationPreferences  NotificationPreference[] // 通知偏好
+  aiNotificationChannels   AiNotificationChannel[] // Agent 通知渠道
+  aiNotificationDeliveries AiNotificationDelivery[] // Agent 通知投递审计
+  aiConversations          AiConversation[] // Agent 会话
+  aiMessages               AiMessage[] // Agent 消息（冗余 userId 强化租户查询）
+  aiAgentRuns              AiAgentRun[] // Agent Run 权威状态
+  aiResearchReports        AiResearchReport[] // Agent 已确认研究报告
+  aiUserMemories           AiUserMemory[] // 用户明确确认的 Agent 长期记忆
+  aiScheduledTasks         AiScheduledTask[] // 用户保存的 Agent 定时/条件研究任务
+  createdAt                DateTime                 @default(now())
+  updatedAt                DateTime                 @updatedAt
 
   @@map("users")
 }

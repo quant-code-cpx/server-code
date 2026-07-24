@@ -1,5 +1,6 @@
 export const MODEL_GATEWAY = Symbol('MODEL_GATEWAY')
 export const MODEL_PROVIDER = Symbol('MODEL_PROVIDER')
+export const MODEL_PROVIDERS = Symbol('MODEL_PROVIDERS')
 export const MODEL_GATEWAY_OBSERVER = Symbol('MODEL_GATEWAY_OBSERVER')
 
 export type ModelPolicy = 'AUTO' | 'MANUAL'
@@ -121,6 +122,17 @@ export interface ModelDescriptor {
   dataClasses: readonly ModelDataClass[]
 }
 
+export interface ModelRouteCandidate {
+  descriptor: ModelDescriptor
+  reasonCodes: string[]
+}
+
+export interface ModelRouteDecision {
+  candidates: ModelRouteCandidate[]
+  considered: Array<{ provider: string; model: string; reasonCodes: string[] }>
+  selected: ModelDescriptor
+}
+
 export interface ModelProvider {
   readonly provider: string
   listModels(): readonly ModelDescriptor[]
@@ -131,6 +143,8 @@ export interface ModelProvider {
 export interface ModelGatewayPort {
   stream(request: ModelRequest, signal?: AbortSignal): AsyncIterable<ModelChunk>
   generateStructured<T>(request: ModelRequest, signal?: AbortSignal): Promise<ModelResult<T>>
+  generateStructuredForModel<T>(request: ModelRequest, model: string, signal?: AbortSignal): Promise<ModelResult<T>>
+  select(request: ModelRequest): ModelRouteDecision
   getCapabilities(modelRef?: string | null): ModelDescriptor
 }
 
@@ -143,6 +157,7 @@ export class ModelGatewayError extends Error {
     message: string,
     public readonly statusCode?: number,
     public readonly retryAfterMs?: number,
+    public readonly visibleOutput = false,
   ) {
     super(message)
     this.name = ModelGatewayError.name

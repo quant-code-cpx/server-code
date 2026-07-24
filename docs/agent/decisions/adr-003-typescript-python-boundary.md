@@ -42,3 +42,14 @@ MVP 快、结果口径一致；后续可按负载独立扩容 Python Worker。
 ## 后续复审条件
 
 单任务 CPU 超过 30 秒、数据点超过 100 万、需要 scipy/cvxpy/sklearn，或 TypeScript 内存成为瓶颈时启动 Python 批次。
+
+## 2026-07-24 复审
+
+Batch 024 已按 10,000 / 100,000 / 1,000,000 点对 `performance-metrics-v1` 与
+`valuation-percentile-v1` 做独立 Node 进程 benchmark。当前生产 Tool 上限为 10,000 点，
+代表性计算为 11.57–19.85 ms；100 万点最慢 1.34 秒，未达到 30 秒门禁，也没有
+scipy/cvxpy/sklearn 依赖。
+
+100 万点压力样本 max RSS 为 606.51–693.38 MiB，保留为未来扩容警戒线；该规模是当前允许
+输入的 100 倍，不构成当前生产 workload 的拆分证据。复审结论为 no-go：继续使用 TypeScript，
+不创建空 Python 服务。完整证据见[无状态量化计算服务门禁评审](../../无状态量化计算服务门禁评审-20260724.md)。

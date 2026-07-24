@@ -1,0 +1,55 @@
+enum AiResearchReportStatus {
+  QUEUED
+  GENERATING
+  COMPLETED
+  FAILED
+  DELETED
+
+  @@map("ai_research_report_status")
+}
+
+model AiResearchReport {
+  id               String                 @id @default(cuid()) @db.VarChar(32)
+  userId           Int                    @map("user_id")
+  conversationId   String                 @map("conversation_id") @db.VarChar(32)
+  runId            String                 @map("run_id") @db.VarChar(32)
+  messageId        String                 @map("message_id") @db.VarChar(32)
+  messageVersion   Int                    @map("message_version")
+  clientRequestId  String                 @map("client_request_id") @db.VarChar(128)
+  version          Int                    @default(1)
+  status           AiResearchReportStatus @default(QUEUED)
+  title            String                 @db.VarChar(200)
+  summary          String                 @db.Text
+  contentText      String?                @map("content_text") @db.Text
+  contentBlocks    Json                   @default("[]") @map("content_blocks") @db.JsonB
+  citationManifest Json                   @default("[]") @map("citation_manifest") @db.JsonB
+  manifest         Json                   @default("{}") @db.JsonB
+  contentHash      String                 @map("content_hash") @db.Char(64)
+  dataAsOf         DateTime?              @map("data_as_of") @db.Date
+  rendererVersion  String                 @default("agent-html-v1") @map("renderer_version") @db.VarChar(64)
+  storageKey       String?                @unique(map: "ai_research_reports_storage_key_key") @map("storage_key") @db.VarChar(512)
+  storageHash      String?                @map("storage_hash") @db.Char(64)
+  fileSize         Int?                   @map("file_size")
+  renderAttempts   Int                    @default(0) @map("render_attempts")
+  errorMessage     String?                @map("error_message") @db.VarChar(1000)
+  renderedAt       DateTime?              @map("rendered_at") @db.Timestamptz(3)
+  deletedAt        DateTime?              @map("deleted_at") @db.Timestamptz(3)
+  storageDeletedAt DateTime?              @map("storage_deleted_at") @db.Timestamptz(3)
+  cleanupAttempts  Int                    @default(0) @map("cleanup_attempts")
+  cleanupError     String?                @map("cleanup_error") @db.VarChar(1000)
+  createdAt        DateTime               @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime               @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user          User           @relation(fields: [userId], references: [id], onDelete: Restrict)
+  conversation  AiConversation @relation(fields: [conversationId], references: [id], onDelete: Restrict)
+  sourceRun     AiAgentRun     @relation("AiResearchReportSourceRun", fields: [runId], references: [id], onDelete: Restrict)
+  sourceMessage AiMessage      @relation(fields: [messageId], references: [id], onDelete: Restrict)
+  journal       ResearchNote?  @relation("AiResearchReportJournal")
+
+  @@unique([userId, clientRequestId], map: "ai_research_reports_user_client_request_key")
+  @@unique([userId, runId, messageId, version], map: "ai_research_reports_source_version_key")
+  @@index([userId, status, createdAt(sort: Desc), id(sort: Desc)], map: "ai_research_reports_user_status_cursor_idx")
+  @@index([status, createdAt, id], map: "ai_research_reports_render_queue_idx")
+  @@index([status, storageDeletedAt, id], map: "ai_research_reports_cleanup_queue_idx")
+  @@map("ai_research_reports")
+}

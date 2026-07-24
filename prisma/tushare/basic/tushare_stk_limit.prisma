@@ -1,7 +1,7 @@
 model StkLimit {
   tsCode    String   @map("ts_code")
   tradeDate String   @map("trade_date")
-  upLimit   Decimal? @map("up_limit")   @db.Decimal(20, 4)
+  upLimit   Decimal? @map("up_limit") @db.Decimal(20, 4)
   downLimit Decimal? @map("down_limit") @db.Decimal(20, 4)
   syncedAt  DateTime @default(now()) @map("synced_at")
 

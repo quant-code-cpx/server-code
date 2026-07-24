@@ -40,26 +40,31 @@ enum AiModelPolicy {
 }
 
 model AiConversation {
-  id              String               @id @default(cuid()) @db.VarChar(32)
-  userId          Int                  @map("user_id")
-  title           String               @db.VarChar(200)
-  status          AiConversationStatus @default(ACTIVE)
-  modelPolicy     AiModelPolicy        @default(AUTO) @map("model_policy")
-  preferredModel  String?              @map("preferred_model") @db.VarChar(128)
-  clientRequestId String?              @map("client_request_id") @db.VarChar(128)
-  summaryVersion  Int                  @default(0) @map("summary_version")
-  statusVersion   Int                  @default(1) @map("status_version")
-  messageCount    Int                  @default(0) @map("message_count")
-  lastMessageAt   DateTime             @default(now()) @map("last_message_at") @db.Timestamptz(3)
-  metadata        Json                 @default("{}") @db.JsonB
-  createdAt       DateTime             @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt       DateTime             @updatedAt @map("updated_at") @db.Timestamptz(3)
-  archivedAt      DateTime?            @map("archived_at") @db.Timestamptz(3)
-  deletedAt       DateTime?            @map("deleted_at") @db.Timestamptz(3)
+  id               String               @id @default(cuid()) @db.VarChar(32)
+  userId           Int                  @map("user_id")
+  title            String               @db.VarChar(200)
+  status           AiConversationStatus @default(ACTIVE)
+  modelPolicy      AiModelPolicy        @default(AUTO) @map("model_policy")
+  preferredModel   String?              @map("preferred_model") @db.VarChar(128)
+  clientRequestId  String?              @map("client_request_id") @db.VarChar(128)
+  currentSummaryId String?              @unique(map: "ai_conversations_current_summary_key") @map("current_summary_id") @db.VarChar(32)
+  summaryVersion   Int                  @default(0) @map("summary_version")
+  statusVersion    Int                  @default(1) @map("status_version")
+  messageCount     Int                  @default(0) @map("message_count")
+  lastMessageAt    DateTime             @default(now()) @map("last_message_at") @db.Timestamptz(3)
+  metadata         Json                 @default("{}") @db.JsonB
+  createdAt        DateTime             @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime             @updatedAt @map("updated_at") @db.Timestamptz(3)
+  archivedAt       DateTime?            @map("archived_at") @db.Timestamptz(3)
+  deletedAt        DateTime?            @map("deleted_at") @db.Timestamptz(3)
 
-  user     User        @relation(fields: [userId], references: [id], onDelete: Restrict)
-  messages AiMessage[]
-  agentRuns AiAgentRun[]
+  user            User                    @relation(fields: [userId], references: [id], onDelete: Restrict)
+  currentSummary  AiConversationSummary?  @relation("AiConversationCurrentSummary", fields: [currentSummaryId], references: [id], onDelete: Restrict)
+  summaries       AiConversationSummary[] @relation("AiConversationSummaries")
+  sourceMemories  AiUserMemory[]          @relation("AiUserMemorySourceConversation")
+  messages        AiMessage[]
+  agentRuns       AiAgentRun[]
+  researchReports AiResearchReport[]
 
   @@unique([userId, clientRequestId], map: "ai_conversations_user_client_request_key")
   @@index([userId, status, lastMessageAt(sort: Desc), id(sort: Desc)], map: "ai_conversations_user_status_cursor_idx")
@@ -86,13 +91,17 @@ model AiMessage {
   updatedAt            DateTime        @updatedAt @map("updated_at") @db.Timestamptz(3)
   completedAt          DateTime?       @map("completed_at") @db.Timestamptz(3)
 
-  conversation  AiConversation @relation(fields: [conversationId], references: [id], onDelete: Restrict)
-  user          User           @relation(fields: [userId], references: [id], onDelete: Restrict)
-  parentMessage AiMessage?     @relation("AiMessageVersions", fields: [parentMessageId], references: [id], onDelete: Restrict)
-  versions      AiMessage[]    @relation("AiMessageVersions")
-  citations     AiCitation[]
-  triggeredRuns AiAgentRun[]   @relation("AiAgentRunTriggerMessage")
-  responseRuns  AiAgentRun[]   @relation("AiAgentRunResponseMessage")
+  conversation    AiConversation          @relation(fields: [conversationId], references: [id], onDelete: Restrict)
+  user            User                    @relation(fields: [userId], references: [id], onDelete: Restrict)
+  parentMessage   AiMessage?              @relation("AiMessageVersions", fields: [parentMessageId], references: [id], onDelete: Restrict)
+  versions        AiMessage[]             @relation("AiMessageVersions")
+  citations       AiCitation[]
+  triggeredRuns   AiAgentRun[]            @relation("AiAgentRunTriggerMessage")
+  responseRuns    AiAgentRun[]            @relation("AiAgentRunResponseMessage")
+  summaryStarts   AiConversationSummary[] @relation("AiSummaryFromMessage")
+  summaryEnds     AiConversationSummary[] @relation("AiSummaryThroughMessage")
+  sourceMemories  AiUserMemory[]          @relation("AiUserMemorySourceMessage")
+  researchReports AiResearchReport[]
 
   @@unique([conversationId, clientRequestId], map: "ai_messages_conversation_client_request_key")
   @@unique([parentMessageId, version], map: "ai_messages_parent_version_key")

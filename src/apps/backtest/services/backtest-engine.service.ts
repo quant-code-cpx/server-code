@@ -7,16 +7,19 @@ import {
   BacktestResult,
   DailyBar,
   DailyNavRecord,
+  PointInTimeUniverseSnapshot,
   PortfolioState,
   PositionSnapshot,
   RebalanceFrequency,
   SignalOutput,
   UNIVERSE_INDEX_CODE,
 } from '../types/backtest-engine.types'
+import { buildBacktestReproducibilityManifest } from '../constants/backtest-reproducibility.constant'
 import { BacktestDataService } from './backtest-data.service'
 import { BacktestExecutionService } from './backtest-execution.service'
 import { BacktestMetricsService } from './backtest-metrics.service'
 import { BacktestStrategyRegistryService } from './backtest-strategy-registry.service'
+import { PointInTimeUniverseService } from './point-in-time-universe.service'
 
 @Injectable()
 export class BacktestEngineService {
@@ -28,6 +31,7 @@ export class BacktestEngineService {
     private readonly executionService: BacktestExecutionService,
     private readonly metricsService: BacktestMetricsService,
     private readonly strategyRegistry: BacktestStrategyRegistryService,
+    private readonly pointInTimeUniverseService?: PointInTimeUniverseService,
   ) {}
 
   async runBacktest(
@@ -44,7 +48,9 @@ export class BacktestEngineService {
     }
 
     // ── 2. Determine initial universe ────────────────────────────────────────
-    const universe = await this.resolveUniverse(config, tradingDays[0])
+    const universeSnapshots = new Map<string, PointInTimeUniverseSnapshot>()
+    const initialUniverse = await this.resolveUniverseSnapshot(config, tradingDays[0])
+    this.recordUniverseSnapshot(universeSnapshots, initialUniverse)
 
     // ── 3. Load all bar data upfront ─────────────────────────────────────────
     // For efficiency, load a wider date range to support MA lookback
@@ -52,18 +58,10 @@ export class BacktestEngineService {
     const dataStartDate = new Date(config.startDate.getTime() - lookbackDays * 24 * 60 * 60 * 1000)
 
     await onProgress?.(10, 'loading-data')
-    this.logger.log(`Loading bars for ${universe.length} stocks`)
+    this.logger.log(`Loading bars for ${initialUniverse.members.length} stocks`)
 
-    // Load in batches to avoid memory pressure
-    const BATCH_SIZE = 500
     const allBarsMap = new Map<string, Map<string, DailyBar>>()
-    for (let i = 0; i < universe.length; i += BATCH_SIZE) {
-      const batch = universe.slice(i, i + BATCH_SIZE)
-      const batchBars = await this.dataService.loadDailyBars(batch, dataStartDate, config.endDate)
-      for (const [code, bars] of batchBars) {
-        allBarsMap.set(code, bars)
-      }
-    }
+    await this.ensureBarsLoaded(allBarsMap, initialUniverse.members, dataStartDate, config.endDate)
 
     const benchmarkBars = await this.dataService.loadBenchmarkBars(
       config.benchmarkTsCode,
@@ -106,7 +104,7 @@ export class BacktestEngineService {
       const todayStr = today.toISOString().slice(0, 10)
 
       // Build today's bar snapshot
-      const todayBars = this.getTodayBars(allBarsMap, todayStr)
+      let todayBars = this.getTodayBars(allBarsMap, todayStr)
 
       // Adjust cost price and quantity for stock splits/dividends before mark-to-market
       if (idx > 0) {
@@ -117,10 +115,16 @@ export class BacktestEngineService {
 
       // Execute pending signal (T+1 execution)
       if (pendingSignal) {
-        if (this.canExecuteSignalToday(portfolio, pendingSignal.signal, todayBars, config)) {
+        const executionUniverse = await this.resolveUniverseSnapshot(config, today)
+        this.recordUniverseSnapshot(universeSnapshots, executionUniverse)
+        await this.ensureBarsLoaded(allBarsMap, executionUniverse.members, dataStartDate, config.endDate)
+        todayBars = this.getTodayBars(allBarsMap, todayStr)
+        const executableSignal = this.intersectSignalWithUniverse(pendingSignal.signal, executionUniverse.members)
+
+        if (this.canExecuteSignalToday(portfolio, executableSignal, todayBars, config)) {
           const { trades, rebalanceLog } = this.executionService.executeTrades(
             portfolio,
-            pendingSignal.signal,
+            executableSignal,
             todayBars,
             config,
             pendingSignal.signalDate,
@@ -138,20 +142,22 @@ export class BacktestEngineService {
 
       // Generate signal for today (will be executed T+1)
       if (!pendingSignal && isRebalanceDay(today, idx)) {
-        const historicalBars = this.buildHistoricalBars(allBarsMap, todayStr)
+        const signalUniverse = await this.resolveUniverseSnapshot(config, today)
+        this.recordUniverseSnapshot(universeSnapshots, signalUniverse)
+        await this.ensureBarsLoaded(allBarsMap, signalUniverse.members, dataStartDate, config.endDate)
+        todayBars = this.getTodayBars(allBarsMap, todayStr)
 
-        // If universe changes with time (index), refresh it
-        if (!['ALL_A', 'CUSTOM'].includes(config.universe)) {
-          const freshUniverse = await this.resolveUniverse(config, today)
-          // Ensure we have bars for new stocks
-          const missingCodes = freshUniverse.filter((c) => !allBarsMap.has(c))
-          if (missingCodes.length > 0) {
-            const newBars = await this.dataService.loadDailyBars(missingCodes, dataStartDate, config.endDate)
-            for (const [code, bars] of newBars) allBarsMap.set(code, bars)
-          }
-        }
-
-        const signal = await strategy.generateSignal(today, config, todayBars, historicalBars, this.prisma)
+        const activeMembers = new Set(signalUniverse.members)
+        const activeTodayBars = this.filterTodayBars(todayBars, activeMembers)
+        const historicalBars = this.buildHistoricalBars(allBarsMap, todayStr, activeMembers)
+        const generatedSignal = await strategy.generateSignal(
+          today,
+          config,
+          activeTodayBars,
+          historicalBars,
+          this.prisma,
+        )
+        const signal = this.intersectSignalWithUniverse(generatedSignal, signalUniverse.members)
         pendingSignal = { signal, signalDate: today }
       }
 
@@ -208,19 +214,96 @@ export class BacktestEngineService {
       positions: allPositionSnapshots,
       rebalanceLogs: allRebalanceLogs,
       metrics,
+      reproducibilityManifest: buildBacktestReproducibilityManifest(config, [...universeSnapshots.values()]),
     }
   }
 
-  private async resolveUniverse(config: BacktestConfig, date: Date): Promise<string[]> {
+  private async resolveUniverseSnapshot(config: BacktestConfig, date: Date): Promise<PointInTimeUniverseSnapshot> {
+    if (this.pointInTimeUniverseService) {
+      const snapshot = await this.pointInTimeUniverseService.resolve(config, date)
+      this.assertUniverseAvailable(snapshot)
+      return snapshot
+    }
+
+    let members: string[]
     if (config.universe === 'ALL_A') {
-      return this.dataService.getAllListedStocks(date, config.minDaysListed)
+      members = await this.dataService.getAllListedStocks(date, config.minDaysListed)
+    } else if (config.universe === 'CUSTOM') {
+      members = config.customUniverseTsCodes ?? []
+    } else {
+      const indexCode = UNIVERSE_INDEX_CODE[config.universe]
+      members = indexCode ? await this.dataService.getIndexConstituents(indexCode, date) : []
     }
-    if (config.universe === 'CUSTOM') {
-      return config.customUniverseTsCodes ?? []
+
+    const sortedMembers = [...new Set(members)].sort()
+    const snapshot = {
+      date: date.toISOString().slice(0, 10),
+      members: sortedMembers,
+      source: config.universe,
+      version: 'pit-universe-v1',
+      hash: '',
     }
-    const indexCode = UNIVERSE_INDEX_CODE[config.universe]
-    if (!indexCode) return []
-    return this.dataService.getIndexConstituents(indexCode, date)
+    this.assertUniverseAvailable(snapshot)
+    return snapshot
+  }
+
+  private assertUniverseAvailable(snapshot: PointInTimeUniverseSnapshot): void {
+    if (snapshot.members.length === 0) {
+      throw new BusinessException(ErrorEnum.BACKTEST_UNIVERSE_DATA_UNAVAILABLE)
+    }
+  }
+
+  private async ensureBarsLoaded(
+    allBarsMap: Map<string, Map<string, DailyBar>>,
+    members: string[],
+    startDate: Date,
+    endDate: Date,
+  ): Promise<void> {
+    const missingCodes = members.filter((code) => !allBarsMap.has(code))
+    const batchSize = 500
+    for (let index = 0; index < missingCodes.length; index += batchSize) {
+      const rows = await this.dataService.loadDailyBars(
+        missingCodes.slice(index, index + batchSize),
+        startDate,
+        endDate,
+      )
+      for (const [code, bars] of rows) allBarsMap.set(code, bars)
+    }
+  }
+
+  private recordUniverseSnapshot(
+    snapshots: Map<string, PointInTimeUniverseSnapshot>,
+    snapshot: PointInTimeUniverseSnapshot,
+  ): void {
+    const key = `${snapshot.date}:${snapshot.source}:${snapshot.hash}`
+    if (snapshots.has(key)) return
+    const previous = [...snapshots.values()].at(-1)
+    if (previous) {
+      const previousMembers = new Set(previous.members)
+      const members = new Set(snapshot.members)
+      const added = snapshot.members.filter((code) => !previousMembers.has(code)).length
+      const removed = previous.members.filter((code) => !members.has(code)).length
+      this.logger.debug(
+        `Universe date=${snapshot.date} size=${snapshot.members.length} added=${added} removed=${removed} hash=${snapshot.hash}`,
+      )
+    }
+    snapshots.set(key, snapshot)
+  }
+
+  private intersectSignalWithUniverse(signal: SignalOutput, members: string[]): SignalOutput {
+    const allowed = new Set(members)
+    const seen = new Set<string>()
+    return {
+      targets: signal.targets.filter((target) => {
+        if (!allowed.has(target.tsCode) || seen.has(target.tsCode)) return false
+        seen.add(target.tsCode)
+        return true
+      }),
+    }
+  }
+
+  private filterTodayBars(bars: Map<string, DailyBar>, members: Set<string>): Map<string, DailyBar> {
+    return new Map([...bars].filter(([tsCode]) => members.has(tsCode)))
   }
 
   private getTodayBars(allBarsMap: Map<string, Map<string, DailyBar>>, todayStr: string): Map<string, DailyBar> {
@@ -235,9 +318,11 @@ export class BacktestEngineService {
   private buildHistoricalBars(
     allBarsMap: Map<string, Map<string, DailyBar>>,
     upToDateStr: string,
+    members?: Set<string>,
   ): Map<string, DailyBar[]> {
     const result = new Map<string, DailyBar[]>()
     for (const [tsCode, dateMap] of allBarsMap) {
+      if (members && !members.has(tsCode)) continue
       const bars = [...dateMap.entries()]
         .filter(([d]) => d <= upToDateStr)
         .sort(([a], [b]) => a.localeCompare(b))

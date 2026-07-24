@@ -1,6 +1,6 @@
 ---
 batch: 26
-status: pending
+status: in_progress
 type: platform
 depends_on: ["batch-000-platform-data-readiness", "batch-018-mvp-e2e-and-model-regression", "batch-021-outbound-notification-channels", "batch-023-multi-provider-routing-and-fallback", "batch-025-ai-observability-cost-and-evaluation"]
 blocks: ["batch-028-controlled-sql-explorer"]

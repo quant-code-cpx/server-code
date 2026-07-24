@@ -150,6 +150,10 @@ export class ReportService {
     format: ReportFormat
     collect: () => Promise<unknown>
   }) {
+    if (opts.format === ReportFormat.PDF && !this.renderer.isPdfRenderingEnabled()) {
+      throw new BusinessException('当前生产环境未部署隔离的 PDF 渲染服务，请选择 HTML 或 JSON 格式')
+    }
+
     // 1. 创建 pending 记录
     const report = await this.prisma.report.create({
       data: {

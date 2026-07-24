@@ -41,6 +41,7 @@ import { MetricsModule } from './shared/metrics/metrics.module'
 import { AgentModule } from './apps/agent/agent.module'
 import { WebSearchModule } from './apps/web-search/web-search.module'
 import { AgentQueueModule } from './queue/agent/agent-queue.module'
+import { ScheduledResearchModule } from './apps/scheduled-research/scheduled-research.module'
 import { buildProcessRoleConfig } from './config/process-role.config'
 
 const processRole = buildProcessRoleConfig(process.env)
@@ -74,8 +75,9 @@ const processRole = buildProcessRoleConfig(process.env)
     // ── 健康检查（Liveness / Readiness 探针） ──
     HealthModule,
 
-    // ── 定时任务（Tushare 盘后同步等） ──
-    ScheduleModule.forRoot(),
+    // Only scheduler/all discovers and registers @Cron metadata. Feature modules
+    // supply a no-op SchedulerRegistry to non-scheduler processes when needed.
+    ...(processRole.schedulerEnabled ? [ScheduleModule.forRoot()] : []),
 
     // ── Tushare 数据模块（API 封装 + 启动时数据新鲜度检测） ──
     TushareModule,
@@ -109,6 +111,7 @@ const processRole = buildProcessRoleConfig(process.env)
     FundModule,
     WebSearchModule,
     AgentModule,
+    ScheduledResearchModule,
     AgentQueueModule.register({ workerEnabled: processRole.agentWorkerEnabled }),
 
     // ── 队列模块（BullMQ 回测任务） ──

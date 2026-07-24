@@ -30,6 +30,7 @@ export class FactorBacktestSubmitDto {
   @ApiPropertyOptional({ description: '股票池 indexCode（如 000300.SH）' })
   @IsOptional()
   @IsString()
+  @Matches(/^\d{6}\.(SH|SZ|BJ)$/, { message: 'universe 格式应为指数代码，例如 000300.SH' })
   universe?: string
 
   @ApiProperty({ description: '回测起始日 YYYYMMDD', example: '20250101' })

@@ -1,0 +1,123 @@
+{
+  "performanceCases": [
+    {
+      "id": "equity-rise-then-drawdown",
+      "input": {
+        "seriesType": "EQUITY",
+        "points": [
+          { "date": "2026-01-02", "value": 100 },
+          { "date": "2026-01-03", "value": 110 },
+          { "date": "2026-01-04", "value": 99 }
+        ],
+        "annualizationFactor": 252,
+        "riskFreeRateAnnual": 0,
+        "metrics": ["TOTAL_RETURN", "MAX_DRAWDOWN", "WIN_RATE", "VAR_95", "CVAR_95"]
+      },
+      "expectedMetrics": {
+        "TOTAL_RETURN": -0.01,
+        "MAX_DRAWDOWN": -0.1,
+        "WIN_RATE": 0.5,
+        "VAR_95": 0.1,
+        "CVAR_95": 0.1
+      }
+    },
+    {
+      "id": "return-compounding",
+      "input": {
+        "seriesType": "RETURN",
+        "points": [
+          { "date": "2026-01-02", "value": 0.1 },
+          { "date": "2026-01-03", "value": -0.05 },
+          { "date": "2026-01-04", "value": 0.02 }
+        ],
+        "annualizationFactor": 252,
+        "riskFreeRateAnnual": 0,
+        "metrics": ["TOTAL_RETURN", "MAX_DRAWDOWN", "WIN_RATE"]
+      },
+      "expectedMetrics": {
+        "TOTAL_RETURN": 0.0659,
+        "MAX_DRAWDOWN": -0.05,
+        "WIN_RATE": 0.6666666666666666
+      }
+    }
+  ],
+  "valuationCases": [
+    {
+      "id": "weak-percentile-with-ties",
+      "series": [
+        { "date": "2026-01-01", "value": 10 },
+        { "date": "2026-01-02", "value": 20 },
+        { "date": "2026-01-03", "value": 30 },
+        { "date": "2026-01-04", "value": 40 },
+        { "date": "2026-01-05", "value": 20 }
+      ],
+      "policy": {
+        "percentileMethod": "WEAK",
+        "excludeNonPositive": true,
+        "winsorize": "NONE",
+        "minimumSamples": 5
+      },
+      "expected": {
+        "currentValue": 20,
+        "percentile": 0.6,
+        "sampleCount": 5,
+        "dataDate": "2026-01-05",
+        "median": 20
+      }
+    },
+    {
+      "id": "mean-percentile-with-ties",
+      "series": [
+        { "date": "2026-01-01", "value": 10 },
+        { "date": "2026-01-02", "value": 20 },
+        { "date": "2026-01-03", "value": 30 },
+        { "date": "2026-01-04", "value": 40 },
+        { "date": "2026-01-05", "value": 20 }
+      ],
+      "policy": {
+        "percentileMethod": "MEAN",
+        "excludeNonPositive": true,
+        "winsorize": "NONE",
+        "minimumSamples": 5
+      },
+      "expected": {
+        "currentValue": 20,
+        "percentile": 0.4,
+        "sampleCount": 5,
+        "dataDate": "2026-01-05",
+        "median": 20
+      }
+    }
+  ],
+  "errorCases": [
+    {
+      "id": "duplicate-performance-date",
+      "kind": "performance",
+      "input": {
+        "seriesType": "EQUITY",
+        "points": [
+          { "date": "2026-01-02", "value": 100 },
+          { "date": "2026-01-02", "value": 101 }
+        ],
+        "annualizationFactor": 252,
+        "riskFreeRateAnnual": 0
+      },
+      "errorIncludes": "重复日期"
+    },
+    {
+      "id": "valuation-insufficient-samples",
+      "kind": "valuation",
+      "series": [
+        { "date": "2026-01-01", "value": 10 },
+        { "date": "2026-01-02", "value": null }
+      ],
+      "policy": {
+        "percentileMethod": "WEAK",
+        "excludeNonPositive": true,
+        "winsorize": "NONE",
+        "minimumSamples": 2
+      },
+      "errorIncludes": "有效估值样本不足"
+    }
+  ]
+}

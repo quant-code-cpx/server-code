@@ -1,0 +1,10 @@
+ARG EDGE_BASE_IMAGE
+FROM ${EDGE_BASE_IMAGE}
+
+COPY --chown=101:101 nginx.prod.conf /etc/nginx/nginx.conf
+
+USER 101:101
+EXPOSE 8080
+
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
+  CMD wget -qO- http://127.0.0.1:8080/health >/dev/null 2>&1 || exit 1

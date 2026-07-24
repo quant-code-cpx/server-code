@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common'
+import { BadRequestException, Inject, Injectable } from '@nestjs/common'
 import { createHash, randomUUID } from 'crypto'
 import { PrismaService } from 'src/shared/prisma.service'
 import { REDIS_CLIENT } from 'src/shared/redis.provider'
@@ -22,6 +22,16 @@ export class FactorScreeningService {
     const requestHash = this.hashRequest(dto)
     const requestId = randomUUID()
     const cacheKey = `factor:screening:${requestHash}:${page}:${pageSize}`
+
+    if (dto.universe) {
+      const universeExists = await this.prisma.indexWeight.findFirst({
+        where: { indexCode: dto.universe, tradeDate: { lte: tradeDate } },
+        select: { indexCode: true },
+      })
+      if (!universeExists) {
+        throw new BadRequestException(`股票池 "${dto.universe}" 不存在或在 ${tradeDate} 前无成分数据`)
+      }
+    }
 
     const cached = await Promise.resolve(this.redis.get(cacheKey)).catch(() => null)
     if (cached) return JSON.parse(cached)

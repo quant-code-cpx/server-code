@@ -44,6 +44,81 @@ export const AGENT_ERROR_DEFINITIONS = [
   { code: 6029, key: 'AI_TOOL_OUTPUT_INVALID', httpStatus: 502, retryable: false, message: 'Tool 输出协议无效' },
   { code: 6030, key: 'AI_CONFIRMATION_REQUIRED', httpStatus: 409, retryable: false, message: '操作需要用户确认' },
   { code: 6031, key: 'AI_RUN_CANCELLED', httpStatus: 409, retryable: false, message: 'Agent Run 已取消' },
+  { code: 6032, key: 'AI_MEMORY_NOT_FOUND', httpStatus: 404, retryable: false, message: '记忆不存在或无权访问' },
+  {
+    code: 6033,
+    key: 'AI_MEMORY_VALIDATION_FAILED',
+    httpStatus: 400,
+    retryable: false,
+    message: '记忆参数或策略校验失败',
+  },
+  { code: 6034, key: 'AI_MEMORY_CONFLICT', httpStatus: 409, retryable: false, message: '记忆状态或版本冲突' },
+  { code: 6035, key: 'AI_SUMMARY_VERSION_CONFLICT', httpStatus: 409, retryable: true, message: '会话摘要版本冲突' },
+  { code: 6036, key: 'AI_SUMMARY_VALIDATION_FAILED', httpStatus: 422, retryable: false, message: '会话摘要校验失败' },
+  {
+    code: 6037,
+    key: 'AI_SCHEDULE_NOT_FOUND',
+    httpStatus: 404,
+    retryable: false,
+    message: '定时研究任务不存在或无权访问',
+  },
+  { code: 6038, key: 'AI_SCHEDULE_CONFLICT', httpStatus: 409, retryable: true, message: '定时研究任务版本或状态冲突' },
+  {
+    code: 6039,
+    key: 'AI_NOTIFICATION_CHANNEL_NOT_FOUND',
+    httpStatus: 404,
+    retryable: false,
+    message: '通知渠道不存在或无权访问',
+  },
+  {
+    code: 6040,
+    key: 'AI_NOTIFICATION_DELIVERY_NOT_FOUND',
+    httpStatus: 404,
+    retryable: false,
+    message: '通知投递不存在或无权访问',
+  },
+  {
+    code: 6041,
+    key: 'AI_NOTIFICATION_DELIVERY_CONFLICT',
+    httpStatus: 409,
+    retryable: false,
+    message: '通知投递当前状态不允许此操作',
+  },
+  {
+    code: 6042,
+    key: 'AI_NOTIFICATION_CHANNEL_CONFLICT',
+    httpStatus: 409,
+    retryable: false,
+    message: '通知渠道版本或状态冲突',
+  },
+  {
+    code: 6043,
+    key: 'AI_RESEARCH_REPORT_NOT_FOUND',
+    httpStatus: 404,
+    retryable: false,
+    message: '研究报告不存在或无权访问',
+  },
+  {
+    code: 6044,
+    key: 'AI_RESEARCH_REPORT_INVALID',
+    httpStatus: 400,
+    retryable: false,
+    message: '研究报告参数或来源无效',
+  },
+  {
+    code: 6045,
+    key: 'AI_RESEARCH_REPORT_CONFIRMATION_INVALID',
+    httpStatus: 409,
+    retryable: false,
+    message: '报告确认已失效或内容已变化',
+  },
+  {
+    code: 6046,
+    key: 'AI_RESEARCH_REPORT_CONFLICT',
+    httpStatus: 409,
+    retryable: false,
+    message: '研究报告幂等请求或版本冲突',
+  },
   { code: 6099, key: 'AI_INTERNAL_ERROR', httpStatus: 500, retryable: true, message: 'Agent 内部错误' },
 ] as const satisfies readonly AgentErrorDefinition[]
 
@@ -79,6 +154,21 @@ export type AgentErrorKey =
   | 'AI_TOOL_OUTPUT_INVALID'
   | 'AI_CONFIRMATION_REQUIRED'
   | 'AI_RUN_CANCELLED'
+  | 'AI_MEMORY_NOT_FOUND'
+  | 'AI_MEMORY_VALIDATION_FAILED'
+  | 'AI_MEMORY_CONFLICT'
+  | 'AI_SUMMARY_VERSION_CONFLICT'
+  | 'AI_SUMMARY_VALIDATION_FAILED'
+  | 'AI_SCHEDULE_NOT_FOUND'
+  | 'AI_SCHEDULE_CONFLICT'
+  | 'AI_NOTIFICATION_CHANNEL_NOT_FOUND'
+  | 'AI_NOTIFICATION_DELIVERY_NOT_FOUND'
+  | 'AI_NOTIFICATION_DELIVERY_CONFLICT'
+  | 'AI_NOTIFICATION_CHANNEL_CONFLICT'
+  | 'AI_RESEARCH_REPORT_NOT_FOUND'
+  | 'AI_RESEARCH_REPORT_INVALID'
+  | 'AI_RESEARCH_REPORT_CONFIRMATION_INVALID'
+  | 'AI_RESEARCH_REPORT_CONFLICT'
   | 'AI_INTERNAL_ERROR'
 
 export const AGENT_ERROR_BY_CODE = new Map<number, AgentErrorDefinition>(

@@ -52,20 +52,30 @@ flowchart TD
 
 `compute_performance_metrics` 使用独立、版本化纯函数，从 Tool 返回的有界净值序列重新计算；模型不得自行算收益、Sharpe 或回撤。精确能力见 [Tool 清单](../tools/tool-inventory.md) 与 [量化 Tool Schema](../tools/schemas/quantitative-tools.md)。
 
-## 5. 当前已实证的强制风险披露
+## 5. 已实证风险与 Batch 029 可信门禁
 
-在以下问题修复并通过 golden test 前，`get_backtest_result` 必须返回 `BACKTEST_BIAS_UNVERIFIED`，并在回答摘要附近展示具体 warning。不得把当前结果直接当可靠投资结论。
+下表记录触发 Batch 029 的历史缺陷。旧 Run 不重写原始结果，永久保持 `LEGACY_UNVERIFIED`；新 Run 只有在完整 PIT/财务/QFQ 合同实际执行并持久化 manifest 后才可标为 `VERIFIED`。缺版本、缺合法 64 位 `inputHash`、有 quality flag 或运行尚未完成时，`get_backtest_result` 必须继续返回 `BACKTEST_BIAS_UNVERIFIED`。
 
 | 已实证问题 | 真实位置 | 对结果的影响 |
 | --- | --- | --- |
 | `ALL_A` 使用当前 `listStatus='L'` 构造历史股票池 | `src/apps/backtest/services/backtest-data.service.ts#getAllListedStocks` | 已退市历史股票被排除，产生幸存者偏差；初始一次性 universe 也不会纳入区间内后续 IPO |
 | 指数池按最近快照取成分，但退出成分未被可靠剔除 | `BacktestDataService#getIndexConstituents` 与 engine 的动态 universe 合并路径 | 历史成分集合残留退出成员，收益归属和可交易集合失真 |
-| 部分 rotation strategy 不按配置 universe 过滤 | `screening-rotation.strategy.ts`、`factor-screening-rotation.strategy.ts` | 排名/筛选会越过声明的指数或自定义股票池，从全市场选股 |
+| `SCREENING_ROTATION` 不按配置 universe 过滤 | `screening-rotation.strategy.ts` | 排名会越过声明的指数或自定义股票池，从全市场选股 |
 | `FactorRankingStrategy` 财务因子按 `end_date` 选择，而非按 `ann_date/availableAt` | `src/apps/backtest/strategies/factor-ranking.strategy.ts` | 回测读取当时尚未公告的财务信息，形成前视偏差 |
 | 股票详情 QFQ 使用 `latestAdj / factor` | `src/apps/stock/stock-detail.service.ts#getDetailChart` | 与标准前复权方向相反，造成 Agent 行情对照和回测数据口径冲突 |
 | 回测 `adjRows` 查询无 `orderBy`，却用 `reduceRight` 推断最新因子 | `src/apps/backtest/services/backtest-data.service.ts#loadDailyBars` | “最新复权因子”依赖数据库返回顺序，结果不可确定、不可稳定复现 |
 
-Tool 输出至少包含：是否有完整 universe 快照、是否按公告可用时点、复权口径与排序是否验证、策略是否实际应用 universe、数据/算法版本、input/output hash。缺任何关键项都保持 warning。
+Batch 029 新运行合同：
+
+- `ALL_A` 按信号日的 `listDate/delistDate` 解析；指数池按不晚于信号日的完整快照全量替换，并为新成员补加载行情窗口。
+- 指数股票池 readiness 必须存在“指定指数、起始日当日或更早”的快照；engine 任一日期解析到空股票池时返回 `4005 BACKTEST_UNIVERSE_DATA_UNAVAILABLE`，不得以空仓结果生成 `VERIFIED` manifest。
+- engine 在信号日和 T+1 执行日前重新解析 universe；rotation/ranking 在 SQL 候选层及下单层双重求交。
+- 财务因子只读取 `ann_date <= signalDate` 的可见版本；`financial_indicator_snapshots` 保留同一报告期多个公告/修订版本，并以 `end_date → ann_date → update_flag` 稳定选择。周增量按已披露股票合并日期区间请求，避免按“股票 × 报告期”放大调用量。
+- QFQ 固定为 `price * factor / latestAdj`；复权因子查询和内存处理均显式按证券、交易日排序。
+- manifest 固定记录 engine/data/universe/financial/adjustment policy 版本、按日期排序的 universe snapshot hash 和输入 SHA-256。
+- `BACKTEST_REQUIRE_VERIFIED_DATA=false` 是暂停所有新普通/比较/参数扫描/Walk-Forward 回测入口的回滚开关；默认及生产保持 `true`，不会把旧 Run 升级为可信。
+
+Tool 输出至少包含：universe snapshots、公告时点策略、复权策略、engine/data/policy 版本、input hash 和 quality flags。只有 `reproducibilityStatus=VERIFIED` 且上述字段完整有效时，才允许移除 bias warning。
 
 ## 6. 数据时点、指标复核与引用
 

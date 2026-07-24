@@ -14,6 +14,7 @@ import {
   mapAdjFactorRecord,
   mapDailyBasicRecord,
   mapDailyRecord,
+  mapFinaIndicatorRecord,
   mapMonthlyRecord,
   mapMoneyflowRecord,
   mapStockBasicRecord,
@@ -23,6 +24,7 @@ import {
   mapWeeklyRecord,
   normalizePctChange,
 } from 'src/tushare/tushare-sync.mapper'
+import { TUSHARE_FINA_INDICATOR_FIELDS } from 'src/constant/tushare.constant'
 
 // ValidationCollector 为可选参数，单元测试中传入 undefined 即可
 // 部分函数需要 collector（非 undefined）才会做验证，这里不测验证分支
@@ -149,6 +151,30 @@ describe('tushare-sync.mapper', () => {
 
     it('不传 collector 时不应抛出异常', () => {
       expect(() => mapDailyRecord(dailyRecord(), undefined)).not.toThrow()
+    })
+  })
+
+  describe('mapFinaIndicatorRecord()', () => {
+    it('API 请求字段必须包含 update_flag，不能只在 mapper 中被动读取', () => {
+      expect(TUSHARE_FINA_INDICATOR_FIELDS).toContain('update_flag')
+    })
+
+    it('保留 ann_date 与 update_flag，供 point-in-time 修订选择', () => {
+      const result = mapFinaIndicatorRecord({
+        ts_code: '000001.SZ',
+        ann_date: '20240430',
+        end_date: '20231231',
+        roe: '12.5',
+        update_flag: '1',
+      })
+
+      expect(result).toMatchObject({
+        tsCode: '000001.SZ',
+        annDate: new Date(Date.UTC(2024, 3, 30)),
+        endDate: new Date(Date.UTC(2023, 11, 31)),
+        roe: 12.5,
+        updateFlag: '1',
+      })
     })
   })
 

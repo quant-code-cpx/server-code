@@ -4,6 +4,7 @@ import {
   ArrayMaxSize,
   IsArray,
   IsBoolean,
+  IsDateString,
   IsIn,
   IsInt,
   IsOptional,
@@ -46,6 +47,37 @@ export class CreateResearchNoteDto {
   @IsOptional()
   @IsBoolean()
   isPinned?: boolean
+
+  @ApiPropertyOptional({ maxLength: 4000 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(4000)
+  thesis?: string
+
+  @ApiPropertyOptional({ type: [String], maxItems: 20 })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  @MaxLength(500, { each: true })
+  @ArrayMaxSize(20)
+  risks?: string[]
+
+  @ApiPropertyOptional({ maxLength: 4000 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(4000)
+  decision?: string
+
+  @ApiPropertyOptional({ maxLength: 4000 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(4000)
+  outcome?: string
+
+  @ApiPropertyOptional({ format: 'date-time' })
+  @IsOptional()
+  @IsDateString()
+  reviewAt?: string
 }
 
 export class UpdateResearchNoteDto {
@@ -81,6 +113,37 @@ export class UpdateResearchNoteDto {
   @IsOptional()
   @IsBoolean()
   isPinned?: boolean
+
+  @ApiPropertyOptional({ maxLength: 4000 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(4000)
+  thesis?: string
+
+  @ApiPropertyOptional({ type: [String], maxItems: 20 })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  @MaxLength(500, { each: true })
+  @ArrayMaxSize(20)
+  risks?: string[]
+
+  @ApiPropertyOptional({ maxLength: 4000 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(4000)
+  decision?: string
+
+  @ApiPropertyOptional({ maxLength: 4000 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(4000)
+  outcome?: string
+
+  @ApiPropertyOptional({ format: 'date-time' })
+  @IsOptional()
+  @IsDateString()
+  reviewAt?: string
 }
 
 export class ResearchNoteQueryDto {

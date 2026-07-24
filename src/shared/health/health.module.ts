@@ -1,7 +1,10 @@
 import { Module } from '@nestjs/common'
+import { ConfigModule } from '@nestjs/config'
 import { TerminusModule } from '@nestjs/terminus'
+import { ShutdownConfig } from 'src/config/shutdown.config'
 import { HealthController } from './health.controller'
 import { PrismaHealthIndicator } from './prisma.health'
+import { ReadinessService } from './readiness.service'
 import { RedisHealthIndicator } from './redis.health'
 
 /**
@@ -14,8 +17,8 @@ import { RedisHealthIndicator } from './redis.health'
  * PrismaService 和 REDIS_CLIENT 已由 SharedModule 全局导出，无需重复导入。
  */
 @Module({
-  imports: [TerminusModule],
+  imports: [TerminusModule, ConfigModule.forFeature(ShutdownConfig)],
   controllers: [HealthController],
-  providers: [PrismaHealthIndicator, RedisHealthIndicator],
+  providers: [PrismaHealthIndicator, RedisHealthIndicator, ReadinessService],
 })
 export class HealthModule {}

@@ -1,6 +1,8 @@
-import { Injectable } from '@nestjs/common'
+import { Injectable, Optional } from '@nestjs/common'
 import { AiAgentRunStatus } from '@prisma/client'
 import { LoggerService } from 'src/shared/logger/logger.service'
+import { AgentMetricsService } from '../observability/agent-metrics.service'
+import { AgentTracingService } from '../observability/agent-tracing.service'
 import { AgentRunRepository } from '../execution/agent-run.repository'
 import { WorkflowEngineService } from '../workflow/workflow-engine.service'
 import { WorkflowCancelledError, WorkflowExecutionError, WorkflowLeaseError } from '../workflow/workflow.errors'
@@ -19,20 +21,28 @@ export class AgentOrchestratorService {
     private readonly registry: WorkflowRegistryService,
     private readonly engine: WorkflowEngineService,
     private readonly logger: LoggerService,
+    @Optional() private readonly tracing?: AgentTracingService,
+    @Optional() private readonly metrics?: AgentMetricsService,
   ) {}
 
   async resume(runId: string, worker: AgentWorkerContext): Promise<WorkflowTerminalResult> {
     const startedAt = Date.now()
     const claimed = await this.runs.claimRun(runId, worker.workerId)
     const executionRun = await this.runs.findForExecution(claimed.id, worker.workerId)
+    let workflowKey = 'unknown'
     try {
       const workflow = this.registry.resolvePublished(executionRun.workflowVersion, executionRun.promptVersion)
-      return await this.engine.execute({
-        run: executionRun,
-        workflow,
-        workerId: worker.workerId,
-        signal: worker.signal,
-      })
+      workflowKey = workflow.key
+      const result = await this.executeWorkflow(executionRun, workflow.key, () =>
+        this.engine.execute({
+          run: executionRun,
+          workflow,
+          workerId: worker.workerId,
+          signal: worker.signal,
+        }),
+      )
+      this.observeRun(workflowKey, result.status, Date.now() - startedAt)
+      return result
     } catch (error) {
       const current = await this.runs.findById(executionRun.userId, executionRun.id)
       if (current.status === AiAgentRunStatus.CANCEL_REQUESTED) {
@@ -46,6 +56,7 @@ export class AgentOrchestratorService {
             payload: { cancelledBy: 'USER', reason: current.cancelReason ?? '用户取消' },
           },
         })
+        this.observeRun(workflowKey, 'CANCELLED', Date.now() - startedAt)
         return { status: 'CANCELLED', runId: current.id }
       }
       if (
@@ -88,7 +99,28 @@ export class AgentOrchestratorService {
         },
         AgentOrchestratorService.name,
       )
+      this.observeRun(workflowKey, 'FAILED', Date.now() - startedAt)
       return { status: 'FAILED', runId: current.id }
+    }
+  }
+
+  private executeWorkflow<T>(
+    run: { id: string; traceId: string },
+    workflow: string,
+    work: () => Promise<T>,
+  ): Promise<T> {
+    if (!this.tracing) return work()
+    return this.tracing.span('agent.workflow', { traceId: run.traceId, runId: run.id, workflow }, work)
+  }
+
+  private observeRun(workflow: string, status: 'COMPLETED' | 'FAILED' | 'CANCELLED', durationMs: number): void {
+    try {
+      this.metrics?.observeRun(workflow, status, durationMs)
+    } catch (error) {
+      this.logger.warn(
+        { operation: 'agent.metrics.run', status, errorClass: error instanceof Error ? error.name : 'unknown' },
+        AgentOrchestratorService.name,
+      )
     }
   }
 }

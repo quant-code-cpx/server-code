@@ -44,6 +44,8 @@ export class BacktestRunSummaryDto {
   @ApiPropertyOptional({ example: -0.1523, nullable: true, description: '最大回撤' }) maxDrawdown: number | null
   @ApiPropertyOptional({ example: 1.42, nullable: true, description: '夏普比率' }) sharpeRatio: number | null
   @ApiProperty({ example: 100 }) progress: number
+  @ApiProperty({ example: 'VERIFIED' }) reproducibilityStatus: string
+  @ApiProperty({ type: [String], example: [] }) qualityFlags: string[]
   @ApiProperty({ example: '2024-01-15T08:00:00.000Z' }) createdAt: string
   @ApiPropertyOptional({ example: '2024-01-15T08:05:32.000Z', nullable: true }) completedAt: string | null
 }
@@ -89,6 +91,14 @@ export class BacktestRunDetailResponseDto {
   @ApiProperty() initialCapital: number
   @ApiProperty() rebalanceFrequency: string
   @ApiProperty() priceMode: string
+  @ApiPropertyOptional({ nullable: true }) engineVersion: string | null
+  @ApiPropertyOptional({ nullable: true }) dataContractVersion: string | null
+  @ApiPropertyOptional({ nullable: true }) universePolicyVersion: string | null
+  @ApiPropertyOptional({ nullable: true }) financialAsOfPolicyVersion: string | null
+  @ApiPropertyOptional({ nullable: true }) adjustmentPolicyVersion: string | null
+  @ApiProperty() reproducibilityStatus: string
+  @ApiPropertyOptional({ nullable: true, type: Object }) reproducibilityManifest: Record<string, unknown> | null
+  @ApiProperty({ type: [String] }) qualityFlags: string[]
   @ApiProperty({ type: BacktestRunSummaryMetricsDto }) summary: BacktestRunSummaryMetricsDto
   @ApiProperty() createdAt: string
   @ApiPropertyOptional({ nullable: true }) startedAt: string | null
@@ -97,7 +107,7 @@ export class BacktestRunDetailResponseDto {
 
 export class EquityPointDto {
   @ApiProperty() tradeDate: string
-  @ApiProperty() nav: number
+  @ApiProperty({ description: '归一化策略净值，首个有效点为 1' }) nav: number
   @ApiProperty() benchmarkNav: number
   @ApiProperty() drawdown: number
   @ApiProperty() dailyReturn: number

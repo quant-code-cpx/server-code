@@ -133,9 +133,15 @@ export class ToolRegistryService implements OnModuleInit {
     }
     const policy = definition.policy
     if (!Object.values(UserRole).includes(policy.requiredRole)) throw new ToolRegistryError('Tool requiredRole 非法')
-    if (policy.sideEffect !== 'READ') throw new ToolRegistryError('MVP 仅允许注册 READ Tool')
-    if (policy.requiresConfirmation) throw new ToolRegistryError('READ Tool 不应要求写操作确认')
-    if (!policy.idempotent) throw new ToolRegistryError('MVP READ Tool 必须声明 idempotent')
+    if (policy.sideEffect === 'READ') {
+      if (policy.requiresConfirmation) throw new ToolRegistryError('READ Tool 不应要求写操作确认')
+      if (!policy.idempotent) throw new ToolRegistryError('MVP READ Tool 必须声明 idempotent')
+    } else if (policy.sideEffect === 'WRITE') {
+      if (!policy.requiresConfirmation) throw new ToolRegistryError('WRITE Tool 必须要求用户确认')
+      if (!policy.idempotent) throw new ToolRegistryError('WRITE Tool 必须声明幂等')
+    } else {
+      throw new ToolRegistryError('当前不支持注册 DESTRUCTIVE Tool')
+    }
     requireInteger(policy.timeoutMs, 'timeoutMs', 100, 120_000)
     requireInteger(policy.maxAttempts, 'maxAttempts', 1, 5)
     requireInteger(policy.maxRows, 'maxRows', 1, 10_000)

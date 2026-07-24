@@ -1,6 +1,6 @@
 ---
 batch: 20
-status: pending
+status: completed
 type: backend
 depends_on: ["batch-003-agent-audit-and-citation-schema", "batch-011-agent-orchestrator-workflow", "batch-012-agent-bullmq-worker", "batch-018-mvp-e2e-and-model-regression"]
 blocks: ["batch-021-outbound-notification-channels"]
@@ -141,6 +141,13 @@ schedule 创建/修改不注册成模型 Tool；workflow 完成写 execution/res
 ## 24. 完成定义
 
 schema/migration、unique scheduler、API、queue 集成、并发/时点测试和运行文档合入。
+
+### 当前实施证据（2026-07-22）
+
+- 已实现 schema/migration、CAS lease scanner、`CRON`/`ONE_TIME`/`STRUCTURED_CONDITION`、交易日与 `DAILY` watermark gate、冻结 execution snapshot、Agent Run/outbox 复用、全量 POST API 与错误码。
+- 已通过：`pnpm prisma:generate`、`pnpm prisma validate`、`pnpm prisma migrate deploy/status`（隔离本机 PostgreSQL）、定时模块单元回归 8/8、独立 PostgreSQL integration 3/3、Agent Run/outbox/BullMQ integration 13/13、`pnpm run build`、`pnpm lint`、Swagger 和 Agent contract 生成/检查。
+- Docker 开发栈的 PostgreSQL bind mount 与 Docker Desktop VM 仍故障，但本 Batch 未改 Compose/基础设施，且所有 DB/Redis 验收改由临时隔离实例实际完成。HTTP 全应用 E2E、fake provider E2E、PERF/LOAD/STRESS 没有伪造为已执行；后续可按[测试方案](../../../design/智能体定时与条件任务测试方案-20260722.md)补充。
+- Commit/PR：未创建。工作树含其他批次的未提交改动，本 Batch 文件保持可独立暂存。
 
 ## 25. 回滚方案
 

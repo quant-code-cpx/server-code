@@ -12,9 +12,18 @@ import { FactorBacktestService } from './services/factor-backtest.service'
 import { FactorOrthogonalService } from './services/factor-orthogonal.service'
 import { FactorOptimizationService } from './services/factor-optimization.service'
 import { BacktestModule } from '../backtest/backtest.module'
+import { buildProcessRoleConfig } from 'src/config/process-role.config'
+import { NoopScheduleModule } from 'src/shared/scheduler/noop-schedule.module'
+
+const processRole = buildProcessRoleConfig(process.env)
 
 @Module({
-  imports: [BacktestModule],
+  imports: [
+    // FactorPrecomputeService injects SchedulerRegistry. Only scheduler loads
+    // the real ScheduleModule; API and workers receive a local no-op token.
+    ...(processRole.schedulerEnabled ? [] : [NoopScheduleModule]),
+    BacktestModule,
+  ],
   controllers: [FactorController],
   providers: [
     FactorService,

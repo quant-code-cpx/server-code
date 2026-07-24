@@ -84,7 +84,7 @@ function financialStatementsDefinition(financial: FinancialToolFacade, config: I
           sourceModels: value.sourceModels,
           reportPeriod: value.asOf,
           announcementDate: value.availableAsOf,
-          availableAt: command.availableAt ?? value.availableAsOf,
+          availableAt: command.availableAt ?? toAvailableAtDateTime(value.availableAsOf),
           unit: '字段单位见 data.statements[].periods[].values[].unit',
           currency: 'CNY',
           dataVersion: 'financial-statements-pit-v1',
@@ -137,7 +137,7 @@ function financialIndicatorsDefinition(financial: FinancialToolFacade, config: I
           sourceModels: value.sourceModels,
           reportPeriod: value.asOf,
           announcementDate: value.availableAsOf,
-          availableAt: command.availableAt ?? value.availableAsOf,
+          availableAt: command.availableAt ?? toAvailableAtDateTime(value.availableAsOf),
           unit: '字段单位见 data.periods[].values[].unit',
           currency: 'CNY',
           dataVersion: 'financial-indicators-pit-limited-v1',
@@ -264,6 +264,10 @@ async function executeSafely<T>(loader: () => Promise<T>): Promise<T> {
 
 function assertRange(start: string | undefined, end: string | undefined, label: string): void {
   if (start && end && start > end) throw invalidArgument(`${label}开始日期不能晚于结束日期`)
+}
+
+function toAvailableAtDateTime(value: string | null): string | null {
+  return value ? `${value}T23:59:59.999+08:00` : null
 }
 
 function invalidArgument(message: string): ToolAdapterError {

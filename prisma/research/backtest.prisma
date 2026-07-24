@@ -1,65 +1,74 @@
 // 回测模块持久化模型
 
 model BacktestRun {
-  id                 String    @id @default(cuid())
-  userId             Int       @map("user_id")
-  jobId              String?   @map("job_id")
-  name               String?   @db.VarChar(128)
+  id     String  @id @default(cuid())
+  userId Int     @map("user_id")
+  jobId  String? @map("job_id")
+  name   String? @db.VarChar(128)
 
-  strategyType       String    @map("strategy_type") @db.VarChar(64)
-  strategyId         String?   @map("strategy_id") @db.VarChar(36)
-  strategyConfig     Json      @map("strategy_config")
+  strategyType   String  @map("strategy_type") @db.VarChar(64)
+  strategyId     String? @map("strategy_id") @db.VarChar(36)
+  strategyConfig Json    @map("strategy_config")
 
-  startDate          DateTime  @map("start_date") @db.Date
-  endDate            DateTime  @map("end_date") @db.Date
-  benchmarkTsCode    String    @map("benchmark_ts_code") @db.VarChar(16)
-  universe           String    @db.VarChar(32)
-  customUniverse     Json?     @map("custom_universe")
+  startDate       DateTime @map("start_date") @db.Date
+  endDate         DateTime @map("end_date") @db.Date
+  benchmarkTsCode String   @map("benchmark_ts_code") @db.VarChar(16)
+  universe        String   @db.VarChar(32)
+  customUniverse  Json?    @map("custom_universe")
 
-  initialCapital     Decimal   @map("initial_capital") @db.Decimal(20, 4)
-  rebalanceFrequency String    @map("rebalance_frequency") @db.VarChar(32)
-  priceMode          String    @map("price_mode") @db.VarChar(32)
+  initialCapital     Decimal @map("initial_capital") @db.Decimal(20, 4)
+  rebalanceFrequency String  @map("rebalance_frequency") @db.VarChar(32)
+  priceMode          String  @map("price_mode") @db.VarChar(32)
 
-  commissionRate     Decimal?  @map("commission_rate") @db.Decimal(10, 6)
-  stampDutyRate      Decimal?  @map("stamp_duty_rate") @db.Decimal(10, 6)
-  minCommission      Decimal?  @map("min_commission") @db.Decimal(20, 4)
-  slippageBps        Int?      @map("slippage_bps")
+  engineVersion              String? @map("engine_version") @db.VarChar(64)
+  dataContractVersion        String? @map("data_contract_version") @db.VarChar(64)
+  universePolicyVersion      String? @map("universe_policy_version") @db.VarChar(64)
+  financialAsOfPolicyVersion String? @map("financial_as_of_policy_version") @db.VarChar(64)
+  adjustmentPolicyVersion    String? @map("adjustment_policy_version") @db.VarChar(64)
+  reproducibilityStatus      String  @default("LEGACY_UNVERIFIED") @map("reproducibility_status") @db.VarChar(32)
+  reproducibilityManifest    Json?   @map("reproducibility_manifest") @db.JsonB
+  qualityFlags               Json    @default("[\"LEGACY_UNVERIFIED\"]") @map("quality_flags") @db.JsonB
 
-  status             String    @db.VarChar(32)
-  progress           Int       @default(0)
-  failedReason       String?   @map("failed_reason") @db.Text
+  commissionRate Decimal? @map("commission_rate") @db.Decimal(10, 6)
+  stampDutyRate  Decimal? @map("stamp_duty_rate") @db.Decimal(10, 6)
+  minCommission  Decimal? @map("min_commission") @db.Decimal(20, 4)
+  slippageBps    Int?     @map("slippage_bps")
 
-  totalReturn        Float?    @map("total_return")
-  annualizedReturn   Float?    @map("annualized_return")
-  benchmarkReturn    Float?    @map("benchmark_return")
-  excessReturn       Float?    @map("excess_return")
-  maxDrawdown        Float?    @map("max_drawdown")
-  sharpeRatio        Float?    @map("sharpe_ratio")
-  sortinoRatio       Float?    @map("sortino_ratio")
-  calmarRatio        Float?    @map("calmar_ratio")
-  volatility         Float?
-  alpha              Float?
-  beta               Float?
-  informationRatio   Float?    @map("information_ratio")
-  winRate            Float?    @map("win_rate")
-  turnoverRate       Float?    @map("turnover_rate")
-  tradeCount         Int?      @map("trade_count")
+  status       String  @db.VarChar(32)
+  progress     Int     @default(0)
+  failedReason String? @map("failed_reason") @db.Text
+
+  totalReturn      Float? @map("total_return")
+  annualizedReturn Float? @map("annualized_return")
+  benchmarkReturn  Float? @map("benchmark_return")
+  excessReturn     Float? @map("excess_return")
+  maxDrawdown      Float? @map("max_drawdown")
+  sharpeRatio      Float? @map("sharpe_ratio")
+  sortinoRatio     Float? @map("sortino_ratio")
+  calmarRatio      Float? @map("calmar_ratio")
+  volatility       Float?
+  alpha            Float?
+  beta             Float?
+  informationRatio Float? @map("information_ratio")
+  winRate          Float? @map("win_rate")
+  turnoverRate     Float? @map("turnover_rate")
+  tradeCount       Int?   @map("trade_count")
 
   // ── Param sweep (OPT-2.3) ──────────────────────────────────────
-  sweepId            String?   @map("sweep_id")
-  sweepXIdx          Int?      @map("sweep_x_idx")
-  sweepYIdx          Int?      @map("sweep_y_idx")
+  sweepId   String? @map("sweep_id")
+  sweepXIdx Int?    @map("sweep_x_idx")
+  sweepYIdx Int?    @map("sweep_y_idx")
 
   // ── 生命周期管理 ────────────────────────────────────────────────
-  starred            Boolean   @default(false)
-  archived           Boolean   @default(false)
-  note               String?   @db.Text
-  deletedAt          DateTime? @map("deleted_at")
+  starred   Boolean   @default(false)
+  archived  Boolean   @default(false)
+  note      String?   @db.Text
+  deletedAt DateTime? @map("deleted_at")
 
-  createdAt          DateTime  @default(now()) @map("created_at")
-  startedAt          DateTime? @map("started_at")
-  completedAt        DateTime? @map("completed_at")
-  updatedAt          DateTime  @updatedAt @map("updated_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  startedAt   DateTime? @map("started_at")
+  completedAt DateTime? @map("completed_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
 
   @@index([userId, createdAt(sort: Desc)])
   @@index([status, createdAt(sort: Desc)])
@@ -142,72 +151,72 @@ model BacktestRebalanceLog {
 // ─────────────────────────────────────────────────────────────────────────────
 
 model BacktestWalkForwardRun {
-  id                   String    @id @default(cuid())
-  userId               Int       @map("user_id")
-  name                 String?   @db.VarChar(128)
+  id     String  @id @default(cuid())
+  userId Int     @map("user_id")
+  name   String? @db.VarChar(128)
 
-  baseStrategyType     String    @map("base_strategy_type") @db.VarChar(64)
-  baseStrategyConfig   Json      @map("base_strategy_config")
-  paramSearchSpace     Json      @map("param_search_space")
-  optimizeMetric       String    @map("optimize_metric") @db.VarChar(64)
+  baseStrategyType   String @map("base_strategy_type") @db.VarChar(64)
+  baseStrategyConfig Json   @map("base_strategy_config")
+  paramSearchSpace   Json   @map("param_search_space")
+  optimizeMetric     String @map("optimize_metric") @db.VarChar(64)
 
-  fullStartDate        DateTime  @map("full_start_date") @db.Date
-  fullEndDate          DateTime  @map("full_end_date") @db.Date
-  inSampleDays         Int       @map("in_sample_days")
-  outOfSampleDays      Int       @map("out_of_sample_days")
-  stepDays             Int       @map("step_days")
+  fullStartDate   DateTime @map("full_start_date") @db.Date
+  fullEndDate     DateTime @map("full_end_date") @db.Date
+  inSampleDays    Int      @map("in_sample_days")
+  outOfSampleDays Int      @map("out_of_sample_days")
+  stepDays        Int      @map("step_days")
 
-  benchmarkTsCode      String    @map("benchmark_ts_code") @db.VarChar(16)
-  universe             String    @db.VarChar(32)
-  initialCapital       Decimal   @map("initial_capital") @db.Decimal(20, 4)
-  rebalanceFrequency   String    @map("rebalance_frequency") @db.VarChar(32)
+  benchmarkTsCode    String  @map("benchmark_ts_code") @db.VarChar(16)
+  universe           String  @db.VarChar(32)
+  initialCapital     Decimal @map("initial_capital") @db.Decimal(20, 4)
+  rebalanceFrequency String  @map("rebalance_frequency") @db.VarChar(32)
 
-  status               String    @db.VarChar(32)
-  progress             Int       @default(0)
-  failedReason         String?   @map("failed_reason") @db.Text
-  windowCount          Int?      @map("window_count")
-  completedWindows     Int?      @map("completed_windows") @default(0)
+  status           String  @db.VarChar(32)
+  progress         Int     @default(0)
+  failedReason     String? @map("failed_reason") @db.Text
+  windowCount      Int?    @map("window_count")
+  completedWindows Int?    @default(0) @map("completed_windows")
 
-  jobId                String?   @map("job_id")
-  deletedAt            DateTime? @map("deleted_at")
+  jobId     String?   @map("job_id")
+  deletedAt DateTime? @map("deleted_at")
 
-  oosAnnualizedReturn  Float?    @map("oos_annualized_return")
-  oosSharpeRatio       Float?    @map("oos_sharpe_ratio")
-  oosMaxDrawdown       Float?    @map("oos_max_drawdown")
-  isOosReturnVsIs      Float?    @map("is_oos_return_vs_is")
+  oosAnnualizedReturn Float? @map("oos_annualized_return")
+  oosSharpeRatio      Float? @map("oos_sharpe_ratio")
+  oosMaxDrawdown      Float? @map("oos_max_drawdown")
+  isOosReturnVsIs     Float? @map("is_oos_return_vs_is")
 
-  createdAt            DateTime  @default(now()) @map("created_at")
-  completedAt          DateTime? @map("completed_at")
-  updatedAt            DateTime  @updatedAt @map("updated_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  completedAt DateTime? @map("completed_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
 
-  windows              BacktestWalkForwardWindow[]
+  windows BacktestWalkForwardWindow[]
 
   @@index([userId, createdAt(sort: Desc)])
   @@map("backtest_walk_forward_runs")
 }
 
 model BacktestWalkForwardWindow {
-  id                 String    @id @default(cuid())
-  wfRunId            String    @map("wf_run_id")
-  windowIndex        Int       @map("window_index")
+  id          String @id @default(cuid())
+  wfRunId     String @map("wf_run_id")
+  windowIndex Int    @map("window_index")
 
-  isStartDate        DateTime  @map("is_start_date") @db.Date
-  isEndDate          DateTime  @map("is_end_date") @db.Date
-  oosStartDate       DateTime  @map("oos_start_date") @db.Date
-  oosEndDate         DateTime  @map("oos_end_date") @db.Date
+  isStartDate  DateTime @map("is_start_date") @db.Date
+  isEndDate    DateTime @map("is_end_date") @db.Date
+  oosStartDate DateTime @map("oos_start_date") @db.Date
+  oosEndDate   DateTime @map("oos_end_date") @db.Date
 
-  optimizedParams    Json?     @map("optimized_params")
-  isBacktestRunId    String?   @map("is_backtest_run_id")
-  oosBacktestRunId   String?   @map("oos_backtest_run_id")
+  optimizedParams  Json?   @map("optimized_params")
+  isBacktestRunId  String? @map("is_backtest_run_id")
+  oosBacktestRunId String? @map("oos_backtest_run_id")
 
-  isReturn           Float?    @map("is_return")
-  isSharpe           Float?    @map("is_sharpe")
+  isReturn Float? @map("is_return")
+  isSharpe Float? @map("is_sharpe")
 
-  oosReturn          Float?    @map("oos_return")
-  oosSharpe          Float?    @map("oos_sharpe")
-  oosMaxDrawdown     Float?    @map("oos_max_drawdown")
+  oosReturn      Float? @map("oos_return")
+  oosSharpe      Float? @map("oos_sharpe")
+  oosMaxDrawdown Float? @map("oos_max_drawdown")
 
-  wfRun              BacktestWalkForwardRun @relation(fields: [wfRunId], references: [id], onDelete: Cascade)
+  wfRun BacktestWalkForwardRun @relation(fields: [wfRunId], references: [id], onDelete: Cascade)
 
   @@unique([wfRunId, windowIndex])
   @@map("backtest_walk_forward_windows")
@@ -218,9 +227,9 @@ model BacktestWalkForwardWindow {
 // ─────────────────────────────────────────────────────────────────────────────
 
 model BacktestComparisonGroup {
-  id              String   @id @default(cuid())
-  userId          Int      @map("user_id")
-  name            String?  @db.VarChar(128)
+  id     String  @id @default(cuid())
+  userId Int     @map("user_id")
+  name   String? @db.VarChar(128)
 
   startDate       DateTime @map("start_date") @db.Date
   endDate         DateTime @map("end_date") @db.Date
@@ -228,12 +237,12 @@ model BacktestComparisonGroup {
   universe        String   @db.VarChar(32)
   initialCapital  Decimal  @map("initial_capital") @db.Decimal(20, 4)
 
-  status          String   @db.VarChar(32)
-  runIds          Json     @map("run_ids")
+  status String @db.VarChar(32)
+  runIds Json   @map("run_ids")
 
-  createdAt       DateTime  @default(now()) @map("created_at")
-  completedAt     DateTime? @map("completed_at")
-  updatedAt       DateTime  @updatedAt @map("updated_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  completedAt DateTime? @map("completed_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
 
   @@index([userId, createdAt(sort: Desc)])
   @@map("backtest_comparison_groups")

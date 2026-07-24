@@ -8,6 +8,7 @@ import { AgentQueueConfig, type IAgentQueueConfig } from 'src/config/agent-queue
 import { BULLMQ_ENQUEUE_LAG } from 'src/shared/metrics/metrics.constants'
 import { LoggerService } from 'src/shared/logger/logger.service'
 import { PrismaService } from 'src/shared/prisma.service'
+import { sanitizeAuditErrorMessage } from 'src/apps/agent/audit/agent-audit-sanitizer'
 import { createAgentJob, hashAgentJob, type AgentJob } from './agent-job.interface'
 import { AGENT_EXECUTION_QUEUE, AGENT_JOB_OUTBOX_KIND, AGENT_RUN_JOB_NAME, agentJobId } from './agent.queue.constants'
 
@@ -182,5 +183,7 @@ export class AgentQueueService {
 
 function safeErrorMessage(error: unknown): string {
   const value = error instanceof Error ? error.message : String(error)
-  return value.replace(/[\r\n\t]+/g, ' ').slice(0, 1_000)
+  return sanitizeAuditErrorMessage(value, 1_000)
+    .replace(/[\r\n\t]+/g, ' ')
+    .slice(0, 1_000)
 }

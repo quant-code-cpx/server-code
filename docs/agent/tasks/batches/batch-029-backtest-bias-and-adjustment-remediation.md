@@ -1,6 +1,6 @@
 ---
 batch: 29
-status: pending
+status: completed
 type: backend
 depends_on: ["batch-000-platform-data-readiness", "batch-018-mvp-e2e-and-model-regression"]
 blocks: []
@@ -15,6 +15,8 @@ estimated_scope: large
 ## 1. 批次目标
 
 修复已实证的 ALL_A 幸存者/IPO、指数退出成分、策略忽略 universe、财务公告日前视、QFQ 公式和最新复权因子排序，使新回测可复现。
+
+当前状态（2026-07-24）：代码、迁移、Agent 契约、前端警示、golden/regression tests、单迁移正反分支、全新 PostgreSQL 完整迁移链、本地真实库 PIT/QFQ/财务因子 Run 及 5,805 只股票财务修订全量刷新均已通过；真实验收另发现并补上“起始日前无指数快照/任一日期空股票池必须 fail closed”和 `fina_indicator` 必须请求 `update_flag` 两项门禁。真实 Chrome 页面已完成 VERIFIED、LEGACY_UNVERIFIED、PIT_INDEX_COVERAGE_GAP 三态验收，均无浏览器 warning/error。详见 [真实数据验收报告](../../../回测点时性与复现性真实数据验收报告-20260724.md)。
 
 ## 2. 业务价值
 
@@ -52,7 +54,7 @@ estimated_scope: large
 - `src/apps/backtest/services/point-in-time-universe.service.ts`
 - `src/apps/backtest/services/point-in-time-financial.service.ts`
 - `src/apps/backtest/test/backtest-point-in-time.golden.spec.ts`
-- `prisma/migrations/20260722010000_add_backtest_reproducibility_metadata/migration.sql`
+- `prisma/migrations/20260723000000_add_backtest_reproducibility_metadata/migration.sql`
 
 ## 8. 需要修改的文件
 
@@ -147,7 +149,13 @@ estimated_scope: large
 
 ## 24. 完成定义
 
-services/engine/strategies/QFQ、migration、golden/差异/回归、Agent/UI warning 更新和口径文档合入。
+services/engine/strategies/QFQ、migration、golden/差异/回归、Agent/UI warning 更新和口径文档已在工作区完成。
+
+验收证据：
+
+- 真实数据、Run ID、输入 hash、迁移/备份、回归命令与结果见 [真实数据验收报告](../../../回测点时性与复现性真实数据验收报告-20260724.md)；
+- Chrome 实页验证 VERIFIED、LEGACY_UNVERIFIED、PIT_INDEX_COVERAGE_GAP 三态，浏览器 warning/error 均为空；
+- 本次未提交、未推送，因此无 commit/PR；状态表示实现和本地验收完成，不表示已经发布。
 
 ## 25. 回滚方案
 

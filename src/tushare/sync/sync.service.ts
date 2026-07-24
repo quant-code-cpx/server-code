@@ -28,6 +28,7 @@ import {
 import { EventsGateway } from 'src/websocket/events.gateway'
 import { HeatmapSnapshotService } from 'src/apps/heatmap/heatmap-snapshot.service'
 import { SignalGenerationService } from 'src/apps/signal/signal-generation.service'
+import { DistributedCronLockService } from 'src/shared/scheduler/distributed-cron-lock.service'
 import { DataQualityService, DataQualityReport, QualityCheckSummary } from './quality/data-quality.service'
 import { AutoRepairService } from './quality/auto-repair.service'
 import { SyncHelperService } from './sync-helper.service'
@@ -86,6 +87,7 @@ export class TushareSyncService implements OnApplicationBootstrap {
     private readonly autoRepair: AutoRepairService,
     @Inject(forwardRef(() => SignalGenerationService))
     private readonly signalGenerationService: SignalGenerationService,
+    private readonly cronLock: DistributedCronLockService,
     @InjectMetric(TUSHARE_SYNC_DURATION) private readonly syncDurationHistogram: Histogram,
     @InjectMetric(TUSHARE_SYNC_TOTAL) private readonly syncTotalCounter: Counter,
     @InjectMetric(TUSHARE_SYNC_ROUND_DURATION) private readonly syncRoundDurationGauge: Gauge,
@@ -102,6 +104,10 @@ export class TushareSyncService implements OnApplicationBootstrap {
   }
 
   async onApplicationBootstrap() {
+    if (!this.cronLock.isSchedulerProcess()) {
+      this.logger.log('当前进程不是 scheduler，跳过 Tushare 自动同步注册')
+      return
+    }
     if (!this.syncEnabled) {
       this.logger.warn('Tushare 自动同步已关闭（TUSHARE_SYNC_ENABLED=false）')
       return
@@ -150,8 +156,10 @@ export class TushareSyncService implements OnApplicationBootstrap {
   /** 每整点检查一次，补跑因 Mac 休眠 / 容器重启等原因错过的当日定时任务 */
   @Cron('0 0 * * * *', { timeZone: 'Asia/Shanghai' })
   async onHourlyCatchupCheck() {
-    if (!this.syncEnabled) return
-    await this.checkAndCatchUpMissedSchedules()
+    await this.cronLock.runIfScheduler('tushare:catch-up', async () => {
+      if (!this.syncEnabled) return
+      await this.checkAndCatchUpMissedSchedules()
+    })
   }
 
   /**
@@ -417,16 +425,18 @@ export class TushareSyncService implements OnApplicationBootstrap {
   }
 
   private async runScheduledTask(task: TushareSyncTaskName) {
-    const plan = this.registry.getPlan(task)
-    if (!plan) {
-      this.logger.warn(`未找到定时同步任务定义: ${task}`)
-      return
-    }
+    await this.cronLock.runIfScheduler(`tushare:sync:${task}`, async () => {
+      const plan = this.registry.getPlan(task)
+      if (!plan) {
+        this.logger.warn(`未找到定时同步任务定义: ${task}`)
+        return
+      }
 
-    await this.runPlans({
-      trigger: 'schedule',
-      mode: 'incremental',
-      plans: [plan],
+      await this.runPlans({
+        trigger: 'schedule',
+        mode: 'incremental',
+        plans: [plan],
+      })
     })
   }
 

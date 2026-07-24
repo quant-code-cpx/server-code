@@ -16,7 +16,7 @@ import 'winston-daily-rotate-file'
  *       仅使用 NestJS 原生 ConsoleLogger，输出到控制台。
  *
  *   - 生产环境（NODE_ENV === 'production'）
- *       同时启用 ConsoleLogger 与 Winston DailyRotateFile，
+ *       根据 LOG_OUTPUT 启用 stdout 或 Winston DailyRotateFile，
  *       按日产生日志文件（最大 20MB / 保留 31 天）：
  *         logs/app.YYYY-MM-DD.log        INFO 乓级日志
  *         logs/app-warn.YYYY-MM-DD.log   WARN 乓级日志
@@ -30,7 +30,8 @@ export class LoggerService extends ConsoleLogger {
   private isDev = true
 
   /** Winston 日志实例，生产环境下初始化 */
-  private winstonLogger: WinstonLogger
+  private winstonLogger?: WinstonLogger
+  private logOutput: LogOutput = 'stdout'
 
   constructor(
     context: string,
@@ -40,89 +41,111 @@ export class LoggerService extends ConsoleLogger {
     super(context, options)
     this.isDev = this.configService.get(APP_CONFIG_TOKEN).isDev
     if (!this.isDev) {
+      this.logOutput = resolveLogOutput(process.env.LOG_OUTPUT)
       this.initWinstonLogger()
     }
   }
 
   /**
-   * 初始化 Winston 轮转文件日志输出（仅在生产环境调用）。
-   * 分别创建三个以日期分割的日志文件输出通道：
+   * 初始化生产日志输出（仅在生产环境调用）。
+   * file/both 时创建三个以日期分割的日志文件输出通道：
    *   - app.log        所有 INFO 及以上级别日志
    *   - app-warn.log   WARN 及以上级别日志
    *   - app-error.log  ERROR 日志
    */
   private initWinstonLogger() {
+    if (!usesFileLogTransport(this.logOutput)) {
+      this.winstonLogger = createLogger({
+        levels: config.npm.levels,
+        format: this.createWinstonFormat(),
+        transports: [new transports.Console()],
+      })
+      return
+    }
+
     const baseConfig = {
       datePattern: 'YYYY-MM-DD',
       maxSize: '20m',
       maxFiles: 31,
     }
 
+    const fileTransports = [
+      new transports.DailyRotateFile({
+        ...baseConfig,
+        level: LogLevel.INFO,
+        filename: 'logs/app.%DATE%.log',
+        auditFile: 'logs/.audit/app.json',
+      }),
+      new transports.DailyRotateFile({
+        ...baseConfig,
+        level: LogLevel.WARN,
+        filename: 'logs/app-warn.%DATE%.log',
+        auditFile: 'logs/.audit/app-warn.json',
+      }),
+      new transports.DailyRotateFile({
+        ...baseConfig,
+        level: LogLevel.ERROR,
+        filename: 'logs/app-error.%DATE%.log',
+        auditFile: 'logs/.audit/app-error.json',
+      }),
+    ]
     this.winstonLogger = createLogger({
       levels: config.npm.levels,
-      format: format.combine(
-        format.errors({ stack: true }),
-        format.timestamp(),
-        // 注入请求上下文字段（traceId / userId / method / url）
-        format((info) => {
-          const ctx = RequestContextService.getCurrentContext()
-          if (ctx) {
-            info.traceId = ctx.traceId
-            info.userId = ctx.userId ?? null
-            info.method = ctx.method ?? null
-            info.url = ctx.url ?? null
-          }
-          return info
-        })(),
-        format.json(),
-      ),
-      transports: [
-        new transports.DailyRotateFile({
-          ...baseConfig,
-          level: LogLevel.INFO,
-          filename: 'logs/app.%DATE%.log',
-          auditFile: 'logs/.audit/app.json',
-        }),
-        new transports.DailyRotateFile({
-          ...baseConfig,
-          level: LogLevel.WARN,
-          filename: 'logs/app-warn.%DATE%.log',
-          auditFile: 'logs/.audit/app-warn.json',
-        }),
-        new transports.DailyRotateFile({
-          ...baseConfig,
-          level: LogLevel.ERROR,
-          filename: 'logs/app-error.%DATE%.log',
-          auditFile: 'logs/.audit/app-error.json',
-        }),
-      ],
+      format: this.createWinstonFormat(),
+      transports: this.logOutput === 'file' ? fileTransports : [new transports.Console(), ...fileTransports],
     })
+  }
+
+  private createWinstonFormat() {
+    return format.combine(
+      format.errors({ stack: true }),
+      format.timestamp(),
+      // 注入请求上下文字段（traceId / userId / method / url）
+      format((info) => {
+        const ctx = RequestContextService.getCurrentContext()
+        if (ctx) {
+          info.traceId = ctx.traceId
+          info.userId = ctx.userId ?? null
+          info.method = ctx.method ?? null
+          info.url = ctx.url ?? null
+        }
+        return info
+      })(),
+      format.json(),
+    )
   }
 
   /** 输出 INFO 级别日志；生产环境同时写入 Winston。 */
   log(message: unknown, context?: string) {
     const displayMessage = this.formatUnknownMessage(message)
-    super.log(displayMessage, context)
-    this.winstonLogger?.info(this.toWinstonPayload(message, context))
+    if (this.winstonLogger) {
+      this.winstonLogger.info(this.toWinstonPayload(message, context))
+    } else {
+      super.log(displayMessage, context)
+    }
   }
 
   /** 输出 WARN 级别日志；生产环境同时写入 Winston。 */
   warn(message: unknown, context?: string) {
     const displayMessage = this.formatUnknownMessage(message)
-    super.warn(displayMessage, context)
-    this.winstonLogger?.warn(this.toWinstonPayload(message, context))
+    if (this.winstonLogger) {
+      this.winstonLogger.warn(this.toWinstonPayload(message, context))
+    } else {
+      super.warn(displayMessage, context)
+    }
   }
 
   /** 输出 ERROR 级别日志；生产环境同时写入 Winston。 */
   error(message: unknown, stack?: string, context?: string) {
     const displayMessage = this.formatUnknownMessage(message)
-    super.error(displayMessage, stack, context)
     if (this.winstonLogger) {
       if (typeof message === 'object' && message !== null && !(message instanceof Error)) {
         this.winstonLogger.error({ ...(message as object), stack, context })
       } else {
         this.winstonLogger.error(displayMessage, { stack, context })
       }
+    } else {
+      super.error(displayMessage, stack, context)
     }
   }
 
@@ -160,4 +183,16 @@ export class LoggerService extends ConsoleLogger {
     }
     return { message: this.formatUnknownMessage(message), context }
   }
+}
+
+type LogOutput = 'stdout' | 'file' | 'both'
+
+export function resolveLogOutput(value: string | undefined): LogOutput {
+  const output = value?.trim().toLowerCase() || 'stdout'
+  if (output === 'stdout' || output === 'file' || output === 'both') return output
+  throw new Error('[Logger] LOG_OUTPUT only supports stdout, file, or both')
+}
+
+export function usesFileLogTransport(output: LogOutput): boolean {
+  return output === 'file' || output === 'both'
 }

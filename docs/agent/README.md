@@ -15,7 +15,7 @@
 - Prisma 有 111 个 Model；运行库 111 张业务表、41 GB、332 个索引、22 个外键、无分区/pgvector。日线、估值、技术因子和筹码表已达千万级。
 - Tushare 有 65 个计划驱动同步任务；当前 API、Worker、Scheduler 和 WebSocket 共进程，多副本没有分布式唯一调度。
 - 已实证上线阻断：migration 链缺 10 张表 CREATE；周/月 `pct_chg` 与日线相差 100 倍单位；Dividend 16,260 条冗余；retry 假成功；QFQ 公式反向；财报/回测存在公告日前视、幸存者和 universe 缺陷；WebSocket 存在匿名连接、空 secret 回退路径和越权订阅风险。
-- 现有 Docker 开发栈可运行；生产健康路径、`.dockerignore`、migration job、非 root 文件权限、Chromium、Redis eviction/ACL、多副本和备份/灰度尚未闭环。
+- 现有 Docker 开发栈可运行；生产 Compose、健康/就绪探针、migration job、非 root 文件权限、Chromium、Redis ACL/noeviction、角色拆分、备份恢复与 canary/rollback 已在本地隔离环境演练。真实 GitHub release/deploy、production runner、GHCR 权限和前端制品审批仍待外部环境配置。
 
 证据、真实路径和数据量见 [当前项目分析](./overview/current-project-analysis.md) 与 [数据能力盘点](./overview/data-capability-inventory.md)。
 
@@ -67,18 +67,18 @@ flowchart LR
 
 关键选择：
 
-| 问题 | 决策 |
-| --- | --- |
-| 编排位置 | 现有 NestJS `src/apps/agent/`，Worker 可独立进程部署 |
-| Agent 模式 | 单 Agent；固定工作流节点和有限 Tool loop，不做自治多 Agent |
-| LangGraph | MVP 不引入；复杂图/人工中断达到量化阈值再复审 |
-| 工作流 | 自研小型显式状态机：版本、checkpoint、取消、重试、事件；不做通用 BPM/DSL |
-| 模型网关 | NestJS 内部 DI Module；先 OpenAI-compatible adapter，后续再多供应商，不先拆服务 |
-| Python | MVP 不需要；CPU/科学库 benchmark 通过才建无状态计算服务，禁止直连主库 |
-| 向量数据库 | MVP 不需要；结构化金融数据走 SQL/Tool，报告/记忆先 FTS，后续只试点 pgvector |
-| 消息队列 | 需要；复用 BullMQ，Agent 独立 queue/worker，生产 Redis 使用 noeviction/最小 ACL |
-| SSE/WS | 正文和步骤走 POST SSE；WS 修复强鉴权后只做低频通知/多设备失效 |
-| SQL | 无 Text-to-SQL MVP；条件试点也只能结构化计划→AST allowlist→只读副本 |
+| 问题       | 决策                                                                            |
+| ---------- | ------------------------------------------------------------------------------- |
+| 编排位置   | 现有 NestJS `src/apps/agent/`，Worker 可独立进程部署                            |
+| Agent 模式 | 单 Agent；固定工作流节点和有限 Tool loop，不做自治多 Agent                      |
+| LangGraph  | MVP 不引入；复杂图/人工中断达到量化阈值再复审                                   |
+| 工作流     | 自研小型显式状态机：版本、checkpoint、取消、重试、事件；不做通用 BPM/DSL        |
+| 模型网关   | NestJS 内部 DI Module；先 OpenAI-compatible adapter，后续再多供应商，不先拆服务 |
+| Python     | MVP 不需要；CPU/科学库 benchmark 通过才建无状态计算服务，禁止直连主库           |
+| 向量数据库 | MVP 不需要；结构化金融数据走 SQL/Tool，报告/记忆先 FTS，后续只试点 pgvector     |
+| 消息队列   | 需要；复用 BullMQ，Agent 独立 queue/worker，生产 Redis 使用 noeviction/最小 ACL |
+| SSE/WS     | 正文和步骤走 POST SSE；WS 修复强鉴权后只做低频通知/多设备失效                   |
+| SQL        | 无 Text-to-SQL MVP；条件试点也只能结构化计划→AST allowlist→只读副本             |
 
 完整理由见 [技术选型](./overview/technology-selection.md) 和 [ADR](./decisions/README.md)。
 
@@ -136,14 +136,14 @@ fetch_web_page
 
 ## 8. 实施阶段与并行
 
-| 阶段 | 批次 | 完成能力 |
-| --- | --- | --- |
-| 可信基线 | 000–001 | migration/数据口径 gate，公共契约 |
-| MVP 基础 | 002–010、前端 015–017 并行 | 状态/审计/模型/Tool、前端 UI |
-| MVP 汇合 | 011–014 → 018 | 编排、Worker、API/SSE、E2E 闭环 |
-| 主动研究 | 019–023、025、029 | 记忆、定时、通知、报告、多模型、观测、可信回测 |
-| 生产 | 026 | 安全、扩容、存储、备份、灰度/回滚 |
-| 条件 | 024、027、028 | Python、pgvector、SQL；只在门禁通过时实施 |
+| 阶段     | 批次                       | 完成能力                                       |
+| -------- | -------------------------- | ---------------------------------------------- |
+| 可信基线 | 000–001                    | migration/数据口径 gate，公共契约              |
+| MVP 基础 | 002–010、前端 015–017 并行 | 状态/审计/模型/Tool、前端 UI                   |
+| MVP 汇合 | 011–014 → 018              | 编排、Worker、API/SSE、E2E 闭环                |
+| 主动研究 | 019–023、025、029          | 记忆、定时、通知、报告、多模型、观测、可信回测 |
+| 生产     | 026                        | 安全、扩容、存储、备份、灰度/回滚              |
+| 条件     | 024、027、028              | Python、pgvector 已评测 no-go；SQL 仍待前置门禁 |
 
 最先并行：000（数据库/Tushare）与 001（协议）；随后 002/004/015，之后 005/006/016，再让 007–010 与 017 并行。完整路线见 [实施路线](./overview/implementation-roadmap.md) 和 [依赖图](./tasks/dependency-map.md)。
 
@@ -157,6 +157,7 @@ fetch_web_page
 - 搜索供应商、抓取合规/robots/版权保留策略。
 - 外部通知首渠道、对象存储产品、secret manager 和生产域名/TLS/Ingress。
 - 生产并发、单用户/全局成本额度、日志/会话/事件/审计保留期限。
+- 生产 Agent API/首事件/总耗时的 p50/p95/p99、Run/SSE 吞吐与单 Run 成本 SLO；Batch 018 已建立可配置 baseline/gate，正式阈值由 Batch 025/026 批准并接入告警/canary。
 - 部分 Tushare 自然键是否已经丢源记录；未调用在线 API 消耗积分核验。
 - Python、pgvector、SQL Explorer 是否有足够收益；当前默认答案均为“不需要”。
 
@@ -213,6 +214,7 @@ fetch_web_page
 ### 后端
 
 - [后端入口](./backend/README.md)
+- [智能体可观测性运行手册](./backend/智能体可观测性-运行手册.md)
 - [后端架构](./backend/architecture.md)
 - [Agent Orchestrator](./backend/agent-orchestrator.md)
 - [模型网关](./backend/model-gateway.md)
@@ -273,6 +275,7 @@ fetch_web_page
 - [ADR-007：向量数据库](./decisions/adr-007-vector-database-necessity.md)
 - [ADR-008：多 Agent](./decisions/adr-008-multi-agent-strategy.md)
 - [ADR-009：模型网关边界](./decisions/adr-009-model-gateway-boundary.md)
+- [ADR-010：语义检索试点结论](./decisions/adr-010-语义检索试点结论.md)
 
 ### 任务
 
@@ -303,7 +306,7 @@ fetch_web_page
 - [021 通知渠道](./tasks/batches/batch-021-outbound-notification-channels.md)
 - [022 报告与日志](./tasks/batches/batch-022-research-report-and-investment-journal.md)
 - [023 多模型路由](./tasks/batches/batch-023-multi-provider-routing-and-fallback.md)
-- [024 Python 计算条件项](./tasks/batches/batch-024-python-quant-compute-service.md)
+- [024 Python 计算条件项](./tasks/batches/batch-024-python-quant-compute-service.md)：已完成性能门禁，no-go
 - [025 观测/成本/评测](./tasks/batches/batch-025-ai-observability-cost-and-evaluation.md)
 - [026 安全与生产部署](./tasks/batches/batch-026-security-hardening-and-production-deployment.md)
 - [027 向量检索条件项](./tasks/batches/batch-027-vector-retrieval-pilot.md)

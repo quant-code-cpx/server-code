@@ -1,91 +1,346 @@
-/**
- * E2E Flow 2 — 策略创建→回测全链路
- *
- * 覆盖场景：
- *   创建策略→发起回测→等待完成→验证回测指标与持仓
- *   策略上限（50 条）、克隆、权限隔离
- *   [E2E-B1] E2E 环境回测状态流转（BullMQ worker 需内联执行）
- *   [E2E-B4] 日期格式一致性（RunStrategyDto vs CreateBacktestRunDto）
- *
- * 运行前提：
- *   - E2E_DATABASE_URL 指向独立测试数据库
- *   - Redis db=15 可连接
- *   - Tushare 行情 Fixture 数据已种入（60 个交易日，500 只股票）
- *   - 运行命令：pnpm test:e2e
- */
-import { INestApplication } from '@nestjs/common'
+import type { INestApplication } from '@nestjs/common'
+import type { PrismaService } from 'src/shared/prisma.service'
 
-// 跳过（E2E 测试需要真实数据库和 Redis）
-describe.skip('E2E Flow 2 — 策略到回测全链路 (needs DB+Redis+fixture)', () => {
+import { StockExchange, UserRole, UserStatus } from '@prisma/client'
+import type { RedisClientType } from 'redis'
+import request from 'supertest'
+
+import { AuthModule } from 'src/apps/auth/auth.module'
+import { StrategyModule } from 'src/apps/strategy/strategy.module'
+import { TokenService } from 'src/shared/token.service'
+import { createLegacyE2eApp } from './support/create-legacy-e2e-app'
+import { LegacyBacktestWorkerModule } from './support/legacy-backtest-worker.module'
+
+const TS_CODE = '000001.SZ'
+const BENCHMARK_CODE = '000300.SH'
+const START_DATE = '20260706'
+const END_DATE = '20260715'
+const INITIAL_CAPITAL = 100_000
+const TRADE_DATES = [
+  '2026-07-06',
+  '2026-07-07',
+  '2026-07-08',
+  '2026-07-09',
+  '2026-07-10',
+  '2026-07-13',
+  '2026-07-14',
+  '2026-07-15',
+] as const
+const CLOSES = [10, 9, 8, 10, 12, 11, 7, 6] as const
+const STRATEGY_CONFIG = {
+  tsCode: TS_CODE,
+  shortWindow: 2,
+  longWindow: 3,
+  priceField: 'close',
+  allowFlat: false,
+}
+
+describe('旧业务 E2E Flow 2 — 策略发起回测', () => {
   let app: INestApplication
+  let prisma: PrismaService
+  let redis: RedisClientType
+  let ownerToken: string
+  let otherToken: string
+  let ownerId: number
+  let strategyId: string
+  let runId: string
 
-  // beforeAll: 启动应用、登录获取 token、确认 Fixture 行情已就绪
-  // afterAll: 清理策略、回测数据
+  beforeAll(async () => {
+    const fixture = await createLegacyE2eApp({
+      imports: [AuthModule, StrategyModule, LegacyBacktestWorkerModule],
+    })
+    app = fixture.app
+    prisma = fixture.prisma
+    redis = fixture.redis
 
-  // ── 正常创建策略与发起回测 ────────────────────────────────────────────────
+    await cleanStrategyBacktestFixture(prisma)
+    await redis.flushDb()
 
-  describe('正常创建策略与发起回测', () => {
-    it('[BIZ] POST /api/strategy/create → 返回 strategyId', async () => {
-      // strategyType: 'MA_CROSS_SINGLE'
-      // strategyConfig: { shortPeriod:5, longPeriod:20 }
+    const [owner, other] = await Promise.all([
+      prisma.user.create({
+        data: {
+          account: 'legacy_strategy_owner',
+          password: 'unused',
+          nickname: 'Strategy Owner',
+          role: UserRole.USER,
+          status: UserStatus.ACTIVE,
+        },
+      }),
+      prisma.user.create({
+        data: {
+          account: 'legacy_strategy_other',
+          password: 'unused',
+          nickname: 'Strategy Other',
+          role: UserRole.USER,
+          status: UserStatus.ACTIVE,
+        },
+      }),
+    ])
+    ownerId = owner.id
+
+    const tokenService = app.get(TokenService)
+    ;[ownerToken, otherToken] = await Promise.all([
+      tokenService.generateAccessToken({
+        id: owner.id,
+        account: owner.account,
+        nickname: owner.nickname,
+        role: owner.role,
+      }),
+      tokenService.generateAccessToken({
+        id: other.id,
+        account: other.account,
+        nickname: other.nickname,
+        role: other.role,
+      }),
+    ])
+
+    await seedBacktestMarketFixture(prisma)
+  })
+
+  afterAll(async () => {
+    if (prisma) await cleanStrategyBacktestFixture(prisma)
+    if (redis) await redis.flushDb()
+    if (app) await app.close()
+  })
+
+  it('LEG-SB-BIZ-001：创建策略→真实 Worker 回测→详情/净值/交易/持仓完整归属', async () => {
+    const created = await post(ownerToken, '/api/strategies/create', {
+      name: '均线反转 E2E',
+      strategyType: 'MA_CROSS_SINGLE',
+      strategyConfig: STRATEGY_CONFIG,
+      backtestDefaults: {
+        universe: 'CUSTOM',
+        customUniverse: [TS_CODE],
+        rebalanceFrequency: 'DAILY',
+        priceMode: 'NEXT_OPEN',
+      },
+      tags: ['legacy-e2e'],
+    })
+    strategyId = created.body.data.id as string
+
+    const strategyDetail = await post(ownerToken, '/api/strategies/detail', { id: strategyId })
+    expect(strategyDetail.body.data).toMatchObject({
+      id: strategyId,
+      userId: ownerId,
+      strategyType: 'MA_CROSS_SINGLE',
+      strategyConfig: STRATEGY_CONFIG,
     })
 
-    it('[BIZ] POST /api/strategy/detail → config 字段与创建时一致（无损传递）', async () => {})
+    const queued = await post(ownerToken, '/api/strategies/run', {
+      strategyId,
+      name: '均线反转固定行情',
+      startDate: START_DATE,
+      endDate: END_DATE,
+      initialCapital: INITIAL_CAPITAL,
+      commissionRate: 0,
+      stampDutyRate: 0,
+      minCommission: 0,
+      slippageBps: 0,
+    })
+    runId = queued.body.data.runId as string
+    expect(queued.body.data).toMatchObject({ runId, status: 'QUEUED' })
 
-    it('[BIZ] POST /api/backtest/runs → 提交回测后 status 最终达到 COMPLETED（30s 超时）', async () => {
-      // 需要 BacktestProcessor 在 E2E 环境内联同步执行
-      // 解决 E2E-B1：E2eModuleFactory 中注册内联 BacktestProcessor
+    const detail = await waitForCompletedRun(runId)
+    expect(detail).toMatchObject({
+      runId,
+      status: 'COMPLETED',
+      progress: 100,
+      strategyType: 'MA_CROSS_SINGLE',
+      strategyConfig: STRATEGY_CONFIG,
+      startDate: '2026-07-06',
+      endDate: '2026-07-15',
+      initialCapital: INITIAL_CAPITAL,
     })
 
-    it('[BIZ] POST /api/backtest/runs/detail → totalReturn = (endNAV - 1.0) 手算验证', async () => {
-      // 使用确定性 Fixture 数据，手算期望值
-      // 注意：因子策略下 totalReturn 应与 equity 曲线末值一致
-    })
+    const [equity, trades, positions] = await Promise.all([
+      post(ownerToken, '/api/backtests/runs/equity', { runId }),
+      post(ownerToken, '/api/backtests/runs/trades', { runId, page: 1, pageSize: 20 }),
+      post(ownerToken, '/api/backtests/runs/positions', { runId, tradeDate: '20260714' }),
+    ])
 
-    it('[BIZ] POST /api/backtest/runs/equity → 第一个 nav 应约等于 1.0（初始净值）', async () => {})
-
-    it('[BIZ] POST /api/backtest/runs/trades → 至少含 1 笔 BUY 和 1 笔 SELL', async () => {})
-
-    it('[BIZ] POST /api/backtest/runs/positions → 末日持仓市值 ≤ 初始资金 × (1 + totalReturn)', async () => {
-      // 持仓市值上限由资产规模决定
+    expect(equity.body.data.points).toHaveLength(TRADE_DATES.length)
+    expect(trades.body.data.items.map((item: { side: string }) => item.side)).toEqual(
+      expect.arrayContaining(['BUY', 'SELL']),
+    )
+    expect(trades.body.data.items.every((item: { tsCode: string }) => item.tsCode === TS_CODE)).toBe(true)
+    expect(positions.body.data).toMatchObject({
+      tradeDate: '2026-07-14',
+      items: [expect.objectContaining({ tsCode: TS_CODE })],
     })
   })
 
-  // ── 策略上限与边界场景 ────────────────────────────────────────────────────
+  it('LEG-SB-DATA-001：固定行情下 NAV、收益、回撤、权益与持仓均满足独立不变量', async () => {
+    const [detailResponse, equityResponse, positionsResponse] = await Promise.all([
+      post(ownerToken, '/api/backtests/runs/detail', { runId }),
+      post(ownerToken, '/api/backtests/runs/equity', { runId }),
+      post(ownerToken, '/api/backtests/runs/positions', { runId, tradeDate: '20260714' }),
+    ])
+    const detail = detailResponse.body.data
+    const points = equityResponse.body.data.points as Array<{
+      tradeDate: string
+      nav: number
+      drawdown: number
+      exposure: number
+      cashRatio: number
+    }>
 
-  describe('策略上限与边界场景', () => {
-    it('[BIZ] 策略数量已达 50 条时创建第 51 条 → 400 STRATEGY_LIMIT_EXCEEDED', async () => {
-      // 需先创建 50 条策略（使用循环，可能耗时较长）
-    })
+    expect(points[0].nav).toBeCloseTo(1, 8)
+    expect(points.every((point) => Number.isFinite(point.nav) && point.nav >= 0)).toBe(true)
+    expect(points.every((point) => point.drawdown >= -1 && point.drawdown <= 0)).toBe(true)
+    expect(points.every((point) => point.exposure >= 0 && point.cashRatio >= 0)).toBe(true)
 
-    it('[BIZ] POST /api/strategy/clone → 克隆后名称自动追加 -copy-N 后缀', async () => {})
+    const endNav = points.at(-1)!.nav
+    expect(detail.summary.totalReturn).toBeCloseTo(endNav - 1, 8)
+    expect(detail.summary.maxDrawdown).toBeGreaterThanOrEqual(-1)
+    expect(detail.summary.maxDrawdown).toBeLessThanOrEqual(0)
 
-    it('[SEC] 用户 A 的 token 访问用户 B 的策略 detail → 403', async () => {})
-
-    it('[EDGE] 传入不合法的 strategyConfig（缺少必填字段）→ 400 校验错误', async () => {})
+    const positionItems = positionsResponse.body.data.items as Array<{
+      quantity: number
+      costPrice: number
+      marketValue: number
+      weight: number
+    }>
+    const positionValue = positionItems.reduce((sum, item) => sum + item.marketValue, 0)
+    const sameDayNav = points.find((point) => point.tradeDate === '2026-07-14')!.nav * INITIAL_CAPITAL
+    expect(positionItems.every((item) => item.quantity >= 0 && item.costPrice >= 0 && item.marketValue >= 0)).toBe(true)
+    expect(positionItems.every((item) => item.weight >= 0 && item.weight <= 1)).toBe(true)
+    expect(positionValue).toBeLessThanOrEqual(sameDayNav)
   })
 
-  // ── E2E-B1 验证 ───────────────────────────────────────────────────────────
+  it('LEG-SB-ERR-001：非法日期格式、反向日期、低于最低资金均被拒绝且不创建 Run', async () => {
+    const before = await prisma.backtestRun.count({ where: { userId: ownerId } })
 
-  describe('[E2E-B1] E2E 环境回测状态流转', () => {
-    it('[E2E-B1] 回测应在 30s 内从 PENDING/RUNNING 变为 COMPLETED（worker 内联执行）', async () => {
-      // 代码分析：
-      //   - 回测通过 BullMQ 异步队列执行（BacktestProcessor 监听 Queue）
-      //   - E2E 环境若无单独 worker 进程，回测将永远停在 PENDING
-      //   - 解决方案：在 E2eModuleFactory 中注册 BullModule + BacktestProcessor 使其同步处理
-      // 结论：E2E-B1 是 E2E 基础设施问题（缺少 worker），代码逻辑本身无 bug
-    })
+    const malformed = await request(app.getHttpServer())
+      .post('/api/strategies/run')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({
+        strategyId,
+        startDate: '2026-07-06',
+        endDate: END_DATE,
+        initialCapital: INITIAL_CAPITAL,
+      })
+      .expect(400)
+    expect(malformed.body.code).not.toBe(0)
+
+    const reversed = await request(app.getHttpServer())
+      .post('/api/strategies/run')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({
+        strategyId,
+        startDate: END_DATE,
+        endDate: START_DATE,
+        initialCapital: INITIAL_CAPITAL,
+      })
+      .expect(200)
+    expect(reversed.body.code).toBe(9002)
+
+    const insufficient = await request(app.getHttpServer())
+      .post('/api/strategies/run')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({
+        strategyId,
+        startDate: START_DATE,
+        endDate: END_DATE,
+        initialCapital: 999,
+      })
+      .expect(400)
+    expect(insufficient.body.code).not.toBe(0)
+
+    expect(await prisma.backtestRun.count({ where: { userId: ownerId } })).toBe(before)
   })
 
-  // ── E2E-B4 验证 ───────────────────────────────────────────────────────────
+  it('LEG-SB-SEC-001：其他用户不能发起该策略或读取该 Run', async () => {
+    const before = await prisma.backtestRun.count()
+    const forbiddenRun = await request(app.getHttpServer())
+      .post('/api/strategies/run')
+      .set('Authorization', `Bearer ${otherToken}`)
+      .send({
+        strategyId,
+        startDate: START_DATE,
+        endDate: END_DATE,
+        initialCapital: INITIAL_CAPITAL,
+      })
+      .expect(200)
+    expect(forbiddenRun.body.code).toBe(5001)
+    expect(await prisma.backtestRun.count()).toBe(before)
 
-  describe('[E2E-B4] 日期格式一致性', () => {
-    it('[E2E-B4] strategy.run 与 backtest.createRun 均使用 YYYYMMDD 格式，不存在格式不一致', async () => {
-      // 代码分析：
-      //   - RunStrategyDto.startDate: @Matches(/^\d{8}$/)  ← YYYYMMDD
-      //   - CreateBacktestRunDto.startDate: @Matches(/^\d{8}$/)  ← YYYYMMDD
-      //   - strategy.run() 将 dto.startDate 直接透传给 backtestRunService.createRun()
-      // 结论：E2E-B4 不存在，两者格式完全一致
-    })
+    await request(app.getHttpServer())
+      .post('/api/backtests/runs/detail')
+      .set('Authorization', `Bearer ${otherToken}`)
+      .send({ runId })
+      .expect(404)
   })
+
+  function post(token: string, path: string, body: Record<string, unknown>) {
+    return request(app.getHttpServer()).post(path).set('Authorization', `Bearer ${token}`).send(body).expect(201)
+  }
+
+  async function waitForCompletedRun(targetRunId: string): Promise<Record<string, unknown>> {
+    const deadline = Date.now() + 30_000
+    let lastDetail: Record<string, unknown> | null = null
+
+    while (Date.now() < deadline) {
+      const response = await post(ownerToken, '/api/backtests/runs/detail', { runId: targetRunId })
+      lastDetail = response.body.data as Record<string, unknown>
+      if (lastDetail.status === 'COMPLETED') return lastDetail
+      if (lastDetail.status === 'FAILED') {
+        throw new Error(`回测失败：${String(lastDetail.failedReason ?? 'unknown')}`)
+      }
+      await new Promise((resolve) => setTimeout(resolve, 100))
+    }
+
+    throw new Error(`回测 30 秒内未完成，最后状态：${String(lastDetail?.status ?? 'unknown')}`)
+  }
 })
+
+async function seedBacktestMarketFixture(prisma: PrismaService): Promise<void> {
+  const dates = TRADE_DATES.map((date) => new Date(`${date}T00:00:00.000Z`))
+
+  await prisma.stockBasic.create({
+    data: { tsCode: TS_CODE, symbol: '000001', name: '平安银行', industry: '银行' },
+  })
+  await prisma.tradeCal.createMany({
+    data: dates.map((calDate) => ({ exchange: StockExchange.SSE, calDate, isOpen: '1' })),
+  })
+  await prisma.daily.createMany({
+    data: dates.map((tradeDate, index) => ({
+      tsCode: TS_CODE,
+      tradeDate,
+      open: CLOSES[index],
+      high: CLOSES[index],
+      low: CLOSES[index],
+      close: CLOSES[index],
+      preClose: index === 0 ? CLOSES[index] : CLOSES[index - 1],
+      vol: 1_000_000,
+    })),
+  })
+  await prisma.indexDaily.createMany({
+    data: dates.map((tradeDate) => ({
+      tsCode: BENCHMARK_CODE,
+      tradeDate,
+      open: 100,
+      high: 100,
+      low: 100,
+      close: 100,
+      preClose: 100,
+    })),
+  })
+}
+
+async function cleanStrategyBacktestFixture(prisma: PrismaService): Promise<void> {
+  await prisma.backtestRebalanceLog.deleteMany()
+  await prisma.backtestPositionSnapshot.deleteMany()
+  await prisma.backtestTrade.deleteMany()
+  await prisma.backtestDailyNav.deleteMany()
+  await prisma.backtestRun.deleteMany()
+  await prisma.strategyVersion.deleteMany()
+  await prisma.strategy.deleteMany()
+  await prisma.indexDaily.deleteMany({ where: { tsCode: BENCHMARK_CODE } })
+  await prisma.daily.deleteMany({ where: { tsCode: TS_CODE } })
+  await prisma.tradeCal.deleteMany({
+    where: { calDate: { in: TRADE_DATES.map((date) => new Date(`${date}T00:00:00.000Z`)) } },
+  })
+  await prisma.stockBasic.deleteMany({ where: { tsCode: TS_CODE } })
+  await prisma.auditLog.deleteMany()
+  await prisma.user.deleteMany({ where: { account: { startsWith: 'legacy_strategy_' } } })
+}

@@ -1,6 +1,8 @@
-import { BadRequestException, Injectable } from '@nestjs/common'
+import { BadRequestException, Inject, Injectable } from '@nestjs/common'
 import { AiModelPolicy } from '@prisma/client'
+import { ModelConfig, type IModelConfig } from 'src/config/model.config'
 import { ModelCapabilityRegistry } from '../model-gateway/model-capability.registry'
+import { ProviderHealthService } from '../model-gateway/provider-health.service'
 import { AgentConversationRepository } from '../conversation/agent-conversation.repository'
 import { AgentRestReadRepository } from '../api/agent-rest-read.repository'
 import type {
@@ -10,6 +12,7 @@ import type {
   ListConversationsDto,
   UpdateConversationModelDto,
 } from '../api/dto/conversation/conversation-request.dto'
+import { ConversationSummaryService } from '../memory/conversation-summary.service'
 
 @Injectable()
 export class AgentConversationService {
@@ -17,6 +20,9 @@ export class AgentConversationService {
     private readonly conversations: AgentConversationRepository,
     private readonly reads: AgentRestReadRepository,
     private readonly models: ModelCapabilityRegistry,
+    private readonly health: ProviderHealthService,
+    @Inject(ModelConfig.KEY) private readonly modelConfig: IModelConfig,
+    private readonly summaries: ConversationSummaryService,
   ) {}
 
   async create(userId: number, dto: CreateConversationDto) {
@@ -39,7 +45,8 @@ export class AgentConversationService {
 
   async detail(userId: number, dto: ConversationDetailDto) {
     const conversation = await this.conversations.findById(userId, dto.conversationId)
-    return { ...this.mapConversation(conversation), statusVersion: conversation.statusVersion }
+    const currentSummary = await this.summaries.currentMetadata(userId, dto.conversationId)
+    return { ...this.mapConversation(conversation), statusVersion: conversation.statusVersion, currentSummary }
   }
 
   listMessages(userId: number, dto: ListConversationMessagesDto) {
@@ -62,6 +69,24 @@ export class AgentConversationService {
     }
   }
 
+  listModels() {
+    return {
+      items: this.modelConfig.providers.map((provider) => {
+        const descriptor = this.models.get(provider.defaultModel)
+        const health = this.health.snapshot(descriptor)
+        return {
+          model: descriptor.model,
+          displayName: provider.displayName,
+          provider: descriptor.provider,
+          capabilities: descriptor.capabilities,
+          costTier: provider.costTier,
+          status: health.status === 'HEALTHY' ? 'AVAILABLE' : 'UNAVAILABLE',
+          reason: health.status === 'HEALTHY' ? null : '模型供应商暂时不可用',
+        }
+      }),
+    }
+  }
+
   validateModelSelection(modelPolicy: AiModelPolicy, preferredModel: string | null): string | null {
     if (modelPolicy === AiModelPolicy.AUTO) {
       if (preferredModel) throw validationError('AUTO modelPolicy 不允许指定 preferredModel')
@@ -69,7 +94,9 @@ export class AgentConversationService {
     }
     if (!preferredModel) throw validationError('MANUAL modelPolicy 必须指定 preferredModel')
     try {
-      this.models.get(preferredModel)
+      const descriptor = this.models.get(preferredModel)
+      if (!this.health.isAvailable(descriptor)) throw new Error('circuit open')
+      if (!descriptor.dataClasses.includes('USER_PRIVATE')) throw new Error('data class unsupported')
     } catch {
       throw validationError('preferredModel 未注册或不可用')
     }

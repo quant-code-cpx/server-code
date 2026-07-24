@@ -73,6 +73,20 @@ MVP 只允许以下来源进入长期记忆：用户明确保存、用户设置/
 
 持仓、成本价和交易日志是领域数据，不复制成长记忆；上下文按需通过 owner-scoped Tool 获取聚合。发送给模型前按[安全设计](./security.md)的数据等级裁剪。
 
+Batch 019 冻结策略：
+
+| 类别          | 用途                       | 默认 TTL | 最大 TTL |
+| ------------- | -------------------------- | -------: | -------: |
+| `PREFERENCE`  | 展示、研究方式等稳定偏好   |   365 天 |  1825 天 |
+| `PROFILE`     | 用户明确提供的稳定资料     |   365 天 |  1095 天 |
+| `CONSTRAINT`  | 明确风险或研究约束         |   180 天 |   730 天 |
+| `DOMAIN_FACT` | 用户确认的阶段性结构化事实 |    90 天 |   365 天 |
+
+- sensitivity 为 `NORMAL/PERSONAL/FINANCIAL`；`FINANCIAL` 只允许明确确认的 `PREFERENCE/CONSTRAINT`。
+- status 为 `CANDIDATE/CONFIRMED/REVOKED/EXPIRED`；只有未删除、未过期的 `CONFIRMED` 记忆可进入新 Run。
+- 持仓明细、交易日志、凭据、健康信息和政治推断禁止写入长期记忆；模型推断不能绕过用户确认。
+- 每个 `(userId,category,key)` 同时最多一个有效 `CONFIRMED` 版本；纠错撤销旧版本并新增版本，不覆盖历史。
+
 ## 7. 检索策略
 
 MVP 使用：
@@ -81,7 +95,17 @@ MVP 使用：
 2. PostgreSQL 全文/关键词：消息、摘要、报告标题和用户研究笔记。
 3. 最近性 + 实体匹配 + 用户固定标记的确定性排序。
 
-不引入向量数据库，见 [ADR-007](../decisions/adr-007-vector-database-necessity.md)。只有可检索文档超过 10 万、已有召回评测集且关键词 Recall@10 不达标，才试点 pgvector；向量记录必须继承租户、删除和过期策略。
+Batch 027 已补齐版本化 chunk、retrieval/embedding port、metadata + PostgreSQL FTS baseline、可选 pgvector/hybrid adapter 与 ContextBuilder 降级。默认 `AGENT_RETRIEVAL_MODE=fts`；FTS 对 PostgreSQL `simple` 无法切分的连续中文增加转义 substring fallback，tenant/status/delete/expiry/data cutoff 均在 SQL 本体过滤。报告命中以 `RETRIEVED_SOURCES` 写入有界 Context/manifest；记忆命中只提升既有 confirmed memory 排序，不绕过记忆策略。
+
+当前不引入生产向量能力，见 [ADR-007](../decisions/adr-007-vector-database-necessity.md) 与 [ADR-010](../decisions/adr-010-语义检索试点结论.md)。真实 41 GB 数据库的已确认记忆和报告均为 0 行，远低于 10 万条复审线；真实 embedding 模型、成本和 41 GB 克隆索引/WAL/备份门禁也未通过。因此没有 pgvector migration/table/index，`hybrid` 不得用于生产。
+
+检索配置：
+
+- `AGENT_RETRIEVAL_MODE=fts|hybrid`，默认 `fts`。
+- `AGENT_RETRIEVAL_MAX_HITS`、`AGENT_RETRIEVAL_FTS_CANDIDATES`、固定 FTS/vector 权重和 chunk/overlap。
+- hybrid 必须固定 embedding HTTPS endpoint allowlist、secret、model、dimension、batch、timeout、HNSW `ef_search` 和 IVFFlat `probes`。
+- embedding/pgvector 运行失败自动返回 FTS；原 query 不写日志，仅保留 SHA-256。
+- 结构化行情/财务事实、完整持仓、未确认会话和 hidden reasoning 永不进入 embedding。
 
 ## 8. Tool 结果和引用去重
 
@@ -128,6 +152,48 @@ src/apps/agent/infrastructure/artifact.repository.ts
 ```
 
 修改 `src/apps/user/` 时只增加用户可管理的 Agent 偏好入口，不把会话数据塞进现有 User JSON；Prisma 文件和 migration 由[数据库设计](./database-design.md)指定。
+
+Batch 019 已落地的 Repository 位于：
+
+```text
+src/apps/agent/memory/conversation-summary.repository.ts
+src/apps/agent/memory/user-memory.repository.ts
+src/apps/agent/memory/memory-policy.ts
+src/apps/agent/memory/memory-repository.errors.ts
+```
+
+- Summary 创建、会话 `currentSummaryId/summaryVersion` 推进使用同一事务和 expected version CAS；会话级事务锁保证同一会话并发只有一个版本成功。
+- Memory confirm/correct 以 `(userId,category,key)` 事务锁和 partial unique 保证 active 唯一；确认新候选前原子推进同 key 已过期版本，避免过期行阻塞新版本。
+- 所有读取、修改和 source conversation/message 校验显式携带 `userId`；跨租户统一返回安全 not-found 或空 owner 列表。
+
+Batch 019 第三阶段已落地 Service/API：
+
+```text
+src/apps/agent/memory/conversation-summary.service.ts
+src/apps/agent/memory/user-memory.service.ts
+src/apps/agent/api/agent-memory.controller.ts
+src/apps/agent/api/dto/memory/memory-request.dto.ts
+src/apps/agent/api/dto/memory/memory-response.dto.ts
+```
+
+- `ConversationSummaryService` 规范化摘要内容并由服务端计算 SHA-256；会话 detail 只返回 current summary metadata。
+- `UserMemoryService` 对 value 执行 8192-byte、8 层深度和明显敏感内容检查；公开 create 使用单事务 `createConfirmed`，失败不遗留 candidate。
+- 管理 API 固定为 `POST agent/memories/list|create|update|delete`，使用 JWT owner、严格 Body DTO、HTTP 200 成功和 6032–6036 稳定错误码。
+
+Batch 019 第四、五阶段已落地有界 Context 与自动滚动摘要：
+
+```text
+src/apps/agent/memory/context-builder.service.ts
+src/apps/agent/memory/conversation-summary-generator.service.ts
+src/apps/agent/memory/conversation-summary.prompt.ts
+src/apps/agent/workflow/nodes/load-context.node.ts
+```
+
+- `ContextBuilderService` 按固定 segment 顺序和目标模型窗口构建上下文；摘要 hash/range 异常时回退原始消息。
+- `ConversationSummaryGeneratorService` 在 `load_context` 前按消息数与 token 双阈值选择旧消息；保护当前问题和最近窗口，单批有界。
+- 摘要调用固定 `purpose=SUMMARIZE` 和专用发布态 Prompt；结构、来源、实体/数字/日期/引号校验通过后才提交。
+- CAS 冲突重读后最多重算一次；模型或校验失败只追加脱敏 warning，用户取消仍终止 Workflow。
+- `AGENT_SUMMARY_ENABLED=false` 可只停止自动摘要；原始消息、已有摘要和记忆数据不删除。
 
 ## 12. 测试与验收
 

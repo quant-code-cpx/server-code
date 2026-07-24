@@ -1,6 +1,7 @@
 import { HealthCheckError, HealthCheckService, HealthIndicatorStatus } from '@nestjs/terminus'
 import { PrismaHealthIndicator } from '../prisma.health'
 import { RedisHealthIndicator } from '../redis.health'
+import { ReadinessService } from '../readiness.service'
 import { HealthController } from '../health.controller'
 import { PrismaService } from '../../prisma.service'
 
@@ -96,16 +97,19 @@ describe('HealthController', () => {
   let mockHealth: { check: jest.Mock }
   let mockPrismaHealth: { isHealthy: jest.Mock }
   let mockRedisHealth: { isHealthy: jest.Mock }
+  let mockReadinessState: { isAcceptingTraffic: jest.Mock }
   let controller: HealthController
 
   beforeEach(() => {
     mockHealth = { check: jest.fn().mockResolvedValue({ status: 'ok', info: {}, error: {}, details: {} }) }
     mockPrismaHealth = { isHealthy: jest.fn().mockResolvedValue({ database: { status: 'up' } }) }
     mockRedisHealth = { isHealthy: jest.fn().mockResolvedValue({ redis: { status: 'up' } }) }
+    mockReadinessState = { isAcceptingTraffic: jest.fn().mockReturnValue(true) }
     controller = new HealthController(
       mockHealth as unknown as HealthCheckService,
       mockPrismaHealth as unknown as PrismaHealthIndicator,
       mockRedisHealth as unknown as RedisHealthIndicator,
+      mockReadinessState as unknown as ReadinessService,
     )
   })
 
@@ -120,10 +124,15 @@ describe('HealthController', () => {
   it('[BIZ] readiness → health.check 传入两个 indicator 函数', async () => {
     await controller.readiness()
 
-    expect(mockHealth.check).toHaveBeenCalledWith(
-      expect.arrayContaining([expect.any(Function), expect.any(Function)]),
-    )
+    expect(mockHealth.check).toHaveBeenCalledWith(expect.arrayContaining([expect.any(Function), expect.any(Function)]))
     expect(mockHealth.check.mock.calls[0][0]).toHaveLength(2)
+  })
+
+  it('[BIZ] 摘流后 readiness 返回 503，且不再访问下游依赖', () => {
+    mockReadinessState.isAcceptingTraffic.mockReturnValue(false)
+
+    expect(() => controller.readiness()).toThrow('服务正在摘流')
+    expect(mockHealth.check).not.toHaveBeenCalled()
   })
 
   it('[BIZ] readiness indicator 函数调用 prismaHealth.isHealthy("database")', async () => {

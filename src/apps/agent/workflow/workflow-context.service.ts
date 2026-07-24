@@ -20,6 +20,17 @@ export class WorkflowContextService {
       triggerMessageId: run.triggerMessageId,
       responseMessageId: run.responseMessageId,
       userText: run.triggerMessage.contentText?.trim().slice(0, 10_000) || readText(input.userText, 10_000),
+      systemPolicy: '',
+      workflowPrompt: {
+        workflowKey: run.workflowVersion.workflowKey,
+        workflowVersion: run.workflowVersion.version,
+        workflowHash: run.workflowVersion.contentHash,
+        promptVersionId: run.promptVersion.id,
+        promptKey: run.promptVersion.promptKey,
+        promptVersion: run.promptVersion.version,
+        promptHash: run.promptVersion.contentHash,
+        template: run.promptVersion.template,
+      },
       recentMessages: history.items.map((message) => ({
         role: message.role,
         content: (message.contentText ?? '').slice(0, 4_000),
@@ -27,6 +38,23 @@ export class WorkflowContextService {
       allowedCapabilities: readCapabilities(input.allowedCapabilities),
       allowedScopes: readScopes(input.allowedScopes),
       pageContext: cloneRecord(input.pageContext),
+      conversationState: cloneRecord(input.conversationState),
+      summary: null,
+      activeMemories: [],
+      retrievedSources: [],
+      dataCutoff: null,
+      contextTokenCount: 0,
+      manifest: {
+        schemaVersion: 1,
+        runId: run.id,
+        conversationId: run.conversationId,
+        budgetTokens: 0,
+        totalTokens: 0,
+        contentHash: hashStableJson({ runId: run.id, conversationId: run.conversationId }),
+        segments: [],
+        warnings: [],
+      },
+      warnings: [],
     }
   }
 }

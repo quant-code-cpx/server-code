@@ -14,6 +14,7 @@ import { FactorScreeningDto } from '../dto/factor-screening.dto'
 function buildPrismaMock() {
   return {
     stockBasic: { findMany: jest.fn(async () => []) },
+    indexWeight: { findFirst: jest.fn(async () => null) },
   }
 }
 
@@ -153,6 +154,19 @@ describe('FactorScreeningService', () => {
       expect(result.items).toHaveLength(1) // 第 2 页只有 1 条
       expect(result.page).toBe(2)
       expect(result.pageSize).toBe(2)
+    })
+
+    it('指定不存在的 universe → 拒绝且不读取因子值', async () => {
+      await expect(
+        service.screening(
+          buildDto({
+            conditions: [{ factorName: 'pe', operator: 'gt', value: 0 }],
+            universe: '999999.SH',
+          }),
+        ),
+      ).rejects.toThrow('股票池 "999999.SH" 不存在')
+
+      expect(mockCompute.getRawFactorValuesForDate).not.toHaveBeenCalled()
     })
   })
 

@@ -1,34 +1,46 @@
 import { Module } from '@nestjs/common'
 import { ConfigModule } from '@nestjs/config'
-import { ModelConfig, type IModelConfig } from 'src/config/model.config'
+import { ModelConfig, type AgentModelProviderConfig, type IModelConfig } from 'src/config/model.config'
 import { ModelCapabilityRegistry } from './model-capability.registry'
 import {
   MODEL_GATEWAY,
   MODEL_GATEWAY_OBSERVER,
   MODEL_PROVIDER,
-  type ModelGatewayObserver,
+  MODEL_PROVIDERS,
   type ModelProvider,
 } from './model-gateway.port'
 import { ModelGatewayService } from './model-gateway.service'
 import { FakeModelProvider } from './providers/fake-model.provider'
 import { OpenAiCompatibleProvider } from './providers/openai-compatible.provider'
-
-const NOOP_MODEL_GATEWAY_OBSERVER: ModelGatewayObserver = { record: () => undefined }
+import { ModelRouterService } from './model-router.service'
+import { ProviderHealthService } from './provider-health.service'
+import { AgentObservabilityModule } from '../observability/agent-observability.module'
+import { AgentMetricsService } from '../observability/agent-metrics.service'
 
 @Module({
-  imports: [ConfigModule.forFeature(ModelConfig)],
+  imports: [ConfigModule.forFeature(ModelConfig), AgentObservabilityModule],
   providers: [
     {
-      provide: MODEL_PROVIDER,
+      provide: MODEL_PROVIDERS,
       inject: [ModelConfig.KEY],
-      useFactory: (config: IModelConfig): ModelProvider =>
-        config.provider === 'fake' ? new FakeModelProvider(config) : new OpenAiCompatibleProvider(config),
+      useFactory: (config: IModelConfig): ModelProvider[] => config.providers.map(createProvider),
     },
-    { provide: MODEL_GATEWAY_OBSERVER, useValue: NOOP_MODEL_GATEWAY_OBSERVER },
+    {
+      provide: MODEL_PROVIDER,
+      inject: [MODEL_PROVIDERS],
+      useFactory: (providers: ModelProvider[]): ModelProvider => providers[0],
+    },
+    { provide: MODEL_GATEWAY_OBSERVER, useExisting: AgentMetricsService },
     ModelCapabilityRegistry,
+    ProviderHealthService,
+    ModelRouterService,
     ModelGatewayService,
     { provide: MODEL_GATEWAY, useExisting: ModelGatewayService },
   ],
-  exports: [MODEL_GATEWAY, ModelGatewayService, ModelCapabilityRegistry],
+  exports: [MODEL_GATEWAY, ModelGatewayService, ModelCapabilityRegistry, ModelRouterService, ProviderHealthService],
 })
 export class ModelGatewayModule {}
+
+function createProvider(config: AgentModelProviderConfig): ModelProvider {
+  return config.kind === 'fake' ? new FakeModelProvider(config) : new OpenAiCompatibleProvider(config)
+}

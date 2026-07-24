@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common'
 import { stableJson } from 'src/apps/agent/tools/tool-json'
 import { PrismaService } from 'src/shared/prisma.service'
+import { isCompleteBacktestReproducibilityManifest } from './constants/backtest-reproducibility.constant'
 
 export const BACKTEST_RESULT_SECTIONS = [
   'CONFIG',
@@ -72,6 +73,16 @@ export class BacktestToolFacade {
     const componentErrors = attributionRequested
       ? [{ section: 'ATTRIBUTION' as const, code: 'ATTRIBUTION_NOT_PERSISTED' }]
       : []
+    const manifest = run.reproducibilityManifest
+    const reproducible =
+      run.reproducibilityStatus === 'VERIFIED' &&
+      isCompleteBacktestReproducibilityManifest(manifest) &&
+      run.engineVersion === manifest.engineVersion &&
+      run.dataContractVersion === manifest.dataContractVersion &&
+      run.universePolicyVersion === manifest.universePolicyVersion &&
+      run.financialAsOfPolicyVersion === manifest.financialAsOfPolicyVersion &&
+      run.adjustmentPolicyVersion === manifest.adjustmentPolicyVersion &&
+      stringArray(run.qualityFlags).length === 0
 
     return {
       data: {
@@ -149,22 +160,36 @@ export class BacktestToolFacade {
         tradesSummary,
         attribution: null,
         biasFlags: {
-          survivorship: 'UNVERIFIED' as const,
-          pointInTimeUniverse: false,
-          announcementDate: false,
-          adjustment: 'UNVERIFIED' as const,
-          reproducible: false,
+          survivorship: reproducible ? ('VERIFIED' as const) : ('UNVERIFIED' as const),
+          pointInTimeUniverse: reproducible,
+          announcementDate: reproducible,
+          adjustment: reproducible ? ('VERIFIED' as const) : ('UNVERIFIED' as const),
+          reproducible,
+        },
+        reproducibility: {
+          status: run.reproducibilityStatus,
+          engineVersion: run.engineVersion,
+          dataContractVersion: run.dataContractVersion,
+          universePolicyVersion: run.universePolicyVersion,
+          financialAsOfPolicyVersion: run.financialAsOfPolicyVersion,
+          adjustmentPolicyVersion: run.adjustmentPolicyVersion,
+          manifest: run.reproducibilityManifest,
+          qualityFlags: stringArray(run.qualityFlags),
         },
         componentErrors,
       },
       asOf: toIsoDate(run.endDate),
       sourceModels: backtestSourceModels(input.sections),
       warnings: [
-        {
-          code: 'BACKTEST_BIAS_UNVERIFIED',
-          message: '历史回测的 universe、公告可得日和复权口径尚未完成点时复现验证，禁止据此下强结论',
-          affectedFields: ['metrics', 'equity', 'biasFlags'],
-        },
+        ...(!reproducible
+          ? [
+              {
+                code: 'BACKTEST_BIAS_UNVERIFIED',
+                message: '历史回测的 universe、公告可得日和复权口径尚未完成点时复现验证，禁止据此下强结论',
+                affectedFields: ['metrics', 'equity', 'biasFlags', 'reproducibility'],
+              },
+            ]
+          : []),
         ...(!terminal
           ? [
               {
@@ -236,6 +261,10 @@ function backtestSourceModels(sections: BacktestResultSection[]): string[] {
 
 function stringArrayOrNull(value: unknown): string[] | null {
   return Array.isArray(value) && value.every((item) => typeof item === 'string') ? value : null
+}
+
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []
 }
 
 function nullableNumber(value: { toString(): string } | number | null): number | null {

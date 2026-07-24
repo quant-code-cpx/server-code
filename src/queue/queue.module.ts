@@ -7,6 +7,9 @@ import { QueueMetricsService } from './queue-metrics.service'
 import { IRedisConfig, REDIS_CONFIG_TOKEN } from 'src/config/redis.config'
 import { WebsocketModule } from 'src/websocket/websocket.module'
 import { BacktestModule } from 'src/apps/backtest/backtest.module'
+import { buildProcessRoleConfig } from 'src/config/process-role.config'
+
+const processRole = buildProcessRoleConfig(process.env)
 
 @Module({
   imports: [
@@ -32,7 +35,8 @@ import { BacktestModule } from 'src/apps/backtest/backtest.module'
     BacktestModule,
   ],
   controllers: [],
-  providers: [BacktestingProcessor, QueueMetricsService],
+  // API and scheduler only enqueue work. Backtest jobs run in PROCESS_ROLE=worker.
+  providers: processRole.queueWorkerEnabled ? [BacktestingProcessor, QueueMetricsService] : [],
   exports: [],
 })
 export class QueueModule {}

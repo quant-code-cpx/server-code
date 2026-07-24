@@ -10,8 +10,8 @@ model Income {
   reportType             String?   @map("report_type") @db.VarChar(16)
   compType               String?   @map("comp_type") @db.VarChar(16)
   endType                String?   @map("end_type") @db.VarChar(16)
-  basicEps               Float?    @map("basic_eps")              // 基本每股收益（元/股）
-  dilutedEps             Float?    @map("diluted_eps")            // 稀释每股收益（元/股）
+  basicEps               Float?    @map("basic_eps") // 基本每股收益（元/股）
+  dilutedEps             Float?    @map("diluted_eps") // 稀释每股收益（元/股）
   totalRevenue           Float?    @map("total_revenue")
   revenue                Float?
   intIncome              Float?    @map("int_income")

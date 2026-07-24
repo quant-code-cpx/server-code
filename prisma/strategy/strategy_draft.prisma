@@ -9,7 +9,7 @@ model StrategyDraft {
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@map("strategy_drafts")
-  @@index([userId, updatedAt(sort: Desc)])
   @@unique([userId, name])
+  @@index([userId, updatedAt(sort: Desc)])
+  @@map("strategy_drafts")
 }

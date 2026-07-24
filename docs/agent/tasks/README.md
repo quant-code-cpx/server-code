@@ -4,7 +4,7 @@
 
 采用“协议先行 + 模块并行 + 集成收口”。每个批次必须可由一个 coding agent 独立理解、实现、验证、提交和回滚；跨端公共结构只由 [API 协议](../api/README.md) 与 Batch 001 定义。MVP 被拆成数据门禁、契约、持久化、模型/Tool、编排/队列/API/SSE、前端和 E2E，不存在“完成整个 Agent”大批次。
 
-Batch 000 是进入 Agent 金融 Tool 前的强制平台门禁；编号 001–018 构成 MVP。编号 019–026 与 029 是后续能力/生产化，其中 024 只有性能证据通过才实施。027/028 是默认不实施的条件试点。
+Batch 000 是进入 Agent 金融 Tool 前的强制平台门禁；编号 001–018 构成 MVP。编号 019–026 与 029 是后续能力/生产化。024 已完成性能门禁并判定 no-go；027 已完成条件评测并判定 no-go；028 仍为默认不实施的条件试点。
 
 ## 2. 命名和状态
 
@@ -54,38 +54,38 @@ MVP 不含多 Agent、向量数据库、独立 Python、任意 SQL、自动交�
 
 ## 6. 批次索引
 
-| 编号 | 批次                                                                                            | 阶段            | 类型      | 初始状态  |
-| ---: | ----------------------------------------------------------------------------------------------- | --------------- | --------- | --------- |
-|  000 | [平台数据与迁移就绪门禁](./batches/batch-000-platform-data-readiness.md)                        | MVP gate        | database  | completed |
-|  001 | [Agent 公共协议与领域枚举](./batches/batch-001-agent-public-contracts.md)                       | MVP             | fullstack | completed |
-|  002 | [会话与消息数据模型](./batches/batch-002-conversation-and-message-schema.md)                    | MVP             | database  | completed |
-|  003 | [Agent 审计、来源与引用数据模型](./batches/batch-003-agent-audit-and-citation-schema.md)        | MVP             | database  | completed |
-|  004 | [模型网关基础](./batches/batch-004-model-gateway-foundation.md)                                 | MVP             | backend   | completed |
-|  005 | [Run 状态机与持久事件存储](./batches/batch-005-run-state-and-event-store.md)                    | MVP             | backend   | completed |
-|  006 | [Tool Registry、策略与执行器](./batches/batch-006-tool-registry-and-policy.md)                  | MVP             | backend   | completed |
-|  007 | [股票、市场与自选股查询 Tool](./batches/batch-007-stock-market-query-tools.md)                  | MVP             | backend   | completed |
-|  008 | [财务、指标与个股资金流 Tool](./batches/batch-008-financial-fund-flow-tools.md)                 | MVP             | backend   | completed |
-|  009 | [用户风险与确定性量化 Tool](./batches/batch-009-deterministic-quant-tools.md)                   | MVP             | backend   | completed |
-|  010 | [受控联网搜索、抓取与引用](./batches/batch-010-web-search-and-citations.md)                     | MVP             | backend   | completed |
-|  011 | [Agent Orchestrator 与版本化工作流](./batches/batch-011-agent-orchestrator-workflow.md)         | MVP             | backend   | completed |
-|  012 | [Agent BullMQ Worker 与恢复](./batches/batch-012-agent-bullmq-worker.md)                        | MVP             | backend   | completed |
-|  013 | [会话、消息与 Run REST API](./batches/batch-013-conversation-rest-api.md)                       | MVP             | backend   | completed |
-|  014 | [POST SSE 流、重放与背压](./batches/batch-014-post-sse-stream-and-replay.md)                    | MVP             | backend   | completed |
-|  015 | [前端流客户端与公共契约](./batches/batch-015-frontend-stream-client-and-contracts.md)           | MVP             | frontend  | completed |
-|  016 | [前端 AI 对话壳](./batches/batch-016-frontend-chat-shell.md)                                    | MVP             | frontend  | completed |
-|  017 | [前端富响应内容块](./batches/batch-017-frontend-rich-response-blocks.md)                        | MVP             | frontend  | completed |
-|  018 | [MVP 端到端、金融口径与模型回归](./batches/batch-018-mvp-e2e-and-model-regression.md)           | MVP acceptance  | testing   | pending   |
-|  019 | [会话摘要与显式用户记忆](./batches/batch-019-conversation-summary-and-memory.md)                | Phase 2         | backend   | pending   |
-|  020 | [定时与条件 Agent 任务](./batches/batch-020-scheduled-agent-tasks.md)                           | Phase 2         | backend   | pending   |
-|  021 | [站内与外部通知渠道](./batches/batch-021-outbound-notification-channels.md)                     | Phase 2         | fullstack | pending   |
-|  022 | [研究报告与投资日志闭环](./batches/batch-022-research-report-and-investment-journal.md)         | Phase 2         | fullstack | pending   |
-|  023 | [多供应商模型路由与降级](./batches/batch-023-multi-provider-routing-and-fallback.md)            | Phase 2         | backend   | pending   |
-|  024 | [无状态 Python 量化计算服务](./batches/batch-024-python-quant-compute-service.md)               | Conditional     | backend   | pending   |
-|  025 | [AI 可观测性、成本与评测平台](./batches/batch-025-ai-observability-cost-and-evaluation.md)      | Phase 2         | platform  | pending   |
-|  026 | [安全加固与生产部署](./batches/batch-026-security-hardening-and-production-deployment.md)       | Production      | platform  | pending   |
-|  027 | [pgvector 语义检索试点](./batches/batch-027-vector-retrieval-pilot.md)                          | Conditional     | backend   | pending   |
-|  028 | [受控只读 SQL Explorer 试点](./batches/batch-028-controlled-sql-explorer.md)                    | Conditional     | backend   | pending   |
-|  029 | [回测点时性、股票池与复权修复](./batches/batch-029-backtest-bias-and-adjustment-remediation.md) | Phase 2 quality | backend   | pending   |
+| 编号 | 批次                                                                                            | 阶段            | 类型      | 初始状态    |
+| ---: | ----------------------------------------------------------------------------------------------- | --------------- | --------- | ----------- |
+|  000 | [平台数据与迁移就绪门禁](./batches/batch-000-platform-data-readiness.md)                        | MVP gate        | database  | completed   |
+|  001 | [Agent 公共协议与领域枚举](./batches/batch-001-agent-public-contracts.md)                       | MVP             | fullstack | completed   |
+|  002 | [会话与消息数据模型](./batches/batch-002-conversation-and-message-schema.md)                    | MVP             | database  | completed   |
+|  003 | [Agent 审计、来源与引用数据模型](./batches/batch-003-agent-audit-and-citation-schema.md)        | MVP             | database  | completed   |
+|  004 | [模型网关基础](./batches/batch-004-model-gateway-foundation.md)                                 | MVP             | backend   | completed   |
+|  005 | [Run 状态机与持久事件存储](./batches/batch-005-run-state-and-event-store.md)                    | MVP             | backend   | completed   |
+|  006 | [Tool Registry、策略与执行器](./batches/batch-006-tool-registry-and-policy.md)                  | MVP             | backend   | completed   |
+|  007 | [股票、市场与自选股查询 Tool](./batches/batch-007-stock-market-query-tools.md)                  | MVP             | backend   | completed   |
+|  008 | [财务、指标与个股资金流 Tool](./batches/batch-008-financial-fund-flow-tools.md)                 | MVP             | backend   | completed   |
+|  009 | [用户风险与确定性量化 Tool](./batches/batch-009-deterministic-quant-tools.md)                   | MVP             | backend   | completed   |
+|  010 | [受控联网搜索、抓取与引用](./batches/batch-010-web-search-and-citations.md)                     | MVP             | backend   | completed   |
+|  011 | [Agent Orchestrator 与版本化工作流](./batches/batch-011-agent-orchestrator-workflow.md)         | MVP             | backend   | completed   |
+|  012 | [Agent BullMQ Worker 与恢复](./batches/batch-012-agent-bullmq-worker.md)                        | MVP             | backend   | completed   |
+|  013 | [会话、消息与 Run REST API](./batches/batch-013-conversation-rest-api.md)                       | MVP             | backend   | completed   |
+|  014 | [POST SSE 流、重放与背压](./batches/batch-014-post-sse-stream-and-replay.md)                    | MVP             | backend   | completed   |
+|  015 | [前端流客户端与公共契约](./batches/batch-015-frontend-stream-client-and-contracts.md)           | MVP             | frontend  | completed   |
+|  016 | [前端 AI 对话壳](./batches/batch-016-frontend-chat-shell.md)                                    | MVP             | frontend  | completed   |
+|  017 | [前端富响应内容块](./batches/batch-017-frontend-rich-response-blocks.md)                        | MVP             | frontend  | completed   |
+|  018 | [MVP 端到端、金融口径与模型回归](./batches/batch-018-mvp-e2e-and-model-regression.md)           | MVP acceptance  | testing   | completed   |
+|  019 | [会话摘要与显式用户记忆](./batches/batch-019-conversation-summary-and-memory.md)                | Phase 2         | fullstack | completed   |
+|  020 | [定时与条件 Agent 任务](./batches/batch-020-scheduled-agent-tasks.md)                           | Phase 2         | backend   | completed   |
+|  021 | [站内与外部通知渠道](./batches/batch-021-outbound-notification-channels.md)                     | Phase 2         | fullstack | completed   |
+|  022 | [研究报告与投资日志闭环](./batches/batch-022-research-report-and-investment-journal.md)         | Phase 2         | fullstack | completed   |
+|  023 | [多供应商模型路由与降级](./batches/batch-023-multi-provider-routing-and-fallback.md)            | Phase 2         | backend   | completed   |
+|  024 | [无状态 Python 量化计算服务](./batches/batch-024-python-quant-compute-service.md)               | Conditional     | backend   | completed   |
+|  025 | [AI 可观测性、成本与评测平台](./batches/batch-025-ai-observability-cost-and-evaluation.md)      | Phase 2         | platform  | completed   |
+|  026 | [安全加固与生产部署](./batches/batch-026-security-hardening-and-production-deployment.md)       | Production      | platform  | in_progress |
+|  027 | [pgvector 语义检索试点](./batches/batch-027-vector-retrieval-pilot.md)                          | Conditional     | backend   | completed   |
+|  028 | [受控只读 SQL Explorer 试点](./batches/batch-028-controlled-sql-explorer.md)                    | Conditional     | backend   | pending     |
+|  029 | [回测点时性、股票池与复权修复](./batches/batch-029-backtest-bias-and-adjustment-remediation.md) | Phase 2 quality | backend   | completed   |
 
 ## 7. 验收和回滚规则
 

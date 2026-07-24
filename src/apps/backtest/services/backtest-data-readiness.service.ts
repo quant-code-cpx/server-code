@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common'
 import { PrismaService } from 'src/shared/prisma.service'
 import { ValidateBacktestRunDto } from '../dto/backtest-validate.dto'
 import { ValidateBacktestRunResponseDto } from '../dto/backtest-response.dto'
+import { UNIVERSE_INDEX_CODE } from '../types/backtest-engine.types'
 
 @Injectable()
 export class BacktestDataReadinessService {
@@ -13,9 +14,9 @@ export class BacktestDataReadinessService {
     const startStr = dto.startDate
     const endStr = dto.endDate
     const compactStartStr = startStr.replace(/-/g, '')
-    const compactEndStr = endStr.replace(/-/g, '')
     const benchmarkCode = dto.benchmarkTsCode ?? '000300.SH'
     const needsIndexWeight = dto.universe && !['ALL_A', 'CUSTOM'].includes(dto.universe)
+    const universeIndexCode = needsIndexWeight ? UNIVERSE_INDEX_CODE[dto.universe!] : undefined
 
     const warnings: string[] = []
     const errors: string[] = []
@@ -57,8 +58,12 @@ export class BacktestDataReadinessService {
       }),
       needsIndexWeight
         ? this.prisma.indexWeight.findFirst({
-            where: { tradeDate: { gte: compactStartStr, lte: compactEndStr } },
+            where: {
+              indexCode: universeIndexCode,
+              tradeDate: { lte: compactStartStr },
+            },
             select: { indexCode: true },
+            orderBy: { tradeDate: 'desc' },
           })
         : Promise.resolve({ indexCode: null }),
       this.prisma.daily.findFirst({
@@ -97,7 +102,7 @@ export class BacktestDataReadinessService {
     }
 
     if (needsIndexWeight && !hasIndexWeight) {
-      errors.push(`指数成分权重数据缺失，无法使用 ${dto.universe} 作为股票池（会产生幸存者偏差）`)
+      errors.push(`回测起始日前缺少 ${dto.universe} 指数成分快照（会产生幸存者偏差）`)
     }
 
     const isValid = errors.length === 0

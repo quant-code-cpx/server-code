@@ -1,0 +1,92 @@
+groups:
+  - name: agent-observability
+    rules:
+      - alert: AgentRunFailureRateHigh
+        expr: sum(rate(agent_runs_total{status="FAILED"}[10m])) / clamp_min(sum(rate(agent_runs_total[10m])), 1) > 0.05
+        for: 10m
+        labels:
+          severity: warning
+          service: agent
+        annotations:
+          summary: Agent Run 失败率过高
+          description: 过去 10 分钟 Agent Run 失败率超过 5%。
+
+      - alert: AgentModelAttemptFailureRateHigh
+        expr: sum(rate(agent_model_attempts_total{status="FAILED"}[10m])) / clamp_min(sum(rate(agent_model_attempts_total[10m])), 1) > 0.1
+        for: 10m
+        labels:
+          severity: warning
+          service: agent
+        annotations:
+          summary: Agent 模型调用失败率过高
+          description: 过去 10 分钟模型 provider attempt 失败率超过 10%。
+
+      - alert: AgentToolFailureRateHigh
+        expr: sum(rate(agent_tool_attempts_total{status="FAILED"}[10m])) / clamp_min(sum(rate(agent_tool_attempts_total[10m])), 1) > 0.1
+        for: 10m
+        labels:
+          severity: warning
+          service: agent
+        annotations:
+          summary: Agent Tool 失败率过高
+          description: 过去 10 分钟 Tool attempt 失败率超过 10%。
+
+      - alert: AgentWorkflowNodeP95Slow
+        expr: histogram_quantile(0.95, sum by (workflow, node, le) (rate(agent_workflow_node_duration_seconds_bucket[10m]))) > 30
+        for: 15m
+        labels:
+          severity: warning
+          service: agent
+        annotations:
+          summary: Agent 工作流节点 P95 过慢
+          description: workflow={{ $labels.workflow }} node={{ $labels.node }} P95 超过 30 秒。
+
+      - alert: AgentQueueBacklogHigh
+        expr: bullmq_queue_depth{queue="agent-execution"} > 100
+        for: 10m
+        labels:
+          severity: warning
+          service: agent
+        annotations:
+          summary: Agent 队列积压
+          description: agent-execution 等待任务超过 100 且持续 10 分钟。
+
+      - alert: AgentModelCostSpike
+        expr: sum(increase(agent_model_cost_total[1h])) > 100
+        for: 5m
+        labels:
+          severity: warning
+          service: agent
+        annotations:
+          summary: Agent 模型成本异常上涨
+          description: 过去 1 小时所有已知币种模型成本累计超过 100；按 currency label 进一步核对。
+
+      - alert: AgentToolSourceDataStale
+        expr: max by (tool) (agent_tool_data_age_seconds) > 172800
+        for: 30m
+        labels:
+          severity: warning
+          service: agent
+        annotations:
+          summary: Agent Tool 数据陈旧
+          description: tool={{ $labels.tool }} 数据新鲜度超过 48 小时。
+
+      - alert: AgentTraceSpanFailureRateHigh
+        expr: sum(rate(agent_trace_spans_total{status="FAILED"}[10m])) / clamp_min(sum(rate(agent_trace_spans_total[10m])), 1) > 0.05
+        for: 10m
+        labels:
+          severity: warning
+          service: agent
+        annotations:
+          summary: Agent metadata trace 失败率过高
+          description: 过去 10 分钟 metadata-only trace span 失败率超过 5%。
+
+      - alert: AgentRunRecoveryFailure
+        expr: increase(agent_run_recovery_total{result="failed"}[15m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+          service: agent
+        annotations:
+          summary: Agent Run 恢复失败
+          description: 最近 15 分钟 Agent reconciler 出现恢复失败。

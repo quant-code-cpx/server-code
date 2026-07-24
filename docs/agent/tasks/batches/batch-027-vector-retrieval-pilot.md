@@ -1,6 +1,6 @@
 ---
 batch: 27
-status: pending
+status: completed
 type: backend
 depends_on: ["batch-019-conversation-summary-and-memory", "batch-022-research-report-and-investment-journal", "batch-025-ai-observability-cost-and-evaluation"]
 blocks: []
@@ -52,7 +52,7 @@ estimated_scope: medium
 - `src/apps/agent/retrieval/embedding.provider.ts`
 - `src/apps/agent/retrieval/test/retrieval-evaluation.spec.ts`
 - 可选 `prisma/migrations/20260722000000_add_pgvector_retrieval/migration.sql`
-- `docs/agent/decisions/adr-010-semantic-retrieval-pilot-result.md`
+- `docs/agent/decisions/adr-010-语义检索试点结论.md`
 
 ## 8. 需要修改的文件
 
@@ -137,6 +137,24 @@ estimated_scope: medium
 ## 24. 完成定义
 
 baseline、port、试点评测、ADR 结果；go 时还需 migration/index/backup/删除测试，no-go 时默认 FTS 保持。
+
+## 24.1 实施记录（2026-07-23）
+
+- 新增 retrieval/embedding port、稳定版本化 chunk、metadata + PostgreSQL FTS baseline、OpenAI-compatible embedding adapter、可选 pgvector/hybrid adapter。固定 0.35/0.65 权重输出 score components；模型不参与排名公式。
+- `ContextBuilder` 默认以 `AGENT_RETRIEVAL_MODE=fts` 检索同租户 confirmed memory/completed report。相关 memory 只调整既有 active memory 顺序；report 作为不可信 `RETRIEVED_SOURCES` 进入有界 context/manifest。embedding/pgvector 失败回退 FTS。
+- tenant/status/delete/expiry/data cutoff/chunk version/model version 均写入 SQL 本体；embedding query 有界脱敏，日志只记录 query SHA-256。
+- 匿名合成 `retrieval-v1` 数据集执行 FTS、semantic upper-bound fixture、hybrid Recall@3/MRR。FTS 为 0.25/0.25，upper-bound hybrid 为 1.00/1.00；质量上界通过，但并非真实获批 embedding。
+- 真实 41 GB 数据库只读检查：confirmed memory/report 均 0 行，无 `vector` extension/检索 chunk 表，未达到 10 万 source 资格门禁。
+- 临时 `pgvector/pgvector:pg16` 容器完成跨租户、删除、chunk version、model version、source cleanup 正反分支；微型数据未选择 HNSW，不能替代 41 GB 克隆的 build/WAL/backup/restore 门禁。
+- 结论：[ADR-010](../../decisions/adr-010-语义检索试点结论.md) 为 no-go。未新增 pgvector migration/table/index，生产不得切 `hybrid`；条件批次以有证据 no-go 完成。
+
+### 已执行验证
+
+- `pnpm exec jest src/apps/agent/retrieval/test src/config/test/agent-retrieval.config.spec.ts src/apps/agent/memory/test/context-builder.spec.ts --runInBand`
+- `pnpm run eval:agent -- --suite=retrieval`
+- `pnpm run build`
+- 真实 41 GB PostgreSQL 只读 row/extension/size 与 FTS `EXPLAIN (ANALYZE, BUFFERS)`。
+- 临时 pgvector Docker 正反分支；容器已清理。
 
 ## 25. 回滚方案
 

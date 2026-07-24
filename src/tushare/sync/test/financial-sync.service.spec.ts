@@ -111,6 +111,7 @@ function buildMockApi() {
     getDividendByDateRange: jest.fn(async () => []),
     getFinaIndicatorByTsCode: jest.fn(async () => []),
     getFinaIndicatorByTsCodeAndPeriod: jest.fn(async () => []),
+    getFinaIndicatorByTsCodeAndDateRange: jest.fn(async () => []),
     getTop10HoldersByTsCodeAndPeriod: jest.fn(async () => []),
     getTop10FloatHoldersByTsCodeAndPeriod: jest.fn(async () => []),
     getStkHolderNumberByDateRange: jest.fn(async () => []),
@@ -133,6 +134,53 @@ function createService(api = buildMockApi(), helper = buildMockHelper()): Financ
 describe('FinancialSyncService', () => {
   beforeEach(() => {
     jest.clearAllMocks()
+  })
+
+  it('财务指标增量按股票一次刷新日期区间并保留同报告期修订版本', async () => {
+    const prismaMock = buildPrismaMock()
+    prismaMock.finaIndicator.count.mockResolvedValue(10_000)
+    prismaMock.disclosureDate.findMany.mockResolvedValue([
+      { tsCode: '000001.SZ', endDate: new Date(Date.UTC(2025, 11, 31)) },
+      { tsCode: '000001.SZ', endDate: new Date(Date.UTC(2025, 8, 30)) },
+    ])
+    ;(prismaMock.finaIndicator.createMany as jest.Mock).mockImplementation(async (args: { data?: unknown[] }) => ({
+      count: args.data?.length ?? 0,
+    }))
+
+    const helper = buildMockHelper(prismaMock)
+    helper.buildRecentQuarterPeriods.mockReturnValue(['20250930', '20251231'])
+    const api = buildMockApi()
+    api.getFinaIndicatorByTsCodeAndDateRange.mockResolvedValue([
+      {
+        ts_code: '000001.SZ',
+        ann_date: '20260120',
+        end_date: '20251231',
+        update_flag: '0',
+        roe: 10,
+      },
+      {
+        ts_code: '000001.SZ',
+        ann_date: '20260210',
+        end_date: '20251231',
+        update_flag: '1',
+        roe: 12,
+      },
+    ])
+
+    await createService(api, helper).syncFinaIndicator('incremental')
+
+    expect(api.getFinaIndicatorByTsCodeAndDateRange).toHaveBeenCalledTimes(1)
+    expect(api.getFinaIndicatorByTsCodeAndDateRange).toHaveBeenCalledWith('000001.SZ', '20250930', '20251231')
+    expect(prismaMock.finaIndicator.deleteMany).toHaveBeenCalledWith({
+      where: { tsCode: '000001.SZ', endDate: { in: expect.any(Array) } },
+    })
+    expect(prismaMock.finaIndicator.createMany).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({ annDate: expect.any(Date), updateFlag: '0', roe: 10 }),
+        expect.objectContaining({ annDate: expect.any(Date), updateFlag: '1', roe: 12 }),
+      ],
+      skipDuplicates: true,
+    })
   })
 
   // ── getSyncPlans() ─────────────────────────────────────────────────────────

@@ -148,10 +148,10 @@ describe('StockAnalysisService', () => {
       expect(bars[0].close).toBe(20)
     })
 
-    it('adjFactor=2.0（历史）且最新 adjFactor=1.0 时，close 减半（前复权）', () => {
+    it('QFQ=price*factor/latestAdj：历史 factor=2、最新 factor=1 时 close 翻倍', () => {
       const svc = createService()
       // 两条数据：历史 adjFactor=2.0，最新 adjFactor=1.0
-      // 前复权：multiplier = latestAdj / factor = 1.0 / 2.0 = 0.5
+      // 前复权：multiplier = factor / latestAdj = 2.0 / 1.0 = 2
       const rows = [
         makeOhlcvRow({ tradeDate: new Date('2024-01-01'), close: 20, open: 20, high: 21, low: 19, adjFactor: 2.0 }),
         makeOhlcvRow({ tradeDate: new Date('2024-01-02'), close: 10, open: 10, high: 11, low: 9, adjFactor: 1.0 }),
@@ -160,8 +160,8 @@ describe('StockAnalysisService', () => {
       const bars = (svc as any).applyAdjFactor(rows)
 
       expect(bars).toHaveLength(2)
-      // 历史行：close=20 * (1.0/2.0) = 10
-      expect(bars[0].close).toBe(10)
+      // 历史行：close=20 * (2.0/1.0) = 40
+      expect(bars[0].close).toBe(40)
       // 最新行：close=10 * (1.0/1.0) = 10
       expect(bars[1].close).toBe(10)
     })

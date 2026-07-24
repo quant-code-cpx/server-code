@@ -1,0 +1,16 @@
+{
+  "moduleFileExtensions": ["js", "json", "ts"],
+  "rootDir": "..",
+  "testEnvironment": "node",
+  "testMatch": ["<rootDir>/test/e2e/flow-*.e2e-spec.ts"],
+  "transform": {
+    "^.+\\.(t|j)s$": ["ts-jest", { "tsconfig": "tsconfig.json" }]
+  },
+  "moduleNameMapper": {
+    "^src/(.*)$": "<rootDir>/src/$1"
+  },
+  "modulePathIgnorePatterns": ["<rootDir>/.agents/", "<rootDir>/.claude/"],
+  "setupFilesAfterEnv": ["<rootDir>/test/setup.ts"],
+  "globalSetup": "<rootDir>/test/e2e/global-setup.ts",
+  "testTimeout": 60000
+}

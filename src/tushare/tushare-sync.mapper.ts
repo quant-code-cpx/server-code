@@ -685,6 +685,7 @@ export function mapFinaIndicatorRecord(
     tsCode,
     annDate: readDate(record, 'ann_date'),
     endDate,
+    updateFlag: readString(record, 'update_flag'),
     eps: readNumber(record, 'eps'),
     dtEps: readNumber(record, 'dt_eps'),
     totalRevenuePers: readNumber(record, 'total_revenue_ps'),

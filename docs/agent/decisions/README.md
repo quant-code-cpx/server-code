@@ -11,3 +11,4 @@ ADR 一经接受，实施批次按其约束执行；达到“复审条件”后�
 - [ADR-007：向量数据库必要性](./adr-007-vector-database-necessity.md)
 - [ADR-008：多 Agent 策略](./adr-008-multi-agent-strategy.md)
 - [ADR-009：模型网关边界](./adr-009-model-gateway-boundary.md)
+- [ADR-010：语义检索试点结论](./adr-010-语义检索试点结论.md)

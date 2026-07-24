@@ -10,6 +10,7 @@ import {
 } from '@prisma/client'
 import { LoggerService } from 'src/shared/logger/logger.service'
 import { PrismaService } from 'src/shared/prisma.service'
+import { NotificationDeliveryService } from 'src/apps/notification/notification-delivery.service'
 import { prepareCitationInTransaction, type AttachCitationInput } from '../audit/citation.repository'
 import type { MessageBlock } from '../contracts'
 import { toJsonInput as messageJson, validateMessageBlocks } from '../conversation/agent-conversation.utils'
@@ -34,6 +35,7 @@ export interface CompleteAgentRunCommand {
   contentText: string
   contentBlocks: MessageBlock[]
   citations: AttachCitationInput[]
+  modelCallId: string
   modelName: string | null
   tokenCount: number
   resultSummary: unknown
@@ -47,6 +49,7 @@ export class AgentRunCompletionRepository {
     private readonly prisma: PrismaService,
     private readonly events: AgentEventRepository,
     private readonly stateMachine: AgentStateMachineService,
+    private readonly deliveries: NotificationDeliveryService,
     private readonly logger: LoggerService,
   ) {}
 
@@ -57,6 +60,7 @@ export class AgentRunCompletionRepository {
     const stepId = requireText(command.stepId, 'stepId', 32)
     const responseMessageId = requireText(command.responseMessageId, 'responseMessageId', 32)
     const traceId = requireText(command.traceId, 'traceId', 128)
+    const modelCallId = requireText(command.modelCallId, 'modelCallId', 32)
     requirePositiveInteger(command.userId, 'userId')
     requirePositiveInteger(command.expectedRunStatusVersion, 'expectedRunStatusVersion')
     requireNonNegativeInteger(command.tokenCount, 'tokenCount')
@@ -109,6 +113,22 @@ export class AgentRunCompletionRepository {
       })
       if (preparedCitations.length > 0) {
         await tx.aiCitation.createMany({ data: preparedCitations })
+        for (const citation of preparedCitations) {
+          await this.events.appendInTransaction(tx, locked.run, {
+            eventType: 'citation.created',
+            traceId,
+            stepId,
+            payload: { citation: citationEvent(citation) },
+          })
+        }
+      }
+      for (const delta of splitUtf8Text(contentText, 1_024)) {
+        await this.events.appendInTransaction(tx, locked.run, {
+          eventType: 'model.delta',
+          traceId,
+          stepId,
+          payload: { modelCallId, blockIndex: 0, delta },
+        })
       }
       await tx.aiAgentStep.update({
         where: { id: stepId },
@@ -125,7 +145,8 @@ export class AgentRunCompletionRepository {
         stepId,
         payload: command.completedEventPayload,
       })
-      return tx.aiAgentRun.update({
+      const completedAt = new Date()
+      const completedRun = await tx.aiAgentRun.update({
         where: { id },
         data: {
           status: AiAgentRunStatus.COMPLETED,
@@ -134,12 +155,14 @@ export class AgentRunCompletionRepository {
           errorCode: null,
           errorClass: null,
           errorMessage: null,
-          endedAt: new Date(),
+          endedAt: completedAt,
           leaseOwner: null,
           leaseExpiresAt: null,
           heartbeatAt: null,
         },
       })
+      await this.deliveries.enqueueForCompletedRun(tx, { run: completedRun, completedAt })
+      return completedRun
     })
     this.logger.log(
       { operation: 'completeAgentRun', runId: id, durationMs: Date.now() - startedAt, rowCount: 1 },
@@ -153,6 +176,41 @@ function sha256Json(value: Record<string, unknown>): string {
   return createHash('sha256')
     .update(JSON.stringify(sortJson(value)), 'utf8')
     .digest('hex')
+}
+
+function citationEvent(citation: Prisma.AiCitationCreateManyInput) {
+  return {
+    citationId: requireText(citation.publicId as string, 'citation.publicId', 32),
+    sourceId: requireText((citation.searchSourceId ?? citation.toolCallId) as string, 'citation.sourceId', 32),
+    sourceType: citation.sourceType,
+    title: citation.sourceTitle,
+    ...(citation.canonicalUrl ? { canonicalUrl: citation.canonicalUrl } : {}),
+    ...(citation.publisher ? { publisher: citation.publisher } : {}),
+    ...(citation.sourcePublishedAt
+      ? { publishedAt: new Date(citation.sourcePublishedAt as string | Date).toISOString() }
+      : {}),
+    retrievedAt: new Date(citation.retrievedAt as string | Date).toISOString(),
+    locator: citation.locator,
+    contentHash: citation.contentHash,
+  }
+}
+
+function splitUtf8Text(value: string, maxBytes: number): string[] {
+  const chunks: string[] = []
+  let chunk = ''
+  let chunkBytes = 0
+  for (const character of value) {
+    const characterBytes = Buffer.byteLength(character, 'utf8')
+    if (chunk && chunkBytes + characterBytes > maxBytes) {
+      chunks.push(chunk)
+      chunk = ''
+      chunkBytes = 0
+    }
+    chunk += character
+    chunkBytes += characterBytes
+  }
+  if (chunk) chunks.push(chunk)
+  return chunks
 }
 
 function sortJson(value: unknown): unknown {

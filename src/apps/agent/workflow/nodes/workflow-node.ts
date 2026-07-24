@@ -12,6 +12,7 @@ export interface WorkflowNodeExecutionContext {
   state: WorkflowExecutionState
   limits: WorkflowBudgetLimits
   stepId: string
+  workerId?: string
   signal?: AbortSignal
 }
 

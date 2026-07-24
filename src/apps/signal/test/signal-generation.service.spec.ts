@@ -109,6 +109,12 @@ describe('SignalGenerationService', () => {
       mockPrisma.signalActivation.findMany.mockResolvedValue([])
       await svc.generateAllSignals()
       expect(mockPrisma.signalActivation.findUniqueOrThrow).not.toHaveBeenCalled()
+      expect(mockPrisma.signalActivation.findMany).toHaveBeenCalledWith({
+        where: {
+          isActive: true,
+          OR: [{ lastSignalDate: null }, { lastSignalDate: { not: new Date('2025-03-01') } }],
+        },
+      })
     })
 
     it('单个激活失败不阻断其余激活', async () => {
@@ -359,19 +365,17 @@ describe('SignalGenerationService', () => {
     })
   })
 
-  // ── resolveTradeDate 时区修复（B1 已修复）───────────────────────────────
+  // ── resolveTradeDate 日历日修复（B1 已修复）─────────────────────────────
 
-  describe('[B1] resolveTradeDate() — 使用上海时区解析字符串（已修复）', () => {
-    it('字符串 "20250301" 被解析为上海时间（2025-02-28T16:00:00.000Z）', async () => {
-      // 修复后：dayjs.tz('20250301', 'YYYYMMDD', 'Asia/Shanghai').toDate()
-      // 上海 2025-03-01 00:00:00 CST = UTC 2025-02-28 16:00:00
+  describe('[B1] resolveTradeDate() — YYYYMMDD 映射为数据库 @db.Date 的 UTC 零点', () => {
+    it('字符串 "20250301" 被解析为 2025-03-01T00:00:00.000Z', async () => {
       const { svc } = createService()
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const result = await (svc as any).resolveTradeDate('20250301')
 
       expect(result).toBeInstanceOf(Date)
-      expect(result.toISOString()).toBe('2025-02-28T16:00:00.000Z')
+      expect(result.toISOString()).toBe('2025-03-01T00:00:00.000Z')
     })
 
     it('[BIZ] resolveTradeDate 无参数时从 tradeCal 查询最晚交易日', async () => {

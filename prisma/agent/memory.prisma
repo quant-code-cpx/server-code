@@ -1,0 +1,84 @@
+// Agent 版本化会话摘要与显式用户记忆。
+// 原始消息不可变；摘要是可重建派生物；长期记忆必须由用户确认。
+
+enum AiMemoryCategory {
+  PREFERENCE
+  PROFILE
+  CONSTRAINT
+  DOMAIN_FACT
+
+  @@map("ai_memory_category")
+}
+
+enum AiMemorySensitivity {
+  NORMAL
+  PERSONAL
+  FINANCIAL
+
+  @@map("ai_memory_sensitivity")
+}
+
+enum AiMemoryStatus {
+  CANDIDATE
+  CONFIRMED
+  REVOKED
+  EXPIRED
+
+  @@map("ai_memory_status")
+}
+
+model AiConversationSummary {
+  id               String   @id @default(cuid()) @db.VarChar(32)
+  conversationId   String   @map("conversation_id") @db.VarChar(32)
+  fromMessageId    String   @map("from_message_id") @db.VarChar(32)
+  throughMessageId String   @map("through_message_id") @db.VarChar(32)
+  version          Int
+  summaryText      String   @map("summary_text") @db.Text
+  facts            Json     @default("[]") @db.JsonB
+  sourceMessageIds Json     @default("[]") @map("source_message_ids") @db.JsonB
+  promptVersionId  String   @map("prompt_version_id") @db.VarChar(32)
+  modelName        String   @map("model_name") @db.VarChar(128)
+  sourceTokenCount Int      @map("source_token_count")
+  contentHash      String   @map("content_hash") @db.Char(64)
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  conversation           AiConversation  @relation("AiConversationSummaries", fields: [conversationId], references: [id], onDelete: Restrict)
+  currentForConversation AiConversation? @relation("AiConversationCurrentSummary")
+  fromMessage            AiMessage       @relation("AiSummaryFromMessage", fields: [fromMessageId], references: [id], onDelete: Restrict)
+  throughMessage         AiMessage       @relation("AiSummaryThroughMessage", fields: [throughMessageId], references: [id], onDelete: Restrict)
+  promptVersion          AiPromptVersion @relation(fields: [promptVersionId], references: [id], onDelete: Restrict)
+
+  @@unique([conversationId, version], map: "ai_conversation_summaries_conversation_version_key")
+  @@unique([conversationId, throughMessageId, promptVersionId], map: "ai_conversation_summaries_range_prompt_key")
+  @@index([conversationId, createdAt(sort: Desc)], map: "ai_conversation_summaries_conversation_created_idx")
+  @@map("ai_conversation_summaries")
+}
+
+model AiUserMemory {
+  id                   String              @id @default(cuid()) @db.VarChar(32)
+  userId               Int                 @map("user_id")
+  category             AiMemoryCategory
+  key                  String              @db.VarChar(128)
+  value                Json                @db.JsonB
+  sensitivity          AiMemorySensitivity @default(NORMAL)
+  status               AiMemoryStatus      @default(CANDIDATE)
+  sourceConversationId String?             @map("source_conversation_id") @db.VarChar(32)
+  sourceMessageId      String?             @map("source_message_id") @db.VarChar(32)
+  confidence           Decimal             @default(1) @db.Decimal(5, 4)
+  version              Int                 @default(1)
+  validFrom            DateTime            @default(now()) @map("valid_from") @db.Timestamptz(3)
+  confirmedAt          DateTime?           @map("confirmed_at") @db.Timestamptz(3)
+  expiresAt            DateTime?           @map("expires_at") @db.Timestamptz(3)
+  revokedAt            DateTime?           @map("revoked_at") @db.Timestamptz(3)
+  deletedAt            DateTime?           @map("deleted_at") @db.Timestamptz(3)
+  createdAt            DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt            DateTime            @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user               User            @relation(fields: [userId], references: [id], onDelete: Restrict)
+  sourceConversation AiConversation? @relation("AiUserMemorySourceConversation", fields: [sourceConversationId], references: [id], onDelete: Restrict)
+  sourceMessage      AiMessage?      @relation("AiUserMemorySourceMessage", fields: [sourceMessageId], references: [id], onDelete: Restrict)
+
+  @@index([userId, status, updatedAt(sort: Desc), id(sort: Desc)], map: "ai_user_memories_user_status_updated_idx")
+  @@index([sourceConversationId, sourceMessageId], map: "ai_user_memories_source_idx")
+  @@map("ai_user_memories")
+}

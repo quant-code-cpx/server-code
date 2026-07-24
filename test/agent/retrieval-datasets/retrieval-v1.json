@@ -1,0 +1,116 @@
+{
+  "schemaVersion": 1,
+  "id": "retrieval-v1",
+  "version": "2026-07-23",
+  "anonymousSynthetic": true,
+  "structuredMarketExcluded": true,
+  "semanticFixtureVersion": "human-tags-upper-bound-v1",
+  "semanticModelApproved": false,
+  "pgvectorInfraBenchmarked": false,
+  "thresholds": {
+    "k": 3,
+    "minRecallGain": 0.15,
+    "minMrrGain": 0.15,
+    "maxP95LatencyMs": 50
+  },
+  "sources": [
+    {
+      "id": "memory_low_risk",
+      "sourceType": "MEMORY",
+      "text": "风险承受能力较低，研究方案应避免大幅回撤。",
+      "semanticTags": ["risk-low", "drawdown-avoid"]
+    },
+    {
+      "id": "memory_long_horizon",
+      "sourceType": "MEMORY",
+      "text": "投资周期通常为三到五年，不关注短期价格噪声。",
+      "semanticTags": ["horizon-long", "ignore-short-noise"]
+    },
+    {
+      "id": "memory_dividend",
+      "sourceType": "MEMORY",
+      "text": "偏好现金分红稳定、负债率可控的公司。",
+      "semanticTags": ["dividend", "stable-balance-sheet"]
+    },
+    {
+      "id": "report_cashflow_value",
+      "sourceType": "REPORT",
+      "text": "公司经营现金流连续增长，但当前估值位于历史高分位。",
+      "semanticTags": ["cashflow-strong", "valuation-expensive"]
+    },
+    {
+      "id": "report_chip_cycle",
+      "sourceType": "REPORT",
+      "text": "半导体设备需求受库存周期影响，复苏信号仍需订单验证。",
+      "semanticTags": ["semiconductor", "inventory-cycle", "recovery-unconfirmed"]
+    },
+    {
+      "id": "report_bank_quality",
+      "sourceType": "REPORT",
+      "text": "银行资产质量改善，不良生成率下降，净息差仍有压力。",
+      "semanticTags": ["bank", "asset-quality", "margin-pressure"]
+    },
+    {
+      "id": "report_consumer_moat",
+      "sourceType": "REPORT",
+      "text": "消费品牌依靠渠道覆盖和复购率形成竞争壁垒。",
+      "semanticTags": ["consumer", "moat", "repeat-purchase"]
+    },
+    {
+      "id": "report_export_fx",
+      "sourceType": "REPORT",
+      "text": "出口企业收入增长较快，但汇率变化可能侵蚀利润。",
+      "semanticTags": ["export", "fx-risk", "profit-pressure"]
+    }
+  ],
+  "queries": [
+    {
+      "id": "q_low_risk",
+      "text": "我不喜欢账户净值剧烈波动",
+      "relevantSourceIds": ["memory_low_risk"],
+      "semanticTags": ["risk-low", "drawdown-avoid"]
+    },
+    {
+      "id": "q_long_horizon",
+      "text": "按多年持有思路分析，不用理会眼前涨跌",
+      "relevantSourceIds": ["memory_long_horizon"],
+      "semanticTags": ["horizon-long", "ignore-short-noise"]
+    },
+    {
+      "id": "q_cashflow_value",
+      "text": "哪份研究提到赚钱能力稳但价格已经很贵",
+      "relevantSourceIds": ["report_cashflow_value"],
+      "semanticTags": ["cashflow-strong", "valuation-expensive"]
+    },
+    {
+      "id": "q_chip_cycle",
+      "text": "芯片产业什么时候走出存货调整",
+      "relevantSourceIds": ["report_chip_cycle"],
+      "semanticTags": ["semiconductor", "inventory-cycle"]
+    },
+    {
+      "id": "q_bank_quality",
+      "text": "金融机构坏账趋势和利差压力",
+      "relevantSourceIds": ["report_bank_quality"],
+      "semanticTags": ["bank", "asset-quality", "margin-pressure"]
+    },
+    {
+      "id": "q_consumer_moat",
+      "text": "品牌靠客户反复购买建立护城河",
+      "relevantSourceIds": ["report_consumer_moat"],
+      "semanticTags": ["consumer", "moat", "repeat-purchase"]
+    },
+    {
+      "id": "q_export_fx",
+      "text": "海外销售很好但货币波动会压低收益",
+      "relevantSourceIds": ["report_export_fx"],
+      "semanticTags": ["export", "fx-risk", "profit-pressure"]
+    },
+    {
+      "id": "q_dividend",
+      "text": "找持续派息而且杠杆不高的标的",
+      "relevantSourceIds": ["memory_dividend"],
+      "semanticTags": ["dividend", "stable-balance-sheet"]
+    }
+  ]
+}

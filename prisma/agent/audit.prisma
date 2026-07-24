@@ -55,8 +55,9 @@ model AiPromptVersion {
   publishedAt  DateTime?       @map("published_at") @db.Timestamptz(3)
   retiredAt    DateTime?       @map("retired_at") @db.Timestamptz(3)
 
-  modelCalls AiModelCall[]
-  agentRuns  AiAgentRun[]  @relation("AiRunPromptVersion")
+  modelCalls            AiModelCall[]
+  agentRuns             AiAgentRun[]            @relation("AiRunPromptVersion")
+  conversationSummaries AiConversationSummary[]
 
   @@unique([promptKey, version], map: "ai_prompt_versions_key_version_key")
   @@unique([promptKey, contentHash], map: "ai_prompt_versions_key_content_hash_key")
@@ -65,21 +66,21 @@ model AiPromptVersion {
 }
 
 model AiWorkflowVersion {
-  id             String          @id @default(cuid()) @db.VarChar(32)
-  workflowKey    String          @map("workflow_key") @db.VarChar(128)
-  version        Int
-  status         AiVersionStatus @default(DRAFT)
-  definition     Json            @db.JsonB
-  toolAllowlist  Json            @default("[]") @map("tool_allowlist") @db.JsonB
-  inputSchema    Json            @default("{}") @map("input_schema") @db.JsonB
-  outputSchema   Json            @default("{}") @map("output_schema") @db.JsonB
-  contentHash    String          @map("content_hash") @db.Char(64)
-  createdBy      Int             @map("created_by")
-  publishedBy    Int?            @map("published_by")
-  createdAt      DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt      DateTime        @updatedAt @map("updated_at") @db.Timestamptz(3)
-  publishedAt    DateTime?       @map("published_at") @db.Timestamptz(3)
-  retiredAt      DateTime?       @map("retired_at") @db.Timestamptz(3)
+  id            String          @id @default(cuid()) @db.VarChar(32)
+  workflowKey   String          @map("workflow_key") @db.VarChar(128)
+  version       Int
+  status        AiVersionStatus @default(DRAFT)
+  definition    Json            @db.JsonB
+  toolAllowlist Json            @default("[]") @map("tool_allowlist") @db.JsonB
+  inputSchema   Json            @default("{}") @map("input_schema") @db.JsonB
+  outputSchema  Json            @default("{}") @map("output_schema") @db.JsonB
+  contentHash   String          @map("content_hash") @db.Char(64)
+  createdBy     Int             @map("created_by")
+  publishedBy   Int?            @map("published_by")
+  createdAt     DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime        @updatedAt @map("updated_at") @db.Timestamptz(3)
+  publishedAt   DateTime?       @map("published_at") @db.Timestamptz(3)
+  retiredAt     DateTime?       @map("retired_at") @db.Timestamptz(3)
 
   agentRuns AiAgentRun[] @relation("AiRunWorkflowVersion")
 
@@ -90,40 +91,40 @@ model AiWorkflowVersion {
 }
 
 model AiToolCall {
-  id                String             @id @default(cuid()) @db.VarChar(32)
-  userId            Int                @map("user_id")
-  scopeId           String             @map("scope_id") @db.VarChar(64)
-  runId             String             @map("run_id") @db.VarChar(32)
-  stepId            String             @map("step_id") @db.VarChar(32)
-  logicalNodeKey    String             @map("logical_node_key") @db.VarChar(128)
-  invocationIndex   Int                @default(0) @map("invocation_index")
-  toolName          String             @map("tool_name") @db.VarChar(96)
-  toolVersion       String             @map("tool_version") @db.VarChar(40)
-  status            AiToolCallStatus   @default(PENDING)
-  attemptCount      Int                @default(1) @map("attempt_count")
-  payloadMode       AiAuditPayloadMode @default(HASH_ONLY) @map("payload_mode")
-  inputSummary      Json               @default("{}") @map("input_summary") @db.JsonB
-  inputHash         String             @map("input_hash") @db.Char(64)
-  inputRef          String?            @map("input_ref") @db.VarChar(500)
-  outputSummary     Json?              @map("output_summary") @db.JsonB
-  outputHash        String?            @map("output_hash") @db.Char(64)
-  outputRef         String?            @map("output_ref") @db.VarChar(500)
-  dataAsOf          DateTime?          @map("data_as_of") @db.Date
-  dataThrough       DateTime?          @map("data_through") @db.Date
-  marketTimezone    String?            @map("market_timezone") @db.VarChar(64)
-  dataVersion       String?            @map("data_version") @db.VarChar(160)
-  qualityFlags      Json               @default("[]") @map("quality_flags") @db.JsonB
-  sourceTasks       Json               @default("[]") @map("source_tasks") @db.JsonB
-  rowCount          Int?               @map("row_count")
-  truncated         Boolean            @default(false)
-  errorCode         Int?               @map("error_code")
-  errorClass        String?            @map("error_class") @db.VarChar(128)
-  errorMessage      String?            @map("error_message") @db.VarChar(1000)
-  startedAt         DateTime           @default(now()) @map("started_at") @db.Timestamptz(3)
-  finishedAt        DateTime?          @map("finished_at") @db.Timestamptz(3)
-  durationMs        Int?               @map("duration_ms")
-  createdAt         DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt         DateTime           @updatedAt @map("updated_at") @db.Timestamptz(3)
+  id              String             @id @default(cuid()) @db.VarChar(32)
+  userId          Int                @map("user_id")
+  scopeId         String             @map("scope_id") @db.VarChar(64)
+  runId           String             @map("run_id") @db.VarChar(32)
+  stepId          String             @map("step_id") @db.VarChar(32)
+  logicalNodeKey  String             @map("logical_node_key") @db.VarChar(128)
+  invocationIndex Int                @default(0) @map("invocation_index")
+  toolName        String             @map("tool_name") @db.VarChar(96)
+  toolVersion     String             @map("tool_version") @db.VarChar(40)
+  status          AiToolCallStatus   @default(PENDING)
+  attemptCount    Int                @default(1) @map("attempt_count")
+  payloadMode     AiAuditPayloadMode @default(HASH_ONLY) @map("payload_mode")
+  inputSummary    Json               @default("{}") @map("input_summary") @db.JsonB
+  inputHash       String             @map("input_hash") @db.Char(64)
+  inputRef        String?            @map("input_ref") @db.VarChar(500)
+  outputSummary   Json?              @map("output_summary") @db.JsonB
+  outputHash      String?            @map("output_hash") @db.Char(64)
+  outputRef       String?            @map("output_ref") @db.VarChar(500)
+  dataAsOf        DateTime?          @map("data_as_of") @db.Date
+  dataThrough     DateTime?          @map("data_through") @db.Date
+  marketTimezone  String?            @map("market_timezone") @db.VarChar(64)
+  dataVersion     String?            @map("data_version") @db.VarChar(160)
+  qualityFlags    Json               @default("[]") @map("quality_flags") @db.JsonB
+  sourceTasks     Json               @default("[]") @map("source_tasks") @db.JsonB
+  rowCount        Int?               @map("row_count")
+  truncated       Boolean            @default(false)
+  errorCode       Int?               @map("error_code")
+  errorClass      String?            @map("error_class") @db.VarChar(128)
+  errorMessage    String?            @map("error_message") @db.VarChar(1000)
+  startedAt       DateTime           @default(now()) @map("started_at") @db.Timestamptz(3)
+  finishedAt      DateTime?          @map("finished_at") @db.Timestamptz(3)
+  durationMs      Int?               @map("duration_ms")
+  createdAt       DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime           @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   run       AiAgentRun   @relation("AiToolCallRun", fields: [runId], references: [id], onDelete: Restrict)
   step      AiAgentStep  @relation("AiToolCallStep", fields: [stepId, runId], references: [id, runId], onDelete: Restrict)

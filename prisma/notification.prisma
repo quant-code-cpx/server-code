@@ -1,28 +1,65 @@
 // ── 站内消息通知 ─────────────────────────────────────────────────────────────
 
 enum NotificationType {
-  PRICE_ALERT           // 价格预警触发
-  MARKET_ANOMALY        // 市场异动监控
-  SCREENER_ALERT        // 选股订阅命中
-  SIGNAL_TRIGGERED      // 交易信号触发
-  SYSTEM                // 系统通知
+  PRICE_ALERT // 价格预警触发
+  MARKET_ANOMALY // 市场异动监控
+  SCREENER_ALERT // 选股订阅命中
+  SIGNAL_TRIGGERED // 交易信号触发
+  SYSTEM // 系统通知
 
   @@map("notification_type")
 }
 
+enum AiNotificationChannelType {
+  IN_APP
+  WEBHOOK
+
+  @@map("ai_notification_channel_type")
+}
+
+enum AiNotificationChannelStatus {
+  ACTIVE
+  DISABLED
+  DELETED
+
+  @@map("ai_notification_channel_status")
+}
+
+enum AiNotificationDeliveryStatus {
+  PENDING
+  SENDING
+  DELIVERED
+  RETRY
+  FAILED
+  SUPPRESSED
+
+  @@map("ai_notification_delivery_status")
+}
+
+enum AiNotificationDeliveryAttemptStatus {
+  DELIVERED
+  RETRY
+  FAILED
+  SUPPRESSED
+
+  @@map("ai_notification_delivery_attempt_status")
+}
+
 /// 站内消息通知记录
 model Notification {
-  id        Int              @id @default(autoincrement())
-  userId    Int              @map("user_id")
-  type      NotificationType
-  title     String           @db.VarChar(128)
-  body      String           @db.VarChar(512)
-  data      Json             @default("{}")
-  isRead    Boolean          @default(false) @map("is_read")
-  readAt    DateTime?        @map("read_at")
-  createdAt DateTime         @default(now()) @map("created_at")
+  id         Int              @id @default(autoincrement())
+  userId     Int              @map("user_id")
+  type       NotificationType
+  title      String           @db.VarChar(128)
+  body       String           @db.VarChar(512)
+  data       Json             @default("{}")
+  isRead     Boolean          @default(false) @map("is_read")
+  readAt     DateTime?        @map("read_at")
+  deliveryId String?          @unique(map: "notifications_delivery_id_key") @map("delivery_id") @db.VarChar(32)
+  createdAt  DateTime         @default(now()) @map("created_at")
 
-  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user     User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  delivery AiNotificationDelivery? @relation("AiDeliveryInAppNotification", fields: [deliveryId], references: [id], onDelete: SetNull)
 
   @@index([userId, isRead, createdAt(sort: Desc)])
   @@index([userId, createdAt(sort: Desc)])
@@ -37,8 +74,88 @@ model NotificationPreference {
   enabled   Boolean          @default(true)
   updatedAt DateTime         @updatedAt @map("updated_at")
 
-  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, type])
   @@map("notification_preferences")
+}
+
+/// 用户自有的 Agent 通知渠道。外部渠道只保存加密配置，绝不返回明文 secret。
+model AiNotificationChannel {
+  id                String                      @id @default(cuid()) @db.VarChar(32)
+  userId            Int                         @map("user_id")
+  type              AiNotificationChannelType
+  name              String                      @db.VarChar(160)
+  encryptedConfig   String?                     @map("encrypted_config") @db.Text
+  configKeyVersion  Int?                        @map("config_key_version")
+  configFingerprint String?                     @map("config_fingerprint") @db.Char(64)
+  status            AiNotificationChannelStatus @default(ACTIVE)
+  verifiedAt        DateTime?                   @map("verified_at") @db.Timestamptz(3)
+  lastFour          String?                     @map("last_four") @db.VarChar(16)
+  version           Int                         @default(1)
+  createdAt         DateTime                    @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime                    @updatedAt @map("updated_at") @db.Timestamptz(3)
+  deletedAt         DateTime?                   @map("deleted_at") @db.Timestamptz(3)
+
+  user       User                     @relation(fields: [userId], references: [id], onDelete: Restrict)
+  deliveries AiNotificationDelivery[]
+
+  @@index([userId, status, createdAt(sort: Desc), id(sort: Desc)], map: "ai_notification_channels_user_status_cursor_idx")
+  @@map("ai_notification_channels")
+}
+
+/// 既是 delivery 审计记录，也是事务写入的 durable outbox intent。
+model AiNotificationDelivery {
+  id                String                       @id @default(cuid()) @db.VarChar(32)
+  userId            Int                          @map("user_id")
+  channelId         String                       @map("channel_id") @db.VarChar(32)
+  executionId       String?                      @map("execution_id") @db.VarChar(32)
+  runId             String?                      @map("run_id") @db.VarChar(32)
+  idempotencyKey    String                       @map("idempotency_key") @db.VarChar(128)
+  payload           Json                         @db.JsonB
+  payloadHash       String                       @map("payload_hash") @db.Char(64)
+  status            AiNotificationDeliveryStatus @default(PENDING)
+  attempt           Int                          @default(0)
+  maxAttempts       Int                          @default(5) @map("max_attempts")
+  nextAttemptAt     DateTime                     @default(now()) @map("next_attempt_at") @db.Timestamptz(3)
+  leaseOwner        String?                      @map("lease_owner") @db.VarChar(128)
+  leaseExpiresAt    DateTime?                    @map("lease_expires_at") @db.Timestamptz(3)
+  providerMessageId String?                      @map("provider_message_id") @db.VarChar(256)
+  errorClass        String?                      @map("error_class") @db.VarChar(64)
+  errorMessage      String?                      @map("error_message") @db.VarChar(512)
+  deliveredAt       DateTime?                    @map("delivered_at") @db.Timestamptz(3)
+  createdAt         DateTime                     @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime                     @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user              User                            @relation(fields: [userId], references: [id], onDelete: Restrict)
+  channel           AiNotificationChannel           @relation(fields: [channelId], references: [id], onDelete: Restrict)
+  execution         AiTaskExecution?                @relation(fields: [executionId], references: [id], onDelete: Restrict)
+  run               AiAgentRun?                     @relation(fields: [runId], references: [id], onDelete: Restrict)
+  inAppNotification Notification?                   @relation("AiDeliveryInAppNotification")
+  attempts          AiNotificationDeliveryAttempt[]
+
+  @@unique([channelId, idempotencyKey], map: "ai_notification_deliveries_channel_idempotency_key")
+  @@index([status, nextAttemptAt, id], map: "ai_notification_deliveries_due_idx")
+  @@index([userId, createdAt(sort: Desc), id(sort: Desc)], map: "ai_notification_deliveries_user_cursor_idx")
+  @@index([runId, id], map: "ai_notification_deliveries_run_idx")
+  @@map("ai_notification_deliveries")
+}
+
+model AiNotificationDeliveryAttempt {
+  id                BigInt                              @id @default(autoincrement())
+  deliveryId        String                              @map("delivery_id") @db.VarChar(32)
+  attempt           Int
+  status            AiNotificationDeliveryAttemptStatus
+  providerMessageId String?                             @map("provider_message_id") @db.VarChar(256)
+  httpStatus        Int?                                @map("http_status")
+  errorClass        String?                             @map("error_class") @db.VarChar(64)
+  errorMessage      String?                             @map("error_message") @db.VarChar(512)
+  startedAt         DateTime                            @default(now()) @map("started_at") @db.Timestamptz(3)
+  endedAt           DateTime                            @default(now()) @map("ended_at") @db.Timestamptz(3)
+
+  delivery AiNotificationDelivery @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+
+  @@unique([deliveryId, attempt], map: "ai_notification_delivery_attempts_delivery_attempt_key")
+  @@index([deliveryId, startedAt(sort: Desc)], map: "ai_notification_delivery_attempts_delivery_idx")
+  @@map("ai_notification_delivery_attempts")
 }

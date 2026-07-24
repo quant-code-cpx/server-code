@@ -1,0 +1,107 @@
+// Agent 定时与条件研究任务。任务定义与执行审计以 PostgreSQL 为权威源。
+
+enum AiScheduledTaskTrigger {
+  CRON
+  ONE_TIME
+  STRUCTURED_CONDITION
+
+  @@map("ai_scheduled_task_trigger")
+}
+
+enum AiScheduledTaskStatus {
+  ACTIVE
+  PAUSED
+  DELETED
+
+  @@map("ai_scheduled_task_status")
+}
+
+enum AiTaskExecutionStatus {
+  PENDING
+  DEFERRED
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+  SKIPPED
+
+  @@map("ai_task_execution_status")
+}
+
+model AiScheduledTask {
+  id                  String                 @id @default(cuid()) @db.VarChar(32)
+  userId              Int                    @map("user_id")
+  clientRequestId     String?                @map("client_request_id") @db.VarChar(128)
+  name                String                 @db.VarChar(160)
+  status              AiScheduledTaskStatus  @default(ACTIVE)
+  version             Int                    @default(1)
+  trigger             AiScheduledTaskTrigger
+  cronExpression      String?                @map("cron_expression") @db.VarChar(128)
+  timeZone            String                 @default("Asia/Shanghai") @map("time_zone") @db.VarChar(64)
+  oneTimeAt           DateTime?              @map("one_time_at") @db.Timestamptz(3)
+  condition           Json?                  @db.JsonB
+  tradingDayOnly      Boolean                @default(false) @map("trading_day_only")
+  prompt              String                 @db.Text
+  input               Json                   @default("{}") @db.JsonB
+  allowedCapabilities Json                   @default("[]") @map("allowed_capabilities") @db.JsonB
+  requiredWatermarks  Json                   @default("[]") @map("required_watermarks") @db.JsonB
+  workflowKey         String                 @map("workflow_key") @db.VarChar(128)
+  workflowVersion     Int                    @map("workflow_version")
+  workflowContentHash String                 @map("workflow_content_hash") @db.Char(64)
+  promptKey           String                 @map("prompt_key") @db.VarChar(128)
+  promptVersion       Int                    @map("prompt_version")
+  promptContentHash   String                 @map("prompt_content_hash") @db.Char(64)
+  modelPolicy         AiModelPolicy          @default(AUTO) @map("model_policy")
+  preferredModel      String?                @map("preferred_model") @db.VarChar(128)
+  maxCostCny          Decimal                @map("max_cost_cny") @db.Decimal(18, 8)
+  nextRunAt           DateTime?              @map("next_run_at") @db.Timestamptz(3)
+  leaseOwner          String?                @map("lease_owner") @db.VarChar(128)
+  leaseExpiresAt      DateTime?              @map("lease_expires_at") @db.Timestamptz(3)
+  pausedAt            DateTime?              @map("paused_at") @db.Timestamptz(3)
+  deletedAt           DateTime?              @map("deleted_at") @db.Timestamptz(3)
+  createdAt           DateTime               @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt           DateTime               @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user       User              @relation(fields: [userId], references: [id], onDelete: Restrict)
+  executions AiTaskExecution[]
+
+  @@unique([userId, clientRequestId], map: "ai_scheduled_tasks_user_client_request_key")
+  @@index([userId, status, updatedAt(sort: Desc), id(sort: Desc)], map: "ai_scheduled_tasks_user_status_cursor_idx")
+  @@index([status, nextRunAt, id], map: "ai_scheduled_tasks_due_idx")
+  @@index([leaseExpiresAt, id], map: "ai_scheduled_tasks_lease_idx")
+  @@map("ai_scheduled_tasks")
+}
+
+model AiTaskExecution {
+  id             String                @id @default(cuid()) @db.VarChar(32)
+  taskId         String                @map("task_id") @db.VarChar(32)
+  userId         Int                   @map("user_id")
+  requestKey     String                @map("request_key") @db.VarChar(160)
+  scheduledFor   DateTime              @map("scheduled_for") @db.Timestamptz(3)
+  status         AiTaskExecutionStatus @default(PENDING)
+  taskSnapshot   Json                  @map("task_snapshot") @db.JsonB
+  gateEvidence   Json                  @default("{}") @map("gate_evidence") @db.JsonB
+  runId          String?               @unique(map: "ai_task_executions_run_id_key") @map("run_id") @db.VarChar(32)
+  leaseOwner     String?               @map("lease_owner") @db.VarChar(128)
+  leaseExpiresAt DateTime?             @map("lease_expires_at") @db.Timestamptz(3)
+  errorCode      Int?                  @map("error_code")
+  errorMessage   String?               @map("error_message") @db.VarChar(1000)
+  costCny        Decimal?              @map("cost_cny") @db.Decimal(18, 8)
+  queuedAt       DateTime?             @map("queued_at") @db.Timestamptz(3)
+  startedAt      DateTime?             @map("started_at") @db.Timestamptz(3)
+  endedAt        DateTime?             @map("ended_at") @db.Timestamptz(3)
+  createdAt      DateTime              @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime              @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  task                   AiScheduledTask          @relation(fields: [taskId], references: [id], onDelete: Restrict)
+  run                    AiAgentRun?              @relation("AiTaskExecutionRun", fields: [runId], references: [id], onDelete: Restrict)
+  notificationDeliveries AiNotificationDelivery[]
+
+  @@unique([taskId, scheduledFor], map: "ai_task_executions_task_scheduled_for_key")
+  @@unique([taskId, requestKey], map: "ai_task_executions_task_request_key")
+  @@index([taskId, createdAt(sort: Desc), id(sort: Desc)], map: "ai_task_executions_task_cursor_idx")
+  @@index([status, leaseExpiresAt, id], map: "ai_task_executions_reconcile_idx")
+  @@index([userId, status, createdAt(sort: Desc), id(sort: Desc)], map: "ai_task_executions_user_status_idx")
+  @@map("ai_task_executions")
+}

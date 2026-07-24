@@ -1,23 +1,23 @@
 /// 事件信号触发规则
 model EventSignalRule {
-  id          Int                   @id @default(autoincrement())
-  userId      Int                   @map("user_id")
-  name        String                @db.VarChar(128)
-  description String?               @db.Text
+  id          Int     @id @default(autoincrement())
+  userId      Int     @map("user_id")
+  name        String  @db.VarChar(128)
+  description String? @db.Text
 
   /// 事件类型（EventType 枚举值字符串）
-  eventType   String                @map("event_type") @db.VarChar(32)
+  eventType  String                @map("event_type") @db.VarChar(32)
   /// 额外筛选条件 JSON，例如 {"type": "预增", "pChangeMin": {"gte": 50}}
-  conditions  Json                  @default("{}")
+  conditions Json                  @default("{}")
   /// 信号方向：BUY / SELL / WATCH
-  signalType  String                @map("signal_type") @db.VarChar(8)  @default("WATCH")
+  signalType String                @default("WATCH") @map("signal_type") @db.VarChar(8)
   /// 规则状态
-  status      EventSignalRuleStatus @default(ACTIVE)
+  status     EventSignalRuleStatus @default(ACTIVE)
 
-  createdAt   DateTime              @default(now()) @map("created_at")
-  updatedAt   DateTime              @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
-  signals     EventSignal[]
+  signals EventSignal[]
 
   @@index([userId])
   @@index([status, eventType])
@@ -33,11 +33,11 @@ model EventSignal {
   eventDate   DateTime @map("event_date") @db.Date
   signalType  String   @map("signal_type") @db.VarChar(8)
   /// 触发时的事件摘要 JSON
-  eventDetail Json     @map("event_detail") @default("{}")
+  eventDetail Json     @default("{}") @map("event_detail")
 
   triggeredAt DateTime @default(now()) @map("triggered_at")
 
-  rule        EventSignalRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  rule EventSignalRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
 
   @@index([ruleId])
   @@index([tsCode])

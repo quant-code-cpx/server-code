@@ -3,6 +3,7 @@ import {
   AGENT_ERROR_DEFINITIONS,
   AGENT_EVENT_FIXTURES,
   AGENT_EVENT_TYPES,
+  AGENT_MVP_READ_TOOL_KEYS,
   AGENT_RUN_STATUSES,
   AGENT_TOOL_KEYS,
   MESSAGE_BLOCK_FIXTURES,
@@ -14,8 +15,8 @@ import {
 } from '..'
 
 describe('Agent 公共契约', () => {
-  it('固定 15 个 MVP Tool key', () => {
-    expect(AGENT_TOOL_KEYS).toEqual([
+  it('固定 15 个 MVP 只读 Tool key，受控写 Tool 单独声明', () => {
+    expect(AGENT_MVP_READ_TOOL_KEYS).toEqual([
       'resolve_security',
       'get_stock_price_history',
       'get_stock_overview',
@@ -32,6 +33,7 @@ describe('Agent 公共契约', () => {
       'search_web',
       'fetch_web_page',
     ])
+    expect(AGENT_TOOL_KEYS).toContain('save_research_report')
   })
 
   it('Run、ToolCall、ModelCall 状态与 canonical 文档一致', () => {
@@ -49,8 +51,8 @@ describe('Agent 公共契约', () => {
     expect(MODEL_CALL_STATUSES).toEqual(['PENDING', 'STREAMING', 'RETRY_WAIT', 'SUCCEEDED', 'FAILED', 'CANCELLED'])
   })
 
-  it('14 个 SSE fixture 全部通过 runtime schema', () => {
-    expect(AGENT_EVENT_FIXTURES).toHaveLength(14)
+  it('15 个 SSE fixture 全部通过 runtime schema', () => {
+    expect(AGENT_EVENT_FIXTURES).toHaveLength(15)
     expect(AGENT_EVENT_FIXTURES.map((event) => event.type)).toEqual(AGENT_EVENT_TYPES)
     for (const fixture of AGENT_EVENT_FIXTURES) {
       expect(parseAgentSseEvent(fixture)).toEqual(fixture)
@@ -90,9 +92,13 @@ describe('Agent 公共契约', () => {
     ).toThrow(AgentProtocolError)
   })
 
-  it('6001–6031 与 6099 全部进入 ErrorEnum，且 code 不重复', () => {
-    expect(AGENT_ERROR_DEFINITIONS).toHaveLength(32)
-    expect(new Set(AGENT_ERROR_DEFINITIONS.map((definition) => definition.code))).toHaveProperty('size', 32)
+  it('6001–6046 与 6099 全部进入 ErrorEnum，且 code 不重复', () => {
+    const expectedCodes = [...Array.from({ length: 46 }, (_value, index) => 6001 + index), 6099]
+    expect(AGENT_ERROR_DEFINITIONS.map((definition) => definition.code)).toEqual(expectedCodes)
+    expect(new Set(AGENT_ERROR_DEFINITIONS.map((definition) => definition.code))).toHaveProperty(
+      'size',
+      expectedCodes.length,
+    )
     for (const definition of AGENT_ERROR_DEFINITIONS) {
       expect(ErrorEnum[definition.key]).toBe(`${definition.code}:${definition.message}`)
     }

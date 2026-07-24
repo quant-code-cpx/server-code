@@ -68,6 +68,7 @@ integrationDescribe('Agent Run/Step/Event Repository - 独立 PostgreSQL 集成�
   let events: AgentEventRepository
   let runs: AgentRunRepository
   let completion: AgentRunCompletionRepository
+  let deliveries: { enqueueForCompletedRun: jest.Mock }
   let userA: User
   let userB: User
   let promptVersion: AiPromptVersion
@@ -92,7 +93,7 @@ integrationDescribe('Agent Run/Step/Event Repository - 独立 PostgreSQL 集成�
     await admin.$connect()
     await admin.$executeRawUnsafe(`CREATE DATABASE "${databaseName}"`)
 
-    execFileSync('corepack', ['pnpm', 'exec', 'prisma', 'migrate', 'deploy'], {
+    execFileSync(join(process.cwd(), 'node_modules', '.bin', 'prisma'), ['migrate', 'deploy'], {
       cwd: process.cwd(),
       env: { ...process.env, DATABASE_URL: urls.databaseUrl },
       stdio: 'pipe',
@@ -135,7 +136,14 @@ integrationDescribe('Agent Run/Step/Event Repository - 独立 PostgreSQL 集成�
     const stateMachine = new AgentStateMachineService()
     events = new AgentEventRepository(client as unknown as PrismaService, config, logger)
     runs = new AgentRunRepository(client as unknown as PrismaService, events, stateMachine, config, logger)
-    completion = new AgentRunCompletionRepository(client as unknown as PrismaService, events, stateMachine, logger)
+    deliveries = { enqueueForCompletedRun: jest.fn().mockResolvedValue(0) }
+    completion = new AgentRunCompletionRepository(
+      client as unknown as PrismaService,
+      events,
+      stateMachine,
+      deliveries as never,
+      logger,
+    )
   }, 240_000)
 
   afterAll(async () => {
@@ -524,7 +532,6 @@ integrationDescribe('Agent Run/Step/Event Repository - 独立 PostgreSQL 集成�
       userId: userA.id,
       runId: queued.id,
       expectedVersion: 1,
-      reason: '用户撤销',
     })
     const repeatedQueuedCancel = await runs.requestCancel({
       userId: userA.id,
@@ -537,7 +544,11 @@ integrationDescribe('Agent Run/Step/Event Repository - 独立 PostgreSQL 集成�
     expect(await client!.aiRunEvent.count({ where: { runId: queued.id } })).toBe(2)
     await expect(
       client!.aiRunEvent.findFirstOrThrow({ where: { runId: queued.id, eventType: 'agent.cancelled' } }),
-    ).resolves.toMatchObject({ payload: { cancelledBy: 'USER', reason: '用户撤销' } })
+    ).resolves.toMatchObject({ payload: { cancelledBy: 'USER', reason: '用户取消' } })
+    expect(queuedCancelled.cancelReason).toBe('用户取消')
+    await expect(
+      client!.aiMessage.findUniqueOrThrow({ where: { id: queued.responseMessageId } }),
+    ).resolves.toMatchObject({ status: AiMessageStatus.CANCELLED })
 
     const running = await runs.createRun(await makeRunCommand())
     const claimed = await runs.claimRun(running.id, 'worker-cancel')
@@ -568,6 +579,9 @@ integrationDescribe('Agent Run/Step/Event Repository - 独立 PostgreSQL 集成�
       },
     })
     expect(cancelled.status).toBe(AiAgentRunStatus.CANCELLED)
+    await expect(
+      client!.aiMessage.findUniqueOrThrow({ where: { id: running.responseMessageId } }),
+    ).resolves.toMatchObject({ status: AiMessageStatus.CANCELLED })
     await expect(
       client!.aiAgentRun.update({
         where: { id: running.id },
@@ -823,6 +837,7 @@ integrationDescribe('Agent Run/Step/Event Repository - 独立 PostgreSQL 集成�
       contentText: '最终研究回答',
       contentBlocks: [{ blockId: 'answer_1', schemaVersion: 1, type: 'MARKDOWN', text: '最终研究回答' }],
       citations: [],
+      modelCallId: 'model_call_complete',
       modelName: 'fake-model',
       tokenCount: 12,
       resultSummary: { workflowKey: 'stock_research', workflowVersion: 1 },
@@ -848,7 +863,23 @@ integrationDescribe('Agent Run/Step/Event Repository - 独立 PostgreSQL 集成�
       contentText: '最终研究回答',
       tokenCount: 12,
     })
-    expect(await client!.aiRunEvent.count({ where: { runId: run.id, eventType: 'agent.completed' } })).toBe(1)
+    const completionEvents = await client!.aiRunEvent.findMany({
+      where: { runId: run.id, eventType: { in: ['model.delta', 'agent.completed'] } },
+      orderBy: { sequence: 'asc' },
+    })
+    expect(completionEvents.map((event) => event.eventType)).toEqual(['model.delta', 'agent.completed'])
+    expect(completionEvents[0].payload).toEqual({
+      modelCallId: 'model_call_complete',
+      blockIndex: 0,
+      delta: '最终研究回答',
+    })
+    expect(deliveries.enqueueForCompletedRun).toHaveBeenCalledTimes(1)
+    const [deliveryTransaction, deliveryCommand] = deliveries.enqueueForCompletedRun.mock.calls[0]
+    expect(deliveryTransaction).toHaveProperty('aiNotificationDelivery')
+    expect(deliveryCommand).toMatchObject({
+      run: { id: run.id, status: AiAgentRunStatus.COMPLETED },
+      completedAt: expect.any(Date),
+    })
 
     const rollbackCommand = await makeRunCommand()
     const rollbackRun = await runs.createRun(rollbackCommand)
@@ -888,6 +919,7 @@ integrationDescribe('Agent Run/Step/Event Repository - 独立 PostgreSQL 集成�
             toolCallId: 'missing_tool_call',
           },
         ],
+        modelCallId: 'model_call_rollback',
         modelName: 'fake-model',
         tokenCount: 1,
         resultSummary: { workflowKey: 'stock_research', workflowVersion: 1 },
@@ -915,6 +947,7 @@ integrationDescribe('Agent Run/Step/Event Repository - 独立 PostgreSQL 集成�
       contentText: null,
     })
     expect(await client!.aiRunEvent.count({ where: { runId: rollbackRun.id, eventType: 'agent.completed' } })).toBe(0)
+    expect(deliveries.enqueueForCompletedRun).toHaveBeenCalledTimes(1)
   })
 })
 

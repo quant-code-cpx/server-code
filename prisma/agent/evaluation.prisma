@@ -1,0 +1,66 @@
+enum AiEvaluationRunStatus {
+  RUNNING
+  COMPLETED
+  FAILED
+
+  @@map("ai_evaluation_run_status")
+}
+
+model AiEvaluationRun {
+  id                String                @id @default(cuid()) @db.VarChar(32)
+  requestedByUserId Int                   @map("requested_by_user_id")
+  clientRequestId   String                @map("client_request_id") @db.VarChar(128)
+  datasetId         String                @map("dataset_id") @db.VarChar(64)
+  datasetVersion    String                @map("dataset_version") @db.VarChar(64)
+  datasetHash       String                @map("dataset_hash") @db.Char(64)
+  workflowVersion   String                @map("workflow_version") @db.VarChar(128)
+  promptVersion     String                @map("prompt_version") @db.VarChar(128)
+  modelVersion      String                @map("model_version") @db.VarChar(128)
+  provider          String                @db.VarChar(64)
+  policy            Json                  @default("{}") @db.JsonB
+  status            AiEvaluationRunStatus @default(RUNNING)
+  gatePassed        Boolean?              @map("gate_passed")
+  totalCases        Int                   @default(0) @map("total_cases")
+  passedCases       Int                   @default(0) @map("passed_cases")
+  failedCases       Int                   @default(0) @map("failed_cases")
+  totalCost         Decimal               @default(0) @map("total_cost") @db.Decimal(18, 8)
+  costCurrency      String                @default("CNY") @map("cost_currency") @db.Char(3)
+  summary           Json?                 @db.JsonB
+  artifactRef       String?               @map("artifact_ref") @db.VarChar(512)
+  errorMessage      String?               @map("error_message") @db.VarChar(1000)
+  startedAt         DateTime              @default(now()) @map("started_at") @db.Timestamptz(3)
+  endedAt           DateTime?             @map("ended_at") @db.Timestamptz(3)
+  createdAt         DateTime              @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime              @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  results AiEvaluationResult[]
+
+  @@unique([requestedByUserId, clientRequestId], map: "ai_evaluation_runs_requester_client_request_key")
+  @@index([datasetId, datasetVersion, createdAt(sort: Desc), id(sort: Desc)], map: "ai_evaluation_runs_dataset_created_idx")
+  @@index([status, createdAt, id], map: "ai_evaluation_runs_status_created_idx")
+  @@map("ai_evaluation_runs")
+}
+
+model AiEvaluationResult {
+  id                String          @id @default(cuid()) @db.VarChar(32)
+  evaluationRunId   String          @map("evaluation_run_id") @db.VarChar(32)
+  caseId            String          @map("case_id") @db.VarChar(128)
+  caseHash          String          @map("case_hash") @db.Char(64)
+  passed            Boolean
+  factScore         Decimal         @map("fact_score") @db.Decimal(8, 6)
+  citationCoverage  Decimal         @map("citation_coverage") @db.Decimal(8, 6)
+  toolTraceMatch    Boolean         @map("tool_trace_match")
+  latencyMs         Int             @map("latency_ms")
+  cost              Decimal         @default(0) @db.Decimal(18, 8)
+  costCurrency      String          @default("CNY") @map("cost_currency") @db.Char(3)
+  failures          Json            @default("[]") @db.JsonB
+  evidenceSummary   Json?           @map("evidence_summary") @db.JsonB
+  artifactRef       String?         @map("artifact_ref") @db.VarChar(512)
+  createdAt         DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  evaluationRun AiEvaluationRun @relation(fields: [evaluationRunId], references: [id], onDelete: Restrict)
+
+  @@unique([evaluationRunId, caseId], map: "ai_evaluation_results_run_case_key")
+  @@index([caseId, createdAt], map: "ai_evaluation_results_case_created_idx")
+  @@map("ai_evaluation_results")
+}

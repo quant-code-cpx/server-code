@@ -9,6 +9,7 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  Matches,
   Max,
   MaxLength,
   Min,
@@ -32,6 +33,7 @@ export class SaveAsStrategyDto {
   @ApiPropertyOptional({ description: '股票池 indexCode（如 000300.SH）' })
   @IsOptional()
   @IsString()
+  @Matches(/^\d{6}\.(SH|SZ|BJ)$/, { message: 'universe 格式应为指数代码，例如 000300.SH' })
   universe?: string
 
   @ApiPropertyOptional({

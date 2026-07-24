@@ -10,7 +10,14 @@
 - `src/queue/queue-metrics.service.ts` 当前只采集 `backtesting` queue。
 - `src/shared/health/` 提供 `/health` 与 `/ready`；Prometheus 使用 `/metrics`。
 
-缺口：Worker/Scheduler 没有 HTTP AsyncLocalStorage 上下文；Agent/模型/Tool/搜索/引用/成本无指标；没有 OpenTelemetry；业务异常常返回 HTTP 200；现有 `AuditLogService` 位于 `src/apps/user/audit-log.service.ts`，fire-and-forget 且只适合用户管理操作，不能作为关键 Agent 审计权威源。
+Batch 025 已补齐 Agent Run/workflow node/模型/Tool/metadata trace 的 Prometheus 指标、成本估算、版本化 fake 评测、Grafana dashboard 和 9 条 Agent 告警规则。Agent 审计继续以 `AiAgentRun`、`AiModelCall`、`AiToolCall`、引用和持久事件为权威源，不使用 `AuditLogService` 代替。
+
+## 1.1 当前实现边界
+
+- 已实现：`AgentTracingService` 输出 workflow/node metadata trace 日志和 span counter；`AgentCostService` 处理 provider cost、价格表回退和 unknown；`AgentEvaluationService` 保存版本化评测运行与用例结果。
+- 已实现：`/metrics`、Prometheus rule、Grafana `Agent Overview`、管理员 evaluation `run/status/detail` 与 fake regression CLI。
+- 未实现：外部 OpenTelemetry exporter、跨进程 W3C context、自动化线上抽样评测和正式 SLO 数值。这些属于 Batch 026 的生产发布与采样策略，不能因当前 metadata trace 被误称为已接入第三方 tracing。
+- 运行、告警和评测操作以[智能体可观测性运行手册](./智能体可观测性-运行手册.md)为准；本文第 3–10 节保留目标架构和生产化约束。
 
 ## 2. 三类记录分离
 

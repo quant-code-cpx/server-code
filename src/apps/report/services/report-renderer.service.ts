@@ -14,12 +14,13 @@ export interface RenderResult {
 export class ReportRendererService {
   private readonly logger = new Logger(ReportRendererService.name)
   private readonly templateDir = path.join(__dirname, '..', 'templates')
-  private readonly outputDir = path.join(process.cwd(), 'storage', 'reports')
+  private readonly outputDir = resolveDirectory(process.env.REPORT_STORAGE_DIR, 'storage/reports')
+  private readonly temporaryDir = resolveDirectory(process.env.APP_TMP_DIR, 'tmp')
 
   private templateCache = new Map<string, HandlebarsTemplateDelegate>()
 
   async onModuleInit() {
-    await fs.mkdir(this.outputDir, { recursive: true })
+    await Promise.all([fs.mkdir(this.outputDir, { recursive: true }), fs.mkdir(this.temporaryDir, { recursive: true })])
   }
 
   // ─── HTML 渲染 ─────────────────────────────────────────────────────────────
@@ -43,6 +44,10 @@ export class ReportRendererService {
   // ─── PDF 渲染 ──────────────────────────────────────────────────────────────
 
   async renderToPdf(templateName: string, data: Record<string, unknown>, reportId: string): Promise<RenderResult> {
+    if (!this.isPdfRenderingEnabled()) {
+      throw new Error('[ReportRenderer] 当前进程未启用 PDF 渲染')
+    }
+
     const html = await this.renderHtml(templateName, data)
     const fileName = `${reportId}.pdf`
     const filePath = path.join(this.outputDir, fileName)
@@ -51,10 +56,20 @@ export class ReportRendererService {
     try {
       browser = await puppeteer.launch({
         headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox'],
+        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
+        env: { ...process.env, TMPDIR: this.temporaryDir },
       })
       const page = await browser.newPage()
-      await page.setContent(html, { waitUntil: 'networkidle0' })
+      await page.setJavaScriptEnabled(false)
+      await page.setRequestInterception(true)
+      page.on('request', (request) => {
+        if (request.isNavigationRequest() && request.url() === 'about:blank') {
+          request.continue()
+          return
+        }
+        request.abort('blockedbyclient')
+      })
+      await page.setContent(html, { waitUntil: 'domcontentloaded' })
       await page.pdf({
         path: filePath,
         format: 'A4',
@@ -69,6 +84,10 @@ export class ReportRendererService {
     return { filePath: `storage/reports/${fileName}`, fileSize: stat.size }
   }
 
+  isPdfRenderingEnabled(): boolean {
+    return process.env.REPORT_PDF_ENABLED?.trim().toLowerCase() !== 'false'
+  }
+
   // ─── 模板加载 ─────────────────────────────────────────────────────────────
 
   private async getTemplate(name: string): Promise<HandlebarsTemplateDelegate> {
@@ -81,4 +100,8 @@ export class ReportRendererService {
     this.templateCache.set(name, compiled)
     return compiled
   }
+}
+
+function resolveDirectory(configuredPath: string | undefined, fallback: string): string {
+  return path.resolve(configuredPath?.trim() || path.join(process.cwd(), fallback))
 }

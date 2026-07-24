@@ -1,6 +1,6 @@
 ---
 batch: 22
-status: pending
+status: completed
 type: fullstack
 depends_on: ["batch-003-agent-audit-and-citation-schema", "batch-017-frontend-rich-response-blocks", "batch-019-conversation-summary-and-memory"]
 blocks: ["batch-027-vector-retrieval-pilot"]
@@ -145,6 +145,22 @@ estimated_scope: large
 ## 24. 完成定义
 
 schema 决策/migration、service/storage/tool/API/UI、异步生成和补偿测试合入。
+
+## 24.1 实际完成记录（2026-07-22）
+
+本批次已在本地工作树完成，尚未创建独立 commit/PR。
+
+- 新增 `AiResearchReport` 与显式 migration；报告冻结来源 Run、消息版本、正文/内容块、引用 manifest、数据截止日和 renderer 版本。`ResearchNote` 复用为可选投资日志，记录 sourceRunId、thesis、risks、decision、outcome、reviewAt，并与报告一对一关联。
+- 完成 `StoragePort` 本地适配、BullMQ render/cleanup worker 与补偿扫描。确认后才创建报告；异步 renderer 失败可重试，删除为软删并异步清理受管文件。
+- `POST /api/agent/reports/save` 实现 preview -> confirmation token -> 幂等保存；token 绑定 owner、Run、消息版本、内容 hash 与投资日志 hash。list/detail/delete 均做当前用户隔离，详情只返回可安全展示的冻结内容。
+- 增加受控 `save_research_report@1` WRITE Tool，默认不进入 MVP 只读 Tool 集合。
+- 前端已接入回答保存入口、报告预览/确认、报告库列表/详情/删除，以及安全内容块和来源渲染。
+
+验证证据：
+
+- `pnpm exec jest src/apps/agent/research/test/research-report.service.spec.ts --runInBand`：5/5 通过，覆盖未确认不写入、确认幂等、跨租户/版本失效、引用门禁、冻结详情与异步渲染转义。
+- `pnpm run build`、`pnpm run swagger:generate`、`pnpm run lint` 通过；前端报告定向测试 14/14、`api:agent:check`、`lint`、`build` 通过。
+- Docker `app` 与 `agent-worker` 已启动；容器内 Prisma 识别 41 条 migration，日志显示 `No pending migrations to apply`。
 
 ## 25. 回滚方案
 

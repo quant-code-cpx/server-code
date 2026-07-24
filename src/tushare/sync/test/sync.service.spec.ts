@@ -102,6 +102,10 @@ function createService(registry: Partial<TushareSyncRegistryService>, mocks = bu
     mocks.dataQualityService as never,
     mocks.autoRepairService as never,
     { generateAllSignals: jest.fn().mockResolvedValue(undefined) } as never,
+    {
+      isSchedulerProcess: jest.fn(() => true),
+      runIfScheduler: jest.fn(async (_key: string, task: () => Promise<void>) => task()),
+    } as never,
     noopHistogram,
     noopCounter,
     noopGauge,

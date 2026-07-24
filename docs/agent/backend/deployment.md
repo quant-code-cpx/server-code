@@ -7,21 +7,23 @@
 仓库已有：
 
 - `docker-compose.yml`：PostgreSQL 17、Redis 7.4、NestJS 开发热更新，以及可选 Prometheus/Grafana profile；
-- `dockerfiles/app/Dockerfile.prod`：多阶段、非 root 的生产镜像基础；
-- `.github/workflows/ci.yml`：迁移漂移、构建与测试；
-- `src/shared/health/`、`src/shared/metrics/`、Winston JSON 轮转日志与 ALS traceId；
-- `dockerfiles/postgresql/postgresql.prod-2g.conf`：生产参数样例，但当前未接入部署。
+- `dockerfiles/app/Dockerfile.prod`：多阶段、固定非 root runtime、真实 `/health` 探针、Chromium/中文字体和受控写目录；
+- `docker-compose.prod.yml`：独立 migration、API/agent-worker/worker/scheduler、Redis ACL/noeviction、internal backend network 与同域 edge；
+- `src/shared/health/`、`src/shared/metrics/`、JSON stdout 日志、角色化启动、Redis Socket.IO adapter 与 Cron lease；
+- `scripts/ops/`：加密 PostgreSQL 备份、校验、隔离恢复演练、Prometheus canary、不可变摘要 rollout/rollback；
+- `.github/workflows/container-release.yml`：app/migration/Redis/edge 镜像构建、SBOM、漏洞门禁、Cosign 签名/attestation，以及与固定摘要 client E2E 同 run 关联的 frontend Release evidence；
+- `.github/workflows/production-deploy.yml`：受保护的手动生产发布，只接受同一 Release evidence 中的不可变 app/migration/edge 摘要、已通过 E2E 的 frontend SHA-256 制品和 Prometheus canary。
 
-这些还不是完整生产方案。必须先修复以下阻断项：
+已在隔离 Docker 环境完成的证据包括：canary 指标失败自动回滚到上一组 app/edge/frontend 制品；加密 custom-format 备份恢复到空目标后，`app_user` 可读迁移表且 `/ready` 正常；Release artifact 的校验和、client E2E dispatch、frontend artifact 与 production deploy 输入门禁均有本地 mock 验证。
 
-1. 生产镜像 HEALTHCHECK 请求 `/api/health`，而当前全局前缀排除后真实入口为 `/health`。
-2. 非 root 镜像未明确创建并授权 `/app/logs`、`/app/storage`；当前 logger 与报告渲染会写这些目录，可能 EACCES。
-3. 报告文件只保存本地路径（`prisma/portfolio/report.prisma`、`src/apps/report/services/report-renderer.service.ts`），多实例无共享对象存储，也无生产持久卷约定。
-4. API、Bull worker、`@Cron` 调度与 Tushare 同步运行在同一进程；扩容会重复定时任务，进程内 `running` 标志不能提供分布式互斥。
-5. Socket.IO 无 Redis adapter；连接分散到多实例后，通知无法可靠广播。
-6. 当前 compose 是开发配置，启动逻辑含 `prisma db push --accept-data-loss`，不得进入生产。
-7. CI 没有镜像构建/签名/漏洞扫描、发布、迁移审批、部署与回滚阶段。
-8. PDF/浏览器渲染对 Chromium、字体和系统库的依赖未在生产镜像中形成可验证清单。
+尚未发生真实生产发布。以下外部前置必须在受控 GitHub/生产环境完成，不能用本地 mock 替代：
+
+1. 创建受审批保护的 GitHub `production` Environment，配置带 `self-hosted`、`linux`、`production` 标签且只服务生产的 runner。
+2. 在该 Environment 配置 `PRODUCTION_ENV_FILE`、`PRODUCTION_MANIFEST_DIR`、`PRODUCTION_PROMETHEUS_URL`。三项均由 workflow 校验，Prometheus URL 缺失时拒绝发布；Compose 与 ops 固定取 Release manifest 对应 server commit，不允许 runner 路径覆盖。
+3. runner 必须具备 Docker Compose、`curl`、`jq`、`sha256sum`、`tar`、GHCR 拉取权限，以及受控的应用 `.env` 与 manifest 目录；workflow 将验证后的 frontend artifact 原子展开到 manifest 目录，不再读取工作区外部人工准备的 `frontend-dist`。
+4. server 仓库配置 `CLIENT_E2E_DISPATCH_TOKEN`。该 fine-grained token 对 client 仓库至少需要 Contents write（发送 `repository_dispatch`）和 Actions read（查询 run、下载/复核 artifact）；production Environment 也必须能读取同名 secret。client 仓库配置 `TEST_DATABASE_URL`、`E2E_PASSWORD`，并授予 client Actions 读取 `quant-server` GHCR package 的权限。
+5. server 仓库配置 `EDGE_BASE_IMAGE_REF` Repository variable，值必须是小写不可变 `image@sha256:...`，不得为 `latest`；Release workflow 用它构建、扫描、签名本仓库 `quant-edge`，生产只接受同一次 server Release manifest 中的 edge digest。
+6. 首次启用强制 canary 前，`PRODUCTION_MANIFEST_DIR` 必须已有一份含 app、edge、frontend 路径与 hash 的完整基线 release manifest；否则无法保证失败时三者一致回滚，workflow 会拒绝 rollout。
 
 旧的 `docs/operations/生产环境部署.md` 部分现状描述已经过时；本文件作为 Agent 生产部署基线，实际变更后也应同步更新运维总文档。
 
@@ -110,7 +112,7 @@ Bull 设置有限重试、指数退避、任务超时、幂等键、死信/失�
 
 ## 9. 前端与边缘代理
 
-前端 `../client-code` 构建为不可变静态资源，hash 资源长期缓存，HTML 短缓存。推荐同域：
+前端 `../client-code` 在关联的固定 server digest E2E 成功后构建。该 E2E run 上传 `frontend-dist.tar.gz`、`frontend-release-manifest.json` 与 `SHA256SUMS`；manifest 固定 client commit/run、server release run/image 和 archive SHA-256。server Release 再从 exact client run 下载并复核，将其纳入自身带校验和 evidence。hash 资源长期缓存，HTML 短缓存。推荐同域：
 
 - `/`：Vite 构建产物并做 SPA fallback；
 - `/api`：Nest HTTP 与 POST Fetch SSE；
@@ -154,6 +156,13 @@ Bull 设置有限重试、指数退避、任务超时、幂等键、死信/失�
 流水线阶段：锁依赖与代码检查 → 单元/集成/E2E → 迁移漂移 → 镜像构建 → SBOM/漏洞与 secret 扫描 → 签名 → 推送不可变摘要 → 预生产迁移与 smoke → 人工批准 → 生产迁移 → canary → 全量。
 
 Canary 先导入少量无状态 API 流量，worker 按队列独立灰度。监控错误率、SSE 中断、队列积压、模型成本与数据库锁。应用回滚只切回兼容旧 schema 的镜像；数据库不做自动 down migration，依赖 expand/contract 和前向修复。
+
+当前 release/deploy 分为两条显式工作流：
+
+1. `Container Release` 在 `main` 或版本 tag 上构建 app、migration、Redis、edge 镜像。edge 的 base 必须由 `EDGE_BASE_IMAGE_REF` 提供不可变 digest；四个镜像均生成 SBOM、Trivy 结果、Cosign keyless 签名和 provenance。随后以 `server-release:<run-id>` dispatch client 固定 server digest E2E。只有 exact `e2e.yml` run 在 client `main` 成功并产出 exact `frontend-release-<server-run-id>` artifact 后，server 才下载并核对 workflow/run/commit、server image、artifact ID 与 SHA-256，最后写 schema v2 Release manifest 和总 `SHA256SUMS`。
+2. `Production Deploy` 只能 `workflow_dispatch`，进入受审批的 `production` Environment 后在 production runner 执行。它验证 app/migration/edge 的 Cosign identity 均属于本仓库 `container-release.yml`，再校验指定 Release artifact、三个输入 digest、source run 的成功结论与 `main`/`v*` commit。它还用 GitHub Actions API 复核 client workflow ID、成功 E2E run、`main` commit 和未过期 artifact ID，交叉核对内外两层 frontend manifest/hash；任一字段不一致立即阻止 rollout。验证后才 checkout Release manifest 固定的 server commit，以该 commit 的 Compose/ops 脚本安全、原子地展开 frontend，并执行迁移、`/health`、`/ready` 和 Prometheus canary。
+
+生产工作流绝不执行 down migration。canary 失败时 rollout 脚本恢复上一份 release manifest 的 app/edge 摘要与同组 frontend 路径/hash，并保留新 schema 用于前向修复。真实 GitHub run、client E2E、GHCR 权限和 runner 环境尚未完成配置时，本批次保持 `in_progress`，不得标记为生产已发布。
 
 每次发布记录镜像摘要、契约版本、迁移版本、前端版本和配置版本，便于一次定位前后端不兼容。
 

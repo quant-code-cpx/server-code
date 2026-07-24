@@ -691,8 +691,8 @@ describe('BacktestEngineService', () => {
 
       const result = await svc.runBacktest(
         buildConfig({
-          strategyConfig: { tsCodes: [], weightMode: 'EQUAL' },
-          customUniverseTsCodes: [],
+          strategyConfig: { tsCodes: ['000001.SZ'], weightMode: 'EQUAL' },
+          customUniverseTsCodes: ['000001.SZ'],
           rebalanceFrequency: 'MONTHLY',
         }),
       )

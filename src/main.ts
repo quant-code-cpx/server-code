@@ -1,9 +1,9 @@
 import { NestFactory } from '@nestjs/core'
+import { NestExpressApplication } from '@nestjs/platform-express'
 import { AppModule } from './app.module'
 import { ConfigService } from '@nestjs/config'
 import { ValidationPipe } from '@nestjs/common'
 import helmet from 'helmet'
-import { json, urlencoded } from 'express'
 import cookieParser from 'cookie-parser'
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger'
 import { IAppConfig, APP_CONFIG_TOKEN } from './config/app.config'
@@ -13,6 +13,9 @@ import { LoggingInterceptor } from './lifecycle/interceptors/logging.interceptor
 import { HttpMetricsInterceptor } from './shared/metrics/http-metrics.interceptor'
 import { GlobalExceptionsFilter } from './lifecycle/filters/global.exception'
 import { REFRESH_TOKEN_COOKIE } from './constant/auth.constant'
+import { RedisIoAdapter } from './websocket/redis-io.adapter'
+import { ReadinessService } from './shared/health/readiness.service'
+import { IRedisConfig, REDIS_CONFIG_TOKEN } from './config/redis.config'
 import {
   PROCESS_ROLE_CONFIG_TOKEN,
   assertProcessEntrypoint,
@@ -26,7 +29,7 @@ async function bootstrap() {
     return Number(this)
   }
 
-  const app = await NestFactory.create(AppModule, { bufferLogs: true })
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, { bufferLogs: true })
 
   const configService = app.get(ConfigService)
   const processRole = configService.get<IProcessRoleConfig>(PROCESS_ROLE_CONFIG_TOKEN)
@@ -36,10 +39,41 @@ async function bootstrap() {
   const { port, isDev, globalPrefix, logHttpRequests, logHttpBody } = configService.get<IAppConfig>(APP_CONFIG_TOKEN, {
     infer: true,
   })
+  const redisConfig = configService.get<IRedisConfig>(REDIS_CONFIG_TOKEN)
+  if (!redisConfig) throw new Error('[Redis] 配置缺失')
+
+  const redisIoAdapter = new RedisIoAdapter(app, redisConfig, loggerService)
+  await redisIoAdapter.connectToRedis()
+  app.useWebSocketAdapter(redisIoAdapter)
+
+  const readiness = app.get(ReadinessService)
+  let shuttingDown = false
+  const shutdown = (signal: NodeJS.Signals) => {
+    if (shuttingDown) return
+    shuttingDown = true
+    void (async () => {
+      readiness.beginDraining(signal)
+      try {
+        // Keep HTTP listener alive while /ready returns 503, then close adapters and dependencies.
+        await readiness.waitForDrainGracePeriod()
+        await app.close()
+        process.exit(0)
+      } catch (error) {
+        loggerService.error(
+          { operation: 'shutdown.failed', signal, error: error instanceof Error ? error.message : String(error) },
+          error instanceof Error ? error.stack : undefined,
+          'Bootstrap',
+        )
+        process.exit(1)
+      }
+    })()
+  }
+  process.once('SIGTERM', shutdown)
+  process.once('SIGINT', shutdown)
 
   // ── 请求体大小限制（防止超大 JSON 攻击，最大 1 MB） ──
-  app.use(json({ limit: '1mb' }))
-  app.use(urlencoded({ limit: '1mb', extended: true }))
+  app.useBodyParser('json', { limit: '1mb' })
+  app.useBodyParser('urlencoded', { limit: '1mb', extended: true })
 
   // ── 安全头 ──
   app.use(helmet())
@@ -111,9 +145,6 @@ async function bootstrap() {
 
   // ── 优雅关闭 ──
   // 启用 NestJS 内置 shutdown hooks，
-  // 收到 SIGTERM / SIGINT 时按顺序调用各模块的 onApplicationShutdown / onModuleDestroy
-  app.enableShutdownHooks()
-
   await app.listen(port, '0.0.0.0')
   loggerService.log(`Server running on http://localhost:${port}/${globalPrefix}`, 'Bootstrap')
 }

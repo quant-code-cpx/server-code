@@ -5,6 +5,7 @@ import dayjs from 'dayjs'
 import { randomUUID } from 'crypto'
 import { formatDateToCompactTradeDate } from 'src/common/utils/trade-date.util'
 import { PrismaService } from 'src/shared/prisma.service'
+import { DistributedCronLockService } from 'src/shared/scheduler/distributed-cron-lock.service'
 import { EventsGateway } from 'src/websocket/events.gateway'
 import { NotificationService } from 'src/apps/notification/notification.service'
 import {
@@ -33,6 +34,12 @@ interface ExpandedEntry {
   source?: { type: string; id: number | string; name: string } | null
 }
 
+interface PendingPriceAlertTrigger {
+  rule: PriceAlertRule
+  history: Prisma.PriceAlertTriggerHistoryUncheckedCreateInput
+  payload: PriceAlertPayload
+}
+
 @Injectable()
 export class PriceAlertService {
   private readonly logger = new Logger(PriceAlertService.name)
@@ -41,6 +48,7 @@ export class PriceAlertService {
     private readonly prisma: PrismaService,
     private readonly eventsGateway: EventsGateway,
     private readonly notificationService: NotificationService,
+    private readonly cronLock: DistributedCronLockService,
   ) {}
 
   // ── 规则 CRUD ──────────────────────────────────────────────────────────────
@@ -234,12 +242,14 @@ export class PriceAlertService {
    */
   @Cron('0 0 19 * * 1-5', { timeZone: 'Asia/Shanghai' })
   async dailyScan() {
-    this.logger.log('定时任务：开始盘后价格预警扫描')
-    try {
-      await this.runScan()
-    } catch (err) {
-      this.logger.error('价格预警扫描异常', (err as Error).stack)
-    }
+    await this.cronLock.runIfScheduler('price-alert:daily', async () => {
+      this.logger.log('定时任务：开始盘后价格预警扫描')
+      try {
+        await this.runScan()
+      } catch (err) {
+        this.logger.error('价格预警扫描异常', (err as Error).stack)
+      }
+    })
   }
 
   async runScan(): Promise<{ triggered: number }> {
@@ -303,9 +313,8 @@ export class PriceAlertService {
       }
     }
 
-    const triggeredRuleIds = new Set<number>()
-    const updateOps: Promise<unknown>[] = []
     const scanBatchId = randomUUID()
+    const pendingByRule = new Map<number, Map<string, PendingPriceAlertTrigger>>()
 
     for (const { rule, tsCode, stockName, source } of entries) {
       const daily = dailyMap.get(tsCode)
@@ -360,22 +369,24 @@ export class PriceAlertService {
       }
 
       if (triggered && actualValue != null) {
-        if (!triggeredRuleIds.has(rule.id)) {
-          triggeredRuleIds.add(rule.id)
-          updateOps.push(
-            this.prisma.priceAlertRule.update({
-              where: { id: rule.id },
-              data: { lastTriggeredAt: new Date(), triggerCount: { increment: 1 } },
-            }),
-          )
-        }
-
-        // Persist trigger history
         const closeNum = close != null ? Number(close) : null
         const pctChgNum = pctChg != null ? Number(pctChg) : null
-        updateOps.push(
-          this.prisma.priceAlertTriggerHistory.create({
-            data: {
+        const payload: PriceAlertPayload = {
+          ruleId: rule.id,
+          tsCode,
+          stockName: stockName ?? null,
+          ruleType: rule.ruleType,
+          threshold: rule.threshold,
+          tradeDate: tradeDateStr,
+          actualValue,
+          memo: rule.memo,
+          source: source ?? null,
+        }
+        const ruleTriggers = pendingByRule.get(rule.id) ?? new Map<string, PendingPriceAlertTrigger>()
+        if (!ruleTriggers.has(tsCode)) {
+          ruleTriggers.set(tsCode, {
+            rule,
+            history: {
               ruleId: rule.id,
               userId: rule.userId,
               tsCode,
@@ -390,33 +401,58 @@ export class PriceAlertService {
               sourceName: source?.name ?? null,
               scanBatchId,
             },
-          }),
-        )
-
-        const payload: PriceAlertPayload = {
-          ruleId: rule.id,
-          tsCode,
-          stockName: stockName ?? null,
-          ruleType: rule.ruleType,
-          threshold: rule.threshold,
-          tradeDate: tradeDateStr,
-          actualValue,
-          memo: rule.memo,
-          source: source ?? null,
+            payload,
+          })
+          pendingByRule.set(rule.id, ruleTriggers)
         }
-        this.eventsGateway.emitToUser(rule.userId, 'price-alert', payload)
-        // 同步创建站内通知（fire-and-forget）
-        void this.notificationService.create({
-          userId: rule.userId,
-          type: NotificationType.PRICE_ALERT,
-          title: `价格预警触发：${stockName ?? tsCode}`,
-          body: `${stockName ?? tsCode} ${rule.ruleType} 条件已触发，当前值 ${actualValue}`,
-          data: payload as unknown as Record<string, unknown>,
-        })
       }
     }
 
-    await Promise.all(updateOps)
+    const triggeredRuleIds = new Set<number>()
+    const persistedTriggers: PendingPriceAlertTrigger[] = []
+
+    for (const [ruleId, ruleTriggerMap] of pendingByRule) {
+      const candidates = [...ruleTriggerMap.values()]
+      const newlyPersisted = await this.prisma.$transaction(async (tx) => {
+        const insertResult = await tx.priceAlertTriggerHistory.createMany({
+          data: candidates.map((candidate) => candidate.history),
+          skipDuplicates: true,
+        })
+        if (insertResult.count === 0) return []
+
+        const createdRows = await tx.priceAlertTriggerHistory.findMany({
+          where: { ruleId, tradeDate: tradeDateStr, scanBatchId },
+          select: { tsCode: true },
+        })
+        const createdTsCodes = new Set(createdRows.map((row) => row.tsCode))
+        const created = candidates.filter((candidate) => createdTsCodes.has(candidate.history.tsCode))
+
+        if (created.length > 0) {
+          await tx.priceAlertRule.update({
+            where: { id: ruleId },
+            data: { lastTriggeredAt: new Date(), triggerCount: { increment: 1 } },
+          })
+        }
+
+        return created
+      })
+
+      if (newlyPersisted.length > 0) {
+        triggeredRuleIds.add(ruleId)
+        persistedTriggers.push(...newlyPersisted)
+      }
+    }
+
+    for (const { rule, payload } of persistedTriggers) {
+      this.eventsGateway.emitToUser(rule.userId, 'price-alert', payload)
+      void this.notificationService.create({
+        userId: rule.userId,
+        type: NotificationType.PRICE_ALERT,
+        title: `价格预警触发：${payload.stockName ?? payload.tsCode}`,
+        body: `${payload.stockName ?? payload.tsCode} ${rule.ruleType} 条件已触发，当前值 ${payload.actualValue}`,
+        data: payload as unknown as Record<string, unknown>,
+      })
+    }
 
     this.logger.log(`价格预警扫描完成：共展开 ${entries.length} 条目标，触发 ${triggeredRuleIds.size} 条规则`)
     return { triggered: triggeredRuleIds.size }

@@ -21,7 +21,14 @@ function buildTestUser(overrides: Partial<TokenPayload> = {}): TokenPayload {
 }
 
 function createMockLoggerService(): LoggerService {
-  return { log: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn(), verbose: jest.fn(), devLog: jest.fn() } as unknown as LoggerService
+  return {
+    log: jest.fn(),
+    warn: jest.fn(),
+    error: jest.fn(),
+    debug: jest.fn(),
+    verbose: jest.fn(),
+    devLog: jest.fn(),
+  } as unknown as LoggerService
 }
 
 describe('Notification API 测试', () => {
@@ -96,10 +103,7 @@ describe('Notification API 测试', () => {
 
   describe('通知列表', () => {
     it('NT-BIZ-001: 查询通知列表（默认分页）', async () => {
-      const res = await req
-        .post('/notification/list')
-        .send({})
-        .expect(201)
+      const res = await req.post('/notification/list').send({}).expect(201)
       expect(res.body.data).toHaveProperty('page')
       expect(res.body.data).toHaveProperty('pageSize')
       expect(res.body.data).toHaveProperty('total')
@@ -111,41 +115,26 @@ describe('Notification API 测试', () => {
     })
 
     it('NT-BIZ-002: 查询未读通知列表', async () => {
-      const res = await req
-        .post('/notification/list')
-        .send({ unreadOnly: true })
-        .expect(201)
+      const res = await req.post('/notification/list').send({ unreadOnly: true }).expect(201)
       expect(res.body.data.items).toHaveLength(1)
       expect(mockNotificationService.list).toHaveBeenCalledWith(1, expect.objectContaining({ unreadOnly: true }))
     })
 
     it('NT-ERR-001: page=0 应 400', async () => {
-      await req
-        .post('/notification/list')
-        .send({ page: 0 })
-        .expect(400)
+      await req.post('/notification/list').send({ page: 0 }).expect(400)
     })
 
     it('NT-ERR-002: pageSize=0 应 400', async () => {
-      await req
-        .post('/notification/list')
-        .send({ pageSize: 0 })
-        .expect(400)
+      await req.post('/notification/list').send({ pageSize: 0 }).expect(400)
     })
 
     it('NT-EDGE-001: pageSize=100（最大）应 201', async () => {
-      await req
-        .post('/notification/list')
-        .send({ pageSize: 100 })
-        .expect(201)
+      await req.post('/notification/list').send({ pageSize: 100 }).expect(201)
       expect(mockNotificationService.list).toHaveBeenCalledWith(1, expect.objectContaining({ pageSize: 100 }))
     })
 
     it('NT-EDGE-002: pageSize=101 应 400', async () => {
-      await req
-        .post('/notification/list')
-        .send({ pageSize: 101 })
-        .expect(400)
+      await req.post('/notification/list').send({ pageSize: 101 }).expect(400)
     })
   })
 
@@ -153,10 +142,7 @@ describe('Notification API 测试', () => {
 
   describe('未读计数', () => {
     it('NT-BIZ-003: 获取未读通知数', async () => {
-      const res = await req
-        .post('/notification/unread-count')
-        .send({})
-        .expect(201)
+      const res = await req.post('/notification/unread-count').send({}).expect(201)
       expect(res.body.data).toHaveProperty('unreadCount')
       expect(res.body.data.unreadCount).toBe(3)
       expect(mockNotificationService.getUnreadCount).toHaveBeenCalledWith(1)
@@ -167,35 +153,23 @@ describe('Notification API 测试', () => {
 
   describe('标记已读', () => {
     it('NT-BIZ-004: 标记指定通知已读', async () => {
-      const res = await req
-        .post('/notification/mark-read')
-        .send({ id: 1 })
-        .expect(201)
+      const res = await req.post('/notification/mark-read').send({ id: 1 }).expect(201)
       expect(res.body.data).toBeNull()
       expect(mockNotificationService.markRead).toHaveBeenCalledWith(1, 1)
     })
 
     it('NT-BIZ-005: 标记所有通知已读', async () => {
-      const res = await req
-        .post('/notification/mark-all-read')
-        .send({})
-        .expect(201)
+      const res = await req.post('/notification/mark-all-read').send({}).expect(201)
       expect(res.body.data).toBeNull()
       expect(mockNotificationService.markAllRead).toHaveBeenCalledWith(1)
     })
 
     it('NT-ERR-003: mark-read 缺 id 应 400', async () => {
-      await req
-        .post('/notification/mark-read')
-        .send({})
-        .expect(400)
+      await req.post('/notification/mark-read').send({}).expect(400)
     })
 
     it('NT-ERR-004: mark-read id 非整数应 400', async () => {
-      await req
-        .post('/notification/mark-read')
-        .send({ id: 'abc' })
-        .expect(400)
+      await req.post('/notification/mark-read').send({ id: 'abc' }).expect(400)
     })
   })
 
@@ -203,26 +177,17 @@ describe('Notification API 测试', () => {
 
   describe('删除通知', () => {
     it('NT-BIZ-006: 删除指定通知', async () => {
-      const res = await req
-        .post('/notification/delete')
-        .send({ id: 1 })
-        .expect(201)
+      const res = await req.post('/notification/delete').send({ id: 1 }).expect(201)
       expect(res.body.data).toBeNull()
       expect(mockNotificationService.deleteNotification).toHaveBeenCalledWith(1, 1)
     })
 
     it('NT-ERR-005: delete 缺 id 应 400', async () => {
-      await req
-        .post('/notification/delete')
-        .send({})
-        .expect(400)
+      await req.post('/notification/delete').send({}).expect(400)
     })
 
     it('NT-ERR-006: delete id 非整数应 400', async () => {
-      await req
-        .post('/notification/delete')
-        .send({ id: 'abc' })
-        .expect(400)
+      await req.post('/notification/delete').send({ id: 'abc' }).expect(400)
     })
   })
 
@@ -230,10 +195,7 @@ describe('Notification API 测试', () => {
 
   describe('通知偏好', () => {
     it('NT-BIZ-007: 获取通知偏好列表', async () => {
-      const res = await req
-        .post('/notification/preferences')
-        .send({})
-        .expect(201)
+      const res = await req.post('/notification/preferences').send({}).expect(201)
       expect(Array.isArray(res.body.data)).toBe(true)
       expect(res.body.data).toHaveLength(5)
       expect(res.body.data[0]).toHaveProperty('type')
@@ -254,24 +216,15 @@ describe('Notification API 测试', () => {
     })
 
     it('NT-ERR-007: update 缺 type 应 400', async () => {
-      await req
-        .post('/notification/preferences/update')
-        .send({ enabled: true })
-        .expect(400)
+      await req.post('/notification/preferences/update').send({ enabled: true }).expect(400)
     })
 
     it('NT-ERR-008: update 缺 enabled 应 400', async () => {
-      await req
-        .post('/notification/preferences/update')
-        .send({ type: NotificationType.PRICE_ALERT })
-        .expect(400)
+      await req.post('/notification/preferences/update').send({ type: NotificationType.PRICE_ALERT }).expect(400)
     })
 
     it('NT-ERR-009: update type 无效枚举应 400', async () => {
-      await req
-        .post('/notification/preferences/update')
-        .send({ type: 'INVALID_TYPE', enabled: true })
-        .expect(400)
+      await req.post('/notification/preferences/update').send({ type: 'INVALID_TYPE', enabled: true }).expect(400)
     })
 
     it('NT-ERR-010: update enabled 非布尔应 400', async () => {
@@ -305,9 +258,7 @@ describe('Notification API 测试', () => {
       unauthApp.useGlobalFilters(new GlobalExceptionsFilter(true, createMockLoggerService()))
       await unauthApp.init()
 
-      await request(unauthApp.getHttpServer())
-        .post('/notification/list')
-        .expect(401)
+      await request(unauthApp.getHttpServer()).post('/notification/list').expect(401)
       await unauthApp.close()
     })
 
@@ -331,9 +282,7 @@ describe('Notification API 测试', () => {
       unauthApp.useGlobalFilters(new GlobalExceptionsFilter(true, createMockLoggerService()))
       await unauthApp.init()
 
-      await request(unauthApp.getHttpServer())
-        .post('/notification/unread-count')
-        .expect(401)
+      await request(unauthApp.getHttpServer()).post('/notification/unread-count').expect(401)
       await unauthApp.close()
     })
   })

@@ -1,6 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common'
+import type { Prisma } from '@prisma/client'
 import { PrismaService } from 'src/shared/prisma.service'
 import { BacktestResult } from '../types/backtest-engine.types'
+import { isCompleteBacktestReproducibilityManifest } from '../constants/backtest-reproducibility.constant'
 
 @Injectable()
 export class BacktestReportService {
@@ -9,7 +11,8 @@ export class BacktestReportService {
   constructor(private readonly prisma: PrismaService) {}
 
   async saveReport(runId: string, result: BacktestResult): Promise<void> {
-    const { navRecords, trades, positions, rebalanceLogs, metrics } = result
+    const { navRecords, trades, positions, rebalanceLogs, metrics, reproducibilityManifest } = result
+    const verifiedManifest = isCompleteBacktestReproducibilityManifest(reproducibilityManifest)
 
     this.logger.log(
       `Saving report for runId=${runId}: navs=${navRecords.length} trades=${trades.length} positions=${positions.length}`,
@@ -116,6 +119,23 @@ export class BacktestReportService {
           winRate: metrics.winRate,
           turnoverRate: metrics.turnoverRate,
           tradeCount: metrics.tradeCount,
+          ...(verifiedManifest
+            ? {
+                engineVersion: reproducibilityManifest.engineVersion,
+                dataContractVersion: reproducibilityManifest.dataContractVersion,
+                universePolicyVersion: reproducibilityManifest.universePolicyVersion,
+                financialAsOfPolicyVersion: reproducibilityManifest.financialAsOfPolicyVersion,
+                adjustmentPolicyVersion: reproducibilityManifest.adjustmentPolicyVersion,
+                reproducibilityStatus: 'VERIFIED',
+                reproducibilityManifest: reproducibilityManifest as unknown as Prisma.InputJsonValue,
+                qualityFlags: reproducibilityManifest.qualityFlags as Prisma.InputJsonValue,
+              }
+            : {
+                reproducibilityStatus: 'LEGACY_UNVERIFIED',
+                qualityFlags: [
+                  reproducibilityManifest ? 'INVALID_REPRODUCIBILITY_MANIFEST' : 'MISSING_REPRODUCIBILITY_MANIFEST',
+                ],
+              }),
         },
       })
     })

@@ -1,4 +1,3 @@
-import { Prisma } from '@prisma/client'
 import { PrismaService } from 'src/shared/prisma.service'
 import {
   BacktestConfig,
@@ -20,7 +19,7 @@ export class FactorScreeningRotationStrategy implements IBacktestStrategy<'FACTO
     signalDate: Date,
     config: BacktestConfig<'FACTOR_SCREENING_ROTATION'>,
     _barData: Map<string, DailyBar>,
-    _historicalBars: Map<string, DailyBar[]>,
+    historicalBars: Map<string, DailyBar[]>,
     prisma: PrismaService,
   ): Promise<SignalOutput> {
     const cfg: FactorScreeningRotationStrategyConfig = config.strategyConfig
@@ -31,10 +30,14 @@ export class FactorScreeningRotationStrategy implements IBacktestStrategy<'FACTO
     // 1. Retrieve factor values for all referenced factors
     const allFactorNames = new Set<string>(conditions.map((c) => c.factorName))
     if (sortBy) allFactorNames.add(sortBy)
+    const universe = [...historicalBars.keys()].sort()
 
     const factorMaps = new Map<string, Map<string, number>>()
     for (const factorName of allFactorNames) {
-      const map = await this.loadFactorValues(prisma, factorName, tradeDateStr, config)
+      const map = await this.loadFactorValues(prisma, factorName, tradeDateStr, universe)
+      for (const tsCode of map.keys()) {
+        if (!historicalBars.has(tsCode)) map.delete(tsCode)
+      }
       factorMaps.set(factorName, map)
     }
 
@@ -119,16 +122,22 @@ export class FactorScreeningRotationStrategy implements IBacktestStrategy<'FACTO
     prisma: PrismaService,
     factorName: string,
     tradeDateStr: string,
-    config: BacktestConfig<'FACTOR_SCREENING_ROTATION'>,
+    universe: string[],
   ): Promise<Map<string, number>> {
     const map = new Map<string, number>()
+    if (universe.length === 0) return map
 
     // First: try precomputed factor snapshots
-    const snapshotRows = await prisma.$queryRaw<Array<{ ts_code: string; value: number }>>(Prisma.sql`
-      SELECT ts_code, value::float AS value
-      FROM factor_snapshots
-      WHERE factor_name = ${factorName} AND trade_date = ${tradeDateStr}
-    `)
+    const snapshotRows = await prisma.$queryRawUnsafe<Array<{ ts_code: string; value: number }>>(
+      `SELECT ts_code, value::float AS value
+       FROM factor_snapshots
+       WHERE factor_name = $1
+         AND trade_date = $2::date
+         AND ts_code = ANY($3::text[])`,
+      factorName,
+      tradeDateStr,
+      universe,
+    )
 
     if (snapshotRows.length > 0) {
       for (const row of snapshotRows) {
@@ -154,11 +163,11 @@ export class FactorScreeningRotationStrategy implements IBacktestStrategy<'FACTO
       const rows = await prisma.$queryRawUnsafe<Array<{ ts_code: string; val: number }>>(
         `SELECT db.ts_code, db.${col}::float AS val
          FROM stock_daily_valuation_metrics db
-         INNER JOIN stock_basic_profiles sb ON sb.ts_code = db.ts_code
          WHERE db.trade_date = $1::date
-           AND sb.list_status = 'L'
+           AND db.ts_code = ANY($2::text[])
            AND db.${col} IS NOT NULL`,
         tradeDateStr,
+        universe,
       )
       for (const r of rows) if (r.val != null) map.set(r.ts_code, Number(r.val))
     }

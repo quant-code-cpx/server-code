@@ -19,6 +19,22 @@ export const AGENT_SSE_DURATION = 'agent_sse_duration_seconds'
 export const AGENT_SSE_REPLAY_LAG = 'agent_sse_replay_lag_events'
 export const AGENT_SSE_DISCONNECTS_TOTAL = 'agent_sse_disconnects_total'
 
+// Agent observability. Labels are intentionally low-cardinality; never use userId/runId/traceId here.
+export const AGENT_RUNS_TOTAL = 'agent_runs_total'
+export const AGENT_RUN_DURATION = 'agent_run_duration_seconds'
+export const AGENT_WORKFLOW_NODE_DURATION = 'agent_workflow_node_duration_seconds'
+export const AGENT_MODEL_ATTEMPTS_TOTAL = 'agent_model_attempts_total'
+export const AGENT_MODEL_DURATION = 'agent_model_duration_seconds'
+export const AGENT_MODEL_TTFT = 'agent_model_ttft_seconds'
+export const AGENT_MODEL_TOKENS_TOTAL = 'agent_model_tokens_total'
+export const AGENT_MODEL_COST_TOTAL = 'agent_model_cost_total'
+export const AGENT_MODEL_COST_UNKNOWN_TOTAL = 'agent_model_cost_unknown_total'
+export const AGENT_TOOL_ATTEMPTS_TOTAL = 'agent_tool_attempts_total'
+export const AGENT_TOOL_DURATION = 'agent_tool_duration_seconds'
+export const AGENT_TOOL_RESULT_BYTES = 'agent_tool_result_bytes'
+export const AGENT_TOOL_DATA_AGE = 'agent_tool_data_age_seconds'
+export const AGENT_TRACE_SPANS_TOTAL = 'agent_trace_spans_total'
+
 // Prisma
 export const PRISMA_QUERY_DURATION = 'prisma_query_duration_seconds'
 export const PRISMA_QUERY_TOTAL = 'prisma_queries_total'

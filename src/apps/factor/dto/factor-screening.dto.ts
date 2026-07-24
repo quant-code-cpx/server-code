@@ -63,6 +63,7 @@ export class FactorScreeningDto {
   @ApiProperty({ required: false, description: '股票池，如 000300.SH' })
   @IsOptional()
   @IsString()
+  @Matches(/^\d{6}\.(SH|SZ|BJ)$/, { message: 'universe 格式应为指数代码，例如 000300.SH' })
   universe?: string
 
   @ApiProperty({ required: false, description: '按哪个因子排序' })

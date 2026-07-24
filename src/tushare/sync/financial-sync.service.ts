@@ -1344,13 +1344,103 @@ export class FinancialSyncService {
       return
     }
 
-    await this.syncFinancialReportsByDisclosure({
-      task: TushareSyncTaskName.FINA_INDICATOR,
-      label: '财务指标',
-      modelName: 'finaIndicator',
-      fetchRows: (tsCode, period) => this.api.getFinaIndicatorByTsCodeAndPeriod(tsCode, period),
-      mapRecord: mapFinaIndicatorRecord,
+    await this.syncFinaIndicatorByDisclosure()
+  }
+
+  /**
+   * 财务指标需要保留同一报告期的公告修订版本。增量同步按已披露股票分组，
+   * 每只股票用一次日期区间请求刷新近年报告，避免按“股票 × 报告期”放大请求数。
+   */
+  private async syncFinaIndicatorByDisclosure(): Promise<void> {
+    const startedAt = new Date()
+    const lookbackYears = 2
+    const periods = this.helper.buildRecentQuarterPeriods(lookbackYears)
+    if (!periods.length) return
+
+    const periodDates = periods.map((period) => this.helper.toDate(period))
+    const periodSet = new Set(periods)
+    const today = this.helper.toDate(this.helper.getCurrentShanghaiDateString())
+    const disclosures = await this.helper.prisma.disclosureDate.findMany({
+      where: {
+        endDate: { in: periodDates },
+        actualDate: { not: null, lte: today },
+      },
+      select: { tsCode: true },
+      orderBy: { tsCode: 'asc' },
     })
+    const tsCodes = Array.from(new Set(disclosures.map((row) => row.tsCode)))
+
+    if (!tsCodes.length) {
+      await this.helper.writeSyncLog(
+        TushareSyncTaskName.FINA_INDICATOR,
+        {
+          status: TushareSyncExecutionStatus.SUCCESS,
+          message: '财务指标增量检查完成，无已披露候选',
+          payload: { lookbackYears, periodCount: periods.length, stockCount: 0, rowCount: 0 },
+        },
+        startedAt,
+      )
+      return
+    }
+
+    const collector = new ValidationCollector(TushareSyncTaskName.FINA_INDICATOR)
+    let totalRows = 0
+    const failed: Array<{ tsCode: string; error: string }> = []
+
+    for (const [index, tsCode] of tsCodes.entries()) {
+      try {
+        const rows = await this.api.getFinaIndicatorByTsCodeAndDateRange(
+          tsCode,
+          periods[0],
+          periods[periods.length - 1],
+        )
+        const mapped = rows
+          .map((row) => mapFinaIndicatorRecord(row, collector))
+          .filter((row): row is NonNullable<typeof row> => Boolean(row))
+          .filter((row) => {
+            const endDateKey = this.normalizeDateKey(row.endDate)
+            return endDateKey ? periodSet.has(endDateKey) : false
+          })
+
+        if (mapped.length > 0) {
+          await this.helper.prisma.finaIndicator.deleteMany({
+            where: { tsCode, endDate: { in: periodDates } },
+          })
+          totalRows += (
+            await this.helper.prisma.finaIndicator.createMany({
+              data: mapped,
+              skipDuplicates: true,
+            })
+          ).count
+        }
+
+        if (index === 0 || (index + 1) % 200 === 0 || index === tsCodes.length - 1) {
+          this.logger.log(`[财务指标] 进度 ${index + 1}/${tsCodes.length}，当前 ${tsCode}，累计 ${totalRows} 条`)
+        }
+      } catch (error) {
+        const message = (error as Error).message
+        this.logger.error(`[财务指标] ${tsCode} 失败: ${message}`)
+        failed.push({ tsCode, error: message })
+      }
+    }
+
+    await this.helper.flushValidationLogs(collector)
+    await this.helper.writeSyncLog(
+      TushareSyncTaskName.FINA_INDICATOR,
+      {
+        status: TushareSyncExecutionStatus.SUCCESS,
+        message: `财务指标修订刷新完成，股票 ${tsCodes.length} 只，写入 ${totalRows} 条`,
+        payload: {
+          lookbackYears,
+          periodCount: periods.length,
+          stockCount: tsCodes.length,
+          rowCount: totalRows,
+          failedCount: failed.length,
+          failed: failed.slice(0, 50),
+        },
+      },
+      startedAt,
+    )
   }
 
   // ─── 前十大股东 ────────────────────────────────────────────────────────────

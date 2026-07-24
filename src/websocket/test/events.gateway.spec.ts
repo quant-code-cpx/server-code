@@ -1,188 +1,154 @@
-import { Test, TestingModule } from '@nestjs/testing'
-import { JwtService } from '@nestjs/jwt'
-import { EventsGateway } from '../events.gateway'
-import { Server, Socket } from 'socket.io'
-
-// ── Mock Socket 工厂 ──────────────────────────────────────────────────────────
+import { WsException } from '@nestjs/websockets'
+import { UserRole } from '@prisma/client'
+import { Socket } from 'socket.io'
+import { PrismaService } from 'src/shared/prisma.service'
+import { TokenService } from 'src/shared/token.service'
+import { EventsGateway, isWebSocketOriginAllowed } from '../events.gateway'
 
 function makeMockSocket(overrides: Partial<Socket> = {}): jest.Mocked<Socket> {
   return {
     id: 'socket-1',
+    data: {},
     join: jest.fn(),
     leave: jest.fn(),
     emit: jest.fn(),
+    disconnect: jest.fn(),
+    rooms: new Set(['socket-1']),
     handshake: { auth: {}, headers: {} },
     ...overrides,
   } as unknown as jest.Mocked<Socket>
 }
 
-// ── Mock Server ───────────────────────────────────────────────────────────────
-
 function makeMockServer() {
   const room = { emit: jest.fn() }
-  const server = {
+  return {
     emit: jest.fn(),
     to: jest.fn(() => room),
+    fetchSockets: jest.fn(async () => []),
     _room: room,
   }
-  return server
 }
 
 describe('EventsGateway', () => {
   let gateway: EventsGateway
-  let jwtService: jest.Mocked<JwtService>
+  let tokenService: jest.Mocked<Pick<TokenService, 'verifyAccessToken' | 'isAccessTokenBlacklisted'>>
+  let prisma: {
+    backtestRun: { findFirst: jest.Mock }
+    backtestWalkForwardRun: { findFirst: jest.Mock }
+  }
 
-  beforeEach(async () => {
-    jwtService = {
-      decode: jest.fn(),
-      sign: jest.fn(),
-      verify: jest.fn(),
-    } as unknown as jest.Mocked<JwtService>
-
-    const module: TestingModule = await Test.createTestingModule({
-      providers: [EventsGateway, { provide: JwtService, useValue: jwtService }],
-    }).compile()
-
-    gateway = module.get(EventsGateway)
-    // 注入 mock server
-    gateway.server = makeMockServer() as unknown as Server
+  beforeEach(() => {
+    tokenService = {
+      verifyAccessToken: jest.fn().mockResolvedValue({
+        id: 1,
+        account: 'user-1',
+        nickname: 'User One',
+        role: UserRole.USER,
+        jti: 'access-jti-1',
+        exp: Math.floor(Date.now() / 1000) + 60,
+      }),
+      isAccessTokenBlacklisted: jest.fn().mockResolvedValue(false),
+    }
+    prisma = {
+      backtestRun: { findFirst: jest.fn().mockResolvedValue(null) },
+      backtestWalkForwardRun: { findFirst: jest.fn().mockResolvedValue(null) },
+    }
+    gateway = new EventsGateway(tokenService as unknown as TokenService, prisma as unknown as PrismaService)
+    gateway.server = makeMockServer() as never
   })
 
   afterEach(() => jest.clearAllMocks())
 
-  // ── 初始化 ────────────────────────────────────────────────────────────────
-
-  it('afterInit — 初始化不抛出', () => {
-    expect(() => gateway.afterInit()).not.toThrow()
+  it('生产 Origin gate 仅允许显式 CORS_ORIGIN，开发环境保留本机调试', () => {
+    expect(
+      isWebSocketOriginAllowed('https://app.example.com', {
+        NODE_ENV: 'production',
+        CORS_ORIGIN: 'https://app.example.com,https://admin.example.com',
+      }),
+    ).toBe(true)
+    expect(
+      isWebSocketOriginAllowed('https://attacker.example.com', {
+        NODE_ENV: 'production',
+        CORS_ORIGIN: 'https://app.example.com',
+      }),
+    ).toBe(false)
+    expect(
+      isWebSocketOriginAllowed(undefined, { NODE_ENV: 'production', CORS_ORIGIN: 'https://app.example.com' }),
+    ).toBe(false)
+    expect(isWebSocketOriginAllowed(undefined, { NODE_ENV: 'development' })).toBe(true)
   })
 
-  // ── 连接 ─────────────────────────────────────────────────────────────────
-
-  it('handleConnection — 无 token → 不加入 user:X 房间', () => {
-    jwtService.verify.mockReturnValue(null)
-    const socket = makeMockSocket()
-    gateway.handleConnection(socket)
-    expect(socket.join).not.toHaveBeenCalled()
-  })
-
-  it('handleConnection — 有效 token → 加入 user:1 房间', () => {
-    jwtService.verify.mockReturnValue({ id: 1 })
-    const socket = makeMockSocket({ handshake: { auth: { token: 'valid-jwt' }, headers: {} } as unknown as Socket['handshake'] })
-    gateway.handleConnection(socket)
-    expect(socket.join).toHaveBeenCalledWith('user:1')
-  })
-
-  it('handleConnection — token 解析抛出 → 不崩溃，不加入房间', () => {
-    jwtService.verify.mockImplementation(() => {
-      throw new Error('invalid')
+  it('有效 access token 建立服务端身份并加入自己的 user 房间', async () => {
+    const socket = makeMockSocket({
+      handshake: { auth: { token: 'valid-jwt' }, headers: {} } as unknown as Socket['handshake'],
     })
-    const socket = makeMockSocket({ handshake: { auth: { token: 'bad' }, headers: {} } as unknown as Socket['handshake'] })
-    expect(() => gateway.handleConnection(socket)).not.toThrow()
+
+    await gateway.handleConnection(socket)
+
+    expect(tokenService.verifyAccessToken).toHaveBeenCalledWith('valid-jwt')
+    expect(tokenService.isAccessTokenBlacklisted).toHaveBeenCalledWith('access-jti-1')
+    expect(socket.join).toHaveBeenCalledWith('user:1')
+    expect(socket.data.identity).toEqual(
+      expect.objectContaining({ userId: 1, role: UserRole.USER, tokenExpiresAt: expect.any(Number) }),
+    )
+    clearTimeout(socket.data.identity.expiresTimer)
+  })
+
+  it('管理员 access token 同时加入管理员房间', async () => {
+    tokenService.verifyAccessToken.mockResolvedValue({
+      id: 9,
+      account: 'admin',
+      nickname: 'Admin',
+      role: UserRole.ADMIN,
+      jti: 'admin-jti',
+      exp: Math.floor(Date.now() / 1000) + 60,
+    })
+    const socket = makeMockSocket({
+      handshake: { auth: { token: 'admin-jwt' }, headers: {} } as unknown as Socket['handshake'],
+    })
+
+    await gateway.handleConnection(socket)
+
+    expect(socket.join).toHaveBeenCalledWith('user:9')
+    expect(socket.join).toHaveBeenCalledWith('role:admin')
+    clearTimeout(socket.data.identity.expiresTimer)
+  })
+
+  it('缺少 token 时立即断连且不调用 token 校验', async () => {
+    const socket = makeMockSocket()
+
+    await gateway.handleConnection(socket)
+
+    expect(tokenService.verifyAccessToken).not.toHaveBeenCalled()
     expect(socket.join).not.toHaveBeenCalled()
+    expect(socket.disconnect).toHaveBeenCalledWith(true)
   })
 
-  it('handleDisconnect — 不抛出', () => {
-    const socket = makeMockSocket()
-    expect(() => gateway.handleDisconnect(socket)).not.toThrow()
+  it('签名无效 token 时立即断连', async () => {
+    tokenService.verifyAccessToken.mockRejectedValue(new Error('jwt signature is invalid'))
+    const socket = makeMockSocket({
+      handshake: { auth: { token: 'forged.payload.nosig' }, headers: {} } as unknown as Socket['handshake'],
+    })
+
+    await gateway.handleConnection(socket)
+
+    expect(socket.join).not.toHaveBeenCalled()
+    expect(socket.disconnect).toHaveBeenCalledWith(true)
   })
 
-  // ── 订阅 / 取消订阅 回测 ─────────────────────────────────────────────────
+  it('blacklist 中的有效签名 token 仍立即断连', async () => {
+    tokenService.isAccessTokenBlacklisted.mockResolvedValue(true)
+    const socket = makeMockSocket({
+      handshake: { auth: { token: 'revoked-jwt' }, headers: {} } as unknown as Socket['handshake'],
+    })
 
-  it('handleSubscribeBacktest — 加入 backtest:job-1 房间', () => {
-    const socket = makeMockSocket()
-    const result = gateway.handleSubscribeBacktest(socket, { jobId: 'job-1' })
-    expect(socket.join).toHaveBeenCalledWith('backtest:job-1')
-    expect(result).toEqual({ event: 'subscribed', room: 'backtest:job-1' })
+    await gateway.handleConnection(socket)
+
+    expect(socket.join).not.toHaveBeenCalled()
+    expect(socket.disconnect).toHaveBeenCalledWith(true)
   })
 
-  it('handleUnsubscribeBacktest — 离开 backtest:job-1 房间', () => {
-    const socket = makeMockSocket()
-    const result = gateway.handleUnsubscribeBacktest(socket, { jobId: 'job-1' })
-    expect(socket.leave).toHaveBeenCalledWith('backtest:job-1')
-    expect(result).toEqual({ event: 'unsubscribed', room: 'backtest:job-1' })
-  })
-
-  // ── 服务端推送方法 ─────────────────────────────────────────────────────────
-
-  it('emitBacktestProgress — 向 backtest:job-1 推送进度', () => {
-    gateway.emitBacktestProgress('job-1', 50, 'running')
-    const server = gateway.server as unknown as ReturnType<typeof makeMockServer>
-    expect(server.to).toHaveBeenCalledWith('backtest:job-1')
-    expect(server._room.emit).toHaveBeenCalledWith('backtest_progress', { jobId: 'job-1', progress: 50, state: 'running' })
-  })
-
-  it('emitBacktestCompleted — 向 backtest:job-1 推送完成', () => {
-    gateway.emitBacktestCompleted('job-1', { runId: 'run-1' })
-    const server = gateway.server as unknown as ReturnType<typeof makeMockServer>
-    expect(server.to).toHaveBeenCalledWith('backtest:job-1')
-    expect(server._room.emit).toHaveBeenCalledWith('backtest_completed', { jobId: 'job-1', result: { runId: 'run-1' } })
-  })
-
-  it('emitBacktestFailed — 向 backtest:job-1 推送失败', () => {
-    gateway.emitBacktestFailed('job-1', 'engine error')
-    const server = gateway.server as unknown as ReturnType<typeof makeMockServer>
-    expect(server.to).toHaveBeenCalledWith('backtest:job-1')
-    expect(server._room.emit).toHaveBeenCalledWith('backtest_failed', { jobId: 'job-1', reason: 'engine error' })
-  })
-
-  it('broadcastNotification — emit 到所有客户端', () => {
-    gateway.broadcastNotification('系统通知', { level: 'info' })
-    const server = gateway.server as unknown as ReturnType<typeof makeMockServer>
-    expect(server.emit).toHaveBeenCalledWith('notification', { message: '系统通知', data: { level: 'info' } })
-  })
-
-  it('broadcastSyncStarted — emit tushare_sync_started', () => {
-    gateway.broadcastSyncStarted('cron', 'incremental')
-    const server = gateway.server as unknown as ReturnType<typeof makeMockServer>
-    expect(server.emit).toHaveBeenCalledWith('tushare_sync_started', { trigger: 'cron', mode: 'incremental' })
-  })
-
-  it('broadcastSyncCompleted — emit tushare_sync_completed', () => {
-    const payload = {
-      trigger: 'manual',
-      mode: 'full',
-      executedTasks: ['daily'],
-      skippedTasks: [],
-      failedTasks: [],
-      targetTradeDate: '2026-04-09',
-      elapsedSeconds: 42,
-    }
-    gateway.broadcastSyncCompleted(payload)
-    const server = gateway.server as unknown as ReturnType<typeof makeMockServer>
-    expect(server.emit).toHaveBeenCalledWith('tushare_sync_completed', payload)
-  })
-
-  it('broadcastSyncFailed — emit tushare_sync_failed', () => {
-    gateway.broadcastSyncFailed('cron', 'full', 'timeout')
-    const server = gateway.server as unknown as ReturnType<typeof makeMockServer>
-    expect(server.emit).toHaveBeenCalledWith('tushare_sync_failed', { trigger: 'cron', mode: 'full', reason: 'timeout' })
-  })
-
-  it('emitToUser — 向指定用户房间推送', () => {
-    gateway.emitToUser(42, 'custom_event', { msg: 'hello' })
-    const server = gateway.server as unknown as ReturnType<typeof makeMockServer>
-    expect(server.to).toHaveBeenCalledWith('user:42')
-    expect(server._room.emit).toHaveBeenCalledWith('custom_event', { msg: 'hello' })
-  })
-
-  it('broadcastDataQualityCompleted — emit data_quality_completed', () => {
-    const summary = { total: 5, passed: 4, failed: 1, issues: [] } as never
-    gateway.broadcastDataQualityCompleted(summary)
-    const server = gateway.server as unknown as ReturnType<typeof makeMockServer>
-    expect(server.emit).toHaveBeenCalledWith('data_quality_completed', summary)
-  })
-
-  it('broadcastAutoRepairQueued — emit auto_repair_queued', () => {
-    const summary = { total: 2, queued: 2 } as never
-    gateway.broadcastAutoRepairQueued(summary)
-    const server = gateway.server as unknown as ReturnType<typeof makeMockServer>
-    expect(server.emit).toHaveBeenCalledWith('auto_repair_queued', summary)
-  })
-
-  // ── [SEC] Token 提取边界 ───────────────────────────────────────────────────
-
-  it('[SEC] Authorization header 中的 Bearer token 提取 → 正确去掉前缀后 verify', () => {
-    jwtService.verify.mockReturnValue({ id: 5 })
+  it('Bearer Authorization header 可作为握手 token', async () => {
     const socket = makeMockSocket({
       handshake: {
         auth: {},
@@ -190,95 +156,162 @@ describe('EventsGateway', () => {
       } as unknown as Socket['handshake'],
     })
 
-    gateway.handleConnection(socket)
+    await gateway.handleConnection(socket)
 
-    // 验证 verify 被调用且使用了去掉前缀的 token
-    expect(jwtService.verify).toHaveBeenCalledWith('valid-jwt-xxx')
-    expect(socket.join).toHaveBeenCalledWith('user:5')
+    expect(tokenService.verifyAccessToken).toHaveBeenCalledWith('valid-jwt-xxx')
+    clearTimeout(socket.data.identity.expiresTimer)
   })
 
-  it('[SEC] 空字符串 token → 不调用 verify，不加入房间', () => {
+  it('订阅本人 Backtest job 才加入 backtest 房间', async () => {
     const socket = makeMockSocket({
-      handshake: { auth: { token: '' }, headers: {} } as unknown as Socket['handshake'],
+      data: {
+        identity: { userId: 1, role: UserRole.USER, authenticatedAt: Date.now(), tokenExpiresAt: Date.now() + 60_000 },
+      },
+    })
+    prisma.backtestRun.findFirst.mockResolvedValue({ id: 'run-1' })
+
+    await expect(gateway.handleSubscribeBacktest(socket, { jobId: 'job-1' })).resolves.toEqual({
+      event: 'subscribed',
+      room: 'backtest:job-1',
     })
 
-    gateway.handleConnection(socket)
+    expect(prisma.backtestRun.findFirst).toHaveBeenCalledWith({
+      where: { jobId: 'job-1', userId: 1, deletedAt: null },
+      select: { id: true },
+    })
+    expect(socket.join).toHaveBeenCalledWith('backtest:job-1')
+  })
 
-    expect(jwtService.verify).not.toHaveBeenCalled()
+  it('不能订阅他人或不存在的 Backtest job', async () => {
+    const socket = makeMockSocket({
+      data: {
+        identity: { userId: 1, role: UserRole.USER, authenticatedAt: Date.now(), tokenExpiresAt: Date.now() + 60_000 },
+      },
+    })
+
+    await expect(gateway.handleSubscribeBacktest(socket, { jobId: 'other-users-job' })).rejects.toMatchObject({
+      message: '回测任务不存在',
+    })
+
     expect(socket.join).not.toHaveBeenCalled()
   })
 
-  it('[SEC] verify 返回无 id 字段的 payload（如 { sub: "user" }）→ 不加入用户房间', () => {
-    jwtService.verify.mockReturnValue({ sub: 'user' })
+  it('本人 WalkForward job 也可订阅', async () => {
     const socket = makeMockSocket({
-      handshake: { auth: { token: 'some-jwt' }, headers: {} } as unknown as Socket['handshake'],
+      data: {
+        identity: { userId: 1, role: UserRole.USER, authenticatedAt: Date.now(), tokenExpiresAt: Date.now() + 60_000 },
+      },
+    })
+    prisma.backtestWalkForwardRun.findFirst.mockResolvedValue({ id: 'wf-1' })
+
+    await gateway.handleSubscribeBacktest(socket, { jobId: 'wf-job-1' })
+
+    expect(prisma.backtestWalkForwardRun.findFirst).toHaveBeenCalledWith({
+      where: { jobId: 'wf-job-1', userId: 1, deletedAt: null },
+      select: { id: true },
+    })
+    expect(socket.join).toHaveBeenCalledWith('backtest:wf-job-1')
+  })
+
+  it('空 jobId 不能形成 backtest: 公共房间', async () => {
+    const socket = makeMockSocket({
+      data: {
+        identity: { userId: 1, role: UserRole.USER, authenticatedAt: Date.now(), tokenExpiresAt: Date.now() + 60_000 },
+      },
     })
 
-    gateway.handleConnection(socket)
+    await expect(gateway.handleSubscribeBacktest(socket, { jobId: ' ' })).rejects.toBeInstanceOf(WsException)
 
+    expect(prisma.backtestRun.findFirst).not.toHaveBeenCalled()
     expect(socket.join).not.toHaveBeenCalled()
   })
 
-  it('签名验证（已修复 P5-B15）→ verify 失败时拒绝加入用户房间', () => {
-    // 修复后：使用 jwtService.verify() 验证签名，签名无效时抛出异常
-    // catch 块捕获异常并 return null → socket 不加入任何用户房间
-    jwtService.verify.mockImplementation(() => {
-      throw new Error('jwt signature is invalid')
-    })
-    const socket = makeMockSocket({
-      handshake: { auth: { token: 'forged.payload.nosig' }, headers: {} } as unknown as Socket['handshake'],
-    })
-
-    gateway.handleConnection(socket)
-
-    // 修复后行为：伪造 token 无法加入用户房间
-    expect(socket.join).not.toHaveBeenCalled()
-  })
-
-  // ── [EDGE] 订阅参数边界 ───────────────────────────────────────────────────
-
-  it('[EDGE] handleSubscribeBacktest 空 jobId → 房间名为 "backtest:"', () => {
+  it('未认证 client 不能取消订阅', () => {
     const socket = makeMockSocket()
-    const result = gateway.handleSubscribeBacktest(socket, { jobId: '' })
 
-    expect(socket.join).toHaveBeenCalledWith('backtest:')
-    expect(result).toEqual({ event: 'subscribed', room: 'backtest:' })
+    expect(() => gateway.handleUnsubscribeBacktest(socket, { jobId: 'job-1' })).toThrow(WsException)
+
+    expect(socket.leave).not.toHaveBeenCalled()
   })
 
-  // ── [BIZ] broadcastSyncProgress + broadcastSyncOverallProgress payload ────
+  it('已认证 client 可幂等取消订阅', () => {
+    const socket = makeMockSocket({
+      data: {
+        identity: { userId: 1, role: UserRole.USER, authenticatedAt: Date.now(), tokenExpiresAt: Date.now() + 60_000 },
+      },
+    })
 
-  it('[BIZ] broadcastSyncProgress — 验证完整 payload 结构', () => {
-    const payload = {
-      task: 'daily',
-      label: '日线数据',
-      category: 'stock',
-      completedItems: 50,
-      totalItems: 100,
-      percentage: 50,
-      currentKey: '20260101',
-      elapsedMs: 1000,
-      estimatedRemainingMs: 1000,
-    }
-
-    gateway.broadcastSyncProgress(payload)
-
-    const server = gateway.server as unknown as ReturnType<typeof makeMockServer>
-    expect(server.emit).toHaveBeenCalledWith('tushare_sync_progress', payload)
+    expect(gateway.handleUnsubscribeBacktest(socket, { jobId: 'job-1' })).toEqual({
+      event: 'unsubscribed',
+      room: 'backtest:job-1',
+    })
+    expect(socket.leave).toHaveBeenCalledWith('backtest:job-1')
   })
 
-  it('[BIZ] broadcastSyncOverallProgress — 验证完整 payload 结构', () => {
-    const payload = {
-      completedTasks: 3,
-      totalTasks: 10,
-      percentage: 30,
-      elapsedMs: 5000,
-      estimatedRemainingMs: 12000,
-    }
+  it('连接 token 到期后断开 client 且拒绝订阅', async () => {
+    const socket = makeMockSocket({
+      data: {
+        identity: { userId: 1, role: UserRole.USER, authenticatedAt: Date.now(), tokenExpiresAt: Date.now() - 1 },
+      },
+    })
 
-    gateway.broadcastSyncOverallProgress(payload)
+    await expect(gateway.handleSubscribeBacktest(socket, { jobId: 'job-1' })).rejects.toMatchObject({
+      message: 'WebSocket 登录已过期',
+    })
+    expect(socket.disconnect).toHaveBeenCalledWith(true)
+  })
+
+  it('服务端事件按用户与回测房间定向发送', () => {
+    gateway.emitBacktestProgress('job-1', 50, 'running')
+    gateway.emitBacktestCompleted('job-1', { runId: 'run-1' })
+    gateway.emitBacktestFailed('job-1', 'engine error')
+    gateway.emitToUser(42, 'notification', { id: 7 })
 
     const server = gateway.server as unknown as ReturnType<typeof makeMockServer>
-    expect(server.emit).toHaveBeenCalledWith('tushare_sync_overall_progress', payload)
+    expect(server.to).toHaveBeenCalledWith('backtest:job-1')
+    expect(server.to).toHaveBeenCalledWith('user:42')
+    expect(server._room.emit).toHaveBeenCalledWith('backtest_progress', {
+      jobId: 'job-1',
+      progress: 50,
+      state: 'running',
+    })
+    expect(server._room.emit).toHaveBeenCalledWith('backtest_completed', { jobId: 'job-1', result: { runId: 'run-1' } })
+    expect(server._room.emit).toHaveBeenCalledWith('backtest_failed', { jobId: 'job-1', reason: 'engine error' })
+  })
+
+  it('管理员同步事件只写入管理员房间', () => {
+    gateway.broadcastSyncStarted('cron', 'incremental')
+    gateway.broadcastSyncFailed('cron', 'incremental', 'timeout')
+
+    const server = gateway.server as unknown as ReturnType<typeof makeMockServer>
+    expect(server.to).toHaveBeenCalledWith('role:admin')
+    expect(server._room.emit).toHaveBeenCalledWith('tushare_sync_started', { trigger: 'cron', mode: 'incremental' })
+    expect(server._room.emit).toHaveBeenCalledWith('tushare_sync_failed', {
+      trigger: 'cron',
+      mode: 'incremental',
+      reason: 'timeout',
+    })
+  })
+
+  it('无本地 Socket.IO server 时通过 Redis publisher 转发事件', () => {
+    const publisher = {
+      emitToRoom: jest.fn(),
+      broadcast: jest.fn(),
+    }
+    gateway = new EventsGateway(
+      tokenService as unknown as TokenService,
+      prisma as unknown as PrismaService,
+      publisher as never,
+    )
+
+    gateway.emitBacktestProgress('job-1', 50, 'running')
+    gateway.broadcastNotification('queued', { jobId: 'job-1' })
+
+    expect(publisher.emitToRoom).toHaveBeenCalledWith('backtest:job-1', 'backtest_progress', {
+      jobId: 'job-1',
+      progress: 50,
+      state: 'running',
+    })
+    expect(publisher.broadcast).toHaveBeenCalledWith('notification', { message: 'queued', data: { jobId: 'job-1' } })
   })
 })
-

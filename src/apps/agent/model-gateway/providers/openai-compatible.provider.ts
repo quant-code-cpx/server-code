@@ -1,4 +1,4 @@
-import type { IModelConfig } from 'src/config/model.config'
+import type { AgentModelProviderConfig, IModelConfig } from 'src/config/model.config'
 import {
   ModelGatewayError,
   type ModelCapability,
@@ -48,24 +48,29 @@ const MAX_SSE_BUFFER_CHARS = 1_000_000
 const MAX_TOOL_ARGUMENT_CHARS = 1_000_000
 
 export class OpenAiCompatibleProvider implements ModelProvider {
-  readonly provider = 'openai-compatible'
+  readonly provider: string
   private readonly descriptor: ModelDescriptor
   private readonly endpoint: string
+  private readonly apiKey: string
 
   constructor(
-    private readonly config: IModelConfig,
+    config: AgentModelProviderConfig | IModelConfig,
     private readonly fetchImpl: typeof fetch = globalThis.fetch,
   ) {
-    if (!config.baseUrl || !config.apiKey) throw new Error('[AgentModel] OpenAI-compatible provider 配置不完整')
-    this.endpoint = `${config.baseUrl.replace(/\/$/, '')}/chat/completions`
+    const providerConfig = 'providers' in config ? config.providers[0] : config
+    if (!providerConfig.baseUrl || !providerConfig.apiKey)
+      throw new Error('[AgentModel] OpenAI-compatible provider 配置不完整')
+    this.provider = providerConfig.id
+    this.apiKey = providerConfig.apiKey
+    this.endpoint = `${providerConfig.baseUrl.replace(/\/$/, '')}/chat/completions`
     this.descriptor = {
       provider: this.provider,
-      model: config.defaultModel,
-      contextWindow: config.descriptor.contextWindow,
-      maxOutputTokens: config.descriptor.maxOutputTokens,
-      capabilities: config.descriptor.capabilities as ModelCapability[],
-      reasoningEfforts: config.descriptor.reasoningEfforts as ModelReasoningEffort[],
-      dataClasses: config.descriptor.dataClasses as ModelDataClass[],
+      model: providerConfig.defaultModel,
+      contextWindow: providerConfig.descriptor.contextWindow,
+      maxOutputTokens: providerConfig.descriptor.maxOutputTokens,
+      capabilities: providerConfig.descriptor.capabilities as ModelCapability[],
+      reasoningEfforts: providerConfig.descriptor.reasoningEfforts as ModelReasoningEffort[],
+      dataClasses: providerConfig.descriptor.dataClasses as ModelDataClass[],
     }
   }
 
@@ -87,7 +92,7 @@ export class OpenAiCompatibleProvider implements ModelProvider {
       response = await this.fetchImpl(this.endpoint, {
         method: 'POST',
         headers: {
-          authorization: `Bearer ${this.config.apiKey}`,
+          authorization: `Bearer ${this.apiKey}`,
           'content-type': 'application/json',
           accept: 'text/event-stream',
         },

@@ -3,6 +3,7 @@ import { resolve } from 'node:path'
 import { AiVersionStatus, Prisma, PrismaClient, UserRole } from '@prisma/client'
 import { WorkflowRegistryService } from 'src/apps/agent/workflow/workflow-registry.service'
 import { STOCK_RESEARCH_WORKFLOW_V1 } from 'src/apps/agent/workflow/workflows/stock-research.v1'
+import { CONVERSATION_SUMMARY_PROMPT_V1 } from 'src/apps/agent/memory/conversation-summary.prompt'
 
 loadDatabaseUrl()
 const prisma = new PrismaClient()
@@ -20,17 +21,25 @@ async function main(): Promise<void> {
 
   const result = await prisma.$transaction(async (tx) => {
     const prompt = await ensurePromptVersion(tx, snapshot.prompt, publisher.id)
+    const summaryPrompt = await ensurePromptVersion(tx, CONVERSATION_SUMMARY_PROMPT_V1, publisher.id)
     const workflow = await ensureWorkflowVersion(tx, snapshot, publisher.id)
-    return { prompt, workflow }
+    return { prompt, summaryPrompt, workflow }
   })
   process.stdout.write(
-    `Agent workflow published: ${result.workflow.workflowKey}@${result.workflow.version}, prompt ${result.prompt.promptKey}@${result.prompt.version}\n`,
+    `Agent workflow published: ${result.workflow.workflowKey}@${result.workflow.version}, prompts ${result.prompt.promptKey}@${result.prompt.version}, ${result.summaryPrompt.promptKey}@${result.summaryPrompt.version}\n`,
   )
 }
 
 async function ensurePromptVersion(
   tx: Prisma.TransactionClient,
-  prompt: ReturnType<WorkflowRegistryService['snapshot']>['prompt'],
+  prompt: {
+    promptKey: string
+    version: number
+    template: string
+    inputSchema: Record<string, unknown>
+    outputSchema: Record<string, unknown>
+    contentHash: string
+  },
   publisherId: number,
 ) {
   const existing = await tx.aiPromptVersion.findUnique({

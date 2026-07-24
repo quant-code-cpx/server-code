@@ -1,0 +1,410 @@
+name: Production Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      server_release_run_id:
+        description: Container Release workflow run ID that produced the server images
+        required: true
+        type: string
+      app_image:
+        description: Immutable quant-server image reference (image@sha256:...)
+        required: true
+        type: string
+      migration_image:
+        description: Immutable quant-server-migration image reference (image@sha256:...)
+        required: true
+        type: string
+      edge_image:
+        description: Immutable edge image reference (image@sha256:...)
+        required: true
+        type: string
+      canary_window:
+        description: Prometheus canary window
+        required: true
+        default: 10m
+        type: string
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  actions: read
+  packages: read
+
+jobs:
+  deploy:
+    name: Verify release evidence and deploy
+    runs-on: [self-hosted, linux, production]
+    environment:
+      name: production
+    env:
+      APP_IMAGE: ${{ inputs.app_image }}
+      MIGRATION_IMAGE: ${{ inputs.migration_image }}
+      EDGE_IMAGE: ${{ inputs.edge_image }}
+      SERVER_RELEASE_RUN_ID: ${{ inputs.server_release_run_id }}
+      CANARY_WINDOW: ${{ inputs.canary_window }}
+      PRODUCTION_ENV_FILE: ${{ vars.PRODUCTION_ENV_FILE }}
+      PRODUCTION_MANIFEST_DIR: ${{ vars.PRODUCTION_MANIFEST_DIR }}
+      PRODUCTION_PROMETHEUS_URL: ${{ vars.PRODUCTION_PROMETHEUS_URL }}
+      GH_TOKEN: ${{ github.token }}
+      CLIENT_ACTIONS_TOKEN: ${{ secrets.CLIENT_E2E_DISPATCH_TOKEN }}
+
+    steps:
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Download immutable release evidence
+        uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ inputs.server_release_run_id }}
+          github-token: ${{ github.token }}
+          path: release-evidence
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Verify signed release images
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          workflow_identity="^https://github.com/${GITHUB_REPOSITORY}/.github/workflows/container-release.yml@.*$"
+          for image in "$APP_IMAGE" "$MIGRATION_IMAGE" "$EDGE_IMAGE"; do
+            cosign verify \
+              --certificate-identity-regexp "$workflow_identity" \
+              --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
+              "$image" >/dev/null
+          done
+
+      - name: Verify release evidence and deployment inputs
+        id: release
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          require_digest() {
+            local image="$1"
+            [[ "$image" =~ ^[a-z0-9][a-z0-9./:_-]*@sha256:[a-f0-9]{64}$ ]] || {
+              echo "immutable image digest required: ${image}" >&2
+              exit 1
+            }
+            [[ "$image" != *':latest@'* ]] || {
+              echo "latest tag is forbidden: ${image}" >&2
+              exit 1
+            }
+          }
+
+          require_digest "$APP_IMAGE"
+          require_digest "$MIGRATION_IMAGE"
+          require_digest "$EDGE_IMAGE"
+          [[ "$APP_IMAGE" = "ghcr.io/${GITHUB_REPOSITORY_OWNER}/quant-server@sha256:"* ]] || {
+            echo "app image must be this repository owner's quant-server package" >&2
+            exit 1
+          }
+          [[ "$MIGRATION_IMAGE" = "ghcr.io/${GITHUB_REPOSITORY_OWNER}/quant-server-migration@sha256:"* ]] || {
+            echo "migration image must be this repository owner's quant-server-migration package" >&2
+            exit 1
+          }
+          [[ "$EDGE_IMAGE" = "ghcr.io/${GITHUB_REPOSITORY_OWNER}/quant-edge@sha256:"* ]] || {
+            echo "edge image must be this repository owner's quant-edge package" >&2
+            exit 1
+          }
+          [[ "$SERVER_RELEASE_RUN_ID" =~ ^[1-9][0-9]*$ ]] || {
+            echo 'server_release_run_id must be a positive GitHub Actions run ID' >&2
+            exit 1
+          }
+          [[ "$CANARY_WINDOW" =~ ^[1-9][0-9]*[smhdwy]$ ]] || {
+            echo 'canary_window must be a Prometheus duration such as 10m' >&2
+            exit 1
+          }
+          [[ "$PRODUCTION_ENV_FILE" = /* && -r "$PRODUCTION_ENV_FILE" ]] || {
+            echo 'PRODUCTION_ENV_FILE must be an existing absolute path on the production runner' >&2
+            exit 1
+          }
+          [[ "$PRODUCTION_MANIFEST_DIR" = /* && -d "$PRODUCTION_MANIFEST_DIR" ]] || {
+            echo 'PRODUCTION_MANIFEST_DIR must be an existing absolute path on the production runner' >&2
+            exit 1
+          }
+          [[ "$PRODUCTION_PROMETHEUS_URL" =~ ^https?://[^[:space:]]+$ ]] || {
+            echo 'PRODUCTION_PROMETHEUS_URL must be an http(s) URL for the required canary gate' >&2
+            exit 1
+          }
+          [[ -n "$CLIENT_ACTIONS_TOKEN" ]] || {
+            echo 'CLIENT_E2E_DISPATCH_TOKEN is required to verify the client E2E run' >&2
+            exit 1
+          }
+
+          manifest_matches="$(find release-evidence -type f -name release-manifest.json -print)"
+          checksum_matches="$(find release-evidence -type f -name SHA256SUMS -print)"
+          [[ "$(printf '%s\n' "$manifest_matches" | awk 'NF { count++ } END { print count + 0 }')" = 1 && "$(printf '%s\n' "$checksum_matches" | awk 'NF { count++ } END { print count + 0 }')" = 1 ]] || {
+            echo 'release manifest or checksum evidence is missing' >&2
+            exit 1
+          }
+          manifest="$manifest_matches"
+          checksums="$checksum_matches"
+          release_root="$(dirname "$manifest")"
+          [[ "$(dirname "$checksums")" = "$release_root" ]] || {
+            echo 'release manifest and checksum evidence must share one artifact root' >&2
+            exit 1
+          }
+          (
+            cd "$release_root"
+            sha256sum --check "$(basename "$checksums")"
+          )
+          manifest_commit="$(jq --exit-status -r '
+            .commit | select(type == "string") | select(test("^[0-9a-f]{40}$"))
+          ' "$manifest")"
+          client_repository="$(jq --exit-status -r '.clientE2E.repository | select(type == "string")' "$manifest")"
+          client_workflow_id="$(jq --exit-status -r '.clientE2E.workflowId | select(type == "string") | select(test("^[1-9][0-9]*$"))' "$manifest")"
+          client_run_id="$(jq --exit-status -r '.clientE2E.runId | select(type == "string") | select(test("^[1-9][0-9]*$"))' "$manifest")"
+          client_commit="$(jq --exit-status -r '.clientE2E.commit | select(type == "string") | select(test("^[0-9a-f]{40}$"))' "$manifest")"
+          client_artifact_id="$(jq --exit-status -r '.clientE2E.artifactId | select(type == "string") | select(test("^[1-9][0-9]*$"))' "$manifest")"
+          client_artifact_name="$(jq --exit-status -r '.clientE2E.artifactName | select(type == "string")' "$manifest")"
+          frontend_sha256="$(jq --exit-status -r '.frontend.sha256 | select(type == "string") | select(test("^[0-9a-f]{64}$"))' "$manifest")"
+          expected_client_repository="${GITHUB_REPOSITORY_OWNER}/client-code"
+          expected_client_title="Fixed-digest E2E [server-release:${SERVER_RELEASE_RUN_ID}]"
+          expected_client_artifact="frontend-release-${SERVER_RELEASE_RUN_ID}"
+          jq --exit-status \
+            --arg runId "$SERVER_RELEASE_RUN_ID" \
+            --arg appImage "$APP_IMAGE" \
+            --arg migrationImage "$MIGRATION_IMAGE" \
+            --arg edgeImage "$EDGE_IMAGE" \
+            --arg clientRepository "$expected_client_repository" \
+            --arg clientArtifactName "$expected_client_artifact" \
+            '.schemaVersion == 2
+              and .runId == $runId
+              and .images.app == $appImage
+              and .images.migration == $migrationImage
+              and .images.edge == $edgeImage
+              and .clientE2E.repository == $clientRepository
+              and .clientE2E.workflow == "e2e.yml"
+              and .clientE2E.ref == "refs/heads/main"
+              and .clientE2E.artifactName == $clientArtifactName
+              and .frontend.archive == "frontend/frontend-dist.tar.gz"
+              and .frontend.manifest == "frontend/frontend-release-manifest.json"' \
+            "$manifest" >/dev/null
+
+          frontend_archive="$release_root/frontend/frontend-dist.tar.gz"
+          frontend_manifest="$release_root/frontend/frontend-release-manifest.json"
+          [[ -f "$frontend_archive" && -f "$frontend_manifest" ]] || {
+            echo 'verified frontend archive or manifest is missing from release evidence' >&2
+            exit 1
+          }
+          actual_frontend_sha256="$(sha256sum "$frontend_archive" | awk '{print $1}')"
+          [[ "$actual_frontend_sha256" = "$frontend_sha256" ]] || {
+            echo 'frontend archive hash does not match server release manifest' >&2
+            exit 1
+          }
+          jq --exit-status \
+            --arg artifactSha256 "$frontend_sha256" \
+            --arg clientRepository "$client_repository" \
+            --arg clientCommit "$client_commit" \
+            --arg clientRunId "$client_run_id" \
+            --arg serverReleaseRunId "$SERVER_RELEASE_RUN_ID" \
+            --arg serverImage "$APP_IMAGE" '
+              .schemaVersion == 1
+              and .artifact == "frontend-dist.tar.gz"
+              and .artifactSha256 == $artifactSha256
+              and .client.repository == $clientRepository
+              and .client.commit == $clientCommit
+              and .client.ref == "refs/heads/main"
+              and .client.runId == $clientRunId
+              and .server.releaseRunId == $serverReleaseRunId
+              and .server.image == $serverImage
+            ' "$frontend_manifest" >/dev/null
+
+          github_api_url="${GITHUB_API_URL:-https://api.github.com}"
+          source_workflow="$(curl --fail --silent --show-error \
+            --header 'Accept: application/vnd.github+json' \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            --header 'X-GitHub-Api-Version: 2022-11-28' \
+            "${github_api_url}/repos/${GITHUB_REPOSITORY}/actions/workflows/container-release.yml")"
+          source_workflow_id="$(jq --exit-status -r '.id | tostring' <<<"$source_workflow")"
+          source_run="$(curl --fail --silent --show-error \
+            --header 'Accept: application/vnd.github+json' \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            --header 'X-GitHub-Api-Version: 2022-11-28' \
+            "${github_api_url}/repos/${GITHUB_REPOSITORY}/actions/runs/${SERVER_RELEASE_RUN_ID}")"
+          jq --exit-status \
+            --arg runId "$SERVER_RELEASE_RUN_ID" \
+            --arg workflowId "$source_workflow_id" \
+            --arg commit "$manifest_commit" \
+            '(.id | tostring) == $runId
+              and (.workflow_id | tostring) == $workflowId
+              and .status == "completed"
+              and .conclusion == "success"
+              and .head_sha == $commit
+              and (
+                (.head_branch == "main" and (.event == "push" or .event == "workflow_dispatch"))
+                or (.event == "push" and (.head_branch | type == "string" and test("^v")))
+              )' \
+            <<<"$source_run" >/dev/null
+
+          client_workflow="$(curl --fail --silent --show-error \
+            --header 'Accept: application/vnd.github+json' \
+            --header "Authorization: Bearer $CLIENT_ACTIONS_TOKEN" \
+            --header 'X-GitHub-Api-Version: 2022-11-28' \
+            "${github_api_url}/repos/${client_repository}/actions/workflows/e2e.yml")"
+          jq --exit-status \
+            --arg workflowId "$client_workflow_id" \
+            '(.id | tostring) == $workflowId and .path == ".github/workflows/e2e.yml"' \
+            <<<"$client_workflow" >/dev/null
+          client_run="$(curl --fail --silent --show-error \
+            --header 'Accept: application/vnd.github+json' \
+            --header "Authorization: Bearer $CLIENT_ACTIONS_TOKEN" \
+            --header 'X-GitHub-Api-Version: 2022-11-28' \
+            "${github_api_url}/repos/${client_repository}/actions/runs/${client_run_id}")"
+          jq --exit-status \
+            --arg runId "$client_run_id" \
+            --arg workflowId "$client_workflow_id" \
+            --arg commit "$client_commit" \
+            --arg expectedTitle "$expected_client_title" \
+            --arg clientRepository "$client_repository" '
+              (.id | tostring) == $runId
+              and (.workflow_id | tostring) == $workflowId
+              and .event == "repository_dispatch"
+              and .status == "completed"
+              and .conclusion == "success"
+              and .display_title == $expectedTitle
+              and .head_sha == $commit
+              and .head_branch == "main"
+              and .head_repository.full_name == $clientRepository
+            ' <<<"$client_run" >/dev/null
+          client_artifacts="$(curl --fail --silent --show-error \
+            --header 'Accept: application/vnd.github+json' \
+            --header "Authorization: Bearer $CLIENT_ACTIONS_TOKEN" \
+            --header 'X-GitHub-Api-Version: 2022-11-28' \
+            "${github_api_url}/repos/${client_repository}/actions/runs/${client_run_id}/artifacts?per_page=100")"
+          matching_artifacts="$(jq \
+            --arg artifactId "$client_artifact_id" \
+            --arg artifactName "$client_artifact_name" '
+              [.artifacts[]
+                | select((.id | tostring) == $artifactId)
+                | select(.name == $artifactName)
+                | select(.expired == false)]
+              | length
+            ' <<<"$client_artifacts")"
+          [[ "$matching_artifacts" = 1 ]] || {
+            echo 'client frontend artifact identity is missing, expired, or mismatched' >&2
+            exit 1
+          }
+
+          while IFS= read -r archive_entry; do
+            normalized_entry="${archive_entry#./}"
+            [[ -z "$normalized_entry" ]] && continue
+            [[ "$normalized_entry" != /* && "$normalized_entry" != ../* && "$normalized_entry" != *'/../'* && "$normalized_entry" != *\\* ]] || {
+              echo "unsafe frontend archive path: ${archive_entry}" >&2
+              exit 1
+            }
+          done < <(tar -tzf "$frontend_archive")
+          if tar -tvzf "$frontend_archive" | awk 'substr($1, 1, 1) ~ /[lh]/ { found=1 } END { exit found ? 0 : 1 }'; then
+            echo 'frontend archive must not contain symbolic or hard links' >&2
+            exit 1
+          fi
+
+          frontend_parent="$PRODUCTION_MANIFEST_DIR/frontend"
+          frontend_release_root="$frontend_parent/${SERVER_RELEASE_RUN_ID}-${client_commit}"
+          frontend_dist="$frontend_release_root/dist"
+          frontend_marker="$frontend_release_root/artifact.sha256"
+          mkdir -p "$frontend_parent"
+          if [[ -e "$frontend_release_root" ]]; then
+            [[ -d "$frontend_dist" && -f "$frontend_marker" && "$(cat "$frontend_marker")" = "$frontend_sha256" ]] || {
+              echo 'existing frontend release directory does not match verified artifact' >&2
+              exit 1
+            }
+          else
+            frontend_staging="$(mktemp -d "$frontend_parent/.staging.XXXXXX")"
+            cleanup_frontend_staging() {
+              rm -rf -- "$frontend_staging"
+            }
+            trap cleanup_frontend_staging EXIT
+            mkdir -p "$frontend_staging/dist"
+            tar \
+              --extract \
+              --gzip \
+              --file "$frontend_archive" \
+              --directory "$frontend_staging/dist" \
+              --no-same-owner \
+              --no-same-permissions
+            [[ -f "$frontend_staging/dist/index.html" ]] || {
+              echo 'frontend release does not contain index.html' >&2
+              exit 1
+            }
+            printf '%s\n' "$frontend_sha256" > "$frontend_staging/artifact.sha256"
+            mv "$frontend_staging" "$frontend_release_root"
+            trap - EXIT
+          fi
+
+          {
+            echo "server-commit=$manifest_commit"
+            echo "frontend-dist=$frontend_dist"
+            echo "frontend-sha256=$frontend_sha256"
+            echo "client-commit=$client_commit"
+            echo "client-run-id=$client_run_id"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Checkout verified release source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.release.outputs.server-commit }}
+          path: verified-release-source
+          persist-credentials: false
+
+      - name: Run guarded production rollout
+        id: rollout
+        shell: bash
+        env:
+          FRONTEND_DIST_PATH: ${{ steps.release.outputs.frontend-dist }}
+          FRONTEND_ARTIFACT_SHA256: ${{ steps.release.outputs.frontend-sha256 }}
+          CLIENT_COMMIT: ${{ steps.release.outputs.client-commit }}
+          CLIENT_E2E_RUN_ID: ${{ steps.release.outputs.client-run-id }}
+        run: |
+          set -euo pipefail
+
+          release_source="$GITHUB_WORKSPACE/verified-release-source"
+          compose_file="$release_source/docker-compose.prod.yml"
+          [[ -f "$compose_file" ]] || {
+            echo "production compose file not found: ${compose_file}" >&2
+            exit 1
+          }
+
+          rollout_args=(
+            --env-file "$PRODUCTION_ENV_FILE"
+            --app-image "$APP_IMAGE"
+            --migration-image "$MIGRATION_IMAGE"
+            --edge-image "$EDGE_IMAGE"
+            --frontend-dist "$FRONTEND_DIST_PATH"
+            --frontend-artifact-sha256 "$FRONTEND_ARTIFACT_SHA256"
+            --client-commit "$CLIENT_COMMIT"
+            --client-e2e-run-id "$CLIENT_E2E_RUN_ID"
+            --server-release-run-id "$SERVER_RELEASE_RUN_ID"
+            --manifest-dir "$PRODUCTION_MANIFEST_DIR"
+            --compose-file "$compose_file"
+            --canary-prometheus-url "$PRODUCTION_PROMETHEUS_URL"
+            --canary-window "$CANARY_WINDOW"
+            --confirm-rollout
+          )
+
+          output="$("$release_source/scripts/ops/rollout-prod.sh" "${rollout_args[@]}")"
+          printf '%s\n' "$output"
+          manifest="$(printf '%s\n' "$output" | sed -n 's/^manifest=//p')"
+          [[ "$manifest" = "$PRODUCTION_MANIFEST_DIR/"* && -f "$manifest" ]] || {
+            echo 'rollout did not produce a release manifest in PRODUCTION_MANIFEST_DIR' >&2
+            exit 1
+          }
+          echo "manifest=$manifest" >> "$GITHUB_OUTPUT"
+
+      - name: Upload deployment manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-deploy-${{ github.run_id }}
+          path: ${{ steps.rollout.outputs.manifest }}
+          if-no-files-found: error
+          retention-days: 365

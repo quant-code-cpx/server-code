@@ -125,7 +125,8 @@ export class StockFinancialService {
   async getDetailFinancials({ tsCode, periods = 8 }: StockDetailFinancialsDto) {
     const finaRecords = await this.prisma.finaIndicator.findMany({
       where: { tsCode },
-      orderBy: { endDate: 'desc' },
+      orderBy: [{ endDate: 'desc' }, { annDate: 'desc' }, { updateFlag: 'desc' }],
+      distinct: ['endDate'],
       take: periods,
     })
 

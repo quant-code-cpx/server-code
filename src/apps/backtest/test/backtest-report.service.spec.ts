@@ -120,7 +120,7 @@ describe('BacktestReportService', () => {
 
   it('saveReport: 单事务内先清旧结果，再写新结果和完成态指标', async () => {
     const prisma = buildPrismaMock()
-    const svc = new BacktestReportService(prisma as any)
+    const svc = new BacktestReportService(prisma as never)
 
     await svc.saveReport('run-1', buildResult())
 
@@ -153,7 +153,7 @@ describe('BacktestReportService', () => {
 
   it('saveReport: 重跑为空结果时也清理旧明细，不保留脏数据', async () => {
     const prisma = buildPrismaMock()
-    const svc = new BacktestReportService(prisma as any)
+    const svc = new BacktestReportService(prisma as never)
 
     await svc.saveReport(
       'run-1',
@@ -177,5 +177,74 @@ describe('BacktestReportService', () => {
     expect(prisma.tx.backtestTrade.createMany).not.toHaveBeenCalled()
     expect(prisma.tx.backtestPositionSnapshot.createMany).not.toHaveBeenCalled()
     expect(prisma.tx.backtestRebalanceLog.createMany).not.toHaveBeenCalled()
+  })
+
+  it('有完整 manifest 才把 Run 标为 VERIFIED', async () => {
+    const prisma = buildPrismaMock()
+    const svc = new BacktestReportService(prisma as never)
+
+    await svc.saveReport(
+      'run-1',
+      buildResult({
+        reproducibilityManifest: {
+          engineVersion: 'backtest-engine-pit-v2',
+          dataContractVersion: 'backtest-data-contract-v2',
+          universePolicyVersion: 'pit-universe-v1',
+          financialAsOfPolicyVersion: 'announcement-date-update-flag-v2',
+          adjustmentPolicyVersion: 'tushare-qfq-v1',
+          inputHash: 'a'.repeat(64),
+          universeSnapshots: [
+            {
+              date: '2020-01-02',
+              source: 'ALL_A',
+              version: 'pit-universe-v1',
+              hash: 'b'.repeat(64),
+              memberCount: 2,
+            },
+          ],
+          qualityFlags: [],
+        },
+      }),
+    )
+
+    expect(prisma.tx.backtestRun.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          reproducibilityStatus: 'VERIFIED',
+          engineVersion: 'backtest-engine-pit-v2',
+          qualityFlags: [],
+        }),
+      }),
+    )
+  })
+
+  it('manifest 缺 universe snapshot 时保持未验证', async () => {
+    const prisma = buildPrismaMock()
+    const svc = new BacktestReportService(prisma as never)
+
+    await svc.saveReport(
+      'run-1',
+      buildResult({
+        reproducibilityManifest: {
+          engineVersion: 'backtest-engine-pit-v2',
+          dataContractVersion: 'backtest-data-contract-v2',
+          universePolicyVersion: 'pit-universe-v1',
+          financialAsOfPolicyVersion: 'announcement-date-update-flag-v2',
+          adjustmentPolicyVersion: 'tushare-qfq-v1',
+          inputHash: 'a'.repeat(64),
+          universeSnapshots: [],
+          qualityFlags: [],
+        },
+      }),
+    )
+
+    expect(prisma.tx.backtestRun.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          reproducibilityStatus: 'LEGACY_UNVERIFIED',
+          qualityFlags: ['INVALID_REPRODUCIBILITY_MANIFEST'],
+        }),
+      }),
+    )
   })
 })

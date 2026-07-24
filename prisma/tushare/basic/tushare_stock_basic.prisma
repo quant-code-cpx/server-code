@@ -31,5 +31,6 @@ model StockBasic {
   @@index([listStatus, exchange, market])
   @@index([listStatus, industry, area])
   @@index([listStatus, listDate])
+  @@index([listDate, delistDate])
   @@map("stock_basic_profiles")
 }

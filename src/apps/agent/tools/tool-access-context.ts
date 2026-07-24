@@ -10,6 +10,7 @@ export interface ToolExecutionContext {
   runId: string
   stepId: string
   traceId: string
+  workerId?: string
   workflowAllowedTools: readonly AgentToolKey[]
   allowedScopes: readonly string[]
   callsUsed: number

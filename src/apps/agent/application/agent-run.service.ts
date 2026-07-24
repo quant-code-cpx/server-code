@@ -4,6 +4,7 @@ import { AiAgentRunStatus } from '@prisma/client'
 import { AgentQueueService } from 'src/queue/agent/agent-queue.service'
 import { RequestContextService } from 'src/shared/context/request-context.service'
 import { LoggerService } from 'src/shared/logger/logger.service'
+import { sanitizeAuditErrorMessage } from '../audit/agent-audit-sanitizer'
 import type { AgentCapability } from '../contracts'
 import type {
   AgentRunStatusDto,
@@ -73,6 +74,38 @@ export class AgentRunService {
       runId: interaction.run.id,
       runStatus: interaction.run.status,
       streamEndpoint: STREAM_ENDPOINT,
+    }
+  }
+
+  async sendScheduled(command: {
+    userId: number
+    taskId: string
+    executionId: string
+    taskName: string
+    scheduledFor: Date
+    prompt: string
+    input: Record<string, unknown>
+    gateEvidence: Record<string, unknown>
+    modelPolicy: import('@prisma/client').AiModelPolicy
+    preferredModel: string | null
+    allowedCapabilities: AgentCapability[]
+    maxCostCny: number
+    workflow: AgentWorkflowPin
+  }) {
+    const allowedCapabilities = normalizeCapabilities(command.allowedCapabilities)
+    const interaction = await this.interactions.sendScheduled({
+      ...command,
+      allowedCapabilities,
+      allowedScopes: resolveScopes(allowedCapabilities),
+      traceId: RequestContextService.getTraceId() ?? randomUUID(),
+    })
+    if (isActive(interaction.run.status)) await this.enqueueBestEffort(interaction.run.id)
+    return {
+      conversationId: interaction.conversationId,
+      userMessageId: interaction.triggerMessageId,
+      assistantMessageId: interaction.responseMessageId,
+      runId: interaction.run.id,
+      runStatus: interaction.run.status,
     }
   }
 
@@ -172,7 +205,10 @@ function validationError(message: string): BadRequestException {
 }
 
 function safeErrorMessage(error: unknown): string {
-  return (error instanceof Error ? error.message : String(error)).replace(/[\r\n\t]+/g, ' ').slice(0, 500)
+  const value = error instanceof Error ? error.message : String(error)
+  return sanitizeAuditErrorMessage(value, 500)
+    .replace(/[\r\n\t]+/g, ' ')
+    .slice(0, 500)
 }
 
 function isActive(status: AiAgentRunStatus): boolean {

@@ -15,9 +15,9 @@ model Strategy {
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@map("strategies")
   @@unique([userId, name])
   @@index([userId, updatedAt(sort: Desc)])
   @@index([strategyType])
   @@index([isPublic])
+  @@map("strategies")
 }

@@ -3,6 +3,7 @@ import { SchedulerRegistry } from '@nestjs/schedule'
 import { CronJob } from 'cron'
 import { Prisma } from '@prisma/client'
 import { PrismaService } from 'src/shared/prisma.service'
+import { DistributedCronLockService } from 'src/shared/scheduler/distributed-cron-lock.service'
 import { FactorComputeService } from './factor-compute.service'
 
 // ── Stat helpers ─────────────────────────────────────────────────────────────
@@ -120,13 +121,17 @@ export class FactorPrecomputeService implements OnApplicationBootstrap {
     private readonly prisma: PrismaService,
     private readonly compute: FactorComputeService,
     private readonly schedulerRegistry: SchedulerRegistry,
+    private readonly cronLock: DistributedCronLockService,
   ) {}
 
   onApplicationBootstrap() {
+    if (!this.cronLock.isSchedulerProcess()) return
     const job = new CronJob(
       '0 0 20 * * 1-5', // 20:00 weekdays
       () => {
-        void this.runDailyPrecompute()
+        void this.cronLock.runIfScheduler('factor-precompute:daily', async () => {
+          await this.runDailyPrecompute()
+        })
       },
       null,
       true,

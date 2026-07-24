@@ -1,6 +1,6 @@
 ---
 batch: 21
-status: pending
+status: completed
 type: fullstack
 depends_on: ["batch-020-scheduled-agent-tasks"]
 blocks: ["batch-026-security-hardening-and-production-deployment"]
@@ -129,9 +129,11 @@ estimated_scope: large
 
 ## 22. 执行命令
 
-- `pnpm test -- src/apps/notification/test/agent-notification.spec.ts`
+- `pnpm exec jest src/apps/notification/test --runInBand`
+- `pnpm run test:agent-execution:integration`
 - `pnpm run build`
-- `yarn --cwd ../client-code test notification-channel-settings`
+- `yarn --cwd ../client-code lint && yarn --cwd ../client-code build`
+- `yarn --cwd ../client-code test src/sections/agent/__tests__`
 
 ## 23. 验收标准
 
@@ -141,7 +143,9 @@ estimated_scope: large
 
 ## 24. 完成定义
 
-schema、port、至少站内+一个批准渠道、outbox、API/UI、加密/幂等/故障测试合入。
+已完成：`AiNotificationChannel`、`AiNotificationDelivery`、`AiNotificationDeliveryAttempt` schema/migration；站内信与签名 HTTPS Webhook adapter；AES-256-GCM 密文及密钥版本轮换；outbox/attempt/lease/retry/幂等；channels/deliveries API 与前端设置抽屉。
+
+验证证据：notification 5 suites/55 tests、独立 PostgreSQL execution repository 12 tests、workflow 10 tests、前端 Agent 11 files/38 tests、前后端 build/lint/契约检查均通过；本地 Docker app、agent-worker、PostgreSQL、Redis 均健康。完整记录见 [执行报告](../../../智能体通知渠道与可靠投递测试执行报告-20260722.md)。
 
 ## 25. 回滚方案
 

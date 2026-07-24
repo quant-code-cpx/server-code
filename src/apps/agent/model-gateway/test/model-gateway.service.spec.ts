@@ -3,6 +3,8 @@ import type { AddressInfo } from 'node:net'
 import { buildModelConfig, type IModelConfig, type ModelConfigEnvironment } from 'src/config/model.config'
 import { LoggerService } from 'src/shared/logger/logger.service'
 import { ModelCapabilityRegistry } from '../model-capability.registry'
+import { ModelRouterService } from '../model-router.service'
+import { ProviderHealthService } from '../provider-health.service'
 import {
   ModelAbortError,
   type ModelChunk,
@@ -487,7 +489,9 @@ describe('Model Gateway provider contract 与 OpenAI-compatible adapter', () => 
   }
 
   function createService(provider: ModelProvider, config: IModelConfig): ModelGatewayService {
-    return new ModelGatewayService(provider, new ModelCapabilityRegistry(provider), config, logger, observer)
+    const registry = new ModelCapabilityRegistry(provider)
+    const health = new ProviderHealthService(config)
+    return new ModelGatewayService(registry, new ModelRouterService(registry, health), health, config, logger, observer)
   }
 })
 

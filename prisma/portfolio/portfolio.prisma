@@ -28,7 +28,7 @@ model Portfolio {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  user       User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user       User                @relation(fields: [userId], references: [id], onDelete: Cascade)
   holdings   PortfolioHolding[]
   riskRules  PortfolioRiskRule[]
   violations RiskViolationLog[]
@@ -58,16 +58,16 @@ model PortfolioHolding {
 
 /// 组合绑定的风控规则
 model PortfolioRiskRule {
-  id          String               @id @default(cuid())
+  id          String                @id @default(cuid())
   portfolioId String
   ruleType    PortfolioRiskRuleType
   threshold   Float /// 触发阈值，含义见 ruleType 注释
-  isEnabled   Boolean              @default(true)
-  memo        String?              @db.VarChar(200)
-  createdAt   DateTime             @default(now())
-  updatedAt   DateTime             @updatedAt
+  isEnabled   Boolean               @default(true)
+  memo        String?               @db.VarChar(200)
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
 
-  portfolio  Portfolio        @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+  portfolio  Portfolio          @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
   violations RiskViolationLog[]
 
   @@unique([portfolioId, ruleType]) /// 每组合每类型只允许一条规则
@@ -76,16 +76,16 @@ model PortfolioRiskRule {
 
 /// 风控违规记录
 model RiskViolationLog {
-  id          String               @id @default(cuid())
+  id          String                @id @default(cuid())
   portfolioId String
   ruleId      String
   ruleType    PortfolioRiskRuleType
   actualValue Float /// 实测值（如实际仓位 0.35）
   threshold   Float /// 规则阈值（如 0.2）
-  detail      String?              @db.Text /// 详细描述（如 "000001.SZ 占比 35%"）
-  checkedAt   DateTime             @default(now())
+  detail      String?               @db.Text /// 详细描述（如 "000001.SZ 占比 35%"）
+  checkedAt   DateTime              @default(now())
 
-  portfolio Portfolio        @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+  portfolio Portfolio         @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
   rule      PortfolioRiskRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
 
   @@index([portfolioId, checkedAt])

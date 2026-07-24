@@ -1,4 +1,4 @@
-export const AGENT_TOOL_KEYS = [
+export const AGENT_MVP_READ_TOOL_KEYS = [
   'resolve_security',
   'get_stock_price_history',
   'get_stock_overview',
@@ -15,6 +15,10 @@ export const AGENT_TOOL_KEYS = [
   'search_web',
   'fetch_web_page',
 ] as const
+
+export const AGENT_WRITE_TOOL_KEYS = ['save_research_report'] as const
+
+export const AGENT_TOOL_KEYS = [...AGENT_MVP_READ_TOOL_KEYS, ...AGENT_WRITE_TOOL_KEYS] as const
 
 export type AgentToolKey = (typeof AGENT_TOOL_KEYS)[number]
 

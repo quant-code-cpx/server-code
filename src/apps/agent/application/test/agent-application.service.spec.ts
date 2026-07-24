@@ -12,6 +12,7 @@ import { WorkflowRegistryService } from '../../workflow/workflow-registry.servic
 import { AgentConversationService } from '../agent-conversation.service'
 import { AgentInteractionRepository } from '../agent-interaction.repository'
 import { AgentRunService } from '../agent-run.service'
+import { ConversationSummaryService } from '../../memory/conversation-summary.service'
 
 const now = new Date('2026-07-20T01:00:00.000Z')
 
@@ -19,6 +20,7 @@ describe('AgentConversationService', () => {
   let service: AgentConversationService
   let repository: Record<string, jest.Mock>
   let models: Record<string, jest.Mock>
+  let summaries: Record<string, jest.Mock>
 
   beforeEach(async () => {
     repository = {
@@ -30,12 +32,26 @@ describe('AgentConversationService', () => {
         .mockResolvedValue(conversation({ modelPolicy: AiModelPolicy.MANUAL, preferredModel: 'model-v1' })),
     }
     models = { get: jest.fn().mockReturnValue({ model: 'model-v1' }) }
+    summaries = {
+      currentMetadata: jest.fn().mockResolvedValue({
+        summaryId: 'summary_1',
+        version: 2,
+        fromMessageId: 'message_1',
+        throughMessageId: 'message_2',
+        promptVersionId: 'prompt_1',
+        modelName: 'summary-model',
+        sourceTokenCount: 100,
+        contentHash: 'a'.repeat(64),
+        createdAt: now.toISOString(),
+      }),
+    }
     const moduleRef = await Test.createTestingModule({
       providers: [
         AgentConversationService,
         { provide: AgentConversationRepository, useValue: repository },
         { provide: AgentRestReadRepository, useValue: { listMessages: jest.fn() } },
         { provide: ModelCapabilityRegistry, useValue: models },
+        { provide: ConversationSummaryService, useValue: summaries },
       ],
     }).compile()
     service = moduleRef.get(AgentConversationService)
@@ -85,10 +101,14 @@ describe('AgentConversationService', () => {
       items: [{ conversationId: 'cm_1', title: '研究', messageCount: 0 }],
       nextCursor: 'next',
     })
-    await expect(service.detail(1, { conversationId: 'cm_1' })).resolves.toMatchObject({
+    const detail = await service.detail(1, { conversationId: 'cm_1' })
+    expect(detail).toMatchObject({
       conversationId: 'cm_1',
       statusVersion: 1,
+      currentSummary: { summaryId: 'summary_1', version: 2 },
     })
+    expect(detail.currentSummary).not.toHaveProperty('summaryText')
+    expect(summaries.currentMetadata).toHaveBeenCalledWith(1, 'cm_1')
     await expect(
       service.updateModel(1, {
         conversationId: 'cm_1',

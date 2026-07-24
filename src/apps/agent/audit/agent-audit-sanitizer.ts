@@ -129,12 +129,21 @@ export function canonicalizeExternalUrl(rawUrl: string): string {
 }
 
 function sanitizeUrl(value: string): string {
-  if (!/^https?:\/\//i.test(value.trim())) return value
+  if (!/^https?:\/\//i.test(value.trim())) return redactSensitiveUrlFragments(value)
   try {
     return canonicalizeExternalUrl(value)
   } catch {
     return REDACTED
   }
+}
+
+function redactSensitiveUrlFragments(value: string): string {
+  return value
+    .replace(/\b([a-z][a-z0-9+.-]*:\/\/)([^@\s/]+)@/gi, '$1[REDACTED]@')
+    .replace(
+      /([?&](?:password|token|secret|cookie|authorization|apikey|privatekey|credential|signature|session|accesskey|clientkey)=)[^&#\s]*/gi,
+      '$1[REDACTED]',
+    )
 }
 
 function truncateString(value: string, maxLength: number): string {

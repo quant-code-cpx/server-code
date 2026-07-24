@@ -34,6 +34,10 @@ import { SyncStatusOverviewService } from './sync/sync-status-overview.service'
 import { WebsocketModule } from 'src/websocket/websocket.module'
 import { HeatmapModule } from 'src/apps/heatmap/heatmap.module'
 import { SignalModule } from 'src/apps/signal/signal.module'
+import { buildProcessRoleConfig } from 'src/config/process-role.config'
+import { NoopScheduleModule } from 'src/shared/scheduler/noop-schedule.module'
+
+const processRole = buildProcessRoleConfig(process.env)
 
 /**
  * TushareModule
@@ -42,7 +46,15 @@ import { SignalModule } from 'src/apps/signal/signal.module'
  * 同步层按分类独立维护，由 TushareSyncService 统一编排
  */
 @Module({
-  imports: [WebsocketModule, HeatmapModule, forwardRef(() => SignalModule)],
+  imports: [
+    // SchedulerRegistry must be visible from this module's scope. API and
+    // workers deliberately do not load ScheduleModule, so provide its no-op
+    // replacement here rather than relying on the root module's scope.
+    ...(processRole.schedulerEnabled ? [] : [NoopScheduleModule]),
+    WebsocketModule,
+    HeatmapModule,
+    forwardRef(() => SignalModule),
+  ],
   providers: [
     // API
     TushareClient,

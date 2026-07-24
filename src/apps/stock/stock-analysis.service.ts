@@ -305,7 +305,7 @@ export class StockAnalysisService {
         const latestAdj = closeRows[closeRows.length - 1]?.adjFactor ?? 1
         for (const row of closeRows) {
           const factor = row.adjFactor ?? 1
-          const adjMultiplier = factor > 0 ? latestAdj / factor : 1
+          const adjMultiplier = factor > 0 && latestAdj > 0 ? factor / latestAdj : 1
           const adjClose = row.close !== null ? Math.round(row.close * adjMultiplier * 100) / 100 : null
           closeMap.set(dayjs(row.tradeDate).format('YYYYMMDD'), adjClose)
         }
@@ -544,7 +544,7 @@ export class StockAnalysisService {
       .filter((row) => row.close !== null && row.open !== null && row.high !== null && row.low !== null)
       .map((row) => {
         const factor = row.adjFactor ?? 1
-        const multiplier = factor > 0 ? latestAdj / factor : 1
+        const multiplier = factor > 0 && latestAdj > 0 ? factor / latestAdj : 1
         const adj = (v: number | null) => (v !== null ? Math.round(v * multiplier * 10000) / 10000 : 0)
 
         return {

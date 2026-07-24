@@ -64,6 +64,24 @@ export interface RegenerateInteractionCommand {
   workflow: AgentWorkflowPin
 }
 
+export interface SendScheduledInteractionCommand {
+  userId: number
+  taskId: string
+  executionId: string
+  taskName: string
+  scheduledFor: Date
+  prompt: string
+  input: Record<string, unknown>
+  gateEvidence: Record<string, unknown>
+  modelPolicy: AiModelPolicy
+  preferredModel: string | null
+  allowedCapabilities: string[]
+  allowedScopes: string[]
+  maxCostCny: number
+  traceId: string
+  workflow: AgentWorkflowPin
+}
+
 export interface CreatedAgentInteraction {
   conversationId: string
   triggerMessageId: string
@@ -172,6 +190,123 @@ export class AgentInteractionRepository {
       }
     })
     this.logOperation('send', startedAt, result.run.id)
+    return result
+  }
+
+  /**
+   * 创建由已冻结 schedule execution 触发的独立会话、Run 与 outbox。
+   * executionId 是幂等边界，重复 scanner/recovery 不会创建第二个 Run。
+   */
+  async sendScheduled(command: SendScheduledInteractionCommand): Promise<CreatedAgentInteraction> {
+    const startedAt = Date.now()
+    const clientRequestId = `scheduled:${command.executionId}`
+    const requestHash = hashRequest({
+      operation: 'SCHEDULED',
+      taskId: command.taskId,
+      executionId: command.executionId,
+      scheduledFor: command.scheduledFor.toISOString(),
+      prompt: command.prompt,
+      input: command.input,
+      gateEvidence: command.gateEvidence,
+      modelPolicy: command.modelPolicy,
+      preferredModel: command.preferredModel,
+      allowedCapabilities: [...command.allowedCapabilities].sort(),
+      maxCostCny: command.maxCostCny,
+      workflow: command.workflow,
+    })
+    const result = await this.prisma.$transaction(async (tx) => {
+      await lockUser(tx, command.userId)
+      const existing = await findRunByRequest(tx, command.userId, clientRequestId)
+      if (existing) return resolveExisting(existing, requestHash, null)
+
+      const preferredModel = this.resolveScheduledPreferredModel(command.modelPolicy, command.preferredModel)
+      const quota = await this.assertQuotaAndResolveBudget(tx, command.userId, command.maxCostCny)
+      const versions = await this.resolvePublishedVersions(tx, command.workflow)
+      const now = new Date()
+      const conversation = await tx.aiConversation.create({
+        data: {
+          userId: command.userId,
+          title: `定时研究：${command.taskName}`.slice(0, 200),
+          modelPolicy: command.modelPolicy,
+          preferredModel,
+          clientRequestId: `scheduled-conversation:${command.executionId}`,
+          metadata: {
+            source: 'SCHEDULED_RESEARCH',
+            taskId: command.taskId,
+            executionId: command.executionId,
+            scheduledFor: command.scheduledFor.toISOString(),
+          },
+          lastMessageAt: now,
+          createdAt: now,
+        },
+      })
+      const userMessage = await tx.aiMessage.create({
+        data: {
+          userId: command.userId,
+          conversationId: conversation.id,
+          role: AiMessageRole.USER,
+          status: AiMessageStatus.COMPLETED,
+          contentText: command.prompt,
+          contentBlocks: [{ blockId: 'scheduled_prompt', schemaVersion: 1, type: 'MARKDOWN', text: command.prompt }],
+          clientRequestId,
+          completedAt: now,
+          createdAt: now,
+        },
+      })
+      const assistantMessage = await tx.aiMessage.create({
+        data: {
+          userId: command.userId,
+          conversationId: conversation.id,
+          role: AiMessageRole.ASSISTANT,
+          status: AiMessageStatus.PENDING,
+          contentBlocks: [],
+          parentMessageId: userMessage.id,
+          version: 1,
+          modelName: preferredModel,
+          createdAt: now,
+        },
+      })
+      const run = await this.createRun(tx, {
+        userId: command.userId,
+        conversation,
+        triggerMessageId: userMessage.id,
+        responseMessageId: assistantMessage.id,
+        clientRequestId,
+        requestHash,
+        traceId: command.traceId,
+        modelPolicy: command.modelPolicy,
+        preferredModel,
+        workflowVersionId: versions.workflowVersionId,
+        promptVersionId: versions.promptVersionId,
+        inputSnapshot: {
+          schemaVersion: 1,
+          userText: command.prompt,
+          pageContext: {
+            source: 'SCHEDULED_RESEARCH',
+            taskId: command.taskId,
+            executionId: command.executionId,
+            scheduledFor: command.scheduledFor.toISOString(),
+            gateEvidence: command.gateEvidence,
+            input: command.input,
+          },
+          allowedCapabilities: command.allowedCapabilities,
+          allowedScopes: command.allowedScopes,
+        },
+        budget: quota,
+      })
+      await tx.aiConversation.update({
+        where: { id: conversation.id },
+        data: { lastMessageAt: now, messageCount: { increment: 2 } },
+      })
+      return {
+        conversationId: conversation.id,
+        triggerMessageId: userMessage.id,
+        responseMessageId: assistantMessage.id,
+        sourceMessageId: null,
+        run,
+      }
+    })
+    this.logOperation('sendScheduled', startedAt, result.run.id)
     return result
   }
 
@@ -330,6 +465,7 @@ export class AgentInteractionRepository {
   private async assertQuotaAndResolveBudget(
     tx: Prisma.TransactionClient,
     userId: number,
+    requestedMaxCost?: number,
   ): Promise<Record<string, unknown>> {
     const activeRuns = await tx.aiAgentRun.count({
       where: {
@@ -352,8 +488,11 @@ export class AgentInteractionRepository {
     const used = Number(dailyCost._sum.cost ?? 0)
     const remaining = this.apiConfig.defaultDailyBudget - used
     if (remaining <= 0) throw new AgentRunQuotaExceededError('今日 Agent 成本额度已用尽')
+    if (requestedMaxCost != null && (!Number.isFinite(requestedMaxCost) || requestedMaxCost <= 0)) {
+      throw new AgentRunQuotaExceededError('定时任务成本上限无效')
+    }
     return {
-      maxCost: Math.min(this.executionConfig.maxCostPerRun, remaining),
+      maxCost: Math.min(this.executionConfig.maxCostPerRun, remaining, requestedMaxCost ?? Number.POSITIVE_INFINITY),
       costCurrency: 'CNY',
       dailyBudget: this.apiConfig.defaultDailyBudget,
       dailyUsedBeforeRun: used,
@@ -386,6 +525,17 @@ export class AgentInteractionRepository {
     if (modelPolicy === AiModelPolicy.AUTO) return null
     const preferredModel = conversation.preferredModel
     if (!preferredModel) throw new AgentMessageValidationError('MANUAL modelPolicy 需要会话先配置 preferredModel')
+    try {
+      this.models.get(preferredModel)
+    } catch {
+      throw new AgentMessageValidationError('preferredModel 未注册或不可用')
+    }
+    return preferredModel
+  }
+
+  private resolveScheduledPreferredModel(modelPolicy: AiModelPolicy, preferredModel: string | null): string | null {
+    if (modelPolicy === AiModelPolicy.AUTO) return null
+    if (!preferredModel) throw new AgentMessageValidationError('MANUAL modelPolicy 需要指定 preferredModel')
     try {
       this.models.get(preferredModel)
     } catch {

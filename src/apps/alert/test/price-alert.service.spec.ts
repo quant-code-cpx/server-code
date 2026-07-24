@@ -13,11 +13,16 @@
 
 import { BadRequestException, NotFoundException } from '@nestjs/common'
 import { PriceAlertRuleStatus, PriceAlertRuleType } from '@prisma/client'
+import { NotificationService } from 'src/apps/notification/notification.service'
+import { PrismaService } from 'src/shared/prisma.service'
+import { DistributedCronLockService } from 'src/shared/scheduler/distributed-cron-lock.service'
+import { EventsGateway } from 'src/websocket/events.gateway'
 import { PriceAlertService } from '../price-alert.service'
 import { CreatePriceAlertRuleDto } from '../dto/price-alert-rule.dto'
 
 function buildPrismaMock() {
-  return {
+  const createdHistoryRows: Array<{ tsCode: string; scanBatchId: string | null }> = []
+  const prisma = {
     stockBasic: { findUnique: jest.fn(async () => null) },
     watchlist: { findFirst: jest.fn(async () => null) },
     portfolio: { findFirst: jest.fn(async () => null) },
@@ -28,10 +33,15 @@ function buildPrismaMock() {
       update: jest.fn(async () => ({})),
     },
     priceAlertTriggerHistory: {
-      create: jest.fn(async () => ({})),
+      createMany: jest.fn(async (args: { data: Array<{ tsCode: string; scanBatchId: string | null }> }) => {
+        createdHistoryRows.push(...args.data)
+        return { count: args.data.length }
+      }),
       findFirst: jest.fn(async () => null),
       count: jest.fn(async () => 0),
-      findMany: jest.fn(async () => []),
+      findMany: jest.fn(async (args?: { where?: { scanBatchId?: string } }) =>
+        args?.where?.scanBatchId ? createdHistoryRows.filter((row) => row.scanBatchId === args.where?.scanBatchId) : [],
+      ),
     },
     watchlistStock: { findMany: jest.fn(async () => []) },
     portfolioHolding: { findMany: jest.fn(async () => []) },
@@ -41,6 +51,9 @@ function buildPrismaMock() {
     },
     stkLimit: { findMany: jest.fn(async () => []) },
   }
+  return Object.assign(prisma, {
+    $transaction: jest.fn(async (callback: (tx: typeof prisma) => Promise<unknown>) => callback(prisma)),
+  })
 }
 
 function buildGatewayMock() {
@@ -51,8 +64,17 @@ function buildNotificationMock() {
   return { create: jest.fn(async () => undefined) }
 }
 
+function buildCronLockMock() {
+  return { runIfScheduler: jest.fn(async (_key: string, task: () => Promise<void>) => task()) }
+}
+
 function createService(prismaMock = buildPrismaMock(), gatewayMock = buildGatewayMock()) {
-  return new PriceAlertService(prismaMock as any, gatewayMock as any, buildNotificationMock() as any)
+  return new PriceAlertService(
+    prismaMock as unknown as PrismaService,
+    gatewayMock as unknown as EventsGateway,
+    buildNotificationMock() as unknown as NotificationService,
+    buildCronLockMock() as unknown as DistributedCronLockService,
+  )
 }
 
 describe('PriceAlertService (OPT-4.3)', () => {
@@ -268,6 +290,39 @@ describe('PriceAlertService (OPT-4.3)', () => {
       expect(prisma.priceAlertRule.update).toHaveBeenCalledTimes(1)
       // But emit fires for each triggered stock
       expect(gateway.emitToUser).toHaveBeenCalledTimes(2)
+    })
+
+    it('should not increment, persist or emit when the rule-stock-tradeDate fact already exists', async () => {
+      const prisma = buildPrismaMock()
+      prisma.priceAlertRule.findMany.mockResolvedValue([
+        {
+          id: 1,
+          userId: 1,
+          tsCode: '000001.SZ',
+          stockName: '平安银行',
+          ruleType: PriceAlertRuleType.PRICE_ABOVE,
+          threshold: 10,
+          status: PriceAlertRuleStatus.ACTIVE,
+          memo: null,
+          watchlistId: null,
+          portfolioId: null,
+          sourceName: null,
+          lastTriggeredAt: new Date(),
+          triggerCount: 1,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+      ])
+      prisma.daily.findFirst.mockResolvedValue({ tradeDate: new Date('2024-12-31T00:00:00.000Z') })
+      prisma.daily.findMany.mockResolvedValue([{ tsCode: '000001.SZ', close: 11, pctChg: 10 }])
+      prisma.priceAlertTriggerHistory.createMany.mockResolvedValue({ count: 0 })
+
+      const gateway = buildGatewayMock()
+      const result = await createService(prisma, gateway).runScan()
+
+      expect(result).toEqual({ triggered: 0 })
+      expect(prisma.priceAlertRule.update).not.toHaveBeenCalled()
+      expect(gateway.emitToUser).not.toHaveBeenCalled()
     })
   })
 

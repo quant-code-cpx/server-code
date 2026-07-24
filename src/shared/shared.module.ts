@@ -1,4 +1,7 @@
 import { Global, Module } from '@nestjs/common'
+import { ConfigModule } from '@nestjs/config'
+import { CronLockConfig } from 'src/config/cron-lock.config'
+import { ProcessRoleConfig } from 'src/config/process-role.config'
 import { JwtModule } from '@nestjs/jwt'
 import { CacheService } from './cache.service'
 import { PrismaService } from './prisma.service'
@@ -6,6 +9,7 @@ import { RedisProvider } from './redis.provider'
 import { RedisShutdownService } from './redis-shutdown.service'
 import { TokenService } from './token.service'
 import { LoggerModule } from './logger/logger.module'
+import { DistributedCronLockService } from './scheduler/distributed-cron-lock.service'
 
 /**
  * SharedModule — 全局共享基础模块。
@@ -25,8 +29,20 @@ import { LoggerModule } from './logger/logger.module'
  */
 @Global()
 @Module({
-  imports: [LoggerModule.forRoot(), JwtModule.register({ global: true, secret: '' })],
-  providers: [PrismaService, RedisProvider, RedisShutdownService, TokenService, CacheService],
-  exports: [PrismaService, RedisProvider, TokenService, CacheService],
+  imports: [
+    ConfigModule.forFeature(CronLockConfig),
+    ConfigModule.forFeature(ProcessRoleConfig),
+    LoggerModule.forRoot(),
+    JwtModule.register({ global: true, secret: '' }),
+  ],
+  providers: [
+    PrismaService,
+    RedisProvider,
+    RedisShutdownService,
+    TokenService,
+    CacheService,
+    DistributedCronLockService,
+  ],
+  exports: [PrismaService, RedisProvider, TokenService, CacheService, DistributedCronLockService],
 })
 export class SharedModule {}

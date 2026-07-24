@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common'
+import { BadRequestException, Injectable, Logger, NotFoundException, ServiceUnavailableException } from '@nestjs/common'
 import { InjectQueue } from '@nestjs/bullmq'
 import { Queue } from 'bullmq'
 import type { Prisma } from '@prisma/client'
@@ -18,6 +18,10 @@ import {
   TradeRecord,
   Universe,
 } from '../types/backtest-engine.types'
+import {
+  backtestPendingReproducibilityData,
+  isVerifiedBacktestCreationEnabled,
+} from '../constants/backtest-reproducibility.constant'
 import { CreateWalkForwardRunDto, ParamSearchSpaceItemDto } from '../dto/walk-forward.dto'
 
 type ProgressCallback = (pct: number, step: string) => Promise<void>
@@ -46,6 +50,9 @@ export class BacktestWalkForwardService {
   ) {}
 
   async createWalkForwardRun(dto: CreateWalkForwardRunDto, userId: number) {
+    if (!isVerifiedBacktestCreationEnabled()) {
+      throw new ServiceUnavailableException('新回测已暂停：BACKTEST_REQUIRE_VERIFIED_DATA=false')
+    }
     const fullStartDate = this.parseDate(dto.fullStartDate)
     const fullEndDate = this.parseDate(dto.fullEndDate)
     if (fullStartDate >= fullEndDate) {
@@ -324,6 +331,7 @@ export class BacktestWalkForwardService {
             priceMode: 'NEXT_OPEN',
             status: 'COMPLETED',
             progress: 100,
+            ...backtestPendingReproducibilityData(),
           },
         })
         isRunId = isRun.id
@@ -364,6 +372,7 @@ export class BacktestWalkForwardService {
             priceMode: 'NEXT_OPEN',
             status: 'COMPLETED',
             progress: 100,
+            ...backtestPendingReproducibilityData(),
           },
         })
         oosRunId = oosRun.id

@@ -7,6 +7,9 @@ import { EventSignalScheduler } from './event-signal.scheduler'
 import { EventSignalService } from './event-signal.service'
 import { EventStudyController } from './event-study.controller'
 import { EventStudyService } from './event-study.service'
+import { buildProcessRoleConfig } from 'src/config/process-role.config'
+
+const processRole = buildProcessRoleConfig(process.env)
 
 @Module({
   imports: [
@@ -22,7 +25,12 @@ import { EventStudyService } from './event-study.service'
     WebsocketModule,
   ],
   controllers: [EventStudyController],
-  providers: [EventStudyService, EventSignalService, EventSignalScheduler, EventSignalScanProcessor],
+  providers: [
+    EventStudyService,
+    EventSignalService,
+    EventSignalScheduler,
+    ...(processRole.queueWorkerEnabled ? [EventSignalScanProcessor] : []),
+  ],
   exports: [EventStudyService, EventSignalService],
 })
 export class EventStudyModule {}

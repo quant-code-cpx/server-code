@@ -283,6 +283,7 @@ export class AgentRunRepository {
       }
       this.stateMachine.assertRunTransition(locked.run.status, command.targetStatus)
       await this.events.appendInTransaction(tx, locked.run, command.event)
+      await this.updateTerminalResponseMessage(tx, locked.run, command.targetStatus)
       return tx.aiAgentRun.update({
         where: { id },
         data: {
@@ -306,12 +307,37 @@ export class AgentRunRepository {
     return run
   }
 
+  private async updateTerminalResponseMessage(
+    tx: Prisma.TransactionClient,
+    run: AiAgentRun,
+    targetStatus: AiAgentRunStatus,
+  ): Promise<void> {
+    const messageStatus =
+      targetStatus === AiAgentRunStatus.FAILED
+        ? AiMessageStatus.FAILED
+        : targetStatus === AiAgentRunStatus.CANCELLED
+          ? AiMessageStatus.CANCELLED
+          : null
+    if (!messageStatus) return
+    const updated = await tx.aiMessage.updateMany({
+      where: {
+        id: run.responseMessageId,
+        userId: run.userId,
+        conversationId: run.conversationId,
+        role: AiMessageRole.ASSISTANT,
+        status: { in: [AiMessageStatus.PENDING, AiMessageStatus.STREAMING] },
+      },
+      data: { status: messageStatus, completedAt: new Date() },
+    })
+    if (updated.count !== 1) throw new AgentRunConflictError('Agent response message 状态不可终止')
+  }
+
   async requestCancel(command: RequestAgentRunCancelCommand): Promise<AiAgentRun> {
     const startedAt = Date.now()
     requirePositiveInteger(command.userId, 'userId')
     requirePositiveInteger(command.expectedVersion, 'expectedVersion')
     const id = requireText(command.runId, 'runId', 32)
-    const reason = optionalText(command.reason, 'reason', 500)
+    const reason = optionalText(command.reason, 'reason', 500) ?? '用户取消'
 
     const run = await this.prisma.$transaction(async (tx) => {
       const locked = await this.events.lockRun(tx, id)
@@ -329,6 +355,7 @@ export class AgentRunRepository {
           traceId: locked.run.traceId,
           payload: { cancelledBy: 'USER', reason },
         })
+        await this.updateTerminalResponseMessage(tx, locked.run, AiAgentRunStatus.CANCELLED)
         return tx.aiAgentRun.update({
           where: { id },
           data: {

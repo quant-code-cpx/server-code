@@ -126,7 +126,8 @@ export class ReportDataCollectorService {
       }),
       this.prisma.finaIndicator.findMany({
         where: { tsCode },
-        orderBy: { endDate: 'desc' },
+        orderBy: [{ endDate: 'desc' }, { annDate: 'desc' }, { updateFlag: 'desc' }],
+        distinct: ['endDate'],
         take: 8,
       }),
       this.getLatestTop10Holders(tsCode),

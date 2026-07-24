@@ -161,6 +161,50 @@ integrationDescribe('AgentInteractionRepository - 独立 PostgreSQL 集成测试
     )
   })
 
+  it('sendScheduled 以 executionId 固定幂等边界，并原子创建会话、Run、Event 与 outbox', async () => {
+    const command = {
+      userId: userA.id,
+      taskId: 'scheduled_task_1',
+      executionId: `scheduled_execution_${randomUUID()}`,
+      taskName: '收盘市场研究',
+      scheduledFor: new Date('2026-07-22T10:30:00.000Z'),
+      prompt: '基于已验证数据总结今日市场变化。',
+      input: { watchlistId: 1 },
+      gateEvidence: { reason: 'READY', watermark: '20260722' },
+      modelPolicy: AiModelPolicy.AUTO,
+      preferredModel: null,
+      allowedCapabilities: ['INTERNAL_DATA'],
+      allowedScopes: ['PUBLIC_MARKET_DATA', 'USER_PRIVATE'],
+      maxCostCny: 2,
+      traceId: `trace_${randomUUID()}`,
+      workflow: workflowPin,
+    }
+
+    const [first, repeated] = await Promise.all([repository.sendScheduled(command), repository.sendScheduled(command)])
+
+    expect(repeated.run.id).toBe(first.run.id)
+    expect(first.run.budget).toMatchObject({ maxCost: 2, costCurrency: 'CNY' })
+    expect(first.run.inputSnapshot).toMatchObject({
+      pageContext: {
+        source: 'SCHEDULED_RESEARCH',
+        taskId: command.taskId,
+        executionId: command.executionId,
+        gateEvidence: command.gateEvidence,
+      },
+    })
+    await expect(
+      client!.aiConversation.findUniqueOrThrow({ where: { id: first.conversationId } }),
+    ).resolves.toMatchObject({
+      userId: userA.id,
+      clientRequestId: `scheduled-conversation:${command.executionId}`,
+      metadata: { source: 'SCHEDULED_RESEARCH', executionId: command.executionId },
+    })
+    expect(await client!.aiJobOutbox.count({ where: { aggregateId: first.run.id } })).toBe(1)
+    await expect(repository.sendScheduled({ ...command, prompt: '不同 Prompt' })).rejects.toBeInstanceOf(
+      AgentRunIdempotencyConflictError,
+    )
+  })
+
   it('事务后段失败时 user/assistant/Run/Event/outbox 全部回滚', async () => {
     const conversation = await createConversation(userA)
     const events = {

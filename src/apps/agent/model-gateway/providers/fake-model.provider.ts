@@ -1,4 +1,4 @@
-import type { IModelConfig } from 'src/config/model.config'
+import type { AgentModelProviderConfig, IModelConfig } from 'src/config/model.config'
 import {
   ModelAbortError,
   type ModelCapability,
@@ -11,18 +11,20 @@ import {
 } from '../model-gateway.port'
 
 export class FakeModelProvider implements ModelProvider {
-  readonly provider = 'fake'
+  readonly provider: string
   private readonly descriptor: ModelDescriptor
 
-  constructor(config: IModelConfig) {
+  constructor(config: AgentModelProviderConfig | IModelConfig) {
+    const providerConfig = 'providers' in config ? config.providers[0] : config
+    this.provider = providerConfig.id
     this.descriptor = {
       provider: this.provider,
-      model: config.defaultModel,
-      contextWindow: config.descriptor.contextWindow,
-      maxOutputTokens: config.descriptor.maxOutputTokens,
-      capabilities: config.descriptor.capabilities as ModelCapability[],
-      reasoningEfforts: config.descriptor.reasoningEfforts as ModelReasoningEffort[],
-      dataClasses: config.descriptor.dataClasses as ModelDataClass[],
+      model: providerConfig.defaultModel,
+      contextWindow: providerConfig.descriptor.contextWindow,
+      maxOutputTokens: providerConfig.descriptor.maxOutputTokens,
+      capabilities: providerConfig.descriptor.capabilities as ModelCapability[],
+      reasoningEfforts: providerConfig.descriptor.reasoningEfforts as ModelReasoningEffort[],
+      dataClasses: providerConfig.descriptor.dataClasses as ModelDataClass[],
     }
   }
 

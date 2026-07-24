@@ -2,11 +2,11 @@
 model DataQualityCheck {
   id        Int      @id @default(autoincrement())
   checkDate DateTime @map("check_date")
-  dataSet   String   @map("data_set")    /// 数据集名称（如 'daily', 'stk_limit'）
-  checkType String   @map("check_type")  /// 检查类型（如 'completeness', 'timeliness'）
-  status    String   @map("status")      /// 'pass' | 'warn' | 'fail'
+  dataSet   String   @map("data_set") /// 数据集名称（如 'daily', 'stk_limit'）
+  checkType String   @map("check_type") /// 检查类型（如 'completeness', 'timeliness'）
+  status    String   @map("status") /// 'pass' | 'warn' | 'fail'
   message   String?  @map("message")
-  details   Json?    @map("details")     /// 详细信息（缺失日期列表等）
+  details   Json?    @map("details") /// 详细信息（缺失日期列表等）
   createdAt DateTime @default(now()) @map("created_at")
 
   @@index([dataSet, checkDate])

@@ -3,18 +3,18 @@
 /// 居民消费价格指数（CPI）— 月度数据
 model MacroCpi {
   month    String   @id @db.VarChar(8) // YYYYMM
-  ntVal    Float?   @map("nt_val")     // 全国当月值
-  ntYoy    Float?   @map("nt_yoy")     // 全国同比（%）
-  ntMom    Float?   @map("nt_mom")     // 全国环比（%）
-  ntAccu   Float?   @map("nt_accu")    // 全国累计值
-  townVal  Float?   @map("town_val")   // 城市当月值
-  townYoy  Float?   @map("town_yoy")   // 城市同比（%）
-  townMom  Float?   @map("town_mom")   // 城市环比（%）
-  townAccu Float?   @map("town_accu")  // 城市累计值
-  cntVal   Float?   @map("cnt_val")    // 农村当月值
-  cntYoy   Float?   @map("cnt_yoy")    // 农村同比（%）
-  cntMom   Float?   @map("cnt_mom")    // 农村环比（%）
-  cntAccu  Float?   @map("cnt_accu")   // 农村累计值
+  ntVal    Float?   @map("nt_val") // 全国当月值
+  ntYoy    Float?   @map("nt_yoy") // 全国同比（%）
+  ntMom    Float?   @map("nt_mom") // 全国环比（%）
+  ntAccu   Float?   @map("nt_accu") // 全国累计值
+  townVal  Float?   @map("town_val") // 城市当月值
+  townYoy  Float?   @map("town_yoy") // 城市同比（%）
+  townMom  Float?   @map("town_mom") // 城市环比（%）
+  townAccu Float?   @map("town_accu") // 城市累计值
+  cntVal   Float?   @map("cnt_val") // 农村当月值
+  cntYoy   Float?   @map("cnt_yoy") // 农村同比（%）
+  cntMom   Float?   @map("cnt_mom") // 农村环比（%）
+  cntAccu  Float?   @map("cnt_accu") // 农村累计值
   syncedAt DateTime @default(now()) @map("synced_at")
 
   @@map("macro_cpi")
@@ -61,14 +61,14 @@ model MacroPpi {
 /// 国内生产总值（GDP）— 季度数据
 model MacroGdp {
   quarter  String   @id @db.VarChar(8) // 2019Q1 格式
-  gdp      Float?                      // GDP 累计值（亿元）
-  gdpYoy   Float?   @map("gdp_yoy")   // 当季同比增速（%）
-  pi       Float?                      // 第一产业累计值（亿元）
-  piYoy    Float?   @map("pi_yoy")    // 第一产业同比（%）
-  si       Float?                      // 第二产业累计值（亿元）
-  siYoy    Float?   @map("si_yoy")    // 第二产业同比（%）
-  ti       Float?                      // 第三产业累计值（亿元）
-  tiYoy    Float?   @map("ti_yoy")    // 第三产业同比（%）
+  gdp      Float? // GDP 累计值（亿元）
+  gdpYoy   Float?   @map("gdp_yoy") // 当季同比增速（%）
+  pi       Float? // 第一产业累计值（亿元）
+  piYoy    Float?   @map("pi_yoy") // 第一产业同比（%）
+  si       Float? // 第二产业累计值（亿元）
+  siYoy    Float?   @map("si_yoy") // 第二产业同比（%）
+  ti       Float? // 第三产业累计值（亿元）
+  tiYoy    Float?   @map("ti_yoy") // 第三产业同比（%）
   syncedAt DateTime @default(now()) @map("synced_at")
 
   @@map("macro_gdp")
@@ -76,15 +76,15 @@ model MacroGdp {
 
 /// Shibor 利率 — 每个工作日
 model MacroShibor {
-  date     DateTime @id @db.Date        // 日期
-  on       Float?                        // 隔夜
-  w1       Float?   @map("1w")          // 1周
-  w2       Float?   @map("2w")          // 2周
-  m1       Float?   @map("1m")          // 1个月
-  m3       Float?   @map("3m")          // 3个月
-  m6       Float?   @map("6m")          // 6个月
-  m9       Float?   @map("9m")          // 9个月
-  y1       Float?   @map("1y")          // 1年
+  date     DateTime @id @db.Date // 日期
+  on       Float? // 隔夜
+  w1       Float?   @map("1w") // 1周
+  w2       Float?   @map("2w") // 2周
+  m1       Float?   @map("1m") // 1个月
+  m3       Float?   @map("3m") // 3个月
+  m6       Float?   @map("6m") // 6个月
+  m9       Float?   @map("9m") // 9个月
+  y1       Float?   @map("1y") // 1年
   syncedAt DateTime @default(now()) @map("synced_at")
 
   @@index([date(sort: Desc)])

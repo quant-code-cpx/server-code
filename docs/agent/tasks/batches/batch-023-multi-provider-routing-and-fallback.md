@@ -1,6 +1,6 @@
 ---
 batch: 23
-status: pending
+status: completed
 type: backend
 depends_on: ["batch-004-model-gateway-foundation", "batch-011-agent-orchestrator-workflow", "batch-018-mvp-e2e-and-model-regression"]
 blocks: ["batch-026-security-hardening-and-production-deployment"]
@@ -146,3 +146,20 @@ estimated_scope: large
 
 - Batch 025 纳入多 provider 评测。
 - Batch 026 生产密钥/灰度。
+
+## 27. 实施记录（2026-07-22）
+
+- `AGENT_MODEL_PROVIDERS` 支持 1–16 个独立 provider；每项分别声明模型、能力、数据等级、费用等级、超时和重试。旧的单 provider 环境变量继续兼容。
+- 新增 `ModelRouterService` 和 `ProviderHealthService`。AUTO 按能力、数据等级、最大输出和健康状态选择候选；MANUAL 只接受已注册、健康且允许 `USER_PRIVATE` 的模型。
+- 可重试且尚未产生可见输出时才允许跨 provider fallback。每次尝试独立持久化为 `AiModelCall`，切换发送 `model.fallback`；可见输出后的失败不拼接其他 provider 半流。
+- `POST /api/agent/models/list` 与前端模型目录选择器已接入。目录只公开显示名、provider、能力、费用等级、可用状态和通用不可用原因，不返回 base URL、API key 或内部熔断状态。
+- 已更新 OpenAPI、Agent contracts、前端生成类型、MSW 与组件/reducer 测试。
+
+### 已执行验证
+
+- `pnpm run build`
+- `pnpm agent:contracts:check`
+- 定向 Jest：5 suites / 68 tests
+- `pnpm prisma migrate status`：41 migrations，schema up to date
+- 前端改动 ESLint、定向 Vitest：3 files / 19 tests、`yarn build`
+- Docker 运行检查：`database`、`redis`、`app` healthy；`agent-worker` 已启动并完成依赖加载；`GET /metrics` 返回成功。

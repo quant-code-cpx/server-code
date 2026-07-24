@@ -6,7 +6,8 @@ import type {
   ResearchPlan,
   ResearchPlanToolCall,
 } from './workflow.types'
-import { WorkflowValidationError } from './workflow.errors'
+import { WorkflowBudgetError, WorkflowValidationError } from './workflow.errors'
+import { cloneAndValidateToolInput } from './tool-result-binding'
 
 const TOOL_CAPABILITY: Readonly<Record<AgentToolKey, AgentCapability>> = Object.freeze(
   Object.fromEntries(
@@ -30,7 +31,7 @@ export class ResearchPlanCompilerService {
     maxToolCalls: number,
   ): CompiledResearchPlan {
     assertPlanEnvelope(plan)
-    if (plan.toolCalls.length > maxToolCalls) throw new WorkflowValidationError('研究计划 Tool 数量超过预算')
+    if (plan.toolCalls.length > maxToolCalls) throw new WorkflowBudgetError('研究计划 Tool 数量超过预算')
     const workflowTools = new Set(workflow.toolAllowlist)
     const capabilities = new Set(allowedCapabilities)
     const callsById = new Map<string, ResearchPlanToolCall>()
@@ -51,6 +52,7 @@ export class ResearchPlanCompilerService {
         if (dependency === call.id) throw new WorkflowValidationError(`研究计划 Tool 不可依赖自身：${call.id}`)
         if (!callsById.has(dependency)) throw new WorkflowValidationError(`研究计划依赖不存在：${dependency}`)
       }
+      cloneAndValidateToolInput(call.input, call.dependsOn)
     }
 
     const executionLevels = topologicalLevels(plan.toolCalls)
@@ -62,7 +64,7 @@ export class ResearchPlanCompilerService {
       summary: plan.summary.trim(),
       toolCalls: plan.toolCalls.map((call) => ({
         ...call,
-        input: { ...call.input },
+        input: cloneAndValidateToolInput(call.input, call.dependsOn),
         dependsOn: [...call.dependsOn],
       })),
       executionLevels,

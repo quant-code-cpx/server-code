@@ -135,6 +135,11 @@ export class ResearchNoteService {
         versionCount: 1,
         tags: dto.tags ?? [],
         isPinned: dto.isPinned ?? false,
+        thesis: dto.thesis ?? null,
+        risks: dto.risks ?? [],
+        decision: dto.decision ?? null,
+        outcome: dto.outcome ?? null,
+        reviewAt: dto.reviewAt ? new Date(dto.reviewAt) : null,
       },
     })
     return this.toNoteItem(note)
@@ -152,6 +157,11 @@ export class ResearchNoteService {
         ...(dto.content !== undefined && { content: dto.content, wordCount: dto.content.length }),
         ...(dto.tags !== undefined && { tags: dto.tags }),
         ...(dto.isPinned !== undefined && { isPinned: dto.isPinned }),
+        ...(dto.thesis !== undefined && { thesis: dto.thesis }),
+        ...(dto.risks !== undefined && { risks: dto.risks }),
+        ...(dto.decision !== undefined && { decision: dto.decision }),
+        ...(dto.outcome !== undefined && { outcome: dto.outcome }),
+        ...(dto.reviewAt !== undefined && { reviewAt: new Date(dto.reviewAt) }),
         versionCount: { increment: 1 },
       },
     })
@@ -218,6 +228,13 @@ export class ResearchNoteService {
     isPinned: boolean
     wordCount?: number | null
     versionCount?: number | null
+    sourceRunId?: string | null
+    sourceReportId?: string | null
+    thesis?: string | null
+    risks?: Prisma.JsonValue
+    decision?: string | null
+    outcome?: string | null
+    reviewAt?: Date | null
     deletedAt?: Date | null
     createdAt?: Date
     updatedAt?: Date
@@ -227,6 +244,13 @@ export class ResearchNoteService {
       ...n,
       wordCount: n.wordCount ?? content.length,
       versionCount: n.versionCount ?? 1,
+      sourceRunId: n.sourceRunId ?? null,
+      sourceReportId: n.sourceReportId ?? null,
+      thesis: n.thesis ?? null,
+      risks: Array.isArray(n.risks) ? n.risks.filter((risk): risk is string => typeof risk === 'string') : [],
+      decision: n.decision ?? null,
+      outcome: n.outcome ?? null,
+      reviewAt: n.reviewAt?.toISOString() ?? null,
       deletedAt: n.deletedAt?.toISOString() ?? null,
     }
   }

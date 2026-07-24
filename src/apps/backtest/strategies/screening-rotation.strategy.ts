@@ -27,11 +27,11 @@ export class ScreeningRotationStrategy implements IBacktestStrategy<'SCREENING_R
     signalDate: Date,
     config: BacktestConfig<'SCREENING_ROTATION'>,
     _barData: Map<string, DailyBar>,
-    _historicalBars: Map<string, DailyBar[]>,
+    historicalBars: Map<string, DailyBar[]>,
     prisma: PrismaService,
   ): Promise<SignalOutput> {
     const cfg: ScreeningRotationStrategyConfig = config.strategyConfig
-    const { rankBy = 'totalMv', rankOrder = 'desc', topN = 20, minDaysListed = 60 } = cfg
+    const { rankBy = 'totalMv', rankOrder = 'desc', topN = 20 } = cfg
 
     if (rankBy && !SCREENING_ROTATION_RANK_FIELDS.includes(rankBy)) {
       this.logger.warn(`ScreeningRotation: unsupported rankBy="${rankBy}", falling back to totalMv`)
@@ -39,28 +39,27 @@ export class ScreeningRotationStrategy implements IBacktestStrategy<'SCREENING_R
     const dbColumn = RANK_FIELD_MAP[rankBy] ?? 'total_mv'
     const orderDir = rankOrder === 'asc' ? 'ASC' : 'DESC'
 
-    const minListDate = new Date(signalDate.getTime() - minDaysListed * 24 * 60 * 60 * 1000)
     const tradeDateStr = signalDate.toISOString().slice(0, 10)
+    const universe = [...historicalBars.keys()]
+    if (universe.length === 0) return { targets: [] }
 
     // dbColumn and orderDir are derived from whitelist maps (RANK_FIELD_MAP), safe to interpolate
     if (!dbColumn.match(/^[a-z_]+$/)) {
       return { targets: [] }
     }
 
-    // Query top-N stocks from daily_basic joined with stock_basic_profiles
+    // Point-in-time universe already applies listing age and delisting rules.
     const rows = await prisma.$queryRawUnsafe<Array<{ ts_code: string }>>(
       `SELECT db.ts_code
        FROM stock_daily_valuation_metrics db
-       INNER JOIN stock_basic_profiles sb ON sb.ts_code = db.ts_code
        WHERE db.trade_date = $1::date
-         AND sb.list_status = 'L'
-         AND (sb.list_date IS NULL OR sb.list_date <= $2::date)
+         AND db.ts_code = ANY($2::text[])
          AND db.${dbColumn} IS NOT NULL
          AND db.${dbColumn} > 0
        ORDER BY db.${dbColumn} ${orderDir}
        LIMIT $3`,
       tradeDateStr,
-      minListDate.toISOString().slice(0, 10),
+      universe,
       topN,
     )
 

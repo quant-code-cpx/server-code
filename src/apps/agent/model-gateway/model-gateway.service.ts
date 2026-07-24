@@ -3,9 +3,10 @@ import Ajv, { type ValidateFunction } from 'ajv'
 import { ModelConfig, type IModelConfig } from 'src/config/model.config'
 import { LoggerService } from 'src/shared/logger/logger.service'
 import { ModelCapabilityRegistry } from './model-capability.registry'
+import { ModelRouterService } from './model-router.service'
+import { ProviderHealthService } from './provider-health.service'
 import {
   MODEL_GATEWAY_OBSERVER,
-  MODEL_PROVIDER,
   ModelAbortError,
   ModelGatewayError,
   type ModelChunk,
@@ -14,9 +15,9 @@ import {
   type ModelGatewayMetricEvent,
   type ModelGatewayObserver,
   type ModelGatewayPort,
-  type ModelProvider,
   type ModelRequest,
   type ModelResult,
+  type ModelRouteDecision,
   type ModelUsage,
   type ProviderModelRequest,
 } from './model-gateway.port'
@@ -32,8 +33,9 @@ export class ModelGatewayService implements ModelGatewayPort {
   private readonly ajv = new Ajv({ strict: true, allErrors: true, allowUnionTypes: true })
 
   constructor(
-    @Inject(MODEL_PROVIDER) private readonly provider: ModelProvider,
     private readonly registry: ModelCapabilityRegistry,
+    private readonly router: ModelRouterService,
+    private readonly health: ProviderHealthService,
     @Inject(ModelConfig.KEY) private readonly config: IModelConfig,
     private readonly logger: LoggerService,
     @Inject(MODEL_GATEWAY_OBSERVER) private readonly observer: ModelGatewayObserver,
@@ -46,102 +48,79 @@ export class ModelGatewayService implements ModelGatewayPort {
     return this.registry.get(modelRef?.trim() || this.config.defaultModel)
   }
 
+  select(request: ModelRequest): ModelRouteDecision {
+    this.prepareRequest(request)
+    return this.router.select(request)
+  }
+
   async *stream(request: ModelRequest, signal?: AbortSignal): AsyncIterable<ModelChunk> {
-    validateRequest(request)
-    if (request.responseSchema) this.compileSchema(request.responseSchema, 'responseSchema')
-    for (const tool of request.tools ?? []) this.compileSchema(tool.parameters, `Tool ${tool.name} parameters`)
+    this.prepareRequest(request)
     const parentSignal = signal ?? new AbortController().signal
     if (parentSignal.aborted) throw new ModelAbortError()
-    const model = this.resolveModel(request)
-    this.registry.assertRequestSupported(model, request)
-    const providerRequest: ProviderModelRequest = { ...request, model }
-    const deadlineAt = Date.parse(request.deadlineAt)
-
-    for (let attempt = 1; attempt <= this.config.maxRetries + 1; attempt += 1) {
-      const startedAt = Date.now()
-      const bounded = createAttemptSignal(parentSignal, deadlineAt, this.config.timeoutMs)
-      let emittedOutput = false
-      let ttftMs: number | null = null
-      let usage: ModelUsage | null = null
-
+    const route = this.router.select(request)
+    for (let index = 0; index < route.candidates.length; index += 1) {
+      const candidate = route.candidates[index]
       try {
-        for await (const chunk of this.provider.stream(providerRequest, bounded.signal)) {
-          if (isVisibleOutput(chunk)) {
-            emittedOutput = true
-            if (ttftMs == null) ttftMs = Date.now() - startedAt
-          }
-          if (chunk.type === 'USAGE') usage = chunk.usage
-          yield chunk
-        }
-        const event: ModelGatewayMetricEvent = {
-          provider: this.provider.provider,
-          model,
-          purpose: request.purpose,
-          attempt,
-          durationMs: Date.now() - startedAt,
-          ttftMs,
-          status: 'SUCCEEDED',
-          usage,
-        }
-        this.record(event, request)
+        yield* this.streamForModel(request, candidate.descriptor, parentSignal)
+        this.health.recordSuccess(candidate.descriptor)
         return
       } catch (rawError) {
-        const error = normalizeAttemptError(rawError, parentSignal, bounded)
-        const cancelled = error instanceof ModelAbortError
-        const event: ModelGatewayMetricEvent = {
-          provider: this.provider.provider,
-          model,
-          purpose: request.purpose,
-          attempt,
-          durationMs: Date.now() - startedAt,
-          ttftMs,
-          status: cancelled ? 'CANCELLED' : 'FAILED',
-          ...(!cancelled && error instanceof ModelGatewayError ? { errorCategory: error.category } : {}),
-        }
-        this.record(event, request)
-        if (cancelled) throw error
-        if (!(error instanceof ModelGatewayError)) throw error
-        if (!error.retryable || emittedOutput || attempt > this.config.maxRetries) throw error
-        await delayBeforeRetry(error, attempt, deadlineAt, parentSignal, this.config.retryBaseMs)
-      } finally {
-        bounded.cleanup()
+        if (rawError instanceof ModelAbortError) throw rawError
+        if (!(rawError instanceof ModelGatewayError)) throw rawError
+        this.health.recordFailure(candidate.descriptor, rawError)
+        if (!canFallback(rawError) || index === route.candidates.length - 1) throw rawError
       }
     }
+    throw new ModelGatewayError('UNAVAILABLE', false, '没有可用模型供应商')
   }
 
   async generateStructured<T>(request: ModelRequest, signal?: AbortSignal): Promise<ModelResult<T>> {
+    this.prepareRequest(request)
+    this.assertStructuredRequest(request)
+    const route = this.router.select(request)
+    for (let index = 0; index < route.candidates.length; index += 1) {
+      const candidate = route.candidates[index]
+      try {
+        return await this.generateStructuredWithDescriptor<T>(request, candidate.descriptor, signal)
+      } catch (rawError) {
+        if (rawError instanceof ModelAbortError) throw rawError
+        if (!(rawError instanceof ModelGatewayError)) throw rawError
+        this.health.recordFailure(candidate.descriptor, rawError)
+        if (!canFallback(rawError) || index === route.candidates.length - 1) throw rawError
+      }
+    }
+    throw new ModelGatewayError('UNAVAILABLE', false, '没有可用模型供应商')
+  }
+
+  async generateStructuredForModel<T>(
+    request: ModelRequest,
+    model: string,
+    signal?: AbortSignal,
+  ): Promise<ModelResult<T>> {
+    this.prepareRequest(request)
+    this.assertStructuredRequest(request)
+    const descriptor = this.registry.assertRequestSupported(model, request)
+    if (!this.health.isAvailable(descriptor)) {
+      throw new ModelGatewayError('UNAVAILABLE', true, '模型供应商暂时不可用')
+    }
+    try {
+      return await this.generateStructuredWithDescriptor<T>(request, descriptor, signal)
+    } catch (rawError) {
+      if (rawError instanceof ModelGatewayError) this.health.recordFailure(descriptor, rawError)
+      throw rawError
+    }
+  }
+
+  private prepareRequest(request: ModelRequest): void {
+    validateRequest(request)
+    if (request.responseSchema) this.compileSchema(request.responseSchema, 'responseSchema')
+    for (const tool of request.tools ?? []) this.compileSchema(tool.parameters, `Tool ${tool.name} parameters`)
+  }
+
+  private assertStructuredRequest(request: ModelRequest): void {
     if (!request.responseSchema) {
       throw new ModelGatewayError('INVALID_OUTPUT', false, 'generateStructured 必须提供 responseSchema')
     }
-    const validate = this.compileSchema(request.responseSchema, 'responseSchema')
-    let currentRequest = request
-    let lastCompletion: ModelCompletion | null = null
-
-    for (let repairAttempt = 0; repairAttempt <= 1; repairAttempt += 1) {
-      const completion = await this.collectCompletion(currentRequest, signal)
-      lastCompletion = completion
-      const parsed = parseStructuredText(completion.text)
-      if (parsed.ok && validate(parsed.value)) {
-        return { data: parsed.value as T, completion, repaired: repairAttempt === 1 }
-      }
-      if (repairAttempt === 0) currentRequest = createRepairRequest(request, completion.text)
-    }
-
-    throw new ModelGatewayError(
-      'INVALID_OUTPUT',
-      false,
-      `模型结构化输出校验失败${lastCompletion?.finishReason ? ` (${lastCompletion.finishReason})` : ''}`,
-    )
-  }
-
-  private resolveModel(request: ModelRequest): string {
-    const preferredModel = request.preferredModel?.trim() || null
-    if ((request.modelPolicy ?? 'AUTO') === 'MANUAL') {
-      if (!preferredModel)
-        throw new ModelGatewayError('UNAVAILABLE', false, 'MANUAL modelPolicy 必须指定 preferredModel')
-      return preferredModel
-    }
-    return preferredModel ?? this.config.defaultModel
   }
 
   private compileSchema(schema: Record<string, unknown>, label: string): ValidateFunction {
@@ -152,16 +131,48 @@ export class ModelGatewayService implements ModelGatewayPort {
     }
   }
 
-  private async collectCompletion(request: ModelRequest, signal?: AbortSignal): Promise<ModelCompletion> {
+  private async generateStructuredWithDescriptor<T>(
+    request: ModelRequest,
+    descriptor: ModelDescriptor,
+    signal?: AbortSignal,
+  ): Promise<ModelResult<T>> {
+    const validate = this.compileSchema(request.responseSchema as Record<string, unknown>, 'responseSchema')
+    let currentRequest = request
+    let lastCompletion: ModelCompletion | null = null
+
+    for (let repairAttempt = 0; repairAttempt <= 1; repairAttempt += 1) {
+      const completion = await this.collectCompletionForModel(currentRequest, descriptor, signal)
+      lastCompletion = completion
+      const parsed = parseStructuredText(completion.text)
+      if (parsed.ok && validate(parsed.value)) {
+        this.health.recordSuccess(descriptor)
+        return { data: parsed.value as T, completion, repaired: repairAttempt === 1 }
+      }
+      if (repairAttempt === 0) currentRequest = createRepairRequest(request, completion.text)
+    }
+
+    throw new ModelGatewayError(
+      'INVALID_OUTPUT',
+      false,
+      `模型结构化输出校验失败${lastCompletion?.finishReason ? ` (${lastCompletion.finishReason})` : ''}`,
+      undefined,
+      undefined,
+      true,
+    )
+  }
+
+  private async collectCompletionForModel(
+    request: ModelRequest,
+    descriptor: ModelDescriptor,
+    signal?: AbortSignal,
+  ): Promise<ModelCompletion> {
     let text = ''
     const toolCalls = new Map<number, ModelCompletion['toolCalls'][number]>()
     let usage: ModelUsage | null = null
     let finishReason: string | null = null
     let providerRequestId: string | null = null
     let completed = false
-    const model = this.resolveModel(request)
-
-    for await (const chunk of this.stream(request, signal)) {
+    for await (const chunk of this.streamForModel(request, descriptor, signal ?? new AbortController().signal)) {
       if (chunk.type === 'OUTPUT_TEXT_DELTA') text += chunk.text
       if (chunk.type === 'TOOL_CALL_COMPLETED') {
         toolCalls.set(chunk.index, {
@@ -180,14 +191,85 @@ export class ModelGatewayService implements ModelGatewayPort {
     if (!completed) throw new ModelGatewayError('INVALID_OUTPUT', false, '模型流缺少 COMPLETED 事件')
 
     return {
-      provider: this.provider.provider,
-      model,
+      provider: descriptor.provider,
+      model: descriptor.model,
       text,
       toolCalls: [...toolCalls.entries()].sort(([left], [right]) => left - right).map(([, call]) => call),
       usage,
       finishReason,
       providerRequestId,
     }
+  }
+
+  private async *streamForModel(
+    request: ModelRequest,
+    descriptor: ModelDescriptor,
+    parentSignal: AbortSignal,
+  ): AsyncIterable<ModelChunk> {
+    if (parentSignal.aborted) throw new ModelAbortError()
+    const provider = this.registry.getProvider(descriptor.model)
+    const providerConfig = this.providerConfig(descriptor)
+    const providerRequest: ProviderModelRequest = { ...request, model: descriptor.model }
+    const deadlineAt = Date.parse(request.deadlineAt)
+
+    for (let attempt = 1; attempt <= providerConfig.maxRetries + 1; attempt += 1) {
+      const startedAt = Date.now()
+      const bounded = createAttemptSignal(parentSignal, deadlineAt, providerConfig.timeoutMs)
+      let emittedOutput = false
+      let ttftMs: number | null = null
+      let usage: ModelUsage | null = null
+      try {
+        for await (const chunk of provider.stream(providerRequest, bounded.signal)) {
+          if (isVisibleOutput(chunk)) {
+            emittedOutput = true
+            if (ttftMs == null) ttftMs = Date.now() - startedAt
+          }
+          if (chunk.type === 'USAGE') usage = chunk.usage
+          yield chunk
+        }
+        this.record(
+          {
+            provider: descriptor.provider,
+            model: descriptor.model,
+            purpose: request.purpose,
+            attempt,
+            durationMs: Date.now() - startedAt,
+            ttftMs,
+            status: 'SUCCEEDED',
+            usage,
+          },
+          request,
+        )
+        return
+      } catch (rawError) {
+        const normalized = normalizeAttemptError(rawError, parentSignal, bounded)
+        const error = withVisibleOutput(normalized, emittedOutput)
+        const cancelled = error instanceof ModelAbortError
+        this.record(
+          {
+            provider: descriptor.provider,
+            model: descriptor.model,
+            purpose: request.purpose,
+            attempt,
+            durationMs: Date.now() - startedAt,
+            ttftMs,
+            status: cancelled ? 'CANCELLED' : 'FAILED',
+            ...(!cancelled && error instanceof ModelGatewayError ? { errorCategory: error.category } : {}),
+          },
+          request,
+        )
+        if (cancelled || !(error instanceof ModelGatewayError)) throw error
+        if (!error.retryable || error.visibleOutput || attempt > providerConfig.maxRetries) throw error
+        await delayBeforeRetry(error, attempt, deadlineAt, parentSignal, providerConfig.retryBaseMs)
+      } finally {
+        bounded.cleanup()
+      }
+    }
+    throw new ModelGatewayError('UNAVAILABLE', true, '模型供应商调用失败')
+  }
+
+  private providerConfig(descriptor: ModelDescriptor): Pick<IModelConfig, 'timeoutMs' | 'maxRetries' | 'retryBaseMs'> {
+    return this.config.providers.find((provider) => provider.id === descriptor.provider) ?? this.config
   }
 
   private record(event: ModelGatewayMetricEvent, request: ModelRequest): void {
@@ -344,6 +426,22 @@ function normalizeAttemptError(error: unknown, parent: AbortSignal, attempt: Att
   if (error instanceof Error && error.name === 'AbortError') return new ModelAbortError()
   if (error instanceof TypeError) return new ModelGatewayError('UNAVAILABLE', true, '模型供应商网络不可用')
   return new ModelGatewayError('UNAVAILABLE', false, '模型供应商调用失败')
+}
+
+function withVisibleOutput(error: Error, visibleOutput: boolean): Error {
+  if (!visibleOutput || !(error instanceof ModelGatewayError) || error.visibleOutput) return error
+  return new ModelGatewayError(
+    error.category,
+    error.retryable,
+    error.message,
+    error.statusCode,
+    error.retryAfterMs,
+    true,
+  )
+}
+
+function canFallback(error: ModelGatewayError): boolean {
+  return error.retryable && !error.visibleOutput
 }
 
 async function delayBeforeRetry(

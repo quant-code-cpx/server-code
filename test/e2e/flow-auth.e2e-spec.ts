@@ -1,84 +1,169 @@
-/**
- * E2E Flow 1 — 完整认证生命周期
- *
- * 覆盖场景：
- *   注册→登录→Token 刷新→登出→验证黑名单生效
- *   验证码安全（重放、过期、连续失败锁定）
- *   [E2E-B3] 已过期 Token 黑名单 TTL 边界验证
- *
- * 运行前提：
- *   - E2E_DATABASE_URL 指向独立测试数据库（例：postgresql://localhost:5432/quant_test）
- *   - Redis db=15 可连接（REDIS_DB=15）
- *   - 运行命令：pnpm test:e2e 或 jest --config ./test/jest-e2e.json
- *
- * CI：PR to main 时在 e2e-test 阶段自动运行
- */
-import { INestApplication } from '@nestjs/common'
+import type { INestApplication } from '@nestjs/common'
+import type { PrismaService } from 'src/shared/prisma.service'
+
+import { JwtService } from '@nestjs/jwt'
+import { UserRole, UserStatus } from '@prisma/client'
+import * as bcrypt from 'bcrypt'
 import request from 'supertest'
+import type { RedisClientType } from 'redis'
 
-// 跳过（E2E 测试需要真实数据库和 Redis）
-describe.skip('E2E Flow 1 — 认证生命周期 (needs DB+Redis)', () => {
+import { AuthModule } from 'src/apps/auth/auth.module'
+import { UserModule } from 'src/apps/user/user.module'
+import { REFRESH_TOKEN_COOKIE, REFRESH_TOKEN_GRACE, REDIS_KEY } from 'src/constant/auth.constant'
+import { createLegacyE2eApp } from './support/create-legacy-e2e-app'
+
+const ACCOUNT = 'legacy_auth_user'
+const PASSWORD = 'LegacyAuth!2026'
+
+jest.setTimeout(60_000)
+
+describe('旧业务 E2E Flow 1 — 认证生命周期', () => {
   let app: INestApplication
+  let prisma: PrismaService
+  let redis: RedisClientType
 
-  // beforeAll: 启动 E2E 应用、种入测试用户（account='e2e_user', password='Test@1234'）
-  // afterAll: 清理用户数据、关闭应用
-
-  // ── 正常登录→刷新→登出全流程 ─────────────────────────────────────────────
-
-  describe('正常登录→刷新→登出全流程', () => {
-    it('[BIZ] 步骤1: POST /api/auth/captcha → 返回 captchaId 和 svgImage', async () => {
-      const res = await request(app.getHttpServer()).post('/api/auth/captcha').expect(201)
-      expect(res.body.code).toBe(0)
-      expect(res.body.data.captchaId).toBeDefined()
-      expect(res.body.data.svgImage).toContain('<svg')
-    })
-
-    it('[BIZ] 步骤2: POST /api/auth/login → 正确账号密码 → 返回 accessToken', async () => {
-      // 获取验证码 captchaId，然后从 Redis 读取验证码文本（测试 fixture 写入）
-    })
-
-    it('[BIZ] 步骤3: 携带 accessToken 访问 POST /api/user/profile → 200', async () => {
-      // 验证 JwtAuthGuard 正确注入 request.user
-    })
-
-    it('[BIZ] 步骤4: POST /api/auth/refresh → 返回新 accessToken，旧 refreshToken 失效', async () => {
-      // Token 轮换：旧 refreshToken jti 标记为 used（宽限期外不可再用）
-    })
-
-    it('[SEC] 步骤5: 宽限期外重用旧 refreshToken → 401 INVALID_REFRESH_TOKEN', async () => {
-      // 等待宽限期（REFRESH_TOKEN_GRACE=10s）过期后重用，应返回 401
-    })
-
-    it('[BIZ] 步骤6: POST /api/auth/logout → 正常登出，不报错', async () => {})
-
-    it('[SEC] 步骤7: 已登出的 accessToken 访问受保护端点 → 401（黑名单生效）', async () => {
-      // Redis 黑名单中有该 jti → JwtAuthGuard.isBlacklisted() 返回 true → 401
+  beforeAll(async () => {
+    const fixture = await createLegacyE2eApp({ imports: [AuthModule, UserModule] })
+    app = fixture.app
+    prisma = fixture.prisma
+    redis = fixture.redis
+    await redis.flushDb()
+    await prisma.auditLog.deleteMany()
+    await prisma.user.deleteMany()
+    await prisma.user.create({
+      data: {
+        account: ACCOUNT,
+        password: await bcrypt.hash(PASSWORD, 6),
+        nickname: 'Legacy Auth E2E',
+        role: UserRole.USER,
+        status: UserStatus.ACTIVE,
+      },
     })
   })
 
-  // ── 验证码安全场景 ────────────────────────────────────────────────────────
-
-  describe('验证码安全场景', () => {
-    it('[RACE] 同一 captchaId 并发提交两次登录 → 仅第一次成功（Redis GETDEL 原子性）', async () => {
-      // 并发：Promise.all([login1, login2])，期望一个 200 一个 401
-    })
-
-    it('[SEC] 验证码 TTL 60s 过期后使用 → 401 验证码错误或已过期', async () => {})
-
-    it('[SEC] 密码错误 5 次（LOGIN_MAX_FAIL）→ 账号锁定，第 6 次也失败', async () => {})
-
-    it('[BIZ] 登录成功后同一 captchaId 不可复用（一次性消费）', async () => {})
+  afterAll(async () => {
+    await prisma.auditLog.deleteMany()
+    await prisma.user.deleteMany()
+    await redis.flushDb()
+    await app.close()
   })
 
-  // ── E2E-B3 验证 ───────────────────────────────────────────────────────────
+  it('LEG-AUTH-BIZ-001：验证码→登录→资料→刷新轮换→登出全链路', async () => {
+    const client = request.agent(app.getHttpServer())
+    const captcha = await issueCaptcha(app, redis)
+    const login = await client
+      .post('/api/auth/login')
+      .send({ account: ACCOUNT, password: PASSWORD, ...captcha })
+      .expect(201)
+    expect(login.body).toMatchObject({ code: 0, data: { accessToken: expect.any(String) } })
+    const firstAccessToken = login.body.data.accessToken as string
+    const firstRefreshCookie = requireCookie(login, REFRESH_TOKEN_COOKIE)
 
-  describe('[E2E-B3] 已过期 Token 黑名单 TTL 边界', () => {
-    it('[E2E-B3] 已过期 Token 调用 logout 不应报错，后续访问也因 JWT 本身过期而 401', async () => {
-      // 代码分析（token.service.ts blacklistAccessToken）：
-      //   - 过期 token → verifyAccessToken 抛 'jwt expired'
-      //   - catch 块静默处理，不写 Redis，不报错
-      //   - 过期 token 本身已无法通过 jwt.verify → 访问受保护端点返回 401
-      // 结论：E2E-B3 描述的「SET EX 0」问题不存在，代码已通过 if(remainingTTL>0) 正确处理
-    })
+    const profile = await request(app.getHttpServer())
+      .post('/api/user/profile/detail')
+      .set('Authorization', `Bearer ${firstAccessToken}`)
+      .send({})
+      .expect(201)
+    expect(profile.body.data).toMatchObject({ account: ACCOUNT, role: UserRole.USER, status: UserStatus.ACTIVE })
+    expect(profile.body.data.password).toBeUndefined()
+
+    const refresh = await client.post('/api/auth/refresh').send({}).expect(201)
+    expect(refresh.body).toMatchObject({ code: 0, data: { accessToken: expect.any(String) } })
+    const rotatedAccessToken = refresh.body.data.accessToken as string
+    expect(rotatedAccessToken).not.toBe(firstAccessToken)
+    expect(requireCookie(refresh, REFRESH_TOKEN_COOKIE)).not.toBe(firstRefreshCookie)
+
+    const graceReplay = await request(app.getHttpServer())
+      .post('/api/auth/refresh')
+      .set('Cookie', firstRefreshCookie)
+      .send({})
+      .expect(201)
+    expect(graceReplay.body).toMatchObject({ code: 0, data: { accessToken: expect.any(String) } })
+    expect(readSetCookies(graceReplay)).toHaveLength(0)
+
+    await delay((REFRESH_TOKEN_GRACE + 1) * 1000)
+    const expiredReplay = await request(app.getHttpServer())
+      .post('/api/auth/refresh')
+      .set('Cookie', firstRefreshCookie)
+      .send({})
+      .expect(200)
+    expect(expiredReplay.body.code).toBe(1006)
+
+    const logout = await client
+      .post('/api/auth/logout')
+      .set('Authorization', `Bearer ${rotatedAccessToken}`)
+      .send({})
+      .expect(201)
+    expect(logout.body.code).toBe(0)
+
+    await request(app.getHttpServer())
+      .post('/api/user/profile/detail')
+      .set('Authorization', `Bearer ${rotatedAccessToken}`)
+      .send({})
+      .expect(401)
+
+    const revokedRefresh = await client.post('/api/auth/refresh').send({}).expect(200)
+    expect(revokedRefresh.body.code).toBe(1006)
+  })
+
+  it('LEG-AUTH-SEC-001：同一验证码并发登录最多成功一次', async () => {
+    const captcha = await issueCaptcha(app, redis)
+    const payload = { account: ACCOUNT, password: PASSWORD, ...captcha }
+    const [first, second] = await Promise.all([
+      request(app.getHttpServer()).post('/api/auth/login').send(payload),
+      request(app.getHttpServer()).post('/api/auth/login').send(payload),
+    ])
+    const codes = [first.body.code, second.body.code].sort((a, b) => a - b)
+    expect(codes).toEqual([0, 1004])
+    expect(await redis.get(REDIS_KEY.CAPTCHA(captcha.captchaId))).toBeNull()
+  })
+
+  it('LEG-AUTH-SEC-002：已过期 Access Token 登出不报错，且不能访问受保护接口', async () => {
+    const jwt = app.get(JwtService)
+    const expiredToken = await jwt.signAsync(
+      { id: 999, account: 'expired', nickname: null, role: UserRole.USER, jti: 'expired-jti' },
+      { secret: process.env.ACCESS_TOKEN_SECRET, expiresIn: -1 },
+    )
+
+    const logout = await request(app.getHttpServer())
+      .post('/api/auth/logout')
+      .set('Authorization', `Bearer ${expiredToken}`)
+      .send({})
+      .expect(201)
+    expect(logout.body.code).toBe(0)
+
+    await request(app.getHttpServer())
+      .post('/api/user/profile/detail')
+      .set('Authorization', `Bearer ${expiredToken}`)
+      .send({})
+      .expect(401)
   })
 })
+
+async function issueCaptcha(app: INestApplication, redis: RedisClientType) {
+  const response = await request(app.getHttpServer()).post('/api/auth/captcha').send({}).expect(201)
+  expect(response.body).toMatchObject({
+    code: 0,
+    data: { captchaId: expect.any(String), svgImage: expect.stringContaining('<svg') },
+  })
+  const captchaId = response.body.data.captchaId as string
+  const captchaCode = await redis.get(REDIS_KEY.CAPTCHA(captchaId))
+  if (!captchaCode) throw new Error('验证码未写入 Redis')
+  return { captchaId, captchaCode }
+}
+
+function readSetCookies(response: request.Response): string[] {
+  const header = response.headers['set-cookie']
+  if (Array.isArray(header)) return header
+  return typeof header === 'string' ? [header] : []
+}
+
+function requireCookie(response: request.Response, name: string): string {
+  const cookie = readSetCookies(response).find((value) => value.startsWith(`${name}=`))
+  if (!cookie) throw new Error(`响应缺少 Cookie: ${name}`)
+  return cookie.split(';', 1)[0]
+}
+
+async function delay(ms: number): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, ms))
+}

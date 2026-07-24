@@ -1,0 +1,9 @@
+FROM redis:7.4
+
+COPY redis.prod.conf /usr/local/etc/redis/redis.conf
+COPY docker-entrypoint.prod.sh /usr/local/bin/docker-entrypoint.prod.sh
+
+RUN chmod 0555 /usr/local/bin/docker-entrypoint.prod.sh
+
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.prod.sh"]
+CMD ["redis-server", "/usr/local/etc/redis/redis.conf"]

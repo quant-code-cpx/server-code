@@ -6,7 +6,9 @@ set -e
 
 : "${REDIS_PASSWORD:?环境变量 REDIS_PASSWORD 未设置，请在 .env 中配置后重启容器。}"
 
-echo "user default on >${REDIS_PASSWORD} ~* +@all" \
+# `~*` only grants key access. Socket.IO adapter also needs Pub/Sub channel
+# access, otherwise Redis rejects subscriptions with NOPERM.
+echo "user default on >${REDIS_PASSWORD} ~* &* +@all" \
   > /usr/local/etc/redis/redis.acl
 
 exec "$@"

@@ -49,9 +49,41 @@ export class AgentConversationListResponseDto {
   nextCursor: string | null
 }
 
+export class AgentConversationCurrentSummaryDto {
+  @ApiProperty()
+  summaryId: string
+
+  @ApiProperty()
+  version: number
+
+  @ApiProperty()
+  fromMessageId: string
+
+  @ApiProperty()
+  throughMessageId: string
+
+  @ApiProperty()
+  promptVersionId: string
+
+  @ApiProperty()
+  modelName: string
+
+  @ApiProperty()
+  sourceTokenCount: number
+
+  @ApiProperty()
+  contentHash: string
+
+  @ApiProperty({ format: 'date-time' })
+  createdAt: string
+}
+
 export class AgentConversationDetailResponseDto extends AgentConversationSummaryDto {
   @ApiProperty()
   statusVersion: number
+
+  @ApiPropertyOptional({ nullable: true, type: AgentConversationCurrentSummaryDto })
+  currentSummary: AgentConversationCurrentSummaryDto | null
 }
 
 export class AgentMessageRunSummaryDto {

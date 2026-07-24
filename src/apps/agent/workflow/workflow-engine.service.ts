@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common'
+import { Inject, Injectable, Optional } from '@nestjs/common'
 import {
   AiAgentRunStatus,
   AiAgentStepStatus,
@@ -9,6 +9,8 @@ import {
 } from '@prisma/client'
 import { AgentExecutionConfig, type IAgentExecutionConfig } from 'src/config/agent-execution.config'
 import { LoggerService } from 'src/shared/logger/logger.service'
+import { AgentMetricsService } from '../observability/agent-metrics.service'
+import { AgentTracingService } from '../observability/agent-tracing.service'
 import type { AttachCitationInput } from '../audit/citation.repository'
 import { AgentRunCompletionRepository } from '../execution/agent-run-completion.repository'
 import { AgentRunRepository, type AgentExecutionRun } from '../execution/agent-run.repository'
@@ -61,6 +63,8 @@ export class WorkflowEngineService {
     validateCitations: ValidateCitationsNode,
     persist: PersistNode,
     complete: CompleteNode,
+    @Optional() private readonly tracing?: AgentTracingService,
+    @Optional() private readonly metrics?: AgentMetricsService,
   ) {
     this.handlers = new Map(
       [loadContext, plan, authorizeTools, executeTools, synthesize, validateCitations, persist, complete].map(
@@ -117,17 +121,22 @@ export class WorkflowEngineService {
       }
 
       let stepCompleted = false
+      const nodeStartedAt = Date.now()
       try {
-        const nextState = await this.withLeaseHeartbeat(command, (signal) =>
-          handler.execute({
-            run: command.run,
-            workflow: command.workflow,
-            state: checkpoint.state,
-            limits,
-            stepId: step.id,
-            signal,
-          }),
+        const nextState = await this.executeNode(command, node.key, () =>
+          this.withLeaseHeartbeat(command, (signal) =>
+            handler.execute({
+              run: command.run,
+              workflow: command.workflow,
+              state: checkpoint.state,
+              limits,
+              stepId: step.id,
+              workerId: command.workerId,
+              signal,
+            }),
+          ),
         )
+        this.observeNode(command, node.key, 'SUCCEEDED', Date.now() - nodeStartedAt)
         const currentRun = await this.guard(command.run.userId, command.run.id, command.workerId, command.signal)
         const completedState = {
           ...nextState,
@@ -177,11 +186,37 @@ export class WorkflowEngineService {
         })
         checkpointVersion = saved.checkpointVersion
       } catch (error) {
+        this.observeNode(command, node.key, 'FAILED', Date.now() - nodeStartedAt)
         if (!stepCompleted) await this.finishErroredStep(command, step, error)
         throw error
       }
     }
     throw new WorkflowValidationError('Workflow 未生成终态')
+  }
+
+  private executeNode<T>(command: ExecuteWorkflowCommand, node: string, work: () => Promise<T>): Promise<T> {
+    if (!this.tracing) return work()
+    return this.tracing.span(
+      'agent.workflow.node',
+      { traceId: command.run.traceId, runId: command.run.id, workflow: command.workflow.key, node },
+      work,
+    )
+  }
+
+  private observeNode(
+    command: ExecuteWorkflowCommand,
+    node: string,
+    status: 'SUCCEEDED' | 'FAILED',
+    durationMs: number,
+  ): void {
+    try {
+      this.metrics?.observeNode(command.workflow.key, node, status, durationMs)
+    } catch (error) {
+      this.logger.warn(
+        { operation: 'agent.metrics.node', node, errorClass: error instanceof Error ? error.name : 'unknown' },
+        WorkflowEngineService.name,
+      )
+    }
   }
 
   private async completeRun(
@@ -214,6 +249,7 @@ export class WorkflowEngineService {
       contentText: finalization.contentText,
       contentBlocks: finalization.contentBlocks,
       citations,
+      modelCallId: requireFinalModelCallId(state.finalModelCallId),
       modelName: finalization.modelName,
       tokenCount: finalization.tokenCount,
       resultSummary: {
@@ -367,6 +403,7 @@ function restoreCheckpoint(
         toolSnapshotSignature: null,
         facts: [],
         draft: null,
+        finalModelCallId: null,
         modelName: null,
         finalization: null,
         warnings: [],
@@ -436,4 +473,9 @@ function normalizeWorkflowError(error: unknown): WorkflowExecutionError {
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {}
+}
+
+function requireFinalModelCallId(value: string | null): string {
+  if (!value) throw new WorkflowValidationError('最终回答缺少 ModelCall ID')
+  return value
 }

@@ -175,7 +175,7 @@ export class AgentEventRepository {
     })
     if (allocation.count !== 1) throw new AgentRunConflictError('Agent Run event sequence 分配冲突')
 
-    return tx.aiRunEvent.create({
+    const event = await tx.aiRunEvent.create({
       data: {
         runId: run.id,
         stepId,
@@ -186,6 +186,8 @@ export class AgentEventRepository {
         payload: toJsonInput(payload),
       },
     })
+    run.nextEventSequence = sequence + 1n
+    return event
   }
 
   private logOperation(operation: string, startedAt: number, rowCount: number): void {

@@ -783,7 +783,7 @@ export class FactorExpressionService {
   SELECT DISTINCT ON (ts_code) ts_code, roe, roa, revenue_yoy, netprofit_yoy
   FROM financial_indicator_snapshots
   WHERE ann_date IS NOT NULL AND ann_date <= '${tradeDate}'::date
-  ORDER BY ts_code, ann_date DESC
+  ORDER BY ts_code, end_date DESC, ann_date DESC, (update_flag = '1') DESC, synced_at DESC
 )\n`
       : ''
 
@@ -826,7 +826,7 @@ WHERE db.trade_date = '${tradeDate}'::date
   SELECT DISTINCT ON (ts_code) ts_code, roe, roa, revenue_yoy, netprofit_yoy
   FROM financial_indicator_snapshots
   WHERE ann_date IS NOT NULL AND ann_date <= '${tradeDate}'::date
-  ORDER BY ts_code, ann_date DESC
+  ORDER BY ts_code, end_date DESC, ann_date DESC, (update_flag = '1') DESC, synced_at DESC
 ),\n`
       : ''
 
@@ -877,7 +877,7 @@ LIMIT ${pageSize} OFFSET ${offset}`
   SELECT DISTINCT ON (ts_code) ts_code, roe, roa, revenue_yoy, netprofit_yoy
   FROM financial_indicator_snapshots
   WHERE ann_date IS NOT NULL AND ann_date <= '${tradeDate}'::date
-  ORDER BY ts_code, ann_date DESC
+  ORDER BY ts_code, end_date DESC, ann_date DESC, (update_flag = '1') DESC, synced_at DESC
 )\n`
       : ''
 

@@ -1,0 +1,1794 @@
+{
+  "schemaVersion": 1,
+  "patterns": ["src/**/*.ts", "test/**/*.ts", "scripts/**/*.ts"],
+  "summary": {
+    "filesScanned": 760,
+    "filesWithFindings": 191,
+    "errors": 1168,
+    "warnings": 530
+  },
+  "entries": [
+    {
+      "filePath": "scripts/run-agent-playwright-backend.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 6
+    },
+    {
+      "filePath": "scripts/verify-agent-playwright-run.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 2
+    },
+    {
+      "filePath": "scripts/verify-data-completeness.ts",
+      "ruleId": "@typescript-eslint/no-explicit-any",
+      "severity": 1,
+      "count": 1
+    },
+    {
+      "filePath": "scripts/verify-data-completeness.ts",
+      "ruleId": "@typescript-eslint/no-unused-vars",
+      "severity": 1,
+      "count": 1
+    },
+    {
+      "filePath": "scripts/verify-data-completeness.ts",
+      "ruleId": "no-var",
+      "severity": 2,
+      "count": 2
+    },
+    {
+      "filePath": "scripts/verify-moneyflow-window.ts",
+      "ruleId": "@typescript-eslint/no-explicit-any",
+      "severity": 1,
+      "count": 1
+    },
+    {
+      "filePath": "scripts/verify-moneyflow-window.ts",
+      "ruleId": "@typescript-eslint/no-require-imports",
+      "severity": 2,
+      "count": 2
+    },
+    {
+      "filePath": "src/apps/agent/contracts/test/agent-contracts.spec.ts",
+      "ruleId": "@typescript-eslint/no-unused-vars",
+      "severity": 1,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/alert/alert-calendar.service.ts",
+      "ruleId": "@typescript-eslint/no-unused-vars",
+      "severity": 1,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/alert/alert-calendar.service.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 2
+    },
+    {
+      "filePath": "src/apps/alert/alert.controller.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/alert/dto/calendar-response.dto.ts",
+      "ruleId": "@typescript-eslint/no-unused-vars",
+      "severity": 1,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/alert/price-alert.service.ts",
+      "ruleId": "@typescript-eslint/no-unused-vars",
+      "severity": 1,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/alert/test/alert.integration.spec.ts",
+      "ruleId": "@typescript-eslint/no-explicit-any",
+      "severity": 1,
+      "count": 2
+    },
+    {
+      "filePath": "src/apps/alert/test/alert.integration.spec.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 3
+    },
+    {
+      "filePath": "src/apps/alert/test/alert.spec.ts",
+      "ruleId": "@typescript-eslint/no-explicit-any",
+      "severity": 1,
+      "count": 5
+    },
+    {
+      "filePath": "src/apps/alert/test/alert.spec.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 27
+    },
+    {
+      "filePath": "src/apps/alert/test/price-alert.service.spec.ts",
+      "ruleId": "@typescript-eslint/no-explicit-any",
+      "severity": 1,
+      "count": 3
+    },
+    {
+      "filePath": "src/apps/auth/test/auth.integration.spec.ts",
+      "ruleId": "@typescript-eslint/no-explicit-any",
+      "severity": 1,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/auth/test/auth.integration.spec.ts",
+      "ruleId": "@typescript-eslint/no-unused-vars",
+      "severity": 1,
+      "count": 3
+    },
+    {
+      "filePath": "src/apps/auth/test/auth.integration.spec.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 6
+    },
+    {
+      "filePath": "src/apps/auth/test/auth.service.spec.ts",
+      "ruleId": "@typescript-eslint/ban-ts-comment",
+      "severity": 2,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/auth/test/auth.service.spec.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 4
+    },
+    {
+      "filePath": "src/apps/auth/test/auth.spec.ts",
+      "ruleId": "@typescript-eslint/no-explicit-any",
+      "severity": 1,
+      "count": 4
+    },
+    {
+      "filePath": "src/apps/auth/test/auth.spec.ts",
+      "ruleId": "@typescript-eslint/no-unused-vars",
+      "severity": 1,
+      "count": 9
+    },
+    {
+      "filePath": "src/apps/auth/test/auth.spec.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 18
+    },
+    {
+      "filePath": "src/apps/backtest/dto/cost-sensitivity.dto.ts",
+      "ruleId": "@typescript-eslint/no-unused-vars",
+      "severity": 1,
+      "count": 2
+    },
+    {
+      "filePath": "src/apps/backtest/services/backtest-attribution.service.ts",
+      "ruleId": "@typescript-eslint/no-unused-vars",
+      "severity": 1,
+      "count": 2
+    },
+    {
+      "filePath": "src/apps/backtest/services/backtest-cost-sensitivity.service.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 6
+    },
+    {
+      "filePath": "src/apps/backtest/services/backtest-execution.service.ts",
+      "ruleId": "@typescript-eslint/no-unused-vars",
+      "severity": 1,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/backtest/services/backtest-metrics.service.ts",
+      "ruleId": "@typescript-eslint/no-unused-vars",
+      "severity": 1,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/backtest/services/backtest-param-sensitivity.service.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/backtest/services/backtest-walk-forward.service.ts",
+      "ruleId": "@typescript-eslint/no-unused-vars",
+      "severity": 1,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/backtest/services/backtest-walk-forward.service.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/backtest/strategies/custom-pool-rebalance.strategy.ts",
+      "ruleId": "@typescript-eslint/no-unused-vars",
+      "severity": 1,
+      "count": 3
+    },
+    {
+      "filePath": "src/apps/backtest/strategies/factor-screening-rotation.strategy.ts",
+      "ruleId": "@typescript-eslint/no-unused-vars",
+      "severity": 1,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/backtest/strategies/ma-cross-single.strategy.ts",
+      "ruleId": "@typescript-eslint/no-unused-vars",
+      "severity": 1,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/backtest/test/backtest-api.spec.ts",
+      "ruleId": "@typescript-eslint/no-require-imports",
+      "severity": 2,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/backtest/test/backtest-api.spec.ts",
+      "ruleId": "@typescript-eslint/no-unused-vars",
+      "severity": 1,
+      "count": 2
+    },
+    {
+      "filePath": "src/apps/backtest/test/backtest-api.spec.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 44
+    },
+    {
+      "filePath": "src/apps/backtest/test/backtest-attribution.service.spec.ts",
+      "ruleId": "@typescript-eslint/ban-ts-comment",
+      "severity": 2,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/backtest/test/backtest-comparison.service.spec.ts",
+      "ruleId": "@typescript-eslint/no-explicit-any",
+      "severity": 1,
+      "count": 4
+    },
+    {
+      "filePath": "src/apps/backtest/test/backtest-cost-sensitivity.service.spec.ts",
+      "ruleId": "@typescript-eslint/ban-ts-comment",
+      "severity": 2,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/backtest/test/backtest-cost-sensitivity.service.spec.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 3
+    },
+    {
+      "filePath": "src/apps/backtest/test/backtest-data-readiness.service.spec.ts",
+      "ruleId": "@typescript-eslint/ban-ts-comment",
+      "severity": 2,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/backtest/test/backtest-data-readiness.service.spec.ts",
+      "ruleId": "@typescript-eslint/no-explicit-any",
+      "severity": 1,
+      "count": 4
+    },
+    {
+      "filePath": "src/apps/backtest/test/backtest-data-readiness.service.spec.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 3
+    },
+    {
+      "filePath": "src/apps/backtest/test/backtest-engine.service.spec.ts",
+      "ruleId": "@typescript-eslint/ban-ts-comment",
+      "severity": 2,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/backtest/test/backtest-engine.service.spec.ts",
+      "ruleId": "@typescript-eslint/no-explicit-any",
+      "severity": 1,
+      "count": 41
+    },
+    {
+      "filePath": "src/apps/backtest/test/backtest-engine.service.spec.ts",
+      "ruleId": "@typescript-eslint/no-unused-vars",
+      "severity": 1,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/backtest/test/backtest-engine.service.spec.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 32
+    },
+    {
+      "filePath": "src/apps/backtest/test/backtest-execution.service.spec.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 8
+    },
+    {
+      "filePath": "src/apps/backtest/test/backtest-metrics.service.spec.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 2
+    },
+    {
+      "filePath": "src/apps/backtest/test/backtest-monte-carlo.service.spec.ts",
+      "ruleId": "@typescript-eslint/ban-ts-comment",
+      "severity": 2,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/backtest/test/backtest-monte-carlo.service.spec.ts",
+      "ruleId": "@typescript-eslint/no-explicit-any",
+      "severity": 1,
+      "count": 20
+    },
+    {
+      "filePath": "src/apps/backtest/test/backtest-param-sensitivity.service.spec.ts",
+      "ruleId": "@typescript-eslint/ban-ts-comment",
+      "severity": 2,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/backtest/test/backtest-param-sensitivity.service.spec.ts",
+      "ruleId": "@typescript-eslint/no-explicit-any",
+      "severity": 1,
+      "count": 2
+    },
+    {
+      "filePath": "src/apps/backtest/test/backtest-param-sensitivity.service.spec.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 2
+    },
+    {
+      "filePath": "src/apps/backtest/test/backtest-report.service.spec.ts",
+      "ruleId": "@typescript-eslint/no-explicit-any",
+      "severity": 1,
+      "count": 2
+    },
+    {
+      "filePath": "src/apps/backtest/test/backtest-run.service.spec.ts",
+      "ruleId": "@typescript-eslint/ban-ts-comment",
+      "severity": 2,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/backtest/test/backtest-run.service.spec.ts",
+      "ruleId": "@typescript-eslint/no-explicit-any",
+      "severity": 1,
+      "count": 9
+    },
+    {
+      "filePath": "src/apps/backtest/test/backtest-run.service.spec.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 4
+    },
+    {
+      "filePath": "src/apps/backtest/test/backtest-walk-forward.service.spec.ts",
+      "ruleId": "@typescript-eslint/no-explicit-any",
+      "severity": 1,
+      "count": 6
+    },
+    {
+      "filePath": "src/apps/backtest/test/backtest-walk-forward.service.spec.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/backtest/test/backtest.controller.spec.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 61
+    },
+    {
+      "filePath": "src/apps/calendar/calendar.service.ts",
+      "ruleId": "@typescript-eslint/no-unused-vars",
+      "severity": 1,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/calendar/test/calendar.controller.spec.ts",
+      "ruleId": "@typescript-eslint/no-unused-vars",
+      "severity": 1,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/calendar/test/calendar.controller.spec.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 4
+    },
+    {
+      "filePath": "src/apps/calendar/test/calendar.integration.spec.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 2
+    },
+    {
+      "filePath": "src/apps/calendar/test/calendar.spec.ts",
+      "ruleId": "@typescript-eslint/no-explicit-any",
+      "severity": 1,
+      "count": 2
+    },
+    {
+      "filePath": "src/apps/calendar/test/calendar.spec.ts",
+      "ruleId": "@typescript-eslint/no-require-imports",
+      "severity": 2,
+      "count": 2
+    },
+    {
+      "filePath": "src/apps/calendar/test/calendar.spec.ts",
+      "ruleId": "@typescript-eslint/no-unused-vars",
+      "severity": 1,
+      "count": 2
+    },
+    {
+      "filePath": "src/apps/calendar/test/calendar.spec.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 11
+    },
+    {
+      "filePath": "src/apps/event-study/test/event-signal.service.spec.ts",
+      "ruleId": "@typescript-eslint/no-explicit-any",
+      "severity": 1,
+      "count": 29
+    },
+    {
+      "filePath": "src/apps/event-study/test/event-study.controller.spec.ts",
+      "ruleId": "@typescript-eslint/no-explicit-any",
+      "severity": 1,
+      "count": 3
+    },
+    {
+      "filePath": "src/apps/event-study/test/event-study.controller.spec.ts",
+      "ruleId": "@typescript-eslint/no-unused-vars",
+      "severity": 1,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/event-study/test/event-study.controller.spec.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 2
+    },
+    {
+      "filePath": "src/apps/event-study/test/event-study.integration.spec.ts",
+      "ruleId": "@typescript-eslint/no-explicit-any",
+      "severity": 1,
+      "count": 2
+    },
+    {
+      "filePath": "src/apps/event-study/test/event-study.integration.spec.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 4
+    },
+    {
+      "filePath": "src/apps/event-study/test/event-study.service.spec.ts",
+      "ruleId": "@typescript-eslint/no-explicit-any",
+      "severity": 1,
+      "count": 16
+    },
+    {
+      "filePath": "src/apps/event-study/test/event-study.service.spec.ts",
+      "ruleId": "@typescript-eslint/no-unused-vars",
+      "severity": 1,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/event-study/test/event-study.spec.ts",
+      "ruleId": "@typescript-eslint/no-explicit-any",
+      "severity": 1,
+      "count": 11
+    },
+    {
+      "filePath": "src/apps/event-study/test/event-study.spec.ts",
+      "ruleId": "@typescript-eslint/no-unused-vars",
+      "severity": 1,
+      "count": 2
+    },
+    {
+      "filePath": "src/apps/event-study/test/event-study.spec.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 29
+    },
+    {
+      "filePath": "src/apps/export/export.service.ts",
+      "ruleId": "@typescript-eslint/no-unused-vars",
+      "severity": 1,
+      "count": 2
+    },
+    {
+      "filePath": "src/apps/export/test/export-api.spec.ts",
+      "ruleId": "@typescript-eslint/no-require-imports",
+      "severity": 2,
+      "count": 2
+    },
+    {
+      "filePath": "src/apps/export/test/export-api.spec.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 7
+    },
+    {
+      "filePath": "src/apps/export/test/export.controller.spec.ts",
+      "ruleId": "@typescript-eslint/no-unused-vars",
+      "severity": 1,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/export/test/export.controller.spec.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 6
+    },
+    {
+      "filePath": "src/apps/export/test/export.service.spec.ts",
+      "ruleId": "@typescript-eslint/no-explicit-any",
+      "severity": 1,
+      "count": 3
+    },
+    {
+      "filePath": "src/apps/factor/dto/factor-backtest.dto.ts",
+      "ruleId": "@typescript-eslint/no-unused-vars",
+      "severity": 1,
+      "count": 4
+    },
+    {
+      "filePath": "src/apps/factor/dto/factor-orthogonal.dto.ts",
+      "ruleId": "@typescript-eslint/no-unused-vars",
+      "severity": 1,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/factor/dto/factor-precompute.dto.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/factor/factor.controller.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/factor/services/factor-backtest.service.ts",
+      "ruleId": "@typescript-eslint/no-unused-vars",
+      "severity": 1,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/factor/services/factor-compute.service.ts",
+      "ruleId": "@typescript-eslint/no-unused-vars",
+      "severity": 1,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/factor/services/factor-optimization.service.ts",
+      "ruleId": "@typescript-eslint/no-unused-vars",
+      "severity": 1,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/factor/services/factor-orthogonal.service.ts",
+      "ruleId": "@typescript-eslint/no-unused-vars",
+      "severity": 1,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/factor/test/factor-analysis.service.spec.ts",
+      "ruleId": "@typescript-eslint/no-explicit-any",
+      "severity": 1,
+      "count": 3
+    },
+    {
+      "filePath": "src/apps/factor/test/factor-api.spec.ts",
+      "ruleId": "@typescript-eslint/no-require-imports",
+      "severity": 2,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/factor/test/factor-api.spec.ts",
+      "ruleId": "@typescript-eslint/no-unused-vars",
+      "severity": 1,
+      "count": 2
+    },
+    {
+      "filePath": "src/apps/factor/test/factor-api.spec.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 86
+    },
+    {
+      "filePath": "src/apps/factor/test/factor-backtest-save-strategy.service.spec.ts",
+      "ruleId": "@typescript-eslint/no-explicit-any",
+      "severity": 1,
+      "count": 9
+    },
+    {
+      "filePath": "src/apps/factor/test/factor-backtest-save-strategy.service.spec.ts",
+      "ruleId": "@typescript-eslint/no-unused-vars",
+      "severity": 1,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/factor/test/factor-compute.service.spec.ts",
+      "ruleId": "@typescript-eslint/ban-ts-comment",
+      "severity": 2,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/factor/test/factor-compute.service.spec.ts",
+      "ruleId": "@typescript-eslint/no-explicit-any",
+      "severity": 1,
+      "count": 16
+    },
+    {
+      "filePath": "src/apps/factor/test/factor-expression.service.spec.ts",
+      "ruleId": "@typescript-eslint/no-explicit-any",
+      "severity": 1,
+      "count": 5
+    },
+    {
+      "filePath": "src/apps/factor/test/factor-optimization.service.spec.ts",
+      "ruleId": "@typescript-eslint/no-explicit-any",
+      "severity": 1,
+      "count": 2
+    },
+    {
+      "filePath": "src/apps/factor/test/factor-optimization.service.spec.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/factor/test/factor-orthogonal.service.spec.ts",
+      "ruleId": "@typescript-eslint/ban-ts-comment",
+      "severity": 2,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/factor/test/factor-orthogonal.service.spec.ts",
+      "ruleId": "@typescript-eslint/no-explicit-any",
+      "severity": 1,
+      "count": 34
+    },
+    {
+      "filePath": "src/apps/factor/test/factor-orthogonal.service.spec.ts",
+      "ruleId": "@typescript-eslint/no-unused-vars",
+      "severity": 1,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/factor/test/factor-orthogonal.service.spec.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/factor/test/factor-screening.service.spec.ts",
+      "ruleId": "@typescript-eslint/no-explicit-any",
+      "severity": 1,
+      "count": 17
+    },
+    {
+      "filePath": "src/apps/factor/test/factor-screening.service.spec.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/factor/test/factor.controller.spec.ts",
+      "ruleId": "@typescript-eslint/no-unused-vars",
+      "severity": 1,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/factor/test/factor.controller.spec.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 6
+    },
+    {
+      "filePath": "src/apps/fund/test/fund-api.spec.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 23
+    },
+    {
+      "filePath": "src/apps/fund/test/fund.controller.spec.ts",
+      "ruleId": "@typescript-eslint/no-unused-vars",
+      "severity": 1,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/fund/test/fund.controller.spec.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/fund/test/fund.service.spec.ts",
+      "ruleId": "@typescript-eslint/no-explicit-any",
+      "severity": 1,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/fund/test/fund.service.spec.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 9
+    },
+    {
+      "filePath": "src/apps/heatmap/heatmap.service.ts",
+      "ruleId": "@typescript-eslint/no-empty-object-type",
+      "severity": 2,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/heatmap/heatmap.service.ts",
+      "ruleId": "@typescript-eslint/no-explicit-any",
+      "severity": 1,
+      "count": 5
+    },
+    {
+      "filePath": "src/apps/heatmap/test/heatmap-api.spec.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 32
+    },
+    {
+      "filePath": "src/apps/heatmap/test/heatmap.controller.spec.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/heatmap/test/heatmap.service.spec.ts",
+      "ruleId": "@typescript-eslint/no-explicit-any",
+      "severity": 1,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/index/test/index-api.spec.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 7
+    },
+    {
+      "filePath": "src/apps/index/test/index.service.spec.ts",
+      "ruleId": "@typescript-eslint/no-explicit-any",
+      "severity": 1,
+      "count": 2
+    },
+    {
+      "filePath": "src/apps/index/test/index.service.spec.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 4
+    },
+    {
+      "filePath": "src/apps/industry-rotation/dto/industry-detail-query.dto.ts",
+      "ruleId": "@typescript-eslint/no-unused-vars",
+      "severity": 1,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/industry-rotation/test/industry-rotation-api.spec.ts",
+      "ruleId": "@typescript-eslint/no-unused-vars",
+      "severity": 1,
+      "count": 4
+    },
+    {
+      "filePath": "src/apps/industry-rotation/test/industry-rotation-api.spec.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 27
+    },
+    {
+      "filePath": "src/apps/industry-rotation/test/industry-rotation.controller.spec.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 7
+    },
+    {
+      "filePath": "src/apps/industry-rotation/test/industry-rotation.service.spec.ts",
+      "ruleId": "@typescript-eslint/ban-ts-comment",
+      "severity": 2,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/industry-rotation/test/industry-rotation.service.spec.ts",
+      "ruleId": "@typescript-eslint/no-explicit-any",
+      "severity": 1,
+      "count": 5
+    },
+    {
+      "filePath": "src/apps/industry-rotation/test/industry-rotation.service.spec.ts",
+      "ruleId": "@typescript-eslint/no-unused-vars",
+      "severity": 1,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/industry/dto/industry-dict-query.dto.ts",
+      "ruleId": "@typescript-eslint/prefer-as-const",
+      "severity": 2,
+      "count": 2
+    },
+    {
+      "filePath": "src/apps/industry/industry-dict.service.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 4
+    },
+    {
+      "filePath": "src/apps/industry/test/industry-api.spec.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 4
+    },
+    {
+      "filePath": "src/apps/industry/test/industry-dict.service.spec.ts",
+      "ruleId": "@typescript-eslint/no-explicit-any",
+      "severity": 1,
+      "count": 2
+    },
+    {
+      "filePath": "src/apps/industry/test/industry-dict.service.spec.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 5
+    },
+    {
+      "filePath": "src/apps/industry/test/industry.controller.spec.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 3
+    },
+    {
+      "filePath": "src/apps/market/market.controller.ts",
+      "ruleId": "@typescript-eslint/no-unused-vars",
+      "severity": 1,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/market/test/market-api.spec.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 2
+    },
+    {
+      "filePath": "src/apps/market/test/market.controller.spec.ts",
+      "ruleId": "@typescript-eslint/no-explicit-any",
+      "severity": 1,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/market/test/market.controller.spec.ts",
+      "ruleId": "@typescript-eslint/no-unused-vars",
+      "severity": 1,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/market/test/market.controller.spec.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 14
+    },
+    {
+      "filePath": "src/apps/market/test/market.service.spec.ts",
+      "ruleId": "@typescript-eslint/no-explicit-any",
+      "severity": 1,
+      "count": 16
+    },
+    {
+      "filePath": "src/apps/market/test/market.service.spec.ts",
+      "ruleId": "@typescript-eslint/no-require-imports",
+      "severity": 2,
+      "count": 3
+    },
+    {
+      "filePath": "src/apps/market/test/market.service.spec.ts",
+      "ruleId": "@typescript-eslint/no-unused-vars",
+      "severity": 1,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/notification/notification.controller.ts",
+      "ruleId": "@typescript-eslint/no-unused-vars",
+      "severity": 1,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/notification/test/notification-api.spec.ts",
+      "ruleId": "@typescript-eslint/no-require-imports",
+      "severity": 2,
+      "count": 2
+    },
+    {
+      "filePath": "src/apps/notification/test/notification-api.spec.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 21
+    },
+    {
+      "filePath": "src/apps/notification/test/notification.controller.spec.ts",
+      "ruleId": "@typescript-eslint/no-explicit-any",
+      "severity": 1,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/notification/test/notification.service.spec.ts",
+      "ruleId": "@typescript-eslint/no-explicit-any",
+      "severity": 1,
+      "count": 10
+    },
+    {
+      "filePath": "src/apps/pattern/pattern.service.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 16
+    },
+    {
+      "filePath": "src/apps/pattern/test/pattern-api.spec.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 13
+    },
+    {
+      "filePath": "src/apps/pattern/test/pattern.service.spec.ts",
+      "ruleId": "@typescript-eslint/no-explicit-any",
+      "severity": 1,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/pattern/utils/similarity.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/portfolio/risk-check.service.ts",
+      "ruleId": "@typescript-eslint/no-unused-vars",
+      "severity": 1,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/portfolio/test/backtest-portfolio-bridge.service.spec.ts",
+      "ruleId": "@typescript-eslint/no-explicit-any",
+      "severity": 1,
+      "count": 3
+    },
+    {
+      "filePath": "src/apps/portfolio/test/portfolio-api.spec.ts",
+      "ruleId": "@typescript-eslint/no-require-imports",
+      "severity": 2,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/portfolio/test/portfolio-api.spec.ts",
+      "ruleId": "@typescript-eslint/no-unused-vars",
+      "severity": 1,
+      "count": 2
+    },
+    {
+      "filePath": "src/apps/portfolio/test/portfolio-api.spec.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 71
+    },
+    {
+      "filePath": "src/apps/portfolio/test/portfolio-performance.service.spec.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/portfolio/test/portfolio-trade-log.service.spec.ts",
+      "ruleId": "@typescript-eslint/no-explicit-any",
+      "severity": 1,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/portfolio/test/portfolio.controller.spec.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 26
+    },
+    {
+      "filePath": "src/apps/portfolio/test/portfolio.service.spec.ts",
+      "ruleId": "@typescript-eslint/no-explicit-any",
+      "severity": 1,
+      "count": 3
+    },
+    {
+      "filePath": "src/apps/portfolio/test/portfolio.service.spec.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 5
+    },
+    {
+      "filePath": "src/apps/portfolio/test/rebalance-plan.service.spec.ts",
+      "ruleId": "@typescript-eslint/no-explicit-any",
+      "severity": 1,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/portfolio/test/rebalance-plan.service.spec.ts",
+      "ruleId": "@typescript-eslint/no-unused-vars",
+      "severity": 1,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/portfolio/test/risk-check.service.spec.ts",
+      "ruleId": "@typescript-eslint/no-explicit-any",
+      "severity": 1,
+      "count": 10
+    },
+    {
+      "filePath": "src/apps/portfolio/test/risk-check.service.spec.ts",
+      "ruleId": "@typescript-eslint/no-unused-vars",
+      "severity": 1,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/report/test/report-api.spec.ts",
+      "ruleId": "@typescript-eslint/no-require-imports",
+      "severity": 2,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/report/test/report-api.spec.ts",
+      "ruleId": "@typescript-eslint/no-unused-vars",
+      "severity": 1,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/report/test/report-api.spec.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 14
+    },
+    {
+      "filePath": "src/apps/report/test/report.controller.spec.ts",
+      "ruleId": "@typescript-eslint/no-unused-vars",
+      "severity": 1,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/report/test/strategy-research-report.service.spec.ts",
+      "ruleId": "@typescript-eslint/no-explicit-any",
+      "severity": 1,
+      "count": 12
+    },
+    {
+      "filePath": "src/apps/report/test/strategy-research-report.service.spec.ts",
+      "ruleId": "@typescript-eslint/no-unused-vars",
+      "severity": 1,
+      "count": 2
+    },
+    {
+      "filePath": "src/apps/research-note/test/research-note-api.spec.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 91
+    },
+    {
+      "filePath": "src/apps/research-note/test/research-note.controller.spec.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 4
+    },
+    {
+      "filePath": "src/apps/screener-subscription/dto/subscription.dto.ts",
+      "ruleId": "@typescript-eslint/no-unused-vars",
+      "severity": 1,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/screener-subscription/screener-subscription.controller.ts",
+      "ruleId": "@typescript-eslint/no-unused-vars",
+      "severity": 1,
+      "count": 2
+    },
+    {
+      "filePath": "src/apps/screener-subscription/test/screener-subscription-api.spec.ts",
+      "ruleId": "@typescript-eslint/no-require-imports",
+      "severity": 2,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/screener-subscription/test/screener-subscription-api.spec.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 17
+    },
+    {
+      "filePath": "src/apps/screener-subscription/test/screener-subscription.controller.spec.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/signal/drift-detection.service.ts",
+      "ruleId": "@typescript-eslint/no-unused-vars",
+      "severity": 1,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/signal/drift-detection.service.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 2
+    },
+    {
+      "filePath": "src/apps/signal/signal.module.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/signal/test/signal-api.spec.ts",
+      "ruleId": "@typescript-eslint/no-require-imports",
+      "severity": 2,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/signal/test/signal-api.spec.ts",
+      "ruleId": "@typescript-eslint/no-unused-vars",
+      "severity": 1,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/signal/test/signal-api.spec.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 27
+    },
+    {
+      "filePath": "src/apps/signal/test/signal-generation.service.spec.ts",
+      "ruleId": "@typescript-eslint/no-explicit-any",
+      "severity": 1,
+      "count": 4
+    },
+    {
+      "filePath": "src/apps/signal/test/signal-generation.service.spec.ts",
+      "ruleId": "@typescript-eslint/no-unused-vars",
+      "severity": 1,
+      "count": 2
+    },
+    {
+      "filePath": "src/apps/signal/test/signal.controller.spec.ts",
+      "ruleId": "@typescript-eslint/no-unused-vars",
+      "severity": 1,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/stock/stock-analysis.service.ts",
+      "ruleId": "@typescript-eslint/no-unused-vars",
+      "severity": 1,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/stock/stock-analysis.service.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/stock/stock-financial.service.ts",
+      "ruleId": "@typescript-eslint/no-explicit-any",
+      "severity": 1,
+      "count": 3
+    },
+    {
+      "filePath": "src/apps/stock/stock-screener.service.ts",
+      "ruleId": "prefer-const",
+      "severity": 2,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/stock/test/stock-analysis.service.spec.ts",
+      "ruleId": "@typescript-eslint/no-explicit-any",
+      "severity": 1,
+      "count": 24
+    },
+    {
+      "filePath": "src/apps/stock/test/stock-analysis.service.spec.ts",
+      "ruleId": "@typescript-eslint/no-unused-vars",
+      "severity": 1,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/stock/test/stock-analysis.service.spec.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 23
+    },
+    {
+      "filePath": "src/apps/stock/test/stock-api.spec.ts",
+      "ruleId": "@typescript-eslint/no-require-imports",
+      "severity": 2,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/stock/test/stock-api.spec.ts",
+      "ruleId": "@typescript-eslint/no-unused-vars",
+      "severity": 1,
+      "count": 2
+    },
+    {
+      "filePath": "src/apps/stock/test/stock-api.spec.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 10
+    },
+    {
+      "filePath": "src/apps/stock/test/stock-financial.service.spec.ts",
+      "ruleId": "@typescript-eslint/no-explicit-any",
+      "severity": 1,
+      "count": 2
+    },
+    {
+      "filePath": "src/apps/stock/test/stock-financial.service.spec.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 8
+    },
+    {
+      "filePath": "src/apps/stock/test/stock-list.service.spec.ts",
+      "ruleId": "@typescript-eslint/ban-ts-comment",
+      "severity": 2,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/stock/test/stock-screener.service.spec.ts",
+      "ruleId": "@typescript-eslint/ban-ts-comment",
+      "severity": 2,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/stock/test/stock.controller.spec.ts",
+      "ruleId": "@typescript-eslint/no-explicit-any",
+      "severity": 1,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/stock/test/stock.controller.spec.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 9
+    },
+    {
+      "filePath": "src/apps/stock/utils/technical-indicators.ts",
+      "ruleId": "@typescript-eslint/no-unused-vars",
+      "severity": 1,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/stock/utils/timing-signals.ts",
+      "ruleId": "@typescript-eslint/no-unused-vars",
+      "severity": 1,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/strategy-draft/test/strategy-draft-api.spec.ts",
+      "ruleId": "@typescript-eslint/no-require-imports",
+      "severity": 2,
+      "count": 9
+    },
+    {
+      "filePath": "src/apps/strategy-draft/test/strategy-draft-api.spec.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 19
+    },
+    {
+      "filePath": "src/apps/strategy-draft/test/strategy-draft.controller.spec.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/strategy-draft/test/strategy-draft.service.spec.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/strategy/dto/strategy-version.dto.ts",
+      "ruleId": "@typescript-eslint/no-unused-vars",
+      "severity": 1,
+      "count": 2
+    },
+    {
+      "filePath": "src/apps/strategy/test/strategy-api.spec.ts",
+      "ruleId": "@typescript-eslint/no-require-imports",
+      "severity": 2,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/strategy/test/strategy-api.spec.ts",
+      "ruleId": "@typescript-eslint/no-unused-vars",
+      "severity": 1,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/strategy/test/strategy-api.spec.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 27
+    },
+    {
+      "filePath": "src/apps/strategy/test/strategy-schema-validator.service.spec.ts",
+      "ruleId": "@typescript-eslint/ban-ts-comment",
+      "severity": 2,
+      "count": 2
+    },
+    {
+      "filePath": "src/apps/strategy/test/strategy-version.service.spec.ts",
+      "ruleId": "@typescript-eslint/ban-ts-comment",
+      "severity": 2,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/strategy/test/strategy-version.service.spec.ts",
+      "ruleId": "@typescript-eslint/no-explicit-any",
+      "severity": 1,
+      "count": 3
+    },
+    {
+      "filePath": "src/apps/strategy/test/strategy-version.service.spec.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 5
+    },
+    {
+      "filePath": "src/apps/strategy/test/strategy.controller.spec.ts",
+      "ruleId": "@typescript-eslint/no-unused-vars",
+      "severity": 1,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/strategy/test/strategy.service.spec.ts",
+      "ruleId": "@typescript-eslint/ban-ts-comment",
+      "severity": 2,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/strategy/test/strategy.service.spec.ts",
+      "ruleId": "@typescript-eslint/no-explicit-any",
+      "severity": 1,
+      "count": 10
+    },
+    {
+      "filePath": "src/apps/tushare/test/tushare-admin.controller.spec.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 3
+    },
+    {
+      "filePath": "src/apps/tushare/test/tushare-api.spec.ts",
+      "ruleId": "@typescript-eslint/no-unused-vars",
+      "severity": 1,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/tushare/test/tushare-api.spec.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 28
+    },
+    {
+      "filePath": "src/apps/user/test/user-api.spec.ts",
+      "ruleId": "@typescript-eslint/no-require-imports",
+      "severity": 2,
+      "count": 2
+    },
+    {
+      "filePath": "src/apps/user/test/user-api.spec.ts",
+      "ruleId": "@typescript-eslint/no-unused-vars",
+      "severity": 1,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/user/test/user-api.spec.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 14
+    },
+    {
+      "filePath": "src/apps/user/test/user.controller.spec.ts",
+      "ruleId": "@typescript-eslint/no-unused-vars",
+      "severity": 1,
+      "count": 4
+    },
+    {
+      "filePath": "src/apps/user/test/user.service.spec.ts",
+      "ruleId": "@typescript-eslint/ban-ts-comment",
+      "severity": 2,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/user/test/user.service.spec.ts",
+      "ruleId": "@typescript-eslint/no-explicit-any",
+      "severity": 1,
+      "count": 5
+    },
+    {
+      "filePath": "src/apps/user/test/user.service.spec.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 2
+    },
+    {
+      "filePath": "src/apps/user/user.service.ts",
+      "ruleId": "@typescript-eslint/no-unused-vars",
+      "severity": 1,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/watchlist/dto/watchlist.dto.ts",
+      "ruleId": "@typescript-eslint/no-unused-vars",
+      "severity": 1,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/watchlist/test/watchlist-api.spec.ts",
+      "ruleId": "@typescript-eslint/no-require-imports",
+      "severity": 2,
+      "count": 3
+    },
+    {
+      "filePath": "src/apps/watchlist/test/watchlist-api.spec.ts",
+      "ruleId": "@typescript-eslint/no-unused-vars",
+      "severity": 1,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/watchlist/test/watchlist-api.spec.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 21
+    },
+    {
+      "filePath": "src/apps/watchlist/test/watchlist.controller.spec.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 2
+    },
+    {
+      "filePath": "src/apps/watchlist/test/watchlist.service.spec.ts",
+      "ruleId": "@typescript-eslint/no-explicit-any",
+      "severity": 1,
+      "count": 2
+    },
+    {
+      "filePath": "src/apps/watchlist/test/watchlist.service.spec.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 2
+    },
+    {
+      "filePath": "src/apps/watchlist/watchlist.controller.ts",
+      "ruleId": "@typescript-eslint/no-unused-vars",
+      "severity": 1,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/watchlist/watchlist.controller.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 1
+    },
+    {
+      "filePath": "src/apps/watchlist/watchlist.service.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 1
+    },
+    {
+      "filePath": "src/constant/cache.constant.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 1
+    },
+    {
+      "filePath": "src/lifecycle/guard/jwt-auth.guard.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 1
+    },
+    {
+      "filePath": "src/lifecycle/guard/test/jwt-auth.guard.spec.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 3
+    },
+    {
+      "filePath": "src/lifecycle/guard/test/roles.guard.spec.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 6
+    },
+    {
+      "filePath": "src/queue/backtesting/test/backtesting.processor.spec.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 5
+    },
+    {
+      "filePath": "src/shared/context/test/request-context.spec.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 1
+    },
+    {
+      "filePath": "src/shared/health/test/health.spec.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 1
+    },
+    {
+      "filePath": "src/shared/redis-shutdown.service.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 1
+    },
+    {
+      "filePath": "src/shared/test/prisma.service.spec.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 1
+    },
+    {
+      "filePath": "src/shared/test/redis-shutdown.service.spec.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 5
+    },
+    {
+      "filePath": "src/shared/test/token.service.spec.ts",
+      "ruleId": "@typescript-eslint/no-explicit-any",
+      "severity": 1,
+      "count": 3
+    },
+    {
+      "filePath": "src/tushare/api/test/tushare-client.service.spec.ts",
+      "ruleId": "@typescript-eslint/ban-ts-comment",
+      "severity": 2,
+      "count": 4
+    },
+    {
+      "filePath": "src/tushare/api/test/tushare-client.service.spec.ts",
+      "ruleId": "@typescript-eslint/no-explicit-any",
+      "severity": 1,
+      "count": 2
+    },
+    {
+      "filePath": "src/tushare/api/test/tushare-client.service.spec.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 1
+    },
+    {
+      "filePath": "src/tushare/sync/fund-sync.service.ts",
+      "ruleId": "@typescript-eslint/no-unused-vars",
+      "severity": 1,
+      "count": 1
+    },
+    {
+      "filePath": "src/tushare/sync/moneyflow-sync.service.ts",
+      "ruleId": "@typescript-eslint/no-unused-vars",
+      "severity": 1,
+      "count": 2
+    },
+    {
+      "filePath": "src/tushare/sync/option-sync.service.ts",
+      "ruleId": "@typescript-eslint/no-unused-vars",
+      "severity": 1,
+      "count": 1
+    },
+    {
+      "filePath": "src/tushare/sync/quality/cross-table-check.service.ts",
+      "ruleId": "@typescript-eslint/no-unused-vars",
+      "severity": 1,
+      "count": 2
+    },
+    {
+      "filePath": "src/tushare/sync/quality/test/auto-repair.service.spec.ts",
+      "ruleId": "@typescript-eslint/ban-ts-comment",
+      "severity": 2,
+      "count": 3
+    },
+    {
+      "filePath": "src/tushare/sync/quality/test/data-quality.service.spec.ts",
+      "ruleId": "@typescript-eslint/ban-ts-comment",
+      "severity": 2,
+      "count": 1
+    },
+    {
+      "filePath": "src/tushare/sync/quality/test/data-quality.service.spec.ts",
+      "ruleId": "@typescript-eslint/no-explicit-any",
+      "severity": 1,
+      "count": 7
+    },
+    {
+      "filePath": "src/tushare/sync/quality/test/data-quality.service.spec.ts",
+      "ruleId": "@typescript-eslint/no-unused-vars",
+      "severity": 1,
+      "count": 2
+    },
+    {
+      "filePath": "src/tushare/sync/quality/test/data-quality.service.spec.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 6
+    },
+    {
+      "filePath": "src/tushare/sync/sync-status-overview.service.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 1
+    },
+    {
+      "filePath": "src/tushare/sync/sync.service.ts",
+      "ruleId": "prefer-const",
+      "severity": 2,
+      "count": 1
+    },
+    {
+      "filePath": "src/tushare/sync/test/basic-sync.service.spec.ts",
+      "ruleId": "@typescript-eslint/ban-ts-comment",
+      "severity": 2,
+      "count": 1
+    },
+    {
+      "filePath": "src/tushare/sync/test/factor-data-sync.service.spec.ts",
+      "ruleId": "@typescript-eslint/ban-ts-comment",
+      "severity": 2,
+      "count": 1
+    },
+    {
+      "filePath": "src/tushare/sync/test/financial-sync.service.spec.ts",
+      "ruleId": "@typescript-eslint/ban-ts-comment",
+      "severity": 2,
+      "count": 1
+    },
+    {
+      "filePath": "src/tushare/sync/test/financial-sync.service.spec.ts",
+      "ruleId": "@typescript-eslint/no-unused-vars",
+      "severity": 1,
+      "count": 2
+    },
+    {
+      "filePath": "src/tushare/sync/test/fund-sync.service.spec.ts",
+      "ruleId": "@typescript-eslint/no-unused-vars",
+      "severity": 1,
+      "count": 6
+    },
+    {
+      "filePath": "src/tushare/sync/test/market-sync.service.spec.ts",
+      "ruleId": "@typescript-eslint/ban-ts-comment",
+      "severity": 2,
+      "count": 1
+    },
+    {
+      "filePath": "src/tushare/sync/test/market-sync.service.spec.ts",
+      "ruleId": "@typescript-eslint/no-unused-vars",
+      "severity": 1,
+      "count": 2
+    },
+    {
+      "filePath": "src/tushare/sync/test/moneyflow-sync.service.spec.ts",
+      "ruleId": "@typescript-eslint/ban-ts-comment",
+      "severity": 2,
+      "count": 2
+    },
+    {
+      "filePath": "src/tushare/sync/test/moneyflow-sync.service.spec.ts",
+      "ruleId": "@typescript-eslint/no-unused-vars",
+      "severity": 1,
+      "count": 2
+    },
+    {
+      "filePath": "src/tushare/sync/test/sync-log.service.spec.ts",
+      "ruleId": "@typescript-eslint/no-explicit-any",
+      "severity": 1,
+      "count": 1
+    },
+    {
+      "filePath": "src/tushare/sync/test/sync-status-overview.service.spec.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 1
+    },
+    {
+      "filePath": "src/tushare/test/tushare-sync.mapper.spec.ts",
+      "ruleId": "@typescript-eslint/no-unused-vars",
+      "severity": 1,
+      "count": 2
+    },
+    {
+      "filePath": "src/tushare/tushare-sync.mapper.ts",
+      "ruleId": "@typescript-eslint/no-require-imports",
+      "severity": 2,
+      "count": 2
+    },
+    {
+      "filePath": "src/websocket/test/events.gateway.spec.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 5
+    },
+    {
+      "filePath": "test/fresh/alert-fresh-v2.spec.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 3
+    },
+    {
+      "filePath": "test/fresh/auth-alert-pressure-v1.spec.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 1
+    },
+    {
+      "filePath": "test/fresh/auth-fresh-v2.spec.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 7
+    },
+    {
+      "filePath": "test/fresh/calendar-fresh-v2.spec.ts",
+      "ruleId": "@typescript-eslint/no-explicit-any",
+      "severity": 1,
+      "count": 1
+    },
+    {
+      "filePath": "test/fresh/calendar-fresh-v2.spec.ts",
+      "ruleId": "@typescript-eslint/no-unused-vars",
+      "severity": 1,
+      "count": 1
+    },
+    {
+      "filePath": "test/fresh/calendar-fresh-v2.spec.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 9
+    },
+    {
+      "filePath": "test/fresh/event-study-fresh-v2.spec.ts",
+      "ruleId": "prettier/prettier",
+      "severity": 2,
+      "count": 4
+    },
+    {
+      "filePath": "test/helpers/create-test-app.ts",
+      "ruleId": "@typescript-eslint/no-explicit-any",
+      "severity": 1,
+      "count": 2
+    }
+  ]
+}

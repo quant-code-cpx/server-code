@@ -75,10 +75,108 @@ export interface LoadedWorkflowContext {
   triggerMessageId: string
   responseMessageId: string
   userText: string
-  recentMessages: Array<{ role: string; content: string }>
+  systemPolicy: string
+  workflowPrompt: ContextWorkflowPrompt
+  conversationState: Record<string, unknown>
+  summary: ContextSummary | null
+  recentMessages: ContextRecentMessage[]
+  activeMemories: ContextUserMemory[]
+  retrievedSources: ContextRetrievedSource[]
   allowedCapabilities: AgentCapability[]
   allowedScopes: string[]
   pageContext: Record<string, unknown>
+  dataCutoff: string | null
+  contextTokenCount: number
+  manifest: ContextManifest
+  warnings: string[]
+}
+
+export interface ContextWorkflowPrompt {
+  workflowKey: string
+  workflowVersion: number
+  workflowHash: string
+  promptVersionId: string
+  promptKey: string
+  promptVersion: number
+  promptHash: string
+  template: string
+}
+
+export interface ContextSummary {
+  id: string
+  version: number
+  fromMessageId: string
+  throughMessageId: string
+  promptVersionId: string
+  summaryText: string
+  facts: unknown[]
+  sourceMessageIds: string[]
+  contentHash: string
+}
+
+export interface ContextRecentMessage {
+  id?: string
+  role: string
+  content: string
+  createdAt?: string
+  contentHash?: string
+}
+
+export interface ContextUserMemory {
+  id: string
+  category: string
+  key: string
+  value: unknown
+  sensitivity: string
+  version: number
+  validFrom: string
+  expiresAt: string | null
+  sourceConversationId: string | null
+  sourceMessageId: string | null
+  contentHash: string
+}
+
+export interface ContextRetrievedSource {
+  sourceType: 'MEMORY' | 'REPORT'
+  sourceId: string
+  chunkIndex: number
+  content: string
+  contentHash: string
+  citationIds: string[]
+  scores: {
+    fts: number | null
+    vector: number | null
+    hybrid: number
+  }
+  metadata: Record<string, unknown>
+}
+
+export type ContextSegmentKind =
+  | 'SYSTEM_POLICY'
+  | 'WORKFLOW_PROMPT'
+  | 'PAGE_AND_STATE'
+  | 'CONVERSATION_SUMMARY'
+  | 'RECENT_MESSAGES'
+  | 'COMPLETED_TOOL_FACTS'
+  | 'ACTIVE_USER_MEMORIES'
+  | 'RETRIEVED_SOURCES'
+
+export interface ContextManifestSegment {
+  kind: ContextSegmentKind
+  ids: string[]
+  contentHash: string
+  tokenCount: number
+}
+
+export interface ContextManifest {
+  schemaVersion: 1
+  runId: string
+  conversationId: string
+  budgetTokens: number
+  totalTokens: number
+  contentHash: string
+  segments: ContextManifestSegment[]
+  warnings: string[]
 }
 
 export interface FactPacket {
@@ -155,6 +253,7 @@ export interface WorkflowExecutionState {
   toolSnapshotSignature: string | null
   facts: FactPacket[]
   draft: FinalAnswerDraft | null
+  finalModelCallId: string | null
   modelName: string | null
   finalization: WorkflowFinalization | null
   warnings: string[]

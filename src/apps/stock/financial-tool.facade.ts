@@ -295,7 +295,8 @@ export class FinancialToolFacade {
           : {}),
         ...(availableDate ? { annDate: { not: null, lte: availableDate } } : {}),
       },
-      orderBy: { endDate: 'desc' },
+      orderBy: [{ endDate: 'desc' }, { annDate: 'desc' }, { updateFlag: 'desc' }],
+      distinct: ['endDate'],
       take: input.limit + 1,
       select: select as Prisma.FinaIndicatorSelect,
     })) as unknown as IndicatorRow[]

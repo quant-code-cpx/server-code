@@ -13,6 +13,7 @@ export const AGENT_EVENT_TYPES = [
   'tool.completed',
   'tool.failed',
   'model.started',
+  'model.fallback',
   'model.delta',
   'citation.created',
   'report.generated',
@@ -86,6 +87,10 @@ export type ModelStartedEvent = AgentEvent<
   'model.started',
   { modelCallId: string; provider: string; model: string; purpose: string }
 >
+export type ModelFallbackEvent = AgentEvent<
+  'model.fallback',
+  { fromProvider: string; fromModel: string; toProvider: string; toModel: string; reasonCode: string }
+>
 export type ModelDeltaEvent = AgentEvent<'model.delta', { modelCallId: string; blockIndex: number; delta: string }>
 export type CitationCreatedEvent = AgentEvent<'citation.created', { citation: Citation }>
 export type ReportGeneratedEvent = AgentEvent<
@@ -120,6 +125,7 @@ export type AgentSseEvent =
   | ToolCompletedEvent
   | ToolFailedEvent
   | ModelStartedEvent
+  | ModelFallbackEvent
   | ModelDeltaEvent
   | CitationCreatedEvent
   | ReportGeneratedEvent
@@ -265,6 +271,18 @@ const payloadSchemas: Record<AgentEventType, JsonSchema> = {
       provider: { type: 'string', minLength: 1, maxLength: 128 },
       model: { type: 'string', minLength: 1, maxLength: 256 },
       purpose: { type: 'string', minLength: 1, maxLength: 500 },
+    },
+  },
+  'model.fallback': {
+    type: 'object',
+    additionalProperties: false,
+    required: ['fromProvider', 'fromModel', 'toProvider', 'toModel', 'reasonCode'],
+    properties: {
+      fromProvider: { type: 'string', minLength: 1, maxLength: 128 },
+      fromModel: { type: 'string', minLength: 1, maxLength: 256 },
+      toProvider: { type: 'string', minLength: 1, maxLength: 128 },
+      toModel: { type: 'string', minLength: 1, maxLength: 256 },
+      reasonCode: { type: 'string', minLength: 1, maxLength: 128 },
     },
   },
   'model.delta': {
@@ -430,6 +448,17 @@ export const AGENT_EVENT_FIXTURES: AgentSseEvent[] = [
       provider: 'openai-compatible',
       model: 'research-model',
       purpose: 'final_answer',
+    },
+  },
+  {
+    ...eventBase,
+    type: 'model.fallback',
+    payload: {
+      fromProvider: 'primary',
+      fromModel: 'primary-model',
+      toProvider: 'secondary',
+      toModel: 'secondary-model',
+      reasonCode: 'RATE_LIMIT',
     },
   },
   {

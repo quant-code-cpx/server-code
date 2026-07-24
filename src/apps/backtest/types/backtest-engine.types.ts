@@ -235,6 +235,32 @@ export interface BacktestResult {
   positions: PositionSnapshot[]
   rebalanceLogs: RebalanceLogRecord[]
   metrics: BacktestMetrics
+  reproducibilityManifest?: BacktestReproducibilityManifest
+}
+
+export interface PointInTimeUniverseSnapshot {
+  date: string
+  members: string[]
+  source: string
+  version: string
+  hash: string
+}
+
+export interface BacktestReproducibilityManifest {
+  engineVersion: string
+  dataContractVersion: string
+  universePolicyVersion: string
+  financialAsOfPolicyVersion: string
+  adjustmentPolicyVersion: string
+  inputHash: string
+  universeSnapshots: Array<{
+    date: string
+    source: string
+    version: string
+    hash: string
+    memberCount: number
+  }>
+  qualityFlags: string[]
 }
 
 export interface BacktestMetrics {

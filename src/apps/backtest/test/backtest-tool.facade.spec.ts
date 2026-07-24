@@ -39,6 +39,14 @@ function run(overrides: Record<string, unknown> = {}) {
     winRate: 0.55,
     turnoverRate: 1.5,
     tradeCount: 20,
+    engineVersion: null,
+    dataContractVersion: null,
+    universePolicyVersion: null,
+    financialAsOfPolicyVersion: null,
+    adjustmentPolicyVersion: null,
+    reproducibilityStatus: 'LEGACY_UNVERIFIED',
+    reproducibilityManifest: null,
+    qualityFlags: ['LEGACY_UNVERIFIED'],
     sweepId: null,
     sweepXIdx: null,
     sweepYIdx: null,
@@ -116,5 +124,62 @@ describe('BacktestToolFacade', () => {
       facade.result(1, { backtestRunId: 'run_1', sections: ['EQUITY'], maxEquityPoints: 500 }),
     ).rejects.toBeInstanceOf(BacktestToolResultTooLargeError)
     expect(prisma.backtestDailyNav.findMany).not.toHaveBeenCalled()
+  })
+
+  it('只有 VERIFIED Run 去掉 bias warning，并返回完整版本契约', async () => {
+    const prisma = {
+      backtestRun: {
+        findFirst: jest.fn().mockResolvedValue(
+          run({
+            engineVersion: 'backtest-engine-pit-v2',
+            dataContractVersion: 'backtest-data-contract-v2',
+            universePolicyVersion: 'pit-universe-v1',
+            financialAsOfPolicyVersion: 'announcement-date-update-flag-v2',
+            adjustmentPolicyVersion: 'tushare-qfq-v1',
+            reproducibilityStatus: 'VERIFIED',
+            reproducibilityManifest: {
+              engineVersion: 'backtest-engine-pit-v2',
+              dataContractVersion: 'backtest-data-contract-v2',
+              universePolicyVersion: 'pit-universe-v1',
+              financialAsOfPolicyVersion: 'announcement-date-update-flag-v2',
+              adjustmentPolicyVersion: 'tushare-qfq-v1',
+              inputHash: 'a'.repeat(64),
+              universeSnapshots: [
+                {
+                  date: '2020-01-02',
+                  source: 'ALL_A',
+                  version: 'pit-universe-v1',
+                  hash: 'b'.repeat(64),
+                  memberCount: 2,
+                },
+              ],
+              qualityFlags: [],
+            },
+            qualityFlags: [],
+          }),
+        ),
+      },
+    }
+    const facade = new BacktestToolFacade(prisma as never)
+
+    const result = await facade.result(1, {
+      backtestRunId: 'run_1',
+      sections: ['STATUS'],
+      maxEquityPoints: 10,
+    })
+
+    expect(result.data.biasFlags).toEqual({
+      survivorship: 'VERIFIED',
+      pointInTimeUniverse: true,
+      announcementDate: true,
+      adjustment: 'VERIFIED',
+      reproducible: true,
+    })
+    expect(result.data.reproducibility).toMatchObject({
+      status: 'VERIFIED',
+      engineVersion: 'backtest-engine-pit-v2',
+      qualityFlags: [],
+    })
+    expect(result.warnings.map((warning) => warning.code)).not.toContain('BACKTEST_BIAS_UNVERIFIED')
   })
 })

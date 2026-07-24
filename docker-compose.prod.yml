@@ -1,0 +1,268 @@
+# Production Compose. All images must be immutable digests produced by release CI.
+# Copy .env.example to a protected .env, replace placeholders, then run migration first.
+services:
+  database:
+    image: ${POSTGRES_IMAGE_REF:?POSTGRES_IMAGE_REF must be set to an immutable digest}
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB is required}
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      APP_DATABASE_USERNAME: ${APP_DATABASE_USERNAME:?APP_DATABASE_USERNAME is required}
+      APP_DATABASE_PASSWORD: ${APP_DATABASE_PASSWORD:?APP_DATABASE_PASSWORD is required}
+      MIGRATION_DATABASE_USERNAME: ${MIGRATION_DATABASE_USERNAME:?MIGRATION_DATABASE_USERNAME is required}
+      MIGRATION_DATABASE_PASSWORD: ${MIGRATION_DATABASE_PASSWORD:?MIGRATION_DATABASE_PASSWORD is required}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./dockerfiles/postgresql/init-prod-roles.sh:/docker-entrypoint-initdb.d/10-create-service-roles.sh:ro
+    networks: [backend]
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    restart: unless-stopped
+
+  redis:
+    image: ${REDIS_IMAGE_REF:?REDIS_IMAGE_REF must be set to an immutable digest}
+    environment:
+      REDIS_API_USERNAME: ${REDIS_API_USERNAME:?REDIS_API_USERNAME is required}
+      REDIS_API_PASSWORD: ${REDIS_API_PASSWORD:?REDIS_API_PASSWORD is required}
+      REDIS_WORKER_USERNAME: ${REDIS_WORKER_USERNAME:?REDIS_WORKER_USERNAME is required}
+      REDIS_WORKER_PASSWORD: ${REDIS_WORKER_PASSWORD:?REDIS_WORKER_PASSWORD is required}
+      REDIS_SOCKET_USERNAME: ${REDIS_SOCKET_USERNAME:?REDIS_SOCKET_USERNAME is required}
+      REDIS_SOCKET_PASSWORD: ${REDIS_SOCKET_PASSWORD:?REDIS_SOCKET_PASSWORD is required}
+      REDIS_OPS_USERNAME: ${REDIS_OPS_USERNAME:?REDIS_OPS_USERNAME is required}
+      REDIS_OPS_PASSWORD: ${REDIS_OPS_PASSWORD:?REDIS_OPS_PASSWORD is required}
+    volumes:
+      - redis_data:/data
+    networks: [backend]
+    healthcheck:
+      test: ['CMD-SHELL', 'redis-cli --user "$REDIS_OPS_USERNAME" --pass "$REDIS_OPS_PASSWORD" ping']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+
+  migration:
+    image: ${MIGRATION_IMAGE_REF:?MIGRATION_IMAGE_REF must be set to an immutable digest}
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: ${MIGRATION_DATABASE_URL:?MIGRATION_DATABASE_URL is required}
+    read_only: true
+    tmpfs:
+      - /tmp:uid=1001,gid=1001,mode=1770,size=67108864
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    networks: [backend]
+    depends_on:
+      database:
+        condition: service_healthy
+    restart: 'no'
+
+  api:
+    image: ${APP_IMAGE_REF:?APP_IMAGE_REF must be set to an immutable digest}
+    env_file: ${APP_ENV_FILE:-.env}
+    environment:
+      NODE_ENV: production
+      PROCESS_ROLE: api
+      DATABASE_URL: ${APP_DATABASE_URL:?APP_DATABASE_URL is required}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_USERNAME: ${REDIS_API_USERNAME:?REDIS_API_USERNAME is required}
+      REDIS_PASSWORD: ${REDIS_API_PASSWORD:?REDIS_API_PASSWORD is required}
+      REDIS_SOCKET_USERNAME: ${REDIS_SOCKET_USERNAME:?REDIS_SOCKET_USERNAME is required}
+      REDIS_SOCKET_PASSWORD: ${REDIS_SOCKET_PASSWORD:?REDIS_SOCKET_PASSWORD is required}
+      LOG_OUTPUT: stdout
+      APP_TMP_DIR: /app/tmp
+      REPORT_STORAGE_DIR: /app/storage/reports
+      PUPPETEER_EXECUTABLE_PATH: /usr/bin/chromium
+      # Chromium sandbox 需要 SYS_ADMIN；不能授予 API。独立 report worker 部署前明确禁用 PDF。
+      REPORT_PDF_ENABLED: 'false'
+      SHUTDOWN_GRACE_MS: ${SHUTDOWN_GRACE_MS:-15000}
+    volumes:
+      - report_storage:/app/storage/reports
+      - agent_report_storage:/app/storage/agent-reports
+    read_only: true
+    tmpfs:
+      - /app/tmp:uid=1001,gid=1001,mode=1770,size=268435456
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    networks: [backend]
+    depends_on:
+      migration:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "require('http').get('http://127.0.0.1:3000/health', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    restart: unless-stopped
+    stop_grace_period: ${SHUTDOWN_GRACE_PERIOD:-30s}
+
+  agent-worker:
+    image: ${APP_IMAGE_REF:?APP_IMAGE_REF must be set to an immutable digest}
+    env_file: ${APP_ENV_FILE:-.env}
+    environment:
+      NODE_ENV: production
+      PROCESS_ROLE: agent-worker
+      DATABASE_URL: ${APP_DATABASE_URL:?APP_DATABASE_URL is required}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_USERNAME: ${REDIS_WORKER_USERNAME:?REDIS_WORKER_USERNAME is required}
+      REDIS_PASSWORD: ${REDIS_WORKER_PASSWORD:?REDIS_WORKER_PASSWORD is required}
+      REDIS_SOCKET_USERNAME: ${REDIS_SOCKET_USERNAME:?REDIS_SOCKET_USERNAME is required}
+      REDIS_SOCKET_PASSWORD: ${REDIS_SOCKET_PASSWORD:?REDIS_SOCKET_PASSWORD is required}
+      LOG_OUTPUT: stdout
+      APP_TMP_DIR: /app/tmp
+      REPORT_STORAGE_DIR: /app/storage/reports
+      PUPPETEER_EXECUTABLE_PATH: /usr/bin/chromium
+      TUSHARE_SYNC_ENABLED: 'false'
+    command: ['node', 'dist/agent-worker.main']
+    volumes:
+      - report_storage:/app/storage/reports
+      - agent_report_storage:/app/storage/agent-reports
+    read_only: true
+    tmpfs:
+      - /app/tmp:uid=1001,gid=1001,mode=1770,size=268435456
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    networks: [backend]
+    depends_on:
+      migration:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    # Worker roles do not expose HTTP. Override the API image healthcheck so
+    # Compose reports a live process rather than probing an absent port 3000.
+    healthcheck:
+      test: ['CMD-SHELL', 'node -e "process.kill(1, 0)"']
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    restart: unless-stopped
+
+  worker:
+    image: ${APP_IMAGE_REF:?APP_IMAGE_REF must be set to an immutable digest}
+    env_file: ${APP_ENV_FILE:-.env}
+    environment:
+      NODE_ENV: production
+      PROCESS_ROLE: worker
+      DATABASE_URL: ${APP_DATABASE_URL:?APP_DATABASE_URL is required}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_USERNAME: ${REDIS_WORKER_USERNAME:?REDIS_WORKER_USERNAME is required}
+      REDIS_PASSWORD: ${REDIS_WORKER_PASSWORD:?REDIS_WORKER_PASSWORD is required}
+      REDIS_SOCKET_USERNAME: ${REDIS_SOCKET_USERNAME:?REDIS_SOCKET_USERNAME is required}
+      REDIS_SOCKET_PASSWORD: ${REDIS_SOCKET_PASSWORD:?REDIS_SOCKET_PASSWORD is required}
+      LOG_OUTPUT: stdout
+      TUSHARE_SYNC_ENABLED: 'false'
+    command: ['node', 'dist/worker.main']
+    read_only: true
+    tmpfs:
+      - /app/tmp:uid=1001,gid=1001,mode=1770,size=268435456
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    networks: [backend]
+    depends_on:
+      migration:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    # This process consumes queues only; HTTP health belongs to the API role.
+    healthcheck:
+      test: ['CMD-SHELL', 'node -e "process.kill(1, 0)"']
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    restart: unless-stopped
+
+  scheduler:
+    image: ${APP_IMAGE_REF:?APP_IMAGE_REF must be set to an immutable digest}
+    env_file: ${APP_ENV_FILE:-.env}
+    environment:
+      NODE_ENV: production
+      PROCESS_ROLE: scheduler
+      DATABASE_URL: ${APP_DATABASE_URL:?APP_DATABASE_URL is required}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_USERNAME: ${REDIS_WORKER_USERNAME:?REDIS_WORKER_USERNAME is required}
+      REDIS_PASSWORD: ${REDIS_WORKER_PASSWORD:?REDIS_WORKER_PASSWORD is required}
+      REDIS_SOCKET_USERNAME: ${REDIS_SOCKET_USERNAME:?REDIS_SOCKET_USERNAME is required}
+      REDIS_SOCKET_PASSWORD: ${REDIS_SOCKET_PASSWORD:?REDIS_SOCKET_PASSWORD is required}
+      LOG_OUTPUT: stdout
+      TUSHARE_SYNC_ENABLED: ${TUSHARE_SYNC_ENABLED:?TUSHARE_SYNC_ENABLED is required}
+    command: ['node', 'dist/scheduler.main']
+    read_only: true
+    tmpfs:
+      - /app/tmp:uid=1001,gid=1001,mode=1770,size=268435456
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    networks: [backend]
+    depends_on:
+      migration:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    # Scheduler has no listener. Its PID 1 exits when its Nest child fails.
+    healthcheck:
+      test: ['CMD-SHELL', 'node -e "process.kill(1, 0)"']
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    restart: unless-stopped
+
+  edge:
+    image: ${EDGE_IMAGE_REF:?EDGE_IMAGE_REF must be set to an immutable digest}
+    ports:
+      - '${EDGE_PORT:-8080}:8080'
+    volumes:
+      - ${FRONTEND_DIST_PATH:?FRONTEND_DIST_PATH must be the verified release directory}:/usr/share/nginx/html:ro
+    read_only: true
+    tmpfs:
+      - /tmp:uid=101,gid=101,mode=1777,size=67108864
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    user: '101:101'
+    # Edge is the only service with a host-facing network. It also retains
+    # backend access for proxying API, while stateful services remain isolated.
+    networks: [backend, public]
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -qO- http://127.0.0.1:8080/health >/dev/null 2>&1']
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+networks:
+  backend:
+    internal: true
+  public:
+
+volumes:
+  postgres_data:
+  redis_data:
+  report_storage:
+  agent_report_storage:

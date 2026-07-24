@@ -150,6 +150,19 @@ describe('BacktestRunService', () => {
       await svc.createRun(baseCreateDto, 1)
 
       expect(prisma.backtestRun.create).toHaveBeenCalled()
+      expect(prisma.backtestRun.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            engineVersion: 'backtest-engine-pit-v2',
+            dataContractVersion: 'backtest-data-contract-v2',
+            universePolicyVersion: 'pit-universe-v1',
+            financialAsOfPolicyVersion: 'announcement-date-update-flag-v2',
+            adjustmentPolicyVersion: 'tushare-qfq-v1',
+            reproducibilityStatus: 'PENDING',
+            qualityFlags: [],
+          }),
+        }),
+      )
       expect(queue.add).toHaveBeenCalled()
     })
 
@@ -284,6 +297,41 @@ describe('BacktestRunService', () => {
 
       expect(result.page).toBe(1)
       expect(result.pageSize).toBe(20)
+    })
+  })
+
+  describe('getEquity()', () => {
+    it('账户权益按首日归一化，首个 NAV=1，末值可直接推导总收益', async () => {
+      const prisma = buildPrismaMock()
+      prisma.backtestRun.findUnique.mockResolvedValue(buildRunRecord({ status: 'COMPLETED' }))
+      prisma.backtestDailyNav.findMany.mockResolvedValue([
+        {
+          tradeDate: new Date('2026-07-06T00:00:00.000Z'),
+          nav: 100_000,
+          benchmarkNav: 1,
+          drawdown: 0,
+          dailyReturn: 0,
+          benchmarkReturn: 0,
+          exposure: 0,
+          cashRatio: 1,
+        },
+        {
+          tradeDate: new Date('2026-07-07T00:00:00.000Z'),
+          nav: 95_000,
+          benchmarkNav: 1,
+          drawdown: -0.05,
+          dailyReturn: -0.05,
+          benchmarkReturn: 0,
+          exposure: 0.1,
+          cashRatio: 0.9,
+        },
+      ])
+      const svc = createService(prisma)
+
+      const result = await svc.getEquity('run-1', 1)
+
+      expect(result.points.map((point) => point.nav)).toEqual([1, 0.95])
+      expect(result.points.at(-1)!.nav - 1).toBeCloseTo(-0.05, 8)
     })
   })
 

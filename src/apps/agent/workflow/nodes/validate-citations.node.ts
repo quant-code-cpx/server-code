@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common'
-import { CitationCoverageService } from '../citation-coverage.service'
+import { CitationCoverageService, isCitableFact } from '../citation-coverage.service'
 import { WorkflowCitationError, WorkflowValidationError } from '../workflow.errors'
 import { modelMessage, WorkflowModelService } from '../workflow-model.service'
 import type { FinalAnswerDraft } from '../workflow.types'
@@ -15,7 +15,7 @@ export class ValidateCitationsNode implements WorkflowNodeHandler {
     private readonly models: WorkflowModelService,
   ) {}
 
-  async execute({ run, state, limits, stepId, signal }: WorkflowNodeExecutionContext) {
+  async execute({ run, state, limits, stepId, workerId, signal }: WorkflowNodeExecutionContext) {
     if (!state.draft) throw new WorkflowValidationError('validate_citations 节点缺少回答草稿')
     const initial = this.coverage.validate(state.draft, state.facts)
     if (initial.valid) return state
@@ -32,7 +32,9 @@ export class ValidateCitationsNode implements WorkflowNodeHandler {
           JSON.stringify({
             invalidDraft: state.draft,
             validationIssues: initial.issues,
-            allowedFacts: state.facts.map((fact) => ({ factId: fact.factId, summary: fact.summary })),
+            allowedFacts: state.facts
+              .filter(isCitableFact)
+              .map((fact) => ({ factId: fact.factId, summary: fact.summary })),
             instruction: 'Repair citations once. Use only allowedFacts factIds.',
           }),
         ),
@@ -41,6 +43,7 @@ export class ValidateCitationsNode implements WorkflowNodeHandler {
       maxOutputTokens: 2_000,
       usage: state.budget,
       limits,
+      workerId,
       signal,
     })
     const checked = this.coverage.validate(repaired.data, state.facts)
@@ -49,6 +52,7 @@ export class ValidateCitationsNode implements WorkflowNodeHandler {
       ...state,
       draft: repaired.data,
       budget: repaired.usage,
+      finalModelCallId: repaired.modelCallId,
       modelName: repaired.modelName,
       citationRepairAttempts: state.citationRepairAttempts + 1,
     }

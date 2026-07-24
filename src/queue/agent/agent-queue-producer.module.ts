@@ -11,7 +11,13 @@ import {
 import { IRedisConfig, REDIS_CONFIG_TOKEN } from 'src/config/redis.config'
 import { AgentQueueMetricsService } from './agent-queue-metrics.service'
 import { AgentQueueService } from './agent-queue.service'
-import { AGENT_BULL_CONFIG_KEY, AGENT_EXECUTION_QUEUE } from './agent.queue.constants'
+import {
+  AGENT_BULL_CONFIG_KEY,
+  AGENT_EXECUTION_QUEUE,
+  AGENT_NOTIFICATION_QUEUE,
+  AGENT_RESEARCH_REPORT_QUEUE,
+} from './agent.queue.constants'
+import { AgentResearchReportQueueService } from './agent-research-report-queue.service'
 
 const queueOptions = buildAgentQueueConfig(process.env)
 
@@ -37,9 +43,27 @@ const queueOptions = buildAgentQueueConfig(process.env)
         removeOnFail: { count: 500 },
       },
     }),
+    BullModule.registerQueue({
+      configKey: AGENT_BULL_CONFIG_KEY,
+      name: AGENT_NOTIFICATION_QUEUE,
+      defaultJobOptions: {
+        attempts: 1,
+        removeOnComplete: true,
+        removeOnFail: true,
+      },
+    }),
+    BullModule.registerQueue({
+      configKey: AGENT_BULL_CONFIG_KEY,
+      name: AGENT_RESEARCH_REPORT_QUEUE,
+      defaultJobOptions: {
+        attempts: 1,
+        removeOnComplete: true,
+        removeOnFail: true,
+      },
+    }),
   ],
-  providers: [AgentQueueService, AgentQueueMetricsService],
-  exports: [ConfigModule, BullModule, AgentQueueService],
+  providers: [AgentQueueService, AgentQueueMetricsService, AgentResearchReportQueueService],
+  exports: [ConfigModule, BullModule, AgentQueueService, AgentResearchReportQueueService],
 })
 export class AgentQueueProducerModule {}
 

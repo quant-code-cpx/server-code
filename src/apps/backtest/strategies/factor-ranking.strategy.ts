@@ -6,9 +6,9 @@ import {
   FactorRankingFactorName,
   FactorRankingStrategyConfig,
   SignalOutput,
-  UNIVERSE_INDEX_CODE,
 } from '../types/backtest-engine.types'
 import { IBacktestStrategy } from './backtest-strategy.interface'
+import { PointInTimeFinancialService } from '../services/point-in-time-financial.service'
 
 // Market factors from stock_daily_valuation_metrics
 const MARKET_FACTORS: Partial<Record<FactorRankingFactorName, string>> = {
@@ -35,20 +35,20 @@ export class FactorRankingStrategy implements IBacktestStrategy<'FACTOR_RANKING'
     signalDate: Date,
     config: BacktestConfig<'FACTOR_RANKING'>,
     _barData: Map<string, DailyBar>,
-    _historicalBars: Map<string, DailyBar[]>,
+    historicalBars: Map<string, DailyBar[]>,
     prisma: PrismaService,
   ): Promise<SignalOutput> {
     const cfg: FactorRankingStrategyConfig = config.strategyConfig
-    const { factorName, rankOrder = 'desc', topN = 20, minDaysListed = 60, optionalFilters } = cfg
+    const { factorName, rankOrder = 'desc', topN = 20, optionalFilters } = cfg
 
     if (!FACTOR_RANKING_FACTOR_NAMES.includes(factorName)) {
       return { targets: [] }
     }
 
     const orderDir = rankOrder === 'asc' ? 'ASC' : 'DESC'
-    const minListDate = new Date(signalDate.getTime() - minDaysListed * 24 * 60 * 60 * 1000)
     const tradeDateStr = signalDate.toISOString().slice(0, 10)
-    const minListDateStr = minListDate.toISOString().slice(0, 10)
+    const universe = [...historicalBars.keys()]
+    if (universe.length === 0) return { targets: [] }
 
     let rows: Array<{ ts_code: string }> = []
 
@@ -56,27 +56,7 @@ export class FactorRankingStrategy implements IBacktestStrategy<'FACTOR_RANKING'
       // col comes from whitelist-validated MARKET_FACTORS map, safe to interpolate
       const col = MARKET_FACTORS[factorName]
 
-      // Build universe clause for queries against stock_daily_valuation_metrics (alias db)
-      let marketUniverseSql = ''
-      const marketParams: unknown[] = [tradeDateStr, minListDateStr, topN]
-      if (config.universe !== 'ALL_A' && config.universe !== 'CUSTOM') {
-        const indexCode = UNIVERSE_INDEX_CODE[config.universe]
-        if (indexCode) {
-          marketUniverseSql = `AND db.ts_code IN (
-            SELECT iw.con_code FROM index_constituent_weights iw
-            WHERE iw.index_code = $${marketParams.length + 1}
-              AND iw.trade_date = (
-                SELECT MAX(iw2.trade_date) FROM index_constituent_weights iw2
-                WHERE iw2.index_code = $${marketParams.length + 1} AND iw2.trade_date <= $1
-              )
-          )`
-          marketParams.push(indexCode)
-        }
-      } else if (config.universe === 'CUSTOM' && config.customUniverseTsCodes?.length) {
-        const placeholders = config.customUniverseTsCodes.map((_, i) => `$${marketParams.length + i + 1}`).join(',')
-        marketUniverseSql = `AND db.ts_code IN (${placeholders})`
-        marketParams.push(...config.customUniverseTsCodes)
-      }
+      const marketParams: unknown[] = [tradeDateStr, universe, topN]
 
       // Build optional filters (joined db table for market queries)
       let marketFilterSql = ''
@@ -96,78 +76,44 @@ export class FactorRankingStrategy implements IBacktestStrategy<'FACTOR_RANKING'
       rows = await prisma.$queryRawUnsafe<Array<{ ts_code: string }>>(
         `SELECT db.ts_code
          FROM stock_daily_valuation_metrics db
-         INNER JOIN stock_basic_profiles sb ON sb.ts_code = db.ts_code
          WHERE db.trade_date = $1::date
-           AND sb.list_status = 'L'
-           AND (sb.list_date IS NULL OR sb.list_date <= $2::date)
+           AND db.ts_code = ANY($2::text[])
            AND db.${col} IS NOT NULL
-           ${marketUniverseSql}
            ${marketFilterSql}
          ORDER BY db.${col} ${orderDir}
          LIMIT $3`,
         ...marketParams,
       )
     } else if (FINA_FACTORS[factorName]) {
-      const col = FINA_FACTORS[factorName]
-
-      // Build universe clause for queries against financial_indicator_snapshots (alias fi)
-      let finaUniverseSql = ''
-      const finaParams: unknown[] = [tradeDateStr, minListDateStr, topN]
-      if (config.universe !== 'ALL_A' && config.universe !== 'CUSTOM') {
-        const indexCode = UNIVERSE_INDEX_CODE[config.universe]
-        if (indexCode) {
-          finaUniverseSql = `AND fi.ts_code IN (
-            SELECT iw.con_code FROM index_constituent_weights iw
-            WHERE iw.index_code = $${finaParams.length + 1}
-              AND iw.trade_date = (
-                SELECT MAX(iw2.trade_date) FROM index_constituent_weights iw2
-                WHERE iw2.index_code = $${finaParams.length + 1} AND iw2.trade_date <= $1
-              )
-          )`
-          finaParams.push(indexCode)
-        }
-      } else if (config.universe === 'CUSTOM' && config.customUniverseTsCodes?.length) {
-        const placeholders = config.customUniverseTsCodes.map((_, i) => `$${finaParams.length + i + 1}`).join(',')
-        finaUniverseSql = `AND fi.ts_code IN (${placeholders})`
-        finaParams.push(...config.customUniverseTsCodes)
+      let universe = [...historicalBars.keys()]
+      if (optionalFilters && universe.length > 0) {
+        const eligibleRows = await prisma.dailyBasic.findMany({
+          where: {
+            tsCode: { in: universe },
+            tradeDate: signalDate,
+            ...(optionalFilters.minTotalMv !== undefined ? { totalMv: { gte: optionalFilters.minTotalMv } } : {}),
+            ...(optionalFilters.minTurnoverRate !== undefined
+              ? { turnoverRateF: { gte: optionalFilters.minTurnoverRate } }
+              : {}),
+            ...(optionalFilters.maxPeTtm !== undefined ? { peTtm: { gt: 0, lte: optionalFilters.maxPeTtm } } : {}),
+          },
+          select: { tsCode: true },
+        })
+        universe = eligibleRows.map((row) => row.tsCode)
       }
-
-      // Build optional filters (joined db table for market filters even in fina query)
-      let finaFilterSql = ''
-      if (optionalFilters?.minTotalMv !== undefined) {
-        finaParams.push(optionalFilters.minTotalMv)
-        finaFilterSql += ` AND db.total_mv >= $${finaParams.length}`
-      }
-      if (optionalFilters?.minTurnoverRate !== undefined) {
-        finaParams.push(optionalFilters.minTurnoverRate)
-        finaFilterSql += ` AND db.turnover_rate_f >= $${finaParams.length}`
-      }
-      if (optionalFilters?.maxPeTtm !== undefined) {
-        finaParams.push(optionalFilters.maxPeTtm)
-        finaFilterSql += ` AND db.pe_ttm <= $${finaParams.length} AND db.pe_ttm > 0`
-      }
-
-      rows = await prisma.$queryRawUnsafe<Array<{ ts_code: string }>>(
-        `SELECT fi.ts_code
-         FROM financial_indicator_snapshots fi
-         INNER JOIN stock_basic_profiles sb ON sb.ts_code = fi.ts_code
-         INNER JOIN stock_daily_valuation_metrics db ON db.ts_code = fi.ts_code AND db.trade_date = $1::date
-         WHERE sb.list_status = 'L'
-           AND (sb.list_date IS NULL OR sb.list_date <= $2::date)
-           AND fi.${col} IS NOT NULL
-           AND fi.end_date = (
-             SELECT MAX(fi2.end_date) FROM financial_indicator_snapshots fi2
-             WHERE fi2.ts_code = fi.ts_code AND fi2.end_date <= $1::date
-           )
-           ${finaUniverseSql}
-           ${finaFilterSql}
-         ORDER BY fi.${col} ${orderDir}
-         LIMIT $3`,
-        ...finaParams,
+      const visibleValues = await new PointInTimeFinancialService(prisma).loadLatestVisibleMetric(
+        factorName,
+        signalDate,
+        universe,
       )
+      rows = [...visibleValues.values()]
+        .sort((a, b) => (orderDir === 'ASC' ? a.value - b.value : b.value - a.value))
+        .slice(0, topN)
+        .map((row) => ({ ts_code: row.tsCode }))
     }
 
-    const targets = rows.map((r) => ({ tsCode: r.ts_code }))
+    const universeSet = new Set(historicalBars.keys())
+    const targets = rows.filter((row) => universeSet.has(row.ts_code)).map((r) => ({ tsCode: r.ts_code }))
     return { targets }
   }
 }

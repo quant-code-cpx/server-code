@@ -1,10 +1,21 @@
-import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common'
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  ServiceUnavailableException,
+} from '@nestjs/common'
 import { InjectQueue } from '@nestjs/bullmq'
 import { Queue } from 'bullmq'
 import type { Prisma } from '@prisma/client'
 import { PrismaService } from 'src/shared/prisma.service'
 import { BACKTESTING_QUEUE, BacktestingJobName } from 'src/constant/queue.constant'
 import { ParamSensitivityDto, ParamSensitivityCreateResponseDto, ParamSensitivityResultDto } from '../dto/param-sensitivity.dto'
+import {
+  backtestPendingReproducibilityData,
+  isVerifiedBacktestCreationEnabled,
+} from '../constants/backtest-reproducibility.constant'
 
 @Injectable()
 export class BacktestParamSensitivityService {
@@ -17,6 +28,9 @@ export class BacktestParamSensitivityService {
   ) {}
 
   async create(dto: ParamSensitivityDto, userId: number): Promise<ParamSensitivityCreateResponseDto> {
+    if (!isVerifiedBacktestCreationEnabled()) {
+      throw new ServiceUnavailableException('新回测已暂停：BACKTEST_REQUIRE_VERIFIED_DATA=false')
+    }
     // 1. Load and validate base run
     const baseRun = await this.prisma.backtestRun.findUnique({ where: { id: dto.runId } })
     if (!baseRun) throw new NotFoundException(`回测记录不存在: ${dto.runId}`)
@@ -91,6 +105,7 @@ export class BacktestParamSensitivityService {
             sweepYIdx: yi,
             status: 'QUEUED',
             progress: 0,
+            ...backtestPendingReproducibilityData(),
           },
         })
 

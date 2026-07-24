@@ -99,16 +99,20 @@ model AiAgentRun {
   createdAt         DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt         DateTime         @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  user            User              @relation(fields: [userId], references: [id], onDelete: Restrict)
-  conversation    AiConversation    @relation(fields: [conversationId], references: [id], onDelete: Restrict)
-  triggerMessage  AiMessage         @relation("AiAgentRunTriggerMessage", fields: [triggerMessageId], references: [id], onDelete: Restrict)
-  responseMessage AiMessage         @relation("AiAgentRunResponseMessage", fields: [responseMessageId], references: [id], onDelete: Restrict)
-  workflowVersion AiWorkflowVersion @relation("AiRunWorkflowVersion", fields: [workflowVersionId], references: [id], onDelete: Restrict)
-  promptVersion   AiPromptVersion   @relation("AiRunPromptVersion", fields: [promptVersionId], references: [id], onDelete: Restrict)
-  steps           AiAgentStep[]
-  events          AiRunEvent[]
-  toolCalls       AiToolCall[]      @relation("AiToolCallRun")
-  modelCalls      AiModelCall[]     @relation("AiModelCallRun")
+  user                   User                     @relation(fields: [userId], references: [id], onDelete: Restrict)
+  conversation           AiConversation           @relation(fields: [conversationId], references: [id], onDelete: Restrict)
+  triggerMessage         AiMessage                @relation("AiAgentRunTriggerMessage", fields: [triggerMessageId], references: [id], onDelete: Restrict)
+  responseMessage        AiMessage                @relation("AiAgentRunResponseMessage", fields: [responseMessageId], references: [id], onDelete: Restrict)
+  workflowVersion        AiWorkflowVersion        @relation("AiRunWorkflowVersion", fields: [workflowVersionId], references: [id], onDelete: Restrict)
+  promptVersion          AiPromptVersion          @relation("AiRunPromptVersion", fields: [promptVersionId], references: [id], onDelete: Restrict)
+  steps                  AiAgentStep[]
+  events                 AiRunEvent[]
+  toolCalls              AiToolCall[]             @relation("AiToolCallRun")
+  modelCalls             AiModelCall[]            @relation("AiModelCallRun")
+  taskExecution          AiTaskExecution?         @relation("AiTaskExecutionRun")
+  notificationDeliveries AiNotificationDelivery[]
+  researchReports        AiResearchReport[]       @relation("AiResearchReportSourceRun")
+  researchJournalNotes   ResearchNote[]           @relation("AiResearchReportJournalRun")
 
   @@unique([userId, clientRequestId], map: "ai_agent_runs_user_client_request_key")
   @@index([conversationId, createdAt(sort: Desc), id(sort: Desc)], map: "ai_agent_runs_conversation_created_idx")

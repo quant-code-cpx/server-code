@@ -1,6 +1,7 @@
 import { Inject, Injectable, Optional } from '@nestjs/common'
 import { AiToolCallStatus, type AiToolCall } from '@prisma/client'
 import { AgentAuditRepository } from '../audit/agent-audit.repository'
+import { AgentEventRepository } from '../execution/agent-event.repository'
 import { AgentToolsConfig, type IAgentToolsConfig } from 'src/config/agent-tools.config'
 import { LoggerService } from 'src/shared/logger/logger.service'
 import type { ToolDefinition } from './contracts/tool-definition'
@@ -122,6 +123,7 @@ export class ToolExecutorService {
     @Inject(AgentToolsConfig.KEY) private readonly config: IAgentToolsConfig,
     private readonly logger: LoggerService,
     @Optional() @Inject(TOOL_EXECUTION_OBSERVER) private readonly observer?: ToolExecutionObserver,
+    @Optional() private readonly events?: AgentEventRepository,
   ) {}
 
   execute(command: ExecuteToolCommand, context: ToolExecutionContext): Promise<ToolResult> {
@@ -185,6 +187,7 @@ export class ToolExecutorService {
     } catch (error) {
       const normalized = normalizePreExecutionError(error, call.id, command)
       await this.finishRejectedCall(call, context.userId, normalized, startedAt)
+      await this.emitToolFailed(context, call.id, Math.max(1, call.attemptCount), normalized, false)
       throw new ToolExecutionError(normalized)
     }
 
@@ -209,7 +212,15 @@ export class ToolExecutorService {
       if (call.status !== AiToolCallStatus.RUNNING) {
         call = await this.audit.markToolCallRunning(context.userId, call.id, attempt)
       }
-      return await this.executeAttempts(definition, input, context, call.id, attempt, startedAt)
+      return await this.executeAttempts(
+        definition,
+        input,
+        context,
+        call.id,
+        attempt,
+        stableJson(call.inputSummary).slice(0, 4_000),
+        startedAt,
+      )
     } finally {
       reservation.release()
     }
@@ -221,6 +232,7 @@ export class ToolExecutorService {
     context: ToolExecutionContext,
     toolCallId: string,
     initialAttempt: number,
+    inputSummary: string,
     startedAt: number,
   ): Promise<ToolResult> {
     let attempt = initialAttempt
@@ -238,6 +250,7 @@ export class ToolExecutorService {
         version: definition.version,
         attempt,
       })
+      await this.emitToolStarted(context, definition, toolCallId, inputSummary, attempt)
 
       try {
         const result = await runWithAbort(
@@ -248,7 +261,7 @@ export class ToolExecutorService {
         )
         const checked = this.validateResult(definition, result, input, toolCallId)
         const durationMs = Date.now() - attemptStartedAt
-        await this.audit.completeToolCall(context.userId, toolCallId, {
+        const completedCall = await this.audit.completeToolCall(context.userId, toolCallId, {
           output: checked.result,
           dataAsOf: toAuditDate(checked.result),
           dataThrough: toAuditDate(checked.result),
@@ -260,9 +273,19 @@ export class ToolExecutorService {
           truncated: checked.result.truncated,
           durationMs: Date.now() - startedAt,
         })
+        await this.emitToolCompleted(
+          context,
+          toolCallId,
+          stableJson(completedCall.outputSummary).slice(0, 4_000),
+          checked.rowCount,
+          checked.result.truncated,
+          eventAsOf(checked.result),
+          durationMs,
+        )
         this.observe('onCompleted', {
           runId: context.runId,
           toolCallId,
+          toolKey: definition.key,
           attempt,
           durationMs,
           rowCount: checked.rowCount,
@@ -286,7 +309,15 @@ export class ToolExecutorService {
         const durationMs = Date.now() - attemptStartedAt
         if (normalized.code === 'CANCELLED') {
           await this.persistCancellation(context.userId, toolCallId, normalized, Date.now() - startedAt)
-          this.observe('onFailed', { runId: context.runId, toolCallId, attempt, durationMs, error: normalized })
+          await this.emitToolFailed(context, toolCallId, attempt, normalized, false)
+          this.observe('onFailed', {
+            runId: context.runId,
+            toolCallId,
+            toolKey: definition.key,
+            attempt,
+            durationMs,
+            error: normalized,
+          })
           this.logOutcome('cancelled', definition, context, toolCallId, attempt, durationMs)
           throw new ToolExecutionError(normalized)
         }
@@ -300,7 +331,14 @@ export class ToolExecutorService {
             errorMessage: normalized.message,
             durationMs: Date.now() - startedAt,
           })
-          this.observe('onRetry', { runId: context.runId, toolCallId, attempt, error: normalized })
+          await this.emitToolFailed(context, toolCallId, attempt, normalized, true)
+          this.observe('onRetry', {
+            runId: context.runId,
+            toolCallId,
+            toolKey: definition.key,
+            attempt,
+            error: normalized,
+          })
           try {
             await waitForRetry(
               normalized.retryAfterMs ?? retryDelayMs(attempt),
@@ -311,9 +349,11 @@ export class ToolExecutorService {
             const interrupted = normalizeExecutionError(waitError, toolCallId, definition)
             if (interrupted.code === 'CANCELLED') {
               await this.persistCancellation(context.userId, toolCallId, interrupted, Date.now() - startedAt)
+              await this.emitToolFailed(context, toolCallId, attempt, interrupted, false)
               this.observe('onFailed', {
                 runId: context.runId,
                 toolCallId,
+                toolKey: definition.key,
                 attempt,
                 durationMs: Date.now() - attemptStartedAt,
                 error: interrupted,
@@ -419,7 +459,15 @@ export class ToolExecutorService {
   ): Promise<never> {
     const durationMs = Date.now() - startedAt
     await this.audit.failToolCall(context.userId, toolCallId, auditFailure(error, durationMs))
-    this.observe('onFailed', { runId: context.runId, toolCallId, attempt, durationMs, error })
+    await this.emitToolFailed(context, toolCallId, attempt, error, false)
+    this.observe('onFailed', {
+      runId: context.runId,
+      toolCallId,
+      toolKey: error.toolKey,
+      attempt,
+      durationMs,
+      error,
+    })
     this.logger.warn(
       {
         operation: 'tool.execute',
@@ -435,13 +483,76 @@ export class ToolExecutorService {
     throw new ToolExecutionError(error)
   }
 
+  private async emitToolStarted(
+    context: ToolExecutionContext,
+    definition: ToolDefinition,
+    toolCallId: string,
+    inputSummary: string,
+    attempt: number,
+  ): Promise<void> {
+    if (!context.workerId || !this.events) return
+    await this.events.appendEvent(context.runId, {
+      workerId: context.workerId,
+      eventType: 'tool.started',
+      stepId: context.stepId,
+      traceId: context.traceId,
+      payload: { toolCallId, toolName: definition.key, inputSummary, attempt },
+    })
+  }
+
+  private async emitToolCompleted(
+    context: ToolExecutionContext,
+    toolCallId: string,
+    outputSummary: string,
+    rowCount: number,
+    truncated: boolean,
+    asOf: string,
+    durationMs: number,
+  ): Promise<void> {
+    if (!context.workerId || !this.events) return
+    await this.events.appendEvent(context.runId, {
+      workerId: context.workerId,
+      eventType: 'tool.completed',
+      stepId: context.stepId,
+      traceId: context.traceId,
+      payload: { toolCallId, outputSummary, rowCount, truncated, asOf, citationIds: [], durationMs },
+    })
+  }
+
+  private async emitToolFailed(
+    context: ToolExecutionContext,
+    toolCallId: string,
+    attempt: number,
+    error: ToolError,
+    willRetry: boolean,
+  ): Promise<void> {
+    if (!context.workerId || !this.events) return
+    await this.events.appendEvent(context.runId, {
+      workerId: context.workerId,
+      eventType: 'tool.failed',
+      stepId: context.stepId,
+      traceId: context.traceId,
+      payload: {
+        toolCallId,
+        error: {
+          code: TOOL_ERROR_AGENT_CODE[error.code],
+          message: error.message,
+          retryable: error.retryable,
+          category: error.code === 'TIMEOUT' ? 'TIMEOUT' : 'TOOL',
+        },
+        attempt,
+        willRetry,
+      },
+    })
+  }
+
   private observe<K extends keyof ToolExecutionObserver>(
     method: K,
     event: Parameters<NonNullable<ToolExecutionObserver[K]>>[0],
   ): void {
     try {
       const observerMethod = this.observer?.[method] as ((value: typeof event) => void) | undefined
-      observerMethod?.(event)
+      observerMethod?.call(this.observer, event)
     } catch (error) {
       this.logger.warn(
         { operation: 'tool.observer', method, errorClass: error instanceof Error ? error.name : 'unknown' },
@@ -500,6 +611,7 @@ function normalizeExecutionContext(context: ToolExecutionContext): ToolExecution
     runId: requireText(context.runId, 'runId', 32),
     stepId: requireText(context.stepId, 'stepId', 32),
     traceId: requireText(context.traceId, 'traceId', 64),
+    ...(context.workerId ? { workerId: requireText(context.workerId, 'workerId', 128) } : {}),
   }
 }
 
@@ -768,6 +880,10 @@ function displayAsOf(result: ToolResult): string | null {
     result.provenance.asOf.availableAt ??
     null
   )
+}
+
+function eventAsOf(result: ToolResult): string {
+  return (displayAsOf(result) ?? result.provenance.asOf.retrievedAt).slice(0, 10)
 }
 
 function isNonEmptyStringArray(value: unknown, maxItems: number, maxLength: number): value is string[] {

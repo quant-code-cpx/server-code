@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common'
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common'
 import type { Prisma } from '@prisma/client'
 import { PrismaService } from 'src/shared/prisma.service'
 import { FactorComputeService } from './factor-compute.service'
@@ -6,7 +6,7 @@ import { FactorBacktestSubmitDto, FactorAttributionDto } from '../dto/factor-bac
 import { SaveAsStrategyDto, SaveAsStrategyResponseDto } from '../dto/save-as-strategy.dto'
 import { BacktestRunService } from 'src/apps/backtest/services/backtest-run.service'
 import { BacktestStrategyRegistryService } from 'src/apps/backtest/services/backtest-strategy-registry.service'
-import { FactorScreeningRotationStrategyConfig } from 'src/apps/backtest/types/backtest-engine.types'
+import { FactorScreeningRotationStrategyConfig, Universe } from 'src/apps/backtest/types/backtest-engine.types'
 import { BusinessException } from 'src/common/exceptions/business.exception'
 import { ErrorEnum } from 'src/constant/response-code.constant'
 
@@ -21,6 +21,23 @@ function stdDev(arr: number[], mu?: number): number {
   if (arr.length < 2) return 0
   const m = mu ?? mean(arr)
   return Math.sqrt(arr.reduce((s, v) => s + (v - m) ** 2, 0) / (arr.length - 1))
+}
+
+const BACKTEST_UNIVERSE_BY_INDEX_CODE: Record<string, Universe> = {
+  '000300.SH': 'HS300',
+  '000905.SH': 'CSI500',
+  '000852.SH': 'CSI1000',
+  '000016.SH': 'SSE50',
+}
+
+function resolveBacktestUniverse(indexCode?: string): { universe: Universe; universeCode?: string } {
+  if (!indexCode) return { universe: 'ALL_A' }
+
+  const universe = BACKTEST_UNIVERSE_BY_INDEX_CODE[indexCode]
+  if (!universe) {
+    throw new BadRequestException(`回测暂不支持股票池 "${indexCode}"`)
+  }
+  return { universe, universeCode: indexCode }
 }
 
 // ── Service ──────────────────────────────────────────────────────────────────
@@ -75,6 +92,7 @@ export class FactorBacktestService {
       topN: dto.topN ?? 20,
       weightMethod: dto.weightMethod ?? 'equal_weight',
     }
+    const resolvedUniverse = resolveBacktestUniverse(dto.universe)
 
     // Delegate to backtest run service
     return this.backtestRun.createRun(
@@ -85,7 +103,7 @@ export class FactorBacktestService {
         startDate: dto.startDate,
         endDate: dto.endDate,
         benchmarkTsCode: dto.benchmarkCode ?? '000300.SH',
-        universe: dto.universe ? 'CUSTOM' : 'ALL_A',
+        universe: resolvedUniverse.universe,
         initialCapital: dto.initialCapital ?? 1000000,
         rebalanceFrequency: rebalanceFrequency as 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'QUARTERLY',
         priceMode: 'NEXT_OPEN',
@@ -292,6 +310,7 @@ export class FactorBacktestService {
     else if (rebalanceDays <= 25) rebalanceFrequency = 'MONTHLY'
     else rebalanceFrequency = 'QUARTERLY'
 
+    const resolvedUniverse = resolveBacktestUniverse(dto.universe)
     const backtestDefaults = {
       initialCapital: dto.initialCapital ?? 1_000_000,
       rebalanceFrequency,
@@ -299,7 +318,8 @@ export class FactorBacktestService {
       stampDutyRate: 0.0005,
       slippageBps: dto.slippageBps ?? 5,
       benchmarkTsCode: dto.benchmarkCode ?? '000300.SH',
-      universe: dto.universe ? 'CUSTOM' : 'ALL_A',
+      universe: resolvedUniverse.universe,
+      ...(resolvedUniverse.universeCode ? { universeCode: resolvedUniverse.universeCode } : {}),
       maxPositions: dto.topN ?? 20,
       maxWeightPerStock: 0.2,
       minDaysListed: 60,

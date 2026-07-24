@@ -56,6 +56,7 @@ const routes = [
   { path: '/api/agent/runs/status', body: { runId } },
   { path: '/api/agent/runs/cancel', body: { runId, expectedStatusVersion: 1 } },
   { path: '/api/agent/runs/tool-calls/list', body: { runId, includePayload: false } },
+  { path: '/api/agent/models/list', body: {} },
 ] as const
 
 describe('AgentController', () => {
@@ -68,9 +69,10 @@ describe('AgentController', () => {
     conversationService = {
       create: jest.fn().mockResolvedValue({ conversationId, status: 'ACTIVE', createdAt: new Date().toISOString() }),
       list: jest.fn().mockResolvedValue({ items: [], nextCursor: null }),
-      detail: jest.fn().mockResolvedValue({ conversationId, status: 'ACTIVE' }),
+      detail: jest.fn().mockResolvedValue({ conversationId, status: 'ACTIVE', currentSummary: null }),
       listMessages: jest.fn().mockResolvedValue({ items: [], nextBeforeMessageId: null }),
       updateModel: jest.fn().mockResolvedValue({ conversationId, modelPolicy: 'AUTO', preferredModel: null }),
+      listModels: jest.fn().mockResolvedValue({ items: [] }),
     }
     runService = {
       send: jest.fn().mockResolvedValue({
@@ -155,6 +157,30 @@ describe('AgentController', () => {
       .expect(400)
   })
 
+  it('消息与 pageContext 最大合法边界通过，超 1 字符在写入前拒绝', async () => {
+    const maximumBody = {
+      ...routes[5].body,
+      content: '研'.repeat(10_000),
+      pageContext: {
+        route: `/${'a'.repeat(299)}`,
+        entityType: 'STOCK',
+        entityId: 'A'.repeat(128),
+        selectedRange: { start: '1900-01-01', end: '2099-12-31' },
+        visibleDataAsOf: '2099-12-31',
+      },
+    }
+
+    await request(app.getHttpServer()).post('/api/agent/messages/send').send(maximumBody).expect(200)
+    expect(runService.send).toHaveBeenLastCalledWith(user.id, maximumBody)
+
+    const callCount = runService.send.mock.calls.length
+    await request(app.getHttpServer())
+      .post('/api/agent/messages/send')
+      .send({ ...maximumBody, content: '研'.repeat(10_001) })
+      .expect(400)
+    expect(runService.send).toHaveBeenCalledTimes(callCount)
+  })
+
   it('Agent domain not-found 映射显式 HTTP 与业务 code', async () => {
     conversationService.detail.mockRejectedValueOnce(new AgentConversationNotFoundError())
     runService.status.mockRejectedValueOnce(new AgentRunNotFoundError())
@@ -169,7 +195,7 @@ describe('AgentController', () => {
     expect(run.body).toMatchObject({ code: 6002 })
   })
 
-  it('Swagger 10 个端点只声明 200，不声明默认 201', () => {
+  it('Swagger 11 个端点只声明 200，不声明默认 201', () => {
     const document = SwaggerModule.createDocument(app, new DocumentBuilder().setTitle('test').setVersion('1').build())
     for (const route of routes) {
       const operation = document.paths[route.path]?.post
@@ -190,6 +216,7 @@ describe('AgentController 认证', () => {
       detail: jest.fn(),
       listMessages: jest.fn(),
       updateModel: jest.fn(),
+      listModels: jest.fn(),
     }
     const runs = {
       send: jest.fn(),

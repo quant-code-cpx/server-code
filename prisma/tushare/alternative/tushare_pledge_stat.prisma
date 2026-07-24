@@ -1,15 +1,15 @@
 // 股权质押统计（来自 Tushare pledge_stat 接口，doc_id=110）
 model PledgeStat {
-  tsCode       String   @map("ts_code") @db.VarChar(16)
-  endDate      DateTime @map("end_date") @db.Date
+  tsCode  String   @map("ts_code") @db.VarChar(16)
+  endDate DateTime @map("end_date") @db.Date
 
-  pledgeCount  Int      @map("pledge_count")
-  unrestPledge Float?   @map("unrest_pledge")       // 无限售股质押数量（万股）
-  restPledge   Float?   @map("rest_pledge")         // 限售股份质押数量（万股）
-  totalShare   Float?   @map("total_share")
-  pledgeRatio  Float?   @map("pledge_ratio")
+  pledgeCount  Int    @map("pledge_count")
+  unrestPledge Float? @map("unrest_pledge") // 无限售股质押数量（万股）
+  restPledge   Float? @map("rest_pledge") // 限售股份质押数量（万股）
+  totalShare   Float? @map("total_share")
+  pledgeRatio  Float? @map("pledge_ratio")
 
-  syncedAt     DateTime @default(now()) @map("synced_at")
+  syncedAt DateTime @default(now()) @map("synced_at")
 
   @@id([tsCode, endDate])
   @@index([endDate])

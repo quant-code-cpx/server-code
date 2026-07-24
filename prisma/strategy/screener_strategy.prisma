@@ -11,7 +11,7 @@ model ScreenerStrategy {
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@map("screener_strategies")
-  @@index([userId])
   @@unique([userId, name])
+  @@index([userId])
+  @@map("screener_strategies")
 }

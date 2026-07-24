@@ -13,6 +13,7 @@
  * - 所有数据齐全 → isValid=true, errors=[]
  */
 import { BacktestDataReadinessService } from '../services/backtest-data-readiness.service'
+import { PrismaService } from 'src/shared/prisma.service'
 
 // ── Mock 工厂 ─────────────────────────────────────────────────────────────────
 
@@ -46,8 +47,7 @@ function setAllCountsPositive(prisma: PrismaMock, value = 100) {
 }
 
 function createService(prisma = buildPrismaMock()): BacktestDataReadinessService {
-  // @ts-ignore 局部 mock
-  return new BacktestDataReadinessService(prisma as any)
+  return new BacktestDataReadinessService(prisma as unknown as PrismaService)
 }
 
 const baseDto = {
@@ -237,11 +237,30 @@ describe('BacktestDataReadinessService', () => {
       prisma.indexWeight.findFirst.mockResolvedValue(null)
       const svc = createService(prisma)
 
-      const result = await svc.checkReadiness({ ...baseDto, universe: 'HS300' as any })
+      const result = await svc.checkReadiness({ ...baseDto, universe: 'HS300' as const })
 
-      const hasError = result.errors.some((e) => e.includes('HS300') || e.toLowerCase().includes('weight') || e.includes('成分') || e.includes('指数'))
+      const hasError = result.errors.some(
+        (e) => e.includes('HS300') || e.toLowerCase().includes('weight') || e.includes('成分') || e.includes('指数'),
+      )
       expect(hasError).toBe(true)
       expect(result.isValid).toBe(false)
+    })
+
+    it('universe=HS300 只接受起始日当日或更早的同指数快照', async () => {
+      const prisma = buildPrismaMock()
+      setAllCountsPositive(prisma)
+      const svc = createService(prisma)
+
+      await svc.checkReadiness({ ...baseDto, universe: 'HS300' as const })
+
+      expect(prisma.indexWeight.findFirst).toHaveBeenCalledWith({
+        where: {
+          indexCode: '000300.SH',
+          tradeDate: { lte: '20230101' },
+        },
+        select: { indexCode: true },
+        orderBy: { tradeDate: 'desc' },
+      })
     })
 
     it('universe=ALL_A 时 indexWeight 不影响结果', async () => {
@@ -250,12 +269,10 @@ describe('BacktestDataReadinessService', () => {
       prisma.indexWeight.findFirst.mockResolvedValue(null)
       const svc = createService(prisma)
 
-      const result = await svc.checkReadiness({ ...baseDto, universe: 'ALL_A' as any })
+      const result = await svc.checkReadiness({ ...baseDto, universe: 'ALL_A' as const })
 
       // ALL_A 不需要 indexWeight，无相关 error
-      const hasIndexWeightError = result.errors.some(
-        (e) => e.includes('成分权重') || e.includes('indexWeight'),
-      )
+      const hasIndexWeightError = result.errors.some((e) => e.includes('成分权重') || e.includes('indexWeight'))
       expect(hasIndexWeightError).toBe(false)
     })
 
@@ -265,11 +282,9 @@ describe('BacktestDataReadinessService', () => {
       prisma.indexWeight.findFirst.mockResolvedValue(null)
       const svc = createService(prisma)
 
-      const result = await svc.checkReadiness({ ...baseDto, universe: 'CUSTOM' as any })
+      const result = await svc.checkReadiness({ ...baseDto, universe: 'CUSTOM' as const })
 
-      const hasIndexWeightError = result.errors.some(
-        (e) => e.includes('成分权重') || e.includes('indexWeight'),
-      )
+      const hasIndexWeightError = result.errors.some((e) => e.includes('成分权重') || e.includes('indexWeight'))
       expect(hasIndexWeightError).toBe(false)
     })
   })

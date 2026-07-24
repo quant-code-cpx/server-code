@@ -16,7 +16,7 @@
 import { BusinessException } from 'src/common/exceptions/business.exception'
 import { ReportDataCollectorService } from '../services/report-data-collector.service'
 import { ReportService } from '../report.service'
-import { CreateStrategyResearchReportDto } from '../dto/create-report.dto'
+import { CreateStrategyResearchReportDto, ReportFormatEnum } from '../dto/create-report.dto'
 import { ReportFormat, ReportStatus, ReportType } from '@prisma/client'
 import dayjs from 'dayjs'
 
@@ -204,10 +204,11 @@ describe('ReportService.createStrategyResearchReport()', () => {
   function buildService(prisma = buildPrismaMock()) {
     const dataCollector = new ReportDataCollectorService(prisma as any)
     const rendererMock = {
+      isPdfRenderingEnabled: jest.fn(() => true),
       renderToHtmlFile: jest.fn(async () => ({ filePath: '/tmp/test.html', fileSize: 100 })),
       renderToPdf: jest.fn(async () => ({ filePath: '/tmp/test.pdf', fileSize: 200 })),
     }
-    return { svc: new ReportService(prisma as any, dataCollector, rendererMock as any), prisma }
+    return { svc: new ReportService(prisma as any, dataCollector, rendererMock as any), prisma, rendererMock }
   }
 
   it('should throw BusinessException if backtestRun not owned', async () => {
@@ -265,5 +266,17 @@ describe('ReportService.createStrategyResearchReport()', () => {
         data: expect.objectContaining({ title: '自定义研究报告' }),
       }),
     )
+  })
+
+  it('[SEC] 未部署隔离 renderer 时拒绝 PDF，且不创建失败报告记录', async () => {
+    const prisma = buildPrismaMock()
+    const { svc, rendererMock } = buildService(prisma)
+    rendererMock.isPdfRenderingEnabled.mockReturnValue(false)
+
+    await expect(
+      svc.createStrategyResearchReport({ backtestRunId: 'run-1', format: ReportFormatEnum.PDF }, 1),
+    ).rejects.toThrow('未部署隔离的 PDF 渲染服务')
+
+    expect(prisma.report.create).not.toHaveBeenCalled()
   })
 })

@@ -42,6 +42,7 @@ export class BacktestDataService {
       this.prisma.adjFactor.findMany({
         where: { tsCode: { in: tsCodes }, tradeDate: { gte: startDate, lte: endDate } },
         select: { tsCode: true, tradeDate: true, adjFactor: true },
+        orderBy: [{ tsCode: 'asc' }, { tradeDate: 'asc' }],
       }),
       this.prisma.stkLimit.findMany({
         where: {
@@ -66,15 +67,19 @@ export class BacktestDataService {
     ])
 
     // Build lookup maps
+    const orderedAdjRows = [...adjRows].sort(
+      (a, b) => a.tsCode.localeCompare(b.tsCode) || a.tradeDate.getTime() - b.tradeDate.getTime(),
+    )
+
     const adjMap = new Map<string, number>()
-    for (const r of adjRows) {
+    for (const r of orderedAdjRows) {
       const key = `${r.tsCode}:${r.tradeDate.toISOString().slice(0, 10)}`
       adjMap.set(key, r.adjFactor ?? 1)
     }
 
     // Find the latest adjFactor per tsCode (the one with the highest tradeDate)
     // adjRows are ordered ascending by tradeDate, so the last entry per tsCode is the latest
-    const latestAdjByCode = adjRows.reduceRight<Map<string, number>>((map, r) => {
+    const latestAdjByCode = orderedAdjRows.reduceRight<Map<string, number>>((map, r) => {
       if (!map.has(r.tsCode)) {
         map.set(r.tsCode, r.adjFactor ?? 1)
       }

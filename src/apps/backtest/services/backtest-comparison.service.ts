@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common'
+import { BadRequestException, Injectable, Logger, NotFoundException, ServiceUnavailableException } from '@nestjs/common'
 import { InjectQueue } from '@nestjs/bullmq'
 import { Queue } from 'bullmq'
 import type { Prisma } from '@prisma/client'
@@ -8,6 +8,10 @@ import { BacktestEngineService } from './backtest-engine.service'
 import { BacktestReportService } from './backtest-report.service'
 import { BacktestConfig, BacktestStrategyType, RebalanceFrequency, Universe } from '../types/backtest-engine.types'
 import { CreateBacktestComparisonDto } from '../dto/backtest-comparison.dto'
+import {
+  backtestPendingReproducibilityData,
+  isVerifiedBacktestCreationEnabled,
+} from '../constants/backtest-reproducibility.constant'
 
 interface ComparisonJobData {
   groupId: string
@@ -27,6 +31,9 @@ export class BacktestComparisonService {
   ) {}
 
   async createComparison(dto: CreateBacktestComparisonDto, userId: number) {
+    if (!isVerifiedBacktestCreationEnabled()) {
+      throw new ServiceUnavailableException('新回测已暂停：BACKTEST_REQUIRE_VERIFIED_DATA=false')
+    }
     const startDate = this.parseDate(dto.startDate)
     const endDate = this.parseDate(dto.endDate)
     if (startDate >= endDate) {
@@ -52,6 +59,7 @@ export class BacktestComparisonService {
           priceMode: 'NEXT_OPEN',
           status: 'QUEUED',
           progress: 0,
+          ...backtestPendingReproducibilityData(),
         },
       })
       runIds.push(run.id)

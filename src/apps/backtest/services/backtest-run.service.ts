@@ -1,5 +1,5 @@
 import type { Prisma } from '@prisma/client'
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common'
+import { BadRequestException, Injectable, Logger, NotFoundException, ServiceUnavailableException } from '@nestjs/common'
 import { InjectQueue } from '@nestjs/bullmq'
 import { Queue } from 'bullmq'
 import { BusinessException } from 'src/common/exceptions/business.exception'
@@ -14,6 +14,10 @@ import { BacktestPositionQueryDto } from '../dto/backtest-position-query.dto'
 import { BacktestDataReadinessService } from './backtest-data-readiness.service'
 import { BacktestConfig } from '../types/backtest-engine.types'
 import { BacktestStrategyRegistryService } from './backtest-strategy-registry.service'
+import {
+  backtestPendingReproducibilityData,
+  isVerifiedBacktestCreationEnabled,
+} from '../constants/backtest-reproducibility.constant'
 
 interface BacktestingJobData {
   runId: string
@@ -39,6 +43,7 @@ export class BacktestRunService {
   }
 
   async createRun(dto: CreateBacktestRunDto, userId: number) {
+    this.assertVerifiedBacktestCreationEnabled()
     const { startDate, endDate } = this.assertValidDateRange(dto.startDate, dto.endDate)
     const strategyConfig = this.strategyRegistry.validateStrategyConfig(dto.strategyType, dto.strategyConfig)
 
@@ -65,6 +70,7 @@ export class BacktestRunService {
         slippageBps: dto.slippageBps ?? 5,
         status: 'QUEUED',
         progress: 0,
+        ...backtestPendingReproducibilityData(),
       },
     })
 
@@ -140,6 +146,8 @@ export class BacktestRunService {
           starred: true,
           archived: true,
           progress: true,
+          reproducibilityStatus: true,
+          qualityFlags: true,
           createdAt: true,
           startedAt: true,
           completedAt: true,
@@ -168,6 +176,8 @@ export class BacktestRunService {
         starred: r.starred,
         archived: r.archived,
         progress: r.progress,
+        reproducibilityStatus: r.reproducibilityStatus,
+        qualityFlags: stringArray(r.qualityFlags),
         createdAt: r.createdAt.toISOString(),
         startedAt: r.startedAt?.toISOString() ?? null,
         completedAt: r.completedAt?.toISOString() ?? null,
@@ -197,6 +207,14 @@ export class BacktestRunService {
       initialCapital: Number(run.initialCapital),
       rebalanceFrequency: run.rebalanceFrequency,
       priceMode: run.priceMode,
+      engineVersion: run.engineVersion,
+      dataContractVersion: run.dataContractVersion,
+      universePolicyVersion: run.universePolicyVersion,
+      financialAsOfPolicyVersion: run.financialAsOfPolicyVersion,
+      adjustmentPolicyVersion: run.adjustmentPolicyVersion,
+      reproducibilityStatus: run.reproducibilityStatus,
+      reproducibilityManifest: run.reproducibilityManifest,
+      qualityFlags: stringArray(run.qualityFlags),
       summary: {
         totalReturn: run.totalReturn,
         annualizedReturn: run.annualizedReturn,
@@ -253,11 +271,12 @@ export class BacktestRunService {
       where: { runId },
       orderBy: { tradeDate: 'asc' },
     })
+    const initialNav = navs.length > 0 ? Number(navs[0].nav) : 0
 
     return {
       points: navs.map((r) => ({
         tradeDate: r.tradeDate.toISOString().slice(0, 10),
-        nav: Number(r.nav),
+        nav: initialNav > 0 ? Number(r.nav) / initialNav : 0,
         benchmarkNav: Number(r.benchmarkNav ?? 1),
         drawdown: r.drawdown ?? 0,
         dailyReturn: r.dailyReturn ?? 0,
@@ -425,6 +444,7 @@ export class BacktestRunService {
 
   /** 重试失败任务（重新入队） */
   async retryRun(runId: string, userId: number) {
+    this.assertVerifiedBacktestCreationEnabled()
     const run = await this.prisma.backtestRun.findUnique({ where: { id: runId } })
     if (!run || run.deletedAt || run.userId !== userId) throw new NotFoundException(`BacktestRun ${runId} not found`)
     if (run.status !== 'FAILED' && run.status !== 'CANCELLED') {
@@ -530,6 +550,12 @@ export class BacktestRunService {
     return run
   }
 
+  private assertVerifiedBacktestCreationEnabled() {
+    if (!isVerifiedBacktestCreationEnabled()) {
+      throw new ServiceUnavailableException('新回测已暂停：BACKTEST_REQUIRE_VERIFIED_DATA=false')
+    }
+  }
+
   private assertValidDateRange(startDateStr: string, endDateStr: string) {
     const startDate = this.parseDate(startDateStr)
     const endDate = this.parseDate(endDateStr)
@@ -544,4 +570,8 @@ export class BacktestRunService {
   private parseDate(dateStr: string): Date {
     return new Date(`${dateStr.slice(0, 4)}-${dateStr.slice(4, 6)}-${dateStr.slice(6, 8)}`)
   }
+}
+
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []
 }

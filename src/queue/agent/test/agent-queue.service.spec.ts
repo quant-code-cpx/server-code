@@ -108,12 +108,18 @@ describe('AgentQueueService', () => {
       ...create,
     }))
     h.queue.getJob.mockResolvedValue(null)
-    h.queue.add.mockRejectedValue(new Error('redis down'))
+    h.queue.add.mockRejectedValue(
+      new Error('redis://default:super-secret@127.0.0.1:6379?token=queue-token ECONNREFUSED'),
+    )
 
-    await expect(h.service.enqueueRun('run_1')).rejects.toThrow('redis down')
+    await expect(h.service.enqueueRun('run_1')).rejects.toThrow('ECONNREFUSED')
     expect(h.prisma.aiJobOutbox.update).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ status: AiJobOutboxStatus.RETRY, publishedAt: null, lastError: 'redis down' }),
+        data: expect.objectContaining({
+          status: AiJobOutboxStatus.RETRY,
+          publishedAt: null,
+          lastError: 'redis://[REDACTED]@127.0.0.1:6379?token=[REDACTED] ECONNREFUSED',
+        }),
       }),
     )
   })

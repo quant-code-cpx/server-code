@@ -49,6 +49,7 @@ function createFixture(rowCount: number) {
     registry as never,
     dataQualityService as never,
     autoRepairService as never,
+    { runIfScheduler: jest.fn(async (_key: string, task: () => Promise<void>) => task()) } as never,
   )
 
   return { service, prisma, execute }

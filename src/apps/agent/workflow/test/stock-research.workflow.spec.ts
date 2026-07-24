@@ -26,8 +26,14 @@ import { SynthesizeNode } from '../nodes/synthesize.node'
 import { ValidateCitationsNode } from '../nodes/validate-citations.node'
 import { ResearchPlanCompilerService } from '../research-plan-compiler.service'
 import { WorkflowBudgetService } from '../workflow-budget.service'
+import { WorkflowContextService } from '../workflow-context.service'
 import { WorkflowEngineService } from '../workflow-engine.service'
-import { WorkflowCancelledError, WorkflowCitationError, WorkflowVersionError } from '../workflow.errors'
+import {
+  WorkflowBudgetError,
+  WorkflowCancelledError,
+  WorkflowCitationError,
+  WorkflowVersionError,
+} from '../workflow.errors'
 import { WorkflowFinalizationService } from '../workflow-finalization.service'
 import { WorkflowRegistryService } from '../workflow-registry.service'
 import type {
@@ -83,6 +89,7 @@ describe('Stock research workflow v1', () => {
         2,
       ),
     ).toThrow('存在环')
+    expect(() => compiler.compile(valid, workflow, ['INTERNAL_DATA'], 1)).toThrow(WorkflowBudgetError)
     expect(() => compiler.compile(valid, workflow, ['INTERNAL_DATA'], 1)).toThrow('超过预算')
     expect(() =>
       compiler.compile(
@@ -92,6 +99,67 @@ describe('Stock research workflow v1', () => {
         1,
       ),
     ).toThrow('未知 Tool')
+
+    const chained = plan([
+      { ...toolCall('search', 'search_web'), input: { query: '贵州茅台 公告', resultLimit: 1 } },
+      {
+        ...toolCall('fetch', 'fetch_web_page', ['search']),
+        input: {
+          urlToken: { $toolResult: { callId: 'search', path: ['results', 0, 'urlToken'] } },
+        },
+      },
+    ])
+    expect(compiler.compile(chained, workflow, ['WEB_SEARCH'], 2).executionLevels).toEqual([['search'], ['fetch']])
+    expect(() =>
+      compiler.compile(
+        plan([
+          { ...toolCall('search', 'search_web'), input: { query: '贵州茅台 公告', resultLimit: 1 } },
+          {
+            ...toolCall('fetch', 'fetch_web_page'),
+            input: {
+              urlToken: { $toolResult: { callId: 'search', path: ['results', 0, 'urlToken'] } },
+            },
+          },
+        ]),
+        workflow,
+        ['WEB_SEARCH'],
+        2,
+      ),
+    ).toThrow('必须是当前调用的直接依赖')
+    expect(() =>
+      compiler.compile(
+        plan([
+          { ...toolCall('search', 'search_web'), input: { query: '贵州茅台 公告', resultLimit: 1 } },
+          {
+            ...toolCall('fetch', 'fetch_web_page', ['search']),
+            input: {
+              urlToken: { $toolResult: { callId: 'search', path: ['results', 0, '__proto__'] } },
+            },
+          },
+        ]),
+        workflow,
+        ['WEB_SEARCH'],
+        2,
+      ),
+    ).toThrow('path 非法')
+    expect(() =>
+      compiler.compile(
+        plan([
+          { ...toolCall('search', 'search_web'), input: { query: '贵州茅台 公告', resultLimit: 1 } },
+          {
+            ...toolCall('fetch', 'fetch_web_page', ['search']),
+            input: {
+              urlToken: {
+                $toolResult: { callId: 'search', path: Array.from({ length: 17 }, () => 'results') },
+              },
+            },
+          },
+        ]),
+        workflow,
+        ['WEB_SEARCH'],
+        2,
+      ),
+    ).toThrow('path 非法')
   })
 
   it('预算上限无法通过 Run 自定义值放大，并在 0..N 边界稳定拒绝超额 Tool', () => {
@@ -233,7 +301,162 @@ describe('Stock research workflow v1', () => {
     expect(result.usage.toolCalls).toBe(2)
   })
 
+  it('同会话追问加载最近 10 条有界历史，不改写上一轮消息', async () => {
+    const previousAnswer = `上一轮结论：${'证'.repeat(4_100)}`
+    const items = [
+      { role: AiMessageRole.USER, contentText: '上一轮问题：比较盈利质量' },
+      { role: AiMessageRole.ASSISTANT, contentText: previousAnswer },
+      { role: AiMessageRole.USER, contentText: '本轮追问：继续比较现金流' },
+    ]
+    const messages = {
+      listMessages: jest.fn().mockResolvedValue({ items, nextCursor: null }),
+    }
+    const contextService = new WorkflowContextService(messages as never)
+    const run = makeRun(createRegistry().resolve('stock_research', 1))
+    run.triggerMessage.contentText = '本轮追问：继续比较现金流'
+
+    const context = await contextService.load(run)
+
+    expect(messages.listMessages).toHaveBeenCalledWith(run.userId, run.conversationId, { limit: 10 })
+    expect(context.userText).toBe('本轮追问：继续比较现金流')
+    expect(context.recentMessages).toEqual([
+      { role: AiMessageRole.USER, content: '上一轮问题：比较盈利质量' },
+      { role: AiMessageRole.ASSISTANT, content: previousAnswer.slice(0, 4_000) },
+      { role: AiMessageRole.USER, content: '本轮追问：继续比较现金流' },
+    ])
+    expect(items[1].contentText).toBe(previousAnswer)
+  })
+
+  it('依赖 Tool 成功后解析受控结果绑定；依赖失败时跳过可选下游并汇总安全 warning', async () => {
+    const budgets = new WorkflowBudgetService(config)
+    const workflow = createRegistry().resolve('stock_research', 1)
+    const chainedPlan = plan([
+      {
+        ...toolCall('search', 'search_web'),
+        input: { query: '贵州茅台 公告', resultLimit: 1 },
+      },
+      {
+        ...toolCall('fetch', 'fetch_web_page', ['search']),
+        input: {
+          urlToken: { $toolResult: { callId: 'search', path: ['results', 0, 'urlToken'] } },
+          maxCharacters: 3_000,
+        },
+      },
+    ])
+    const compiled = new ResearchPlanCompilerService().compile(chainedPlan, workflow, ['WEB_SEARCH'], 2)
+    const executor = {
+      execute: jest.fn(async (command: any) => {
+        if (command.toolKey === 'search_web') {
+          return {
+            ok: true,
+            toolCallId: 'tool_call_search',
+            toolKey: 'search_web',
+            toolVersion: 1,
+            data: { results: [{ urlToken: 'run-bound-url-token-1234567890' }] },
+            provenance: {
+              sourceType: 'MEDIA',
+              sourceServices: ['search'],
+              sourceModels: ['AiSearchSource'],
+              asOf: { retrievedAt: '2026-07-20T00:00:00.000Z' },
+              timezone: 'UTC',
+            },
+            citationSourceIds: [],
+            warnings: [{ code: 'SEARCH_SNIPPET_NOT_CITABLE', message: '搜索摘要不可引用' }],
+            truncated: false,
+          }
+        }
+        expect(command.input).toEqual({ urlToken: 'run-bound-url-token-1234567890', maxCharacters: 3_000 })
+        return {
+          ok: true,
+          toolCallId: 'tool_call_fetch',
+          toolKey: 'fetch_web_page',
+          toolVersion: 1,
+          data: { text: '每股现金分红 30 元' },
+          provenance: {
+            sourceType: 'OFFICIAL',
+            sourceServices: ['fetch'],
+            sourceModels: ['AiSearchSource'],
+            asOf: { retrievedAt: '2026-07-20T00:00:01.000Z' },
+            timezone: 'UTC',
+          },
+          citationSourceIds: ['source_fetch'],
+          warnings: [{ code: 'PROMPT_INJECTION_SUSPECTED', message: '网页包含疑似 Prompt Injection' }],
+          truncated: false,
+        }
+      }),
+    }
+    const registry = {
+      freezeSnapshot: jest.fn((pins: any) => ({ entries: pins, signature: 'web_snapshot' })),
+      get: jest.fn((key: string, version: number) => ({
+        key,
+        version,
+        policy: { sideEffect: 'READ', idempotent: true },
+      })),
+    }
+    const toolService = new WorkflowToolService(registry as never, executor as never, budgets)
+    const result = await toolService.execute({
+      run: makeRun(workflow),
+      stepId: 'step_execute_tools',
+      authorized: toolService.authorize(compiled),
+      context: { ...loadedContext(), allowedCapabilities: ['WEB_SEARCH'] },
+      usage: budgets.initialUsage(budgets.resolveLimits(workflow, {})),
+      limits: budgets.resolveLimits(workflow, { maxToolCalls: 2 }),
+    })
+    expect(executor.execute).toHaveBeenCalledTimes(2)
+    expect(result.facts.map((item) => item.factId)).toEqual(['fact_search', 'fact_fetch'])
+    expect(result.warnings).toEqual(['搜索摘要不可引用', '网页包含疑似 Prompt Injection'])
+
+    const optionalPlan = new ResearchPlanCompilerService().compile(
+      plan([
+        { ...chainedPlan.toolCalls[0], optional: true },
+        { ...chainedPlan.toolCalls[1], optional: true },
+      ]),
+      workflow,
+      ['WEB_SEARCH'],
+      2,
+    )
+    const failedExecutor = {
+      execute: jest.fn(async () => {
+        throw new ToolExecutionError({
+          ok: false,
+          toolCallId: 'tool_call_search',
+          toolKey: 'search_web',
+          toolVersion: 1,
+          code: 'TIMEOUT',
+          message: '联网研究超时',
+          retryable: true,
+        })
+      }),
+    }
+    const degraded = await new WorkflowToolService(registry as never, failedExecutor as never, budgets).execute({
+      run: makeRun(workflow),
+      stepId: 'step_execute_tools',
+      authorized: toolService.authorize(optionalPlan),
+      context: { ...loadedContext(), allowedCapabilities: ['WEB_SEARCH'] },
+      usage: budgets.initialUsage(budgets.resolveLimits(workflow, {})),
+      limits: budgets.resolveLimits(workflow, { maxToolCalls: 2 }),
+    })
+    expect(failedExecutor.execute).toHaveBeenCalledTimes(1)
+    expect(degraded.facts).toEqual([])
+    expect(degraded.warnings).toEqual([
+      '可选 Tool search_web 失败：联网研究超时',
+      '可选 Tool fetch_web_page 已跳过：依赖 Tool search 无可用结果',
+    ])
+    expect(degraded.usage.toolCalls).toBe(1)
+  })
+
   it('引用缺失时只 repair 一次；repair 后仍引用未知 fact 则 typed failure', async () => {
+    const coverage = new CitationCoverageService()
+    const searchFact = { ...fact('fact_search'), toolKey: 'search_web' as const }
+    expect(coverage.validate(answer('fact_search'), [searchFact])).toMatchObject({
+      valid: false,
+      coverage: 0,
+      issues: expect.arrayContaining([expect.stringContaining('搜索摘要事实不可引用')]),
+    })
+    expect(
+      coverage.validate({ markdown: '联网核验未完成。', claims: [], warnings: [], dataCutoff: null }, [searchFact]),
+    ).toMatchObject({ valid: true, coverage: 1 })
+
     const repaired = createHarness({
       plan: plan([toolCall('overview', 'get_stock_overview')]),
       synthesize: answer('unknown_fact'),
@@ -281,6 +504,7 @@ describe('Stock research workflow v1', () => {
         toolSnapshotSignature: 'snapshot_v1',
         facts: [fact('fact_overview')],
         draft: null,
+        finalModelCallId: null,
         modelName: 'fake-model',
         finalization: null,
         warnings: [],
@@ -438,6 +662,9 @@ function createHarness(options: {
 
   const budgets = new WorkflowBudgetService(config)
   const model = {
+    resolveInputTokenBudget: jest.fn(
+      (_run: unknown, usage: any, limits: any) => limits.maxInputTokens - usage.inputTokens,
+    ),
     generateStructured: jest.fn(async (command: any) => {
       modelPurposes.push(command.purpose)
       const data =
@@ -448,6 +675,7 @@ function createHarness(options: {
             : options.synthesize
       return {
         data,
+        modelCallId: `model_call_${command.purpose.toLowerCase()}`,
         modelName: 'fake-model',
         repaired: false,
         usage: {
@@ -482,7 +710,25 @@ function createHarness(options: {
       }
     }),
   }
-  const contextService = { load: jest.fn(async () => loadedContext()) }
+  const contextService = {
+    build: jest.fn(async () => loadedContext()),
+    prepareModelCall: jest.fn((command: any) => ({
+      context: command.context,
+      messages: [
+        { role: 'system', content: command.context.workflowPrompt.template },
+        { role: 'user', content: JSON.stringify({ instruction: command.instruction, ...command.stageData }) },
+      ],
+      manifest: command.context.manifest,
+      warnings: command.context.warnings,
+    })),
+  }
+  const summaryGenerator = {
+    maybeCompact: jest.fn(async (command: any) => ({
+      status: 'SKIPPED',
+      reason: 'BELOW_THRESHOLD',
+      usage: command.usage,
+    })),
+  }
 
   const engine = new WorkflowEngineService(
     runRepository,
@@ -490,11 +736,11 @@ function createHarness(options: {
     budgets,
     config,
     logger,
-    new LoadContextNode(contextService as never),
-    new PlanNode(model as never, registry as never),
+    new LoadContextNode(contextService as never, summaryGenerator as never),
+    new PlanNode(model as never, registry as never, contextService as never),
     new AuthorizeToolsNode(new ResearchPlanCompilerService(), toolService as never, budgets),
     new ExecuteToolsNode(toolService as never),
-    new SynthesizeNode(model as never),
+    new SynthesizeNode(model as never, contextService as never),
     new ValidateCitationsNode(new CitationCoverageService(), model as never),
     new PersistNode(new WorkflowFinalizationService()),
     new CompleteNode(),
@@ -603,10 +849,38 @@ function loadedContext(): LoadedWorkflowContext {
     triggerMessageId: 'trigger_fixture',
     responseMessageId: 'response_fixture',
     userText: '分析 600519.SH',
+    systemPolicy: 'system policy',
+    workflowPrompt: {
+      workflowKey: 'stock_research',
+      workflowVersion: 1,
+      workflowHash: 'workflow_hash',
+      promptVersionId: 'prompt_fixture',
+      promptKey: 'stock_research_system',
+      promptVersion: 1,
+      promptHash: 'prompt_hash',
+      template: 'workflow prompt',
+    },
     recentMessages: [{ role: AiMessageRole.USER, content: '分析 600519.SH' }],
     allowedCapabilities: ['INTERNAL_DATA'],
     allowedScopes: ['MARKET_DATA'],
     pageContext: {},
+    conversationState: {},
+    summary: null,
+    activeMemories: [],
+    retrievedSources: [],
+    dataCutoff: null,
+    contextTokenCount: 0,
+    manifest: {
+      schemaVersion: 1,
+      runId: 'run_fixture',
+      conversationId: 'conversation_fixture',
+      budgetTokens: 1_000,
+      totalTokens: 0,
+      contentHash: 'context_hash',
+      segments: [],
+      warnings: [],
+    },
+    warnings: [],
   }
 }
 

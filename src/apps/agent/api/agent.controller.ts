@@ -22,6 +22,8 @@ import {
   CreateConversationResponseDto,
   UpdateConversationModelResponseDto,
 } from './dto/conversation/conversation-response.dto'
+import { ListAgentModelsDto } from './dto/model/model-request.dto'
+import { AgentModelListResponseDto } from './dto/model/model-response.dto'
 import {
   AgentRunStatusDto,
   CancelAgentRunDto,
@@ -92,6 +94,15 @@ export class AgentController {
   @ApiSuccessResponse(UpdateConversationModelResponseDto)
   updateConversationModel(@CurrentUser() user: TokenPayload, @Body() dto: UpdateConversationModelDto) {
     return this.conversations.updateModel(user.id, dto)
+  }
+
+  @Post('models/list')
+  @HttpCode(HttpStatus.OK)
+  @StrictAgentBody(ListAgentModelsDto)
+  @ApiOperation({ summary: '查询当前用户可选择的模型及非敏感状态' })
+  @ApiSuccessResponse(AgentModelListResponseDto)
+  listModels() {
+    return this.conversations.listModels()
   }
 
   @Post('messages/send')

@@ -10,6 +10,14 @@ import { AgentQueueConfig, IAgentQueueConfig } from './agent-queue.config'
 import { ProcessRoleConfig, IProcessRoleConfig } from './process-role.config'
 import { AgentApiConfig, IAgentApiConfig } from './agent-api.config'
 import { AgentStreamConfig, IAgentStreamConfig } from './agent-stream.config'
+import { AgentContextConfig, IAgentContextConfig } from './agent-context.config'
+import { AgentSchedulerConfig, IAgentSchedulerConfig } from './agent-scheduler.config'
+import { AgentNotificationConfig, IAgentNotificationConfig } from './agent-notification.config'
+import { AgentReportConfig, IAgentReportConfig } from './agent-report.config'
+import { AgentObservabilityConfig, IAgentObservabilityConfig } from './agent-observability.config'
+import { CronLockConfig, ICronLockConfig } from './cron-lock.config'
+import { ShutdownConfig, IShutdownConfig } from './shutdown.config'
+import { AgentRetrievalConfig, IAgentRetrievalConfig } from './agent-retrieval.config'
 
 export * from './app.config'
 export * from './token.config'
@@ -23,6 +31,14 @@ export * from './agent-queue.config'
 export * from './process-role.config'
 export * from './agent-api.config'
 export * from './agent-stream.config'
+export * from './agent-context.config'
+export * from './agent-scheduler.config'
+export * from './agent-notification.config'
+export * from './agent-report.config'
+export * from './agent-observability.config'
+export * from './cron-lock.config'
+export * from './shutdown.config'
+export * from './agent-retrieval.config'
 
 export type AllConfigType = {
   app: IAppConfig
@@ -37,6 +53,14 @@ export type AllConfigType = {
   processRole: IProcessRoleConfig
   agentApi: IAgentApiConfig
   agentStream: IAgentStreamConfig
+  agentContext: IAgentContextConfig
+  agentScheduler: IAgentSchedulerConfig
+  agentNotification: IAgentNotificationConfig
+  agentReport: IAgentReportConfig
+  agentObservability: IAgentObservabilityConfig
+  cronLock: ICronLockConfig
+  shutdown: IShutdownConfig
+  agentRetrieval: IAgentRetrievalConfig
 }
 
 const configs = {
@@ -52,6 +76,14 @@ const configs = {
   ProcessRoleConfig,
   AgentApiConfig,
   AgentStreamConfig,
+  AgentContextConfig,
+  AgentSchedulerConfig,
+  AgentNotificationConfig,
+  AgentReportConfig,
+  AgentObservabilityConfig,
+  CronLockConfig,
+  ShutdownConfig,
+  AgentRetrievalConfig,
 }
 
 export default configs

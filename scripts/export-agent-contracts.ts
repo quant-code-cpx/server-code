@@ -226,6 +226,7 @@ export type AgentEventPayloadMap = {
   }
   'tool.failed': { toolCallId: string; error: StreamError; attempt: number; willRetry: boolean }
   'model.started': { modelCallId: string; provider: string; model: string; purpose: string }
+  'model.fallback': { fromProvider: string; fromModel: string; toProvider: string; toModel: string; reasonCode: string }
   'model.delta': { modelCallId: string; blockIndex: number; delta: string }
   'citation.created': { citation: Citation }
   'report.generated': { reportId: string; title: string; format: 'MARKDOWN' | 'PDF' }

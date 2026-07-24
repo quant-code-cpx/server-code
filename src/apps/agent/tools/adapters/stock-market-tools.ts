@@ -117,9 +117,10 @@ function resolveSecurityDefinition(stock: StockToolFacade): ToolDefinition {
         const command = input as unknown as ResolveSecurityInput
         if (!command.query.trim()) throw invalidArgument('query 不能为空')
         const value = await stock.resolveSecurity(command)
-        return toolResult(context, input, 'resolve_security', value, {
+        const { sourceModels, ...data } = value
+        return toolResult(context, input, 'resolve_security', data, {
           sourceServices: ['StockToolFacade'],
-          sourceModels: value.sourceModels,
+          sourceModels,
         })
       }),
     countRows: (data) => (data as { candidates: unknown[] }).candidates.length,

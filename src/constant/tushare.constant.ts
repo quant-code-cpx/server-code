@@ -794,6 +794,7 @@ export const TUSHARE_FINA_INDICATOR_FIELDS = [
   'assets_yoy',
   'eqt_yoy',
   'tr_yoy',
+  'update_flag',
 ] as const
 
 export const TUSHARE_DIVIDEND_FIELDS = [

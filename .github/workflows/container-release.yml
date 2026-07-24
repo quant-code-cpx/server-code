@@ -1,0 +1,582 @@
+name: Container Release
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+concurrency:
+  group: container-release-${{ github.ref }}
+  cancel-in-progress: false
+
+# packages 用于 GHCR；id-token 用于 keyless Cosign 签名；attestations 用于 provenance。
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+  attestations: write
+  security-events: write
+
+env:
+  REGISTRY: ghcr.io
+  APP_IMAGE: ghcr.io/${{ github.repository_owner }}/quant-server
+  MIGRATION_IMAGE: ghcr.io/${{ github.repository_owner }}/quant-server-migration
+  REDIS_IMAGE: ghcr.io/${{ github.repository_owner }}/quant-redis
+  EDGE_IMAGE: ghcr.io/${{ github.repository_owner }}/quant-edge
+  EDGE_BASE_IMAGE: ${{ vars.EDGE_BASE_IMAGE_REF }}
+  TRIVY_SEVERITY: HIGH,CRITICAL
+
+jobs:
+  release:
+    name: Build, Scan, Sign, and Attest
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Validate immutable edge base image
+        run: |
+          set -euo pipefail
+
+          [[ "$EDGE_BASE_IMAGE" =~ ^[a-z0-9][a-z0-9./:_-]*@sha256:[a-f0-9]{64}$ ]] || {
+            echo 'EDGE_BASE_IMAGE_REF repository variable must be an immutable lowercase image digest' >&2
+            exit 1
+          }
+          [[ "$EDGE_BASE_IMAGE" != *':latest@'* ]] || {
+            echo 'latest edge base image is forbidden' >&2
+            exit 1
+          }
+          [[ "$EDGE_BASE_IMAGE" = nginxinc/nginx-unprivileged@sha256:* || "$EDGE_BASE_IMAGE" = docker.io/nginxinc/nginx-unprivileged@sha256:* ]] || {
+            echo 'EDGE_BASE_IMAGE_REF must use the nginxinc/nginx-unprivileged package' >&2
+            exit 1
+          }
+
+      - name: Metadata for app image
+        id: app-meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.APP_IMAGE }}
+          tags: |
+            type=sha,format=long,prefix=sha-
+            type=ref,event=tag
+          flavor: |
+            latest=false
+
+      - name: Metadata for migration image
+        id: migration-meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.MIGRATION_IMAGE }}
+          tags: |
+            type=sha,format=long,prefix=sha-
+            type=ref,event=tag
+          flavor: |
+            latest=false
+
+      - name: Metadata for Redis image
+        id: redis-meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REDIS_IMAGE }}
+          tags: |
+            type=sha,format=long,prefix=sha-
+            type=ref,event=tag
+          flavor: |
+            latest=false
+
+      - name: Metadata for edge image
+        id: edge-meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.EDGE_IMAGE }}
+          tags: |
+            type=sha,format=long,prefix=sha-
+            type=ref,event=tag
+          flavor: |
+            latest=false
+
+      - name: Build and push app image
+        id: build-app
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: dockerfiles/app/Dockerfile.prod
+          target: prod
+          push: true
+          tags: ${{ steps.app-meta.outputs.tags }}
+          labels: ${{ steps.app-meta.outputs.labels }}
+          provenance: mode=max
+          sbom: true
+
+      - name: Build and push migration image
+        id: build-migration
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: dockerfiles/app/Dockerfile.prod
+          target: migration
+          push: true
+          tags: ${{ steps.migration-meta.outputs.tags }}
+          labels: ${{ steps.migration-meta.outputs.labels }}
+          provenance: mode=max
+          sbom: true
+
+      - name: Build and push Redis image
+        id: build-redis
+        uses: docker/build-push-action@v6
+        with:
+          context: dockerfiles/redis
+          file: dockerfiles/redis/Dockerfile.prod
+          push: true
+          tags: ${{ steps.redis-meta.outputs.tags }}
+          labels: ${{ steps.redis-meta.outputs.labels }}
+          provenance: mode=max
+          sbom: true
+
+      - name: Build and push edge image
+        id: build-edge
+        uses: docker/build-push-action@v6
+        with:
+          context: dockerfiles/nginx
+          file: dockerfiles/nginx/Dockerfile.prod
+          build-args: |
+            EDGE_BASE_IMAGE=${{ env.EDGE_BASE_IMAGE }}
+          push: true
+          tags: ${{ steps.edge-meta.outputs.tags }}
+          labels: ${{ steps.edge-meta.outputs.labels }}
+          provenance: mode=max
+          sbom: true
+
+      - name: Prepare evidence directory
+        run: mkdir -p artifacts
+
+      - name: Generate app SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          image: ${{ env.APP_IMAGE }}@${{ steps.build-app.outputs.digest }}
+          format: spdx-json
+          output-file: artifacts/app.spdx.json
+
+      - name: Generate migration SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          image: ${{ env.MIGRATION_IMAGE }}@${{ steps.build-migration.outputs.digest }}
+          format: spdx-json
+          output-file: artifacts/migration.spdx.json
+
+      - name: Generate Redis SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          image: ${{ env.REDIS_IMAGE }}@${{ steps.build-redis.outputs.digest }}
+          format: spdx-json
+          output-file: artifacts/redis.spdx.json
+
+      - name: Generate edge SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          image: ${{ env.EDGE_IMAGE }}@${{ steps.build-edge.outputs.digest }}
+          format: spdx-json
+          output-file: artifacts/edge.spdx.json
+
+      - name: Scan app image
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ env.APP_IMAGE }}@${{ steps.build-app.outputs.digest }}
+          format: sarif
+          output: artifacts/app.trivy.sarif
+          severity: ${{ env.TRIVY_SEVERITY }}
+          ignore-unfixed: true
+          exit-code: '0'
+
+      - name: Scan migration image
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ env.MIGRATION_IMAGE }}@${{ steps.build-migration.outputs.digest }}
+          format: sarif
+          output: artifacts/migration.trivy.sarif
+          severity: ${{ env.TRIVY_SEVERITY }}
+          ignore-unfixed: true
+          exit-code: '0'
+
+      - name: Scan Redis image
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ env.REDIS_IMAGE }}@${{ steps.build-redis.outputs.digest }}
+          format: sarif
+          output: artifacts/redis.trivy.sarif
+          severity: ${{ env.TRIVY_SEVERITY }}
+          ignore-unfixed: true
+          exit-code: '0'
+
+      - name: Scan edge image
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ env.EDGE_IMAGE }}@${{ steps.build-edge.outputs.digest }}
+          format: sarif
+          output: artifacts/edge.trivy.sarif
+          severity: ${{ env.TRIVY_SEVERITY }}
+          ignore-unfixed: true
+          exit-code: '0'
+
+      - name: Upload app security report
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: artifacts/app.trivy.sarif
+          category: container-app
+
+      - name: Upload migration security report
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: artifacts/migration.trivy.sarif
+          category: container-migration
+
+      - name: Upload Redis security report
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: artifacts/redis.trivy.sarif
+          category: container-redis
+
+      - name: Upload edge security report
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: artifacts/edge.trivy.sarif
+          category: container-edge
+
+      - name: Enforce app vulnerability threshold
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ env.APP_IMAGE }}@${{ steps.build-app.outputs.digest }}
+          format: table
+          severity: ${{ env.TRIVY_SEVERITY }}
+          ignore-unfixed: true
+          exit-code: '1'
+
+      - name: Enforce migration vulnerability threshold
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ env.MIGRATION_IMAGE }}@${{ steps.build-migration.outputs.digest }}
+          format: table
+          severity: ${{ env.TRIVY_SEVERITY }}
+          ignore-unfixed: true
+          exit-code: '1'
+
+      - name: Enforce Redis vulnerability threshold
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ env.REDIS_IMAGE }}@${{ steps.build-redis.outputs.digest }}
+          format: table
+          severity: ${{ env.TRIVY_SEVERITY }}
+          ignore-unfixed: true
+          exit-code: '1'
+
+      - name: Enforce edge vulnerability threshold
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ env.EDGE_IMAGE }}@${{ steps.build-edge.outputs.digest }}
+          format: table
+          severity: ${{ env.TRIVY_SEVERITY }}
+          ignore-unfixed: true
+          exit-code: '1'
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign image digests with GitHub OIDC
+        env:
+          APP_REF: ${{ env.APP_IMAGE }}@${{ steps.build-app.outputs.digest }}
+          MIGRATION_REF: ${{ env.MIGRATION_IMAGE }}@${{ steps.build-migration.outputs.digest }}
+          REDIS_REF: ${{ env.REDIS_IMAGE }}@${{ steps.build-redis.outputs.digest }}
+          EDGE_REF: ${{ env.EDGE_IMAGE }}@${{ steps.build-edge.outputs.digest }}
+        run: |
+          cosign sign --yes "$APP_REF"
+          cosign sign --yes "$MIGRATION_REF"
+          cosign sign --yes "$REDIS_REF"
+          cosign sign --yes "$EDGE_REF"
+
+      - name: Attest app provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-name: ${{ env.APP_IMAGE }}
+          subject-digest: ${{ steps.build-app.outputs.digest }}
+          push-to-registry: true
+
+      - name: Attest migration provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-name: ${{ env.MIGRATION_IMAGE }}
+          subject-digest: ${{ steps.build-migration.outputs.digest }}
+          push-to-registry: true
+
+      - name: Attest Redis provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-name: ${{ env.REDIS_IMAGE }}
+          subject-digest: ${{ steps.build-redis.outputs.digest }}
+          push-to-registry: true
+
+      - name: Attest edge provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-name: ${{ env.EDGE_IMAGE }}
+          subject-digest: ${{ steps.build-edge.outputs.digest }}
+          push-to-registry: true
+
+      - name: Attest SBOMs
+        env:
+          APP_REF: ${{ env.APP_IMAGE }}@${{ steps.build-app.outputs.digest }}
+          MIGRATION_REF: ${{ env.MIGRATION_IMAGE }}@${{ steps.build-migration.outputs.digest }}
+          REDIS_REF: ${{ env.REDIS_IMAGE }}@${{ steps.build-redis.outputs.digest }}
+          EDGE_REF: ${{ env.EDGE_IMAGE }}@${{ steps.build-edge.outputs.digest }}
+        run: |
+          cosign attest --yes --type spdxjson --predicate artifacts/app.spdx.json "$APP_REF"
+          cosign attest --yes --type spdxjson --predicate artifacts/migration.spdx.json "$MIGRATION_REF"
+          cosign attest --yes --type spdxjson --predicate artifacts/redis.spdx.json "$REDIS_REF"
+          cosign attest --yes --type spdxjson --predicate artifacts/edge.spdx.json "$EDGE_REF"
+
+      - name: Trigger client fixed-digest E2E
+        id: client-release
+        env:
+          CLIENT_DISPATCH_TOKEN: ${{ secrets.CLIENT_E2E_DISPATCH_TOKEN }}
+          CLIENT_REPOSITORY: ${{ github.repository_owner }}/client-code
+          SERVER_IMAGE: ${{ env.APP_IMAGE }}@${{ steps.build-app.outputs.digest }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "$CLIENT_DISPATCH_TOKEN" ]]; then
+            echo 'CLIENT_E2E_DISPATCH_TOKEN is required to run the client fixed-digest E2E gate' >&2
+            exit 1
+          fi
+          expected_title="Fixed-digest E2E [server-release:${GITHUB_RUN_ID}]"
+          artifact_name="frontend-release-${GITHUB_RUN_ID}"
+          github_api_url="${GITHUB_API_URL:-https://api.github.com}"
+          payload="$(jq -nc --arg serverImage "$SERVER_IMAGE" --arg releaseRunId "$GITHUB_RUN_ID" '{event_type: "server-image-released", client_payload: {server_image: $serverImage, server_release_run_id: $releaseRunId}}')"
+          curl --fail --silent --show-error \
+            --request POST \
+            --header 'Accept: application/vnd.github+json' \
+            --header "Authorization: Bearer $CLIENT_DISPATCH_TOKEN" \
+            --header 'X-GitHub-Api-Version: 2022-11-28' \
+            --data "$payload" \
+            "${github_api_url}/repos/${CLIENT_REPOSITORY}/dispatches"
+
+          for _ in {1..60}; do
+            runs="$(curl --fail --silent --show-error \
+              --header 'Accept: application/vnd.github+json' \
+              --header "Authorization: Bearer $CLIENT_DISPATCH_TOKEN" \
+              --header 'X-GitHub-Api-Version: 2022-11-28' \
+              "${github_api_url}/repos/${CLIENT_REPOSITORY}/actions/workflows/e2e.yml/runs?event=repository_dispatch&per_page=100")"
+            client_run_id="$(jq -r \
+              --arg expectedTitle "$expected_title" \
+              --arg clientRepository "$CLIENT_REPOSITORY" '
+              [.workflow_runs[]
+                | select(.event == "repository_dispatch")
+                | select(.display_title == $expectedTitle)
+                | select(.head_branch == "main")
+                | select(.head_repository.full_name == $clientRepository)]
+              | sort_by(.created_at) | last | .id // empty
+            ' <<<"$runs")"
+            if [[ -n "$client_run_id" ]]; then
+              client_status="$(jq -r --argjson runId "$client_run_id" '.workflow_runs[] | select(.id == $runId) | .status' <<<"$runs")"
+              client_conclusion="$(jq -r --argjson runId "$client_run_id" '.workflow_runs[] | select(.id == $runId) | .conclusion // empty' <<<"$runs")"
+              if [[ "$client_status" = completed ]]; then
+                [[ "$client_conclusion" = success ]] || {
+                  echo "client fixed-digest E2E failed: run=${client_run_id} conclusion=${client_conclusion}" >&2
+                  exit 1
+                }
+                break
+              fi
+            fi
+            sleep 10
+          done
+
+          [[ -n "${client_run_id:-}" && "${client_status:-}" = completed ]] || {
+            echo "timed out waiting for client fixed-digest E2E: ${expected_title}" >&2
+            exit 1
+          }
+
+          client_workflow="$(curl --fail --silent --show-error \
+            --header 'Accept: application/vnd.github+json' \
+            --header "Authorization: Bearer $CLIENT_DISPATCH_TOKEN" \
+            --header 'X-GitHub-Api-Version: 2022-11-28' \
+            "${github_api_url}/repos/${CLIENT_REPOSITORY}/actions/workflows/e2e.yml")"
+          client_workflow_id="$(jq --exit-status -r '.id | tostring' <<<"$client_workflow")"
+          client_run="$(curl --fail --silent --show-error \
+            --header 'Accept: application/vnd.github+json' \
+            --header "Authorization: Bearer $CLIENT_DISPATCH_TOKEN" \
+            --header 'X-GitHub-Api-Version: 2022-11-28' \
+            "${github_api_url}/repos/${CLIENT_REPOSITORY}/actions/runs/${client_run_id}")"
+          client_commit="$(jq --exit-status -r \
+            --arg runId "$client_run_id" \
+            --arg workflowId "$client_workflow_id" \
+            --arg expectedTitle "$expected_title" \
+            --arg clientRepository "$CLIENT_REPOSITORY" '
+              select((.id | tostring) == $runId)
+              | select((.workflow_id | tostring) == $workflowId)
+              | select(.event == "repository_dispatch")
+              | select(.status == "completed" and .conclusion == "success")
+              | select(.display_title == $expectedTitle)
+              | select(.head_branch == "main")
+              | select(.head_repository.full_name == $clientRepository)
+              | .head_sha
+              | select(test("^[0-9a-f]{40}$"))
+            ' <<<"$client_run")"
+
+          client_artifacts="$(curl --fail --silent --show-error \
+            --header 'Accept: application/vnd.github+json' \
+            --header "Authorization: Bearer $CLIENT_DISPATCH_TOKEN" \
+            --header 'X-GitHub-Api-Version: 2022-11-28' \
+            "${github_api_url}/repos/${CLIENT_REPOSITORY}/actions/runs/${client_run_id}/artifacts?per_page=100")"
+          artifact_count="$(jq --arg artifactName "$artifact_name" '[.artifacts[] | select(.name == $artifactName and .expired == false)] | length' <<<"$client_artifacts")"
+          [[ "$artifact_count" = 1 ]] || {
+            echo "expected exactly one non-expired client artifact named ${artifact_name}" >&2
+            exit 1
+          }
+          artifact_id="$(jq --exit-status -r --arg artifactName "$artifact_name" '.artifacts[] | select(.name == $artifactName and .expired == false) | .id | tostring' <<<"$client_artifacts")"
+          artifact_url="$(jq --exit-status -r --arg artifactName "$artifact_name" '.artifacts[] | select(.name == $artifactName and .expired == false) | .archive_download_url' <<<"$client_artifacts")"
+
+          download_dir="$RUNNER_TEMP/client-release-${client_run_id}"
+          mkdir -p "$download_dir"
+          curl --fail --silent --show-error --location \
+            --header 'Accept: application/vnd.github+json' \
+            --header "Authorization: Bearer $CLIENT_DISPATCH_TOKEN" \
+            --header 'X-GitHub-Api-Version: 2022-11-28' \
+            "$artifact_url" \
+            --output "$download_dir/artifact.zip"
+          unzip -q "$download_dir/artifact.zip" -d "$download_dir/files"
+          [[ "$(find "$download_dir/files" -maxdepth 1 -type f | wc -l | tr -d ' ')" = 3 ]] || {
+            echo 'client release artifact must contain exactly three files' >&2
+            exit 1
+          }
+          (
+            cd "$download_dir/files"
+            sha256sum --check SHA256SUMS
+          )
+          frontend_manifest="$download_dir/files/frontend-release-manifest.json"
+          frontend_archive="$download_dir/files/frontend-dist.tar.gz"
+          [[ -f "$frontend_manifest" && -f "$frontend_archive" ]] || {
+            echo 'client frontend manifest or archive is missing' >&2
+            exit 1
+          }
+          frontend_sha256="$(sha256sum "$frontend_archive" | awk '{print $1}')"
+          jq --exit-status \
+            --arg artifact frontend-dist.tar.gz \
+            --arg artifactSha256 "$frontend_sha256" \
+            --arg clientRepository "$CLIENT_REPOSITORY" \
+            --arg clientCommit "$client_commit" \
+            --arg clientRef refs/heads/main \
+            --arg clientRunId "$client_run_id" \
+            --arg serverReleaseRunId "$GITHUB_RUN_ID" \
+            --arg serverImage "$SERVER_IMAGE" '
+              .schemaVersion == 1
+              and .artifact == $artifact
+              and .artifactSha256 == $artifactSha256
+              and .client.repository == $clientRepository
+              and .client.commit == $clientCommit
+              and .client.ref == $clientRef
+              and .client.runId == $clientRunId
+              and .server.releaseRunId == $serverReleaseRunId
+              and .server.image == $serverImage
+            ' "$frontend_manifest" >/dev/null
+
+          mkdir -p artifacts/frontend
+          cp "$frontend_archive" artifacts/frontend/frontend-dist.tar.gz
+          cp "$frontend_manifest" artifacts/frontend/frontend-release-manifest.json
+          {
+            echo "client-run-id=$client_run_id"
+            echo "client-workflow-id=$client_workflow_id"
+            echo "client-commit=$client_commit"
+            echo "client-artifact-id=$artifact_id"
+            echo "client-artifact-name=$artifact_name"
+            echo "frontend-sha256=$frontend_sha256"
+          } >> "$GITHUB_OUTPUT"
+          echo "client fixed-digest E2E and frontend artifact verified: run=${client_run_id}"
+
+      - name: Write immutable release manifest
+        env:
+          APP_REF: ${{ env.APP_IMAGE }}@${{ steps.build-app.outputs.digest }}
+          MIGRATION_REF: ${{ env.MIGRATION_IMAGE }}@${{ steps.build-migration.outputs.digest }}
+          REDIS_REF: ${{ env.REDIS_IMAGE }}@${{ steps.build-redis.outputs.digest }}
+          EDGE_REF: ${{ env.EDGE_IMAGE }}@${{ steps.build-edge.outputs.digest }}
+          CLIENT_REPOSITORY: ${{ github.repository_owner }}/client-code
+          CLIENT_RUN_ID: ${{ steps.client-release.outputs.client-run-id }}
+          CLIENT_WORKFLOW_ID: ${{ steps.client-release.outputs.client-workflow-id }}
+          CLIENT_COMMIT: ${{ steps.client-release.outputs.client-commit }}
+          CLIENT_ARTIFACT_ID: ${{ steps.client-release.outputs.client-artifact-id }}
+          CLIENT_ARTIFACT_NAME: ${{ steps.client-release.outputs.client-artifact-name }}
+          FRONTEND_SHA256: ${{ steps.client-release.outputs.frontend-sha256 }}
+        run: |
+          set -euo pipefail
+
+          jq -n \
+            --arg createdAt "$(date --iso-8601=seconds)" \
+            --arg commit "$GITHUB_SHA" \
+            --arg runId "$GITHUB_RUN_ID" \
+            --arg appImage "$APP_REF" \
+            --arg migrationImage "$MIGRATION_REF" \
+            --arg redisImage "$REDIS_REF" \
+            --arg edgeImage "$EDGE_REF" \
+            --arg clientRepository "$CLIENT_REPOSITORY" \
+            --arg clientWorkflowId "$CLIENT_WORKFLOW_ID" \
+            --arg clientRunId "$CLIENT_RUN_ID" \
+            --arg clientCommit "$CLIENT_COMMIT" \
+            --arg clientArtifactId "$CLIENT_ARTIFACT_ID" \
+            --arg clientArtifactName "$CLIENT_ARTIFACT_NAME" \
+            --arg frontendSha256 "$FRONTEND_SHA256" \
+            '{
+              schemaVersion: 2,
+              createdAt: $createdAt,
+              commit: $commit,
+              runId: $runId,
+              images: {
+                app: $appImage,
+                migration: $migrationImage,
+                redis: $redisImage,
+                edge: $edgeImage
+              },
+              clientE2E: {
+                repository: $clientRepository,
+                workflow: "e2e.yml",
+                workflowId: $clientWorkflowId,
+                runId: $clientRunId,
+                commit: $clientCommit,
+                ref: "refs/heads/main",
+                artifactId: $clientArtifactId,
+                artifactName: $clientArtifactName
+              },
+              frontend: {
+                archive: "frontend/frontend-dist.tar.gz",
+                manifest: "frontend/frontend-release-manifest.json",
+                sha256: $frontendSha256
+              },
+              vulnerabilityThreshold: "HIGH,CRITICAL",
+              signatures: "cosign-keyless",
+              provenance: "github-attestation",
+              sbom: "spdx-json"
+            }' > artifacts/release-manifest.json
+          (
+            cd artifacts
+            checksum_temp="$(mktemp)"
+            find . -type f ! -name SHA256SUMS -print0 \
+              | LC_ALL=C sort -z \
+              | xargs -0 sha256sum > "$checksum_temp"
+            mv "$checksum_temp" SHA256SUMS
+          )
+
+      - name: Upload release evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: container-release-${{ github.sha }}
+          path: artifacts/
+          if-no-files-found: error
+          retention-days: 90

@@ -7,6 +7,7 @@ import { TushareSyncRegistryService } from './sync-registry.service'
 import { DataQualityService } from './quality/data-quality.service'
 import { AutoRepairService } from './quality/auto-repair.service'
 import { buildProcessRoleConfig } from 'src/config/process-role.config'
+import { DistributedCronLockService } from 'src/shared/scheduler/distributed-cron-lock.service'
 
 /** 最大同时处理的重试任务数（防止一次扫描大量重试任务造成 DB 和 Tushare 压力） */
 const MAX_RETRY_BATCH = 10
@@ -27,10 +28,15 @@ export class SyncRetryService {
     private readonly registry: TushareSyncRegistryService,
     private readonly dataQualityService: DataQualityService,
     private readonly autoRepairService: AutoRepairService,
+    private readonly cronLock: DistributedCronLockService,
   ) {}
 
   @Cron(CronExpression.EVERY_5_MINUTES)
   async processPendingRetries() {
+    await this.cronLock.runIfScheduler('tushare:retry', async () => this.processPendingRetriesWithLease())
+  }
+
+  private async processPendingRetriesWithLease() {
     if (this.agentWorkerProcess) return
     const pendingItems = await this.prisma.tushareSyncRetryQueue.findMany({
       where: {

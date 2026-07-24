@@ -5,12 +5,12 @@ model HkHold {
   tradeDate DateTime @map("trade_date") @db.Date
   exchange  String   @map("exchange") @db.VarChar(4)
 
-  code      String?  @map("code") @db.VarChar(16)
-  name      String?  @map("name") @db.VarChar(32)
-  vol       BigInt?  @map("vol")                   // 持股数量（股）
-  ratio     Float?   @map("ratio")                 // 持股占比（%）
+  code  String? @map("code") @db.VarChar(16)
+  name  String? @map("name") @db.VarChar(32)
+  vol   BigInt? @map("vol") // 持股数量（股）
+  ratio Float?  @map("ratio") // 持股占比（%）
 
-  syncedAt  DateTime @default(now()) @map("synced_at")
+  syncedAt DateTime @default(now()) @map("synced_at")
 
   @@id([tsCode, tradeDate, exchange])
   @@index([tradeDate])

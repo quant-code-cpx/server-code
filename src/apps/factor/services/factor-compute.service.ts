@@ -561,7 +561,7 @@ export class FactorComputeService {
         FROM financial_indicator_snapshots
         WHERE ann_date IS NOT NULL
           AND ann_date <= ${tradeDate}::date
-        ORDER BY ts_code, ann_date DESC
+        ORDER BY ts_code, end_date DESC, ann_date DESC, (update_flag = '1') DESC, synced_at DESC
       ),
       base AS (
         SELECT
@@ -597,7 +597,7 @@ export class FactorComputeService {
           ts_code, ${col}
         FROM financial_indicator_snapshots
         WHERE ann_date IS NOT NULL AND ann_date <= ${tradeDate}::date
-        ORDER BY ts_code, ann_date DESC
+        ORDER BY ts_code, end_date DESC, ann_date DESC, (update_flag = '1') DESC, synced_at DESC
       )
       SELECT
         COUNT(*) AS cnt,
@@ -1139,7 +1139,7 @@ export class FactorComputeService {
           SELECT DISTINCT ON (ts_code) ts_code, ${col}
           FROM financial_indicator_snapshots
           WHERE ann_date IS NOT NULL AND ann_date <= ${tradeDate}::date
-          ORDER BY ts_code, ann_date DESC
+          ORDER BY ts_code, end_date DESC, ann_date DESC, (update_flag = '1') DESC, synced_at DESC
         )
         SELECT sb.ts_code, fi.${col}::float AS factor_value
         FROM stock_basic_profiles sb

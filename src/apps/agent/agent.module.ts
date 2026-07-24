@@ -5,6 +5,8 @@ import type { IAgentToolsConfig } from 'src/config/agent-tools.config'
 import { AgentExecutionConfig } from 'src/config/agent-execution.config'
 import { AgentApiConfig } from 'src/config/agent-api.config'
 import { AgentStreamConfig } from 'src/config/agent-stream.config'
+import { AgentContextConfig } from 'src/config/agent-context.config'
+import { ModelConfig } from 'src/config/model.config'
 import { AgentQueueProducerModule } from 'src/queue/agent/agent-queue-producer.module'
 import { StockModule } from 'src/apps/stock/stock.module'
 import { MarketModule } from 'src/apps/market/market.module'
@@ -39,6 +41,7 @@ import { createStockMarketToolDefinitions } from './tools/adapters/stock-market-
 import { createFinancialToolDefinitions } from './tools/adapters/financial-tools'
 import { createQuantToolDefinitions } from './tools/adapters/quant-tools'
 import { createWebResearchToolDefinitions } from './tools/adapters/web-research-tools'
+import { createSaveResearchReportToolDefinition } from './tools/adapters/save-research-report.tool'
 import { AgentOrchestratorService } from './orchestrator/agent-orchestrator.service'
 import { CitationCoverageService } from './workflow/citation-coverage.service'
 import { AuthorizeToolsNode } from './workflow/nodes/authorize-tools.node'
@@ -68,6 +71,21 @@ import { AgentInteractionRepository } from './application/agent-interaction.repo
 import { AgentStreamController } from './api/agent-stream.controller'
 import { AgentStreamMetricsService } from './streaming/agent-stream-metrics.service'
 import { AgentStreamService } from './streaming/agent-stream.service'
+import { ConversationSummaryRepository } from './memory/conversation-summary.repository'
+import { UserMemoryRepository } from './memory/user-memory.repository'
+import { ConversationSummaryService } from './memory/conversation-summary.service'
+import { UserMemoryService } from './memory/user-memory.service'
+import { AgentMemoryController } from './api/agent-memory.controller'
+import { ContextBuilderService } from './memory/context-builder.service'
+import { ContextTokenEstimator } from './memory/context-token-estimator'
+import { ConversationSummaryGeneratorService } from './memory/conversation-summary-generator.service'
+import { ResearchReportModule } from './research/research-report.module'
+import { AgentObservabilityModule } from './observability/agent-observability.module'
+import { AgentMetricsService } from './observability/agent-metrics.service'
+import { AgentEvaluationService } from './observability/evaluation/agent-evaluation.service'
+import { AgentEvaluationAdminController } from './api/agent-evaluation-admin.controller'
+import { RolesGuard } from 'src/lifecycle/guard/roles.guard'
+import { RetrievalModule } from './retrieval/retrieval.module'
 
 @Module({
   imports: [
@@ -75,6 +93,8 @@ import { AgentStreamService } from './streaming/agent-stream.service'
     ConfigModule.forFeature(AgentExecutionConfig),
     ConfigModule.forFeature(AgentApiConfig),
     ConfigModule.forFeature(AgentStreamConfig),
+    ConfigModule.forFeature(AgentContextConfig),
+    ConfigModule.forFeature(ModelConfig),
     AgentQueueProducerModule,
     ModelGatewayModule,
     AgentExecutionModule,
@@ -86,19 +106,31 @@ import { AgentStreamService } from './streaming/agent-stream.service'
     WatchlistModule,
     PortfolioModule,
     BacktestModule,
+    ResearchReportModule,
+    AgentObservabilityModule,
+    RetrievalModule,
   ],
-  controllers: [AgentController, AgentStreamController],
+  controllers: [AgentController, AgentMemoryController, AgentStreamController, AgentEvaluationAdminController],
   providers: [
     AgentConversationRepository,
     AgentMessageRepository,
+    ConversationSummaryRepository,
+    UserMemoryRepository,
+    ConversationSummaryService,
+    ConversationSummaryGeneratorService,
+    UserMemoryService,
+    ContextTokenEstimator,
+    ContextBuilderService,
     AgentRestReadRepository,
     AgentInteractionRepository,
     AgentConversationService,
     AgentRunService,
     AgentStrictBodyGuard,
     AgentErrorInterceptor,
+    RolesGuard,
     AgentStreamMetricsService,
     AgentStreamService,
+    AgentEvaluationService,
     ToolSchemaValidator,
     ToolRegistryService,
     ToolPolicyService,
@@ -158,9 +190,10 @@ import { AgentStreamService } from './streaming/agent-stream.service'
           ...createFinancialToolDefinitions({ financial, moneyflow, config }),
           ...createQuantToolDefinitions({ portfolio, backtest, valuation, config }),
           ...createWebResearchToolDefinitions({ search: webSearch, fetch: webFetch }),
+          createSaveResearchReportToolDefinition(),
         ]),
     },
-    { provide: TOOL_EXECUTION_OBSERVER, useValue: Object.freeze({}) },
+    { provide: TOOL_EXECUTION_OBSERVER, useExisting: AgentMetricsService },
   ],
   exports: [
     ModelGatewayModule,
@@ -168,6 +201,12 @@ import { AgentStreamService } from './streaming/agent-stream.service'
     AgentAuditModule,
     AgentConversationRepository,
     AgentMessageRepository,
+    ConversationSummaryRepository,
+    UserMemoryRepository,
+    ConversationSummaryService,
+    ConversationSummaryGeneratorService,
+    UserMemoryService,
+    ContextBuilderService,
     ToolRegistryService,
     ToolPolicyService,
     ToolRunLimiterService,
@@ -175,6 +214,9 @@ import { AgentStreamService } from './streaming/agent-stream.service'
     WorkflowRegistryService,
     WorkflowEngineService,
     AgentOrchestratorService,
+    AgentRunService,
+    AgentStrictBodyGuard,
+    AgentErrorInterceptor,
   ],
 })
 export class AgentModule {}

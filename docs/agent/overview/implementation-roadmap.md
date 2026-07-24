@@ -61,18 +61,18 @@ MVP 延后：自动多模型、长期记忆、定时任务、外部通知、报�
 
 ## Phase 2：主动研究、记忆、报告与质量
 
-基础完成后可并行：
+已完成：
 
 - [Batch 019：会话摘要与显式用户记忆](../tasks/batches/batch-019-conversation-summary-and-memory.md)
 - [Batch 020：定时与条件 Agent 任务](../tasks/batches/batch-020-scheduled-agent-tasks.md)
-- [Batch 023：多供应商模型路由与降级](../tasks/batches/batch-023-multi-provider-routing-and-fallback.md)
-- [Batch 025：AI 可观测性、成本与评测平台](../tasks/batches/batch-025-ai-observability-cost-and-evaluation.md)
-- [Batch 029：回测点时性、股票池与复权修复](../tasks/batches/batch-029-backtest-bias-and-adjustment-remediation.md)
-
-随后：
-
 - [Batch 021：站内与外部通知渠道](../tasks/batches/batch-021-outbound-notification-channels.md)，依赖 020。
 - [Batch 022：研究报告与投资日志闭环](../tasks/batches/batch-022-research-report-and-investment-journal.md)，依赖 019 和前端富响应。
+- [Batch 023：多供应商模型路由与降级](../tasks/batches/batch-023-multi-provider-routing-and-fallback.md)。
+- [Batch 025：AI 可观测性、成本与评测平台](../tasks/batches/batch-025-ai-observability-cost-and-evaluation.md)。
+
+质量修复已完成：
+
+- [Batch 029：回测点时性、股票池与复权修复](../tasks/batches/batch-029-backtest-bias-and-adjustment-remediation.md)：PIT 股票池、公告时点财务、QFQ、可复现元数据、真实数据差异与页面三态验收均已完成。
 
 阶段能力：长会话有界上下文和可管理记忆；研究按交易日/数据水位唯一触发；送达失败不重跑研究；报告可追踪到消息/Run/引用；至少两模型按隐私/能力/预算路由；Agent 指标、成本和回归评测可操作；新回测具备 point-in-time 与可复现标记。
 
@@ -86,8 +86,8 @@ MVP 延后：自动多模型、长期记忆、定时任务、外部通知、报�
 
 ## 条件能力：默认不实施
 
-- [Batch 024：无状态 Python 量化计算服务](../tasks/batches/batch-024-python-quant-compute-service.md)：仅在 CPU/科学库/隔离的 benchmark 门禁通过后；否则保留 TypeScript。
-- [Batch 027：pgvector 语义检索试点](../tasks/batches/batch-027-vector-retrieval-pilot.md)：仅当 hybrid retrieval 明显优于元数据+FTS；结构化行情永不向量化。
+- [Batch 024：无状态 Python 量化计算服务](../tasks/batches/batch-024-python-quant-compute-service.md)：已完成 1 万/10 万/100 万点门禁并判定 no-go；当前生产上限下保留 TypeScript，百万点内存证据作为未来重启条件。
+- [Batch 027：pgvector 语义检索试点](../tasks/batches/batch-027-vector-retrieval-pilot.md)：已完成条件评测并按 [ADR-010](../decisions/adr-010-语义检索试点结论.md)判定 no-go；默认保留 FTS，结构化行情永不向量化。
 - [Batch 028：受控只读 SQL Explorer 试点](../tasks/batches/batch-028-controlled-sql-explorer.md)：仅在固定 Tool 无法覆盖且只读副本/AST/安全评测全通过；默认禁用。
 
 条件失败的正确产物是有证据的 no-go ADR，不是空服务或永久维护成本。

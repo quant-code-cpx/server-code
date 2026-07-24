@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { execFileSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -7,6 +7,8 @@ import { ConfigModule } from '@nestjs/config'
 import { Test } from '@nestjs/testing'
 import {
   AiAgentRunStatus,
+  AiMemoryCategory,
+  AiMemorySensitivity,
   AiMessageRole,
   AiMessageStatus,
   AiModelPolicy,
@@ -16,13 +18,21 @@ import {
 } from '@prisma/client'
 import configs from 'src/config'
 import { AgentExecutionConfig } from 'src/config/agent-execution.config'
+import { AgentContextConfig } from 'src/config/agent-context.config'
 import { AgentToolsConfig } from 'src/config/agent-tools.config'
 import { SharedModule } from 'src/shared/shared.module'
 import { PrismaService } from 'src/shared/prisma.service'
 import { AgentAuditModule } from '../../audit/agent-audit.module'
 import { AgentAuditRepository } from '../../audit/agent-audit.repository'
 import { AgentConversationRepository } from '../../conversation/agent-conversation.repository'
+import { canonicalJson } from '../../conversation/agent-conversation.utils'
 import { AgentMessageRepository } from '../../conversation/agent-message.repository'
+import { ContextBuilderService } from '../../memory/context-builder.service'
+import { ContextTokenEstimator } from '../../memory/context-token-estimator'
+import { ConversationSummaryRepository } from '../../memory/conversation-summary.repository'
+import { ConversationSummaryService } from '../../memory/conversation-summary.service'
+import { ConversationSummaryGeneratorService } from '../../memory/conversation-summary-generator.service'
+import { UserMemoryRepository } from '../../memory/user-memory.repository'
 import { AgentRunRepository } from '../../execution/agent-run.repository'
 import { AgentExecutionModule } from '../../execution/agent-execution.module'
 import { ModelGatewayModule } from '../../model-gateway/model-gateway.module'
@@ -84,6 +94,7 @@ integrationDescribe('Stock research workflow v1 - 真实 PostgreSQL + fake Model
       imports: [
         ConfigModule.forRoot({ isGlobal: true, envFilePath: ['.env'], load: [...Object.values(configs)] }),
         ConfigModule.forFeature(AgentExecutionConfig),
+        ConfigModule.forFeature(AgentContextConfig),
         ConfigModule.forFeature(AgentToolsConfig),
         SharedModule,
         ModelGatewayModule,
@@ -93,6 +104,12 @@ integrationDescribe('Stock research workflow v1 - 真实 PostgreSQL + fake Model
       providers: [
         AgentConversationRepository,
         AgentMessageRepository,
+        ConversationSummaryRepository,
+        ConversationSummaryService,
+        ConversationSummaryGeneratorService,
+        UserMemoryRepository,
+        ContextTokenEstimator,
+        ContextBuilderService,
         ToolSchemaValidator,
         ToolRegistryService,
         ToolPolicyService,
@@ -230,6 +247,161 @@ integrationDescribe('Stock research workflow v1 - 真实 PostgreSQL + fake Model
       where: { runId: run.id, eventType: 'agent.completed' },
     })
     expect(terminalEvents).toHaveLength(1)
+  }, 60_000)
+
+  it('真实 ContextBuilder 组合摘要与 owner memory，排除跨租户数据且 manifest 不复制原值', async () => {
+    const prisma = app!.get(PrismaService)
+    const conversations = app!.get(AgentConversationRepository)
+    const messages = app!.get(AgentMessageRepository)
+    const summaries = app!.get(ConversationSummaryRepository)
+    const memories = app!.get(UserMemoryRepository)
+    const runs = app!.get(AgentRunRepository)
+    const registry = app!.get(WorkflowRegistryService)
+    const builder = app!.get(ContextBuilderService)
+    const now = new Date('2026-07-21T08:00:00.000Z')
+    const ownerCanary = 'OWNER_MEMORY_CANARY_741'
+    const otherCanary = 'OTHER_USER_CANARY_852'
+    const [owner, other, prompt, workflowVersion] = await Promise.all([
+      prisma.user.create({
+        data: {
+          account: `context_owner_${Date.now()}`,
+          password: 'integration-test-only',
+          nickname: 'Context Owner',
+          role: UserRole.USER,
+        },
+      }),
+      prisma.user.create({
+        data: {
+          account: `context_other_${Date.now()}`,
+          password: 'integration-test-only',
+          nickname: 'Context Other',
+          role: UserRole.USER,
+        },
+      }),
+      prisma.aiPromptVersion.findFirstOrThrow({ where: { status: 'PUBLISHED' }, orderBy: { createdAt: 'asc' } }),
+      prisma.aiWorkflowVersion.findFirstOrThrow({ where: { status: 'PUBLISHED' }, orderBy: { createdAt: 'asc' } }),
+    ])
+    const [conversation, otherConversation] = await Promise.all([
+      conversations.createConversation(owner.id, {
+        clientRequestId: randomUUID(),
+        title: '有界上下文集成',
+        modelPolicy: AiModelPolicy.AUTO,
+        preferredModel: null,
+      }),
+      conversations.createConversation(other.id, {
+        clientRequestId: randomUUID(),
+        title: '其他用户会话',
+        modelPolicy: AiModelPolicy.AUTO,
+        preferredModel: null,
+      }),
+    ])
+    const first = await messages.appendMessage(owner.id, conversation.id, {
+      clientRequestId: randomUUID(),
+      role: AiMessageRole.USER,
+      status: AiMessageStatus.COMPLETED,
+      contentText: '先分析盈利质量',
+      contentBlocks: [],
+    })
+    const priorAnswer = await messages.appendMessage(owner.id, conversation.id, {
+      clientRequestId: randomUUID(),
+      role: AiMessageRole.ASSISTANT,
+      status: AiMessageStatus.COMPLETED,
+      contentText: '历史结论仅用于摘要',
+      contentBlocks: [],
+      parentMessageId: first.id,
+    })
+    const trigger = await messages.appendMessage(owner.id, conversation.id, {
+      clientRequestId: randomUUID(),
+      role: AiMessageRole.USER,
+      status: AiMessageStatus.COMPLETED,
+      contentText: '继续分析现金流',
+      contentBlocks: [],
+    })
+    const response = await messages.appendMessage(owner.id, conversation.id, {
+      clientRequestId: randomUUID(),
+      role: AiMessageRole.ASSISTANT,
+      status: AiMessageStatus.PENDING,
+      contentBlocks: [],
+      parentMessageId: trigger.id,
+    })
+    const summaryText = '已分析贵州茅台盈利质量'
+    const facts = [{ entity: '600519.SH', conclusion: '盈利稳定' }]
+    const sourceMessageIds = [first.id, priorAnswer.id]
+    const summary = await summaries.createAndAdvance(owner.id, conversation.id, {
+      expectedSummaryVersion: 0,
+      fromMessageId: first.id,
+      throughMessageId: priorAnswer.id,
+      summaryText,
+      facts,
+      sourceMessageIds,
+      promptVersionId: prompt.id,
+      modelName: 'fake-summary-model',
+      sourceTokenCount: 128,
+      contentHash: createHash('sha256').update(canonicalJson({ facts, sourceMessageIds, summaryText })).digest('hex'),
+    })
+    const ownerMemory = await memories.createConfirmed(owner.id, {
+      category: AiMemoryCategory.CONSTRAINT,
+      key: 'research.risk_limit',
+      value: { note: ownerCanary, maxDrawdown: 0.15 },
+      sensitivity: AiMemorySensitivity.NORMAL,
+      topic: 'GENERAL',
+      source: 'USER_COMMAND',
+      confirmedByUser: true,
+      now,
+    })
+    const otherMemory = await memories.createConfirmed(other.id, {
+      category: AiMemoryCategory.CONSTRAINT,
+      key: 'research.private_other',
+      value: { note: otherCanary },
+      sensitivity: AiMemorySensitivity.NORMAL,
+      sourceConversationId: otherConversation.id,
+      topic: 'GENERAL',
+      source: 'USER_COMMAND',
+      confirmedByUser: true,
+      now,
+    })
+    const createdRun = await runs.createRun({
+      userId: owner.id,
+      conversationId: conversation.id,
+      triggerMessageId: trigger.id,
+      responseMessageId: response.id,
+      clientRequestId: randomUUID(),
+      traceId: `trace_${randomUUID()}`,
+      workflowVersionId: workflowVersion.id,
+      promptVersionId: prompt.id,
+      toolPolicyVersion: 'tool-policy-v1',
+      modelPolicy: AiModelPolicy.AUTO,
+      inputSnapshot: { allowedCapabilities: ['INTERNAL_DATA'], allowedScopes: ['MARKET_DATA'] },
+      budget: { maxInputTokens: 4_000 },
+      maxAttempts: 3,
+      deadlineAt: new Date(Date.now() + 170_000),
+    })
+    const workerId = `worker_${randomUUID()}`
+    await runs.claimRun(createdRun.id, workerId)
+    const executionRun = await runs.findForExecution(createdRun.id, workerId)
+
+    const context = await builder.build({
+      run: executionRun,
+      workflow: registry.resolve('stock_research', 1),
+      budget: 4_000,
+      now,
+    })
+    const prepared = builder.prepareModelCall({
+      context,
+      purpose: 'PLAN',
+      instruction: '生成研究计划',
+      budget: 4_000,
+    })
+
+    expect(context.summary?.id).toBe(summary.id)
+    expect(context.recentMessages.map((message) => message.id)).toEqual([trigger.id])
+    expect(context.activeMemories.map((memory) => memory.id)).toEqual([ownerMemory.id])
+    expect(JSON.stringify(prepared.messages)).toContain(ownerCanary)
+    expect(JSON.stringify(prepared.messages)).not.toContain(otherCanary)
+    expect(JSON.stringify(prepared.manifest)).toContain(summary.id)
+    expect(JSON.stringify(prepared.manifest)).toContain(ownerMemory.id)
+    expect(JSON.stringify(prepared.manifest)).not.toContain(ownerCanary)
+    expect(JSON.stringify(prepared.manifest)).not.toContain(otherMemory.id)
   }, 60_000)
 })
 

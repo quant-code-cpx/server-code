@@ -233,6 +233,7 @@ function harness(
     config?: Partial<IAgentToolsConfig>
     definition?: Partial<ToolDefinition>
     audit?: StatefulAuditFake
+    observer?: ToolExecutionObserver
   } = {},
 ) {
   const config = { ...baseConfig, ...options.config } as IAgentToolsConfig
@@ -242,12 +243,14 @@ function harness(
   registry.onModuleInit()
   const audit = options.audit ?? new StatefulAuditFake()
   const logger = { log: jest.fn(), warn: jest.fn(), error: jest.fn() } as unknown as LoggerService
-  const observer: ToolExecutionObserver = {
-    onStarted: jest.fn(),
-    onRetry: jest.fn(),
-    onCompleted: jest.fn(),
-    onFailed: jest.fn(),
-  }
+  const observer =
+    options.observer ??
+    ({
+      onStarted: jest.fn(),
+      onRetry: jest.fn(),
+      onCompleted: jest.fn(),
+      onFailed: jest.fn(),
+    } satisfies ToolExecutionObserver)
   const limiter = new ToolRunLimiterService(config)
   const executor = new ToolExecutorService(
     registry,
@@ -280,10 +283,28 @@ describe('ToolExecutorService', () => {
     expect(audit.history).toEqual(['begin', 'running:1', 'complete'])
     expect(observer.onStarted).toHaveBeenCalledTimes(1)
     expect(observer.onCompleted).toHaveBeenCalledTimes(1)
+    expect(observer.onCompleted).toHaveBeenCalledWith(expect.objectContaining({ toolKey: 'resolve_security' }))
     expect(observer.onCompleted).toHaveBeenCalledWith(
       expect.not.objectContaining({ result: expect.anything(), data: expect.anything() }),
     )
     expect(JSON.stringify((logger.log as jest.Mock).mock.calls)).not.toContain('浦发银行')
+  })
+
+  it('调用有状态 observer 时保留实例 this，避免指标回调静默丢失', async () => {
+    const statefulObserver = {
+      completed: 0,
+      onCompleted(this: { completed: number }) {
+        this.completed += 1
+      },
+    }
+    const adapter = jest.fn(async (input, access: ToolAccessContext) =>
+      toolResult(access, input as Record<string, unknown>),
+    )
+    const { executor } = harness(adapter, { observer: statefulObserver })
+
+    await executor.execute(command, context())
+
+    expect(statefulObserver.completed).toBe(1)
   })
 
   it('同逻辑调用并发合并，完成后重复调用复用审计结果，不再次触达 adapter', async () => {
@@ -291,11 +312,12 @@ describe('ToolExecutorService', () => {
       toolResult(access, input as Record<string, unknown>),
     )
     const { executor, audit } = harness(adapter)
+    const sharedContext = context()
     const [left, right] = await Promise.all([
-      executor.execute(command, context()),
-      executor.execute(command, context({ runId: ' run_1 ' })),
+      executor.execute(command, sharedContext),
+      executor.execute(command, { ...sharedContext, runId: ' run_1 ' }),
     ])
-    const restored = await executor.execute(command, context())
+    const restored = await executor.execute(command, sharedContext)
 
     expect(left).toEqual(right)
     expect(restored).toEqual(left)

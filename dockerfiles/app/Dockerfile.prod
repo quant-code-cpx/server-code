@@ -13,9 +13,11 @@
 # ─────────────────────────────────────────────────────────────────────────────
 
 # ── 阶段 1：安装依赖 ───────────────────────────────────────────────────────
-FROM node:22-alpine AS deps
+FROM node:22-bookworm-slim AS deps
 
-RUN npm install -g pnpm@9.15.9
+ENV PUPPETEER_SKIP_DOWNLOAD=true
+
+RUN corepack enable && corepack prepare pnpm@9.15.9 --activate
 
 WORKDIR /app
 
@@ -25,9 +27,15 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile
 
 # ── 阶段 2：编译 + Prisma Client ────────────────────────────────────────────
-FROM node:22-alpine AS builder
+FROM node:22-bookworm-slim AS builder
 
-RUN npm install -g pnpm@9.15.9
+ENV PUPPETEER_SKIP_DOWNLOAD=true
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends openssl \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN corepack enable && corepack prepare pnpm@9.15.9 --activate
 
 WORKDIR /app
 
@@ -40,39 +48,79 @@ RUN pnpm exec prisma generate
 # 编译 TypeScript
 RUN pnpm build
 
-# 仅安装生产依赖（去除 devDependencies）
-RUN pnpm install --frozen-lockfile --prod
+# ── 独立迁移镜像 ────────────────────────────────────────────────────────────
+# 仅用于一次性 `prisma migrate deploy`，不作为业务进程运行时。
+FROM builder AS migration
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates openssl \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd --gid 1001 appgroup \
+    && useradd --uid 1001 --gid appgroup --create-home --shell /usr/sbin/nologin appuser \
+    && chown -R appuser:appgroup /app
+
+WORKDIR /app
+
+USER appuser
+
+# 迁移镜像不可依赖 Corepack 运行时下载 pnpm：appuser 与只读根文件系统下都会失败。
+CMD ["node", "node_modules/prisma/build/index.js", "migrate", "deploy"]
+
+# 运行时镜像只需要生产依赖；迁移 stage 保留 build 期 Prisma CLI/engine。
+FROM builder AS prod-deps
+
+# prune 不重跑 package.json 的 prepare，避免 Husky 已移除后构建失败。
+RUN pnpm prune --prod --ignore-scripts
 
 # ── 阶段 3：生产运行时 ─────────────────────────────────────────────────────
-FROM node:22-alpine AS prod
+FROM node:22-bookworm-slim AS prod
+
+ENV NODE_ENV=production \
+    HOME=/app \
+    PUPPETEER_SKIP_DOWNLOAD=true \
+    PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates chromium chromium-sandbox dumb-init fonts-noto-cjk \
+    && rm -rf /var/lib/apt/lists/*
 
 # 安全：使用非 root 用户
-RUN addgroup -g 1001 -S appgroup && \
-    adduser -S appuser -u 1001 -G appgroup
+RUN groupadd --gid 1001 appgroup \
+    && useradd --uid 1001 --gid appgroup --create-home --shell /usr/sbin/nologin appuser \
+    && mkdir -p /app/logs /app/storage/reports /app/storage/agent-reports /app/tmp \
+    && chown -R appuser:appgroup /app
+
+# 运行时 Chromium 只使用可写 tmpfs；必须在 apt 安装完成后设置，
+# 因为 ca-certificates 的 post-install 也会读取 TMPDIR。
+ENV TMPDIR=/app/tmp \
+    XDG_CACHE_HOME=/app/tmp/.cache \
+    XDG_CONFIG_HOME=/app/tmp/.config \
+    XDG_RUNTIME_DIR=/app/tmp/.runtime
 
 WORKDIR /app
 
 # 复制编译产物
-COPY --from=builder --chown=appuser:appgroup /app/dist ./dist
+COPY --from=prod-deps --chown=appuser:appgroup /app/dist ./dist
 
 # 复制生产依赖
-COPY --from=builder --chown=appuser:appgroup /app/node_modules ./node_modules
+COPY --from=prod-deps --chown=appuser:appgroup /app/node_modules ./node_modules
 
 # 复制 package.json（start:prod 脚本引用）
-COPY --from=builder --chown=appuser:appgroup /app/package.json ./
+COPY --from=prod-deps --chown=appuser:appgroup /app/package.json ./
 
 # 复制 Prisma schema（运行时 migrate deploy 需要）和生成的 Client
-COPY --from=builder --chown=appuser:appgroup /app/prisma ./prisma
-COPY --from=builder --chown=appuser:appgroup /app/prisma.config.ts ./
+COPY --from=prod-deps --chown=appuser:appgroup /app/prisma ./prisma
+COPY --from=prod-deps --chown=appuser:appgroup /app/prisma.config.ts ./
 
-# 切换到非 root 用户
+# 切换到非 root 用户。运行时只挂载 storage/logs 或 tmpfs 写目录。
 USER appuser
 
 EXPOSE 3000
 
 # 健康检查
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 --start-period=15s \
-  CMD wget -qO- http://localhost:3000/api/health || exit 1
+  CMD node -e "require('http').get('http://127.0.0.1:3000/health', (res) => process.exit(res.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"
 
 # 启动生产服务器（数据库迁移由部署流程或 init container 在启动前单独执行）
-CMD ["sh", "-c", "node dist/main"]
+ENTRYPOINT ["dumb-init", "--"]
+CMD ["node", "dist/main"]

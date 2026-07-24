@@ -9,6 +9,13 @@ export class ResearchNoteDto {
   @ApiProperty() isPinned: boolean
   @ApiProperty({ description: '正文字符数' }) wordCount: number
   @ApiProperty({ description: '版本号/版本次数' }) versionCount: number
+  @ApiPropertyOptional({ nullable: true }) sourceRunId?: string | null
+  @ApiPropertyOptional({ nullable: true }) sourceReportId?: string | null
+  @ApiPropertyOptional({ nullable: true }) thesis?: string | null
+  @ApiProperty({ type: [String] }) risks: string[]
+  @ApiPropertyOptional({ nullable: true }) decision?: string | null
+  @ApiPropertyOptional({ nullable: true }) outcome?: string | null
+  @ApiPropertyOptional({ nullable: true, format: 'date-time' }) reviewAt?: string | null
   @ApiPropertyOptional({ nullable: true, description: '软删除时间 ISO 字符串' }) deletedAt?: string | null
   @ApiProperty() createdAt: Date
   @ApiProperty() updatedAt: Date

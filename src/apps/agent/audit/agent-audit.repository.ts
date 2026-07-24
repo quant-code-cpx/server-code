@@ -96,6 +96,7 @@ export interface BeginModelCallCommand {
   streaming?: boolean
   payloadMode?: AiAuditPayloadMode
   requestRef?: string | null
+  retryTerminal?: boolean
 }
 
 export interface FinishModelCallCommand {
@@ -427,6 +428,12 @@ export class AgentAuditRepository {
       ) {
         throw new AgentAuditConflictError('模型调用 attempt 幂等键已被不同请求占用')
       }
+      if (
+        command.retryTerminal === true &&
+        (existing.status === AiModelCallStatus.FAILED || existing.status === AiModelCallStatus.CANCELLED)
+      ) {
+        return this.beginModelCall({ ...command, attemptCount: attemptCount + 1 })
+      }
       this.logOperation('beginModelCall', startedAt, 0)
       return existing
     }
@@ -505,6 +512,32 @@ export class AgentAuditRepository {
         },
       })
       this.logOperation('failModelCall', startedAt, 1)
+      return updated
+    })
+  }
+
+  async cancelModelCall(userId: number, callId: string, command: AuditFailureCommand): Promise<AiModelCall> {
+    const startedAt = Date.now()
+    const errorClass = requireText(command.errorClass, 'errorClass', 128)
+    validateOptionalNonNegativeInteger(command.durationMs, 'durationMs')
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw(Prisma.sql`SELECT id FROM ai_model_calls WHERE id = ${callId} FOR UPDATE`)
+      const call = await tx.aiModelCall.findFirst({ where: { id: callId, userId } })
+      if (!call) throw new AgentAuditNotFoundError('模型调用')
+      if (call.status === AiModelCallStatus.CANCELLED) return call
+      assertModelCallCanFinish(call.status)
+      const updated = await tx.aiModelCall.update({
+        where: { id: call.id },
+        data: {
+          status: AiModelCallStatus.CANCELLED,
+          errorClass,
+          errorCode: command.errorCode ?? null,
+          errorMessage: command.errorMessage == null ? null : sanitizeAuditErrorMessage(command.errorMessage),
+          finishedAt: new Date(),
+          latencyMs: command.durationMs ?? Math.max(0, Date.now() - call.startedAt.getTime()),
+        },
+      })
+      this.logOperation('cancelModelCall', startedAt, 1)
       return updated
     })
   }

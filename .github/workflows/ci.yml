@@ -117,16 +117,13 @@ jobs:
         # 若 schema 有未迁移的变更，此步失败并输出 diff，阻止后续操作。
         # 修复方法：本地运行 `pnpm prisma:migrate` 生成 migration 文件后提交。
 
-      - name: Push schema to test DB
-        run: pnpm exec prisma db push --accept-data-loss
+      - name: Apply migrations to fresh test DB
+        # CI 必须与生产一致：只允许已提交的 migration 变更 schema。
+        run: pnpm exec prisma migrate deploy
 
-      - name: Lint
-        # NOTE: 11 pre-existing ESLint errors (no-require-imports in tushare-sync.mapper.ts etc.)
-        # TODO: fix in a follow-up task, then remove continue-on-error
-        continue-on-error: true
-        run: pnpm lint
-        env:
-          ESLINT_USE_FLAT_CONFIG: 'false'
+      - name: Check ESLint historical baseline
+        # 历史问题允许减少；任何“文件 + rule + severity”分组新增或增长都会失败。
+        run: pnpm run lint:baseline:check
 
       - name: Build
         run: pnpm build
@@ -179,3 +176,24 @@ jobs:
       - name: Test (integration lane — real redis auth)
         if: steps.changed.outputs.mode != 'incremental'
         run: pnpm run test:integration:redis --passWithNoTests
+
+      - name: Test legacy business E2E (6 flows)
+        run: pnpm run test:legacy:e2e
+
+      - name: Check Agent public contract drift
+        run: pnpm run agent:contracts:check
+
+      - name: Test Agent MVP 15 Tool matrix
+        run: pnpm run test:agent-tool-matrix
+
+      - name: Test Agent queue Redis recovery
+        run: pnpm run test:agent-queue:integration
+
+      - name: Test Agent MVP fresh-database E2E + PERF/LOAD/STRESS
+        env:
+          AGENT_PERF_MODE: baseline
+          AGENT_PERF_REPORT: 'true'
+        run: pnpm run test:agent:e2e
+
+      - name: Evaluate Agent financial and model regression
+        run: pnpm run eval:agent -- --provider=fake --suite=mvp

@@ -9,7 +9,7 @@ export class ExecuteToolsNode implements WorkflowNodeHandler {
 
   constructor(private readonly tools: WorkflowToolService) {}
 
-  async execute({ run, state, limits, stepId, signal }: WorkflowNodeExecutionContext) {
+  async execute({ run, state, limits, stepId, workerId, signal }: WorkflowNodeExecutionContext) {
     if (!state.context || !state.compiledPlan || !state.toolSnapshotSignature) {
       if (state.compiledPlan?.toolCalls.length === 0 && state.context) {
         return { ...state, facts: [] }
@@ -27,12 +27,13 @@ export class ExecuteToolsNode implements WorkflowNodeHandler {
       context: state.context,
       usage: state.budget,
       limits,
+      workerId,
       signal,
     })
     return {
       ...state,
       facts: result.facts,
-      warnings: [...state.warnings, ...result.warnings, ...result.facts.flatMap((fact) => fact.warnings)],
+      warnings: [...state.warnings, ...result.warnings],
       budget: result.usage,
     }
   }

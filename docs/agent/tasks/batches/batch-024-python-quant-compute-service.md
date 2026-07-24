@@ -1,6 +1,6 @@
 ---
 batch: 24
-status: pending
+status: completed
 type: backend
 depends_on: ["batch-009-deterministic-quant-tools", "batch-012-agent-bullmq-worker", "batch-018-mvp-e2e-and-model-regression"]
 blocks: []
@@ -122,20 +122,24 @@ Tool key 不变，adapter 内部实现切换不影响模型 schema。
 
 ## 22. 执行命令
 
-- `pnpm test -- src/apps/agent/quant/test/python-quant-contract.spec.ts`
-- `pytest services/quant-compute/tests`
-- `docker build -f dockerfiles/quant-compute/Dockerfile .`
-- `pnpm run build`
+- 使用独立 Node 进程对 `performance-metrics-v1` 与 `valuation-percentile-v1` 执行
+  10,000 / 100,000 / 1,000,000 点 benchmark。
+- `pnpm exec jest src/apps/agent/quant/test src/apps/agent/tools/adapters/test/quant-tools.spec.ts --runInBand`
+- 门禁未通过，因此未创建 Python service、Python 测试或 Docker 镜像；不得用空实现伪造对应命令通过。
 
 ## 23. 验收标准
 
-- 若实施：同算法/version 在容差内与 TS golden 一致，性能门禁改善且故障可回退。
-- Python 无主库/用户代码/公网入口。
-- 若不实施：评审证据和 ADR 复审结论合入，Batch 标记 deferred 而非创建空服务。
+- 2026-07-24 no-go：当前 Tool 最大 10,000 点，两项代表性计算为 11.57–19.85 ms；
+  100 万点最慢 1.34 秒，未达到 CPU 30 秒门禁。
+- 当前没有超过 100 万点的已批准 workload，也不依赖 scipy/cvxpy/sklearn。
+- 100 万点 max RSS 606.51–693.38 MiB，作为未来扩容重启门禁，不为当前不存在的请求引入双语言服务。
+- 评审证据和 ADR-003 复审结论已落盘；本批以 no-go 完成，不创建空服务。
 
 ## 24. 完成定义
 
-门禁报告；若批准则 service/client/container/contracts/diff/security/灰度测试全完成。
+门禁报告已完成，见[无状态量化计算服务门禁评审](../../../无状态量化计算服务门禁评审-20260724.md)。
+正确性回归 3 suites / 12 tests 全通过。结论为 no-go，TypeScript 继续作为唯一权威实现；
+未修改数据库、Tool Schema、生产配置或运行服务。
 
 ## 25. 回滚方案
 

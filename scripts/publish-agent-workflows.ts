@@ -2,16 +2,21 @@ import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { AiVersionStatus, Prisma, PrismaClient, UserRole } from '@prisma/client'
 import { WorkflowRegistryService } from 'src/apps/agent/workflow/workflow-registry.service'
-import { STOCK_RESEARCH_WORKFLOW_V1 } from 'src/apps/agent/workflow/workflows/stock-research.v1'
 import { CONVERSATION_SUMMARY_PROMPT_V1 } from 'src/apps/agent/memory/conversation-summary.prompt'
+import {
+  STOCK_RESEARCH_WORKFLOW_CURRENT,
+  STOCK_RESEARCH_WORKFLOW_DEFINITIONS,
+} from 'src/apps/agent/workflow/workflows/stock-research.v2'
 
 loadDatabaseUrl()
 const prisma = new PrismaClient()
 
 async function main(): Promise<void> {
-  const registry = new WorkflowRegistryService([STOCK_RESEARCH_WORKFLOW_V1])
+  const registry = new WorkflowRegistryService(STOCK_RESEARCH_WORKFLOW_DEFINITIONS)
   registry.onModuleInit()
-  const snapshot = registry.snapshot('stock_research', 1)
+  const snapshots = STOCK_RESEARCH_WORKFLOW_DEFINITIONS.map((definition) =>
+    registry.snapshot(definition.key, definition.version),
+  )
   const publisher = await prisma.user.findFirst({
     where: { role: { in: [UserRole.SUPER_ADMIN, UserRole.ADMIN] } },
     orderBy: { id: 'asc' },
@@ -20,13 +25,27 @@ async function main(): Promise<void> {
   if (!publisher) throw new Error('发布 Agent Workflow 前需要至少一个管理员账号')
 
   const result = await prisma.$transaction(async (tx) => {
-    const prompt = await ensurePromptVersion(tx, snapshot.prompt, publisher.id)
+    const prompts = []
+    const seenPrompts = new Set<string>()
+    for (const snapshot of snapshots) {
+      const key = `${snapshot.prompt.promptKey}@${snapshot.prompt.version}`
+      if (seenPrompts.has(key)) continue
+      seenPrompts.add(key)
+      prompts.push(await ensurePromptVersion(tx, snapshot.prompt, publisher.id))
+    }
     const summaryPrompt = await ensurePromptVersion(tx, CONVERSATION_SUMMARY_PROMPT_V1, publisher.id)
-    const workflow = await ensureWorkflowVersion(tx, snapshot, publisher.id)
-    return { prompt, summaryPrompt, workflow }
+    const workflows = []
+    for (const snapshot of snapshots) workflows.push(await ensureWorkflowVersion(tx, snapshot, publisher.id))
+    return { prompts, summaryPrompt, workflows }
   })
   process.stdout.write(
-    `Agent workflow published: ${result.workflow.workflowKey}@${result.workflow.version}, prompts ${result.prompt.promptKey}@${result.prompt.version}, ${result.summaryPrompt.promptKey}@${result.summaryPrompt.version}\n`,
+    `Agent workflows published: ${result.workflows
+      .map((workflow) => `${workflow.workflowKey}@${workflow.version}`)
+      .join(
+        ', ',
+      )}, prompts ${result.prompts
+        .map((prompt) => `${prompt.promptKey}@${prompt.version}`)
+        .join(', ')}, ${result.summaryPrompt.promptKey}@${result.summaryPrompt.version}\n`,
   )
 }
 

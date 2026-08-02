@@ -57,7 +57,15 @@ export class WorkflowModelService {
     const estimatedInputTokens = this.budgets.estimateInputTokens(command.messages)
     this.budgets.assertCanCallModel(command.usage, estimatedInputTokens, command.limits)
     const routingRequest = createModelRequest(command, 'route_selection')
-    const route = this.gateway.select(routingRequest)
+    let route: ReturnType<ModelGatewayPort['select']>
+    try {
+      route = this.gateway.select(routingRequest)
+    } catch (error) {
+      if (error instanceof ModelGatewayError) {
+        throw new WorkflowExecutionError('MODEL', modelErrorCode(error), error.retryable, error.message)
+      }
+      throw error
+    }
     const candidates = route.candidates.filter(
       ({ descriptor }) => estimatedInputTokens + command.maxOutputTokens <= descriptor.contextWindow,
     )

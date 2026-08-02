@@ -29,16 +29,9 @@ interface AgentRealE2eState {
 }
 
 const rootDir = resolve(__dirname, '..')
-const statePath = resolve(
-  rootDir,
-  process.env.AGENT_REAL_E2E_STATE_FILE ?? '../client-code/e2e/.agent-real-state.json',
-)
+const statePath = resolve(rootDir, process.env.AGENT_REAL_E2E_STATE_FILE ?? '../client-code/e2e/.agent-real-state.json')
 const apiPort = readInteger(process.env.AGENT_REAL_E2E_API_PORT, 3018, 'AGENT_REAL_E2E_API_PORT')
-const modelDelayMs = readInteger(
-  process.env.AGENT_REAL_E2E_MODEL_DELAY_MS,
-  1_200,
-  'AGENT_REAL_E2E_MODEL_DELAY_MS',
-)
+const modelDelayMs = readInteger(process.env.AGENT_REAL_E2E_MODEL_DELAY_MS, 1_200, 'AGENT_REAL_E2E_MODEL_DELAY_MS')
 const suffix = `${process.pid}-${Date.now()}`
 const postgresContainer = `quant-agent-real-pg-${suffix}`
 const redisContainer = `quant-agent-real-redis-${suffix}`
@@ -110,16 +103,8 @@ function startInfrastructure(): void {
     '--requirepass',
     redisPassword,
   ])
-  waitForContainer(
-    postgresContainer,
-    ['pg_isready', '-U', 'postgres', '-d', 'agent_real_e2e'],
-    'PostgreSQL',
-  )
-  waitForContainer(
-    redisContainer,
-    ['sh', '-c', `REDISCLI_AUTH='${redisPassword}' redis-cli ping`],
-    'Redis',
-  )
+  waitForContainer(postgresContainer, ['pg_isready', '-U', 'postgres', '-d', 'agent_real_e2e'], 'PostgreSQL')
+  waitForContainer(redisContainer, ['sh', '-c', `REDISCLI_AUTH='${redisPassword}' redis-cli ping`], 'Redis')
 }
 
 function configureEnvironment(databaseUrl: string, redisPort: number, redisUrl: string): void {
@@ -245,7 +230,7 @@ async function seed(databaseUrl: string): Promise<void> {
 }
 
 function publishWorkflow(databaseUrl: string): void {
-  execFileSync('pnpm', ['run', 'agent:workflow:publish-v1'], {
+  execFileSync('pnpm', ['run', 'agent:workflow:publish'], {
     cwd: rootDir,
     env: { ...process.env, DATABASE_URL: databaseUrl },
     stdio: 'pipe',
@@ -276,9 +261,7 @@ async function startApplication() {
   nestApp.useGlobalInterceptors(new TransformInterceptor())
   nestApp.useGlobalInterceptors(nestApp.get(HttpMetricsInterceptor))
   nestApp.useGlobalFilters(new GlobalExceptionsFilter(true, logger))
-  nestApp.useGlobalPipes(
-    new ValidationPipe({ transform: true, whitelist: true, forbidNonWhitelisted: false }),
-  )
+  nestApp.useGlobalPipes(new ValidationPipe({ transform: true, whitelist: true, forbidNonWhitelisted: false }))
   nestApp.enableShutdownHooks()
   await nestApp.listen(apiPort, '127.0.0.1')
   return nestApp
@@ -341,6 +324,6 @@ process.once('SIGINT', () => void shutdown(0))
 process.once('SIGTERM', () => void shutdown(0))
 
 void main().catch(async (error) => {
-  process.stderr.write(`${error instanceof Error ? error.stack ?? error.message : String(error)}\n`)
+  process.stderr.write(`${error instanceof Error ? (error.stack ?? error.message) : String(error)}\n`)
   await shutdown(1)
 })

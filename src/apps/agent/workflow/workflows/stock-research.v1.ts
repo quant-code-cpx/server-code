@@ -1,5 +1,5 @@
 import { AiAgentStepKind } from '@prisma/client'
-import { AGENT_TOOL_KEYS } from '../../contracts'
+import { AGENT_MVP_READ_TOOL_KEYS, AGENT_TOOL_KEYS } from '../../contracts'
 import type { WorkflowDefinition } from '../workflow.types'
 
 export const RESEARCH_PLAN_SCHEMA: Record<string, unknown> = {
@@ -88,7 +88,8 @@ export const STOCK_RESEARCH_WORKFLOW_V1: WorkflowDefinition = Object.freeze({
   inputSchemaVersion: '1.0',
   maxSteps: 8,
   maxParallelTools: 3,
-  toolAllowlist: Object.freeze([...AGENT_TOOL_KEYS]),
+  // Keep published v1 hash stable. New Agent capabilities land in a new workflow version.
+  toolAllowlist: Object.freeze([...AGENT_MVP_READ_TOOL_KEYS.filter((key) => key !== 'screen_stocks')]),
   inputSchema: Object.freeze({ type: 'object', additionalProperties: true }),
   outputSchema: FINAL_ANSWER_SCHEMA,
   prompt: STOCK_RESEARCH_PROMPT_V1,

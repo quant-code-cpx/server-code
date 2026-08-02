@@ -1,8 +1,10 @@
-import { Injectable } from '@nestjs/common'
+import { Injectable, Optional } from '@nestjs/common'
 import { Prisma, StockListStatus } from '@prisma/client'
 import { CORE_INDEX_CODES, CORE_INDEX_NAME_MAP } from 'src/constant/tushare.constant'
 import { MARKET_PRICE_DATA_CONTRACT_VERIFIED } from 'src/tushare/data-contract'
 import { PrismaService } from 'src/shared/prisma.service'
+import { StockScreenerService } from './stock-screener.service'
+import type { StockScreenerQueryDto } from './dto/stock-screener-query.dto'
 
 export const STOCK_PRICE_FIELDS = [
   'open',
@@ -124,7 +126,20 @@ const DEFAULT_OVERVIEW_SECTIONS: StockOverviewSection[] = [
 
 @Injectable()
 export class StockToolFacade {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Optional() private readonly screener?: StockScreenerService,
+  ) {}
+
+  screenStocks(query: StockScreenerQueryDto) {
+    if (!this.screener) throw new Error('StockScreenerService 未注入')
+    return this.screener.screener(query)
+  }
+
+  getScreenerPresets() {
+    if (!this.screener) throw new Error('StockScreenerService 未注入')
+    return this.screener.getScreenerPresets()
+  }
 
   async resolveSecurity(input: ResolveSecurityInput) {
     const query = input.query.trim()

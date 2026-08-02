@@ -3,7 +3,6 @@ import { CitationCoverageService, isCitableFact } from '../citation-coverage.ser
 import { WorkflowCitationError, WorkflowValidationError } from '../workflow.errors'
 import { modelMessage, WorkflowModelService } from '../workflow-model.service'
 import type { FinalAnswerDraft } from '../workflow.types'
-import { FINAL_ANSWER_SCHEMA } from '../workflows/stock-research.v1'
 import type { WorkflowNodeExecutionContext, WorkflowNodeHandler } from './workflow-node'
 
 @Injectable()
@@ -15,7 +14,7 @@ export class ValidateCitationsNode implements WorkflowNodeHandler {
     private readonly models: WorkflowModelService,
   ) {}
 
-  async execute({ run, state, limits, stepId, workerId, signal }: WorkflowNodeExecutionContext) {
+  async execute({ run, workflow, state, limits, stepId, workerId, signal }: WorkflowNodeExecutionContext) {
     if (!state.draft) throw new WorkflowValidationError('validate_citations 节点缺少回答草稿')
     const initial = this.coverage.validate(state.draft, state.facts)
     if (initial.valid) return state
@@ -39,8 +38,8 @@ export class ValidateCitationsNode implements WorkflowNodeHandler {
           }),
         ),
       ],
-      responseSchema: FINAL_ANSWER_SCHEMA,
-      maxOutputTokens: 2_000,
+      responseSchema: workflow.outputSchema,
+      maxOutputTokens: workflow.version >= 4 ? 4_096 : 2_000,
       usage: state.budget,
       limits,
       workerId,

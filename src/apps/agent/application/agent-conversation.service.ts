@@ -71,17 +71,21 @@ export class AgentConversationService {
 
   listModels() {
     return {
-      items: this.modelConfig.providers.map((provider) => {
-        const descriptor = this.models.get(provider.defaultModel)
+      items: this.models.list().map((descriptor) => {
+        const provider =
+          this.models.getProviderConfig(descriptor.provider) ??
+          this.modelConfig.providers.find((item) => item.id === descriptor.provider)
         const health = this.health.snapshot(descriptor)
+        const supportsConversationData = descriptor.dataClasses.includes('USER_PRIVATE')
+        const healthy = health.status === 'HEALTHY'
         return {
           model: descriptor.model,
-          displayName: provider.displayName,
+          displayName: provider?.displayName ?? descriptor.provider,
           provider: descriptor.provider,
           capabilities: descriptor.capabilities,
-          costTier: provider.costTier,
-          status: health.status === 'HEALTHY' ? 'AVAILABLE' : 'UNAVAILABLE',
-          reason: health.status === 'HEALTHY' ? null : '模型供应商暂时不可用',
+          costTier: provider?.costTier ?? 'MEDIUM',
+          status: healthy && supportsConversationData ? 'AVAILABLE' : 'UNAVAILABLE',
+          reason: !supportsConversationData ? '模型未允许处理用户私有数据' : healthy ? null : '模型供应商暂时不可用',
         }
       }),
     }
@@ -95,7 +99,6 @@ export class AgentConversationService {
     if (!preferredModel) throw validationError('MANUAL modelPolicy 必须指定 preferredModel')
     try {
       const descriptor = this.models.get(preferredModel)
-      if (!this.health.isAvailable(descriptor)) throw new Error('circuit open')
       if (!descriptor.dataClasses.includes('USER_PRIVATE')) throw new Error('data class unsupported')
     } catch {
       throw validationError('preferredModel 未注册或不可用')

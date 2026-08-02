@@ -1,0 +1,27 @@
+model AiModelProvider {
+  id               String   @id @db.VarChar(128)
+  providerId       String   @map("provider_id") @db.VarChar(128)
+  kind             String   @db.VarChar(32)
+  displayName      String   @map("display_name") @db.VarChar(128)
+  model            String   @db.VarChar(128)
+  priority         Int      @default(0)
+  costTier         String   @default("MEDIUM") @map("cost_tier") @db.VarChar(16)
+  baseUrl          String?  @map("base_url") @db.VarChar(2048)
+  encryptedApiKey  String?  @map("encrypted_api_key") @db.Text
+  apiKeyLastFour   String?  @map("api_key_last_four") @db.Char(4)
+  contextWindow    Int      @map("context_window")
+  maxOutputTokens  Int      @map("max_output_tokens")
+  capabilities     String[]
+  reasoningEfforts String[] @map("reasoning_efforts")
+  dataClasses      String[] @map("data_classes")
+  timeoutMs        Int      @default(120000) @map("timeout_ms")
+  maxRetries       Int      @default(2) @map("max_retries")
+  retryBaseMs      Int      @default(200) @map("retry_base_ms")
+  enabled          Boolean  @default(true)
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@index([enabled, priority, id], map: "ai_model_providers_enabled_priority_idx")
+  @@index([providerId], map: "ai_model_providers_provider_id_idx")
+  @@map("ai_model_providers")
+}

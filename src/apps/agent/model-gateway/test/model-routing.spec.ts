@@ -18,6 +18,16 @@ const logger = { log: jest.fn(), warn: jest.fn(), error: jest.fn() } as unknown 
 const observer = { record: jest.fn() } as unknown as ModelGatewayObserver
 
 describe('ModelRouterService', () => {
+  it('重复模型配置全部保留，并可按配置行分别取得供应商', () => {
+    const primary = new ScriptedProvider(descriptor('provider-a', 'shared-model'), emptyStream)
+    const secondary = new ScriptedProvider(descriptor('provider-b', 'shared-model'), emptyStream)
+    const registry = new ModelCapabilityRegistry([primary, secondary])
+
+    expect(registry.list()).toHaveLength(2)
+    expect(registry.getProviderForDescriptor(secondary.descriptor)).toBe(secondary)
+    expect(registry.get('shared-model')).toEqual(primary.descriptor)
+  })
+
   it('AUTO 按配置优先级选择首个合格模型，route decision 不含密钥', () => {
     const { router } = createRouting()
 

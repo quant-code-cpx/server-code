@@ -45,7 +45,7 @@ export class ModelGatewayService implements ModelGatewayPort {
   }
 
   getCapabilities(modelRef?: string | null): ModelDescriptor {
-    return this.registry.get(modelRef?.trim() || this.config.defaultModel)
+    return this.registry.get(modelRef?.trim() || this.registry.list()[0]?.model || this.config.defaultModel)
   }
 
   select(request: ModelRequest): ModelRouteDecision {
@@ -207,7 +207,7 @@ export class ModelGatewayService implements ModelGatewayPort {
     parentSignal: AbortSignal,
   ): AsyncIterable<ModelChunk> {
     if (parentSignal.aborted) throw new ModelAbortError()
-    const provider = this.registry.getProvider(descriptor.model)
+    const provider = this.registry.getProviderForDescriptor(descriptor)
     const providerConfig = this.providerConfig(descriptor)
     const providerRequest: ProviderModelRequest = { ...request, model: descriptor.model }
     const deadlineAt = Date.parse(request.deadlineAt)
@@ -269,7 +269,11 @@ export class ModelGatewayService implements ModelGatewayPort {
   }
 
   private providerConfig(descriptor: ModelDescriptor): Pick<IModelConfig, 'timeoutMs' | 'maxRetries' | 'retryBaseMs'> {
-    return this.config.providers.find((provider) => provider.id === descriptor.provider) ?? this.config
+    return (
+      this.registry.getProviderConfig(descriptor.provider) ??
+      this.config.providers.find((provider) => provider.id === descriptor.provider) ??
+      this.config
+    )
   }
 
   private record(event: ModelGatewayMetricEvent, request: ModelRequest): void {

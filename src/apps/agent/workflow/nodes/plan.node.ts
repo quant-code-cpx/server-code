@@ -28,7 +28,7 @@ export class PlanNode implements WorkflowNodeHandler {
       budget: this.models.resolveInputTokenBudget(run, state.budget, limits, maxOutputTokens),
       purpose: 'PLAN',
       instruction:
-        'Produce a short visible plan for the latest user message. Do not include hidden reasoning. For a dependent Tool input, bind a prior result with {"$toolResult":{"callId":"search","path":["results",0,"urlToken"]}}; callId must be listed in the current call dependsOn. Search snippets select candidates only and never support factual claims.',
+        'Produce a short visible plan for the latest user message. Do not include hidden reasoning. For a dependent Tool input, bind a prior result with {"$toolResult":{"callId":"search","path":["results",0,"urlToken"]}}; callId must be listed in the current call dependsOn. Bind paths address Tool data directly, not a result wrapper. resolve_security data uses candidates, so its first security code is ["candidates",0,"tsCode"], never ["results",0,"tsCode"]. Search snippets select candidates only and never support factual claims.',
       stageData: { availableTools: toolSchemas },
     })
     const request = await this.models.generateStructured<ResearchPlan>({

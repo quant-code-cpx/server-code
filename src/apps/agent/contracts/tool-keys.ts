@@ -2,6 +2,7 @@ export const AGENT_MVP_READ_TOOL_KEYS = [
   'resolve_security',
   'get_stock_price_history',
   'get_stock_overview',
+  'screen_stocks',
   'get_financial_statements',
   'get_financial_indicators',
   'get_stock_moneyflow',

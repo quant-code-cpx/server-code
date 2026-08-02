@@ -18,6 +18,7 @@ import {
   type StockOverviewInput,
   type StockPriceHistoryInput,
 } from 'src/apps/stock/stock-tool.facade'
+import type { StockScreenerQueryDto } from 'src/apps/stock/dto/stock-screener-query.dto'
 import {
   WatchlistToolFacade,
   WatchlistToolNotFoundError,
@@ -59,10 +60,111 @@ export function createStockMarketToolDefinitions(dependencies: StockMarketToolDe
     resolveSecurityDefinition(dependencies.stock),
     stockPriceHistoryDefinition(dependencies.stock, dependencies.config),
     stockOverviewDefinition(dependencies.stock),
+    stockScreenerDefinition(dependencies.stock),
     marketSnapshotDefinition(dependencies.market),
     sectorMembershipDefinition(dependencies.sector),
     userWatchlistDefinition(dependencies.watchlist),
   ])
+}
+
+function stockScreenerDefinition(stock: StockToolFacade): ToolDefinition {
+  return {
+    key: 'screen_stocks',
+    version: 1,
+    description:
+      '扫描全市场已上市股票，使用数据库中最新行情、估值、财务、资金流和技术因子筛选并排序。用户询问“全市场买入信号最多”时，必须只调用一次并使用 preset=buy_signal_ranking，不要拆成多次取前十后合并。该预设会对全部上市股票统一计算 MACD、KDJ、均线、BOLL、RSI 五类买入信号数量。',
+    inputSchema: stockScreenerInputSchema(),
+    outputSchema: stockScreenerOutputSchema(),
+    policy: { ...PUBLIC_POLICY, timeoutMs: 30_000, maxRows: 10, costClass: 'HIGH' },
+    execute: async (input, context) =>
+      executeSafely(async () => {
+        const raw = input as Record<string, unknown>
+        const preset = typeof raw.preset === 'string' && raw.preset !== 'none' ? raw.preset : null
+        let presetFilters: Record<string, unknown> = {}
+        if (preset) {
+          const available = stock.getScreenerPresets()
+          const selected = available.presets.find((item) => item.id === preset)
+          if (!selected) throw invalidArgument(`未知选股预设：${preset}`)
+          presetFilters = { ...selected.filters }
+        }
+        const { preset: _ignored, ...filters } = raw
+        const query = {
+          ...presetFilters,
+          ...filters,
+          page: 1,
+          pageSize: Math.min(Number(raw.pageSize ?? 10), 10),
+        } as unknown as StockScreenerQueryDto
+        const value = await stock.screenStocks(query)
+        return toolResult(context, input, 'screen_stocks', value, {
+          sourceServices: ['StockScreenerService', 'PostgreSQL'],
+          sourceModels: ['StockBasic', 'Daily', 'DailyBasic', 'FinancialIndicatorSnapshot', 'Moneyflow', 'StockTechnicalFactor'],
+          dataVersion: 'stock-screener-v1',
+        })
+      }),
+    countRows: (data) => (data as { items: unknown[] }).items.length,
+  }
+}
+
+function stockScreenerInputSchema(): JsonSchema {
+  const numberFields = [
+    'minPeTtm', 'maxPeTtm', 'minPb', 'maxPb', 'minDvTtm', 'minTotalMv', 'maxTotalMv', 'minPctChg', 'maxPctChg',
+    'minTurnoverRate', 'maxTurnoverRate', 'minRevenueYoy', 'maxRevenueYoy', 'minNetprofitYoy', 'maxNetprofitYoy',
+    'minRoe', 'maxRoe', 'minMainNetInflow5d', 'minMainNetInflow20d', 'minRsi6', 'maxRsi6',
+  ]
+  const properties: Record<string, JsonSchema> = {
+    preset: { enum: ['none', 'buy_signal_ranking', 'value', 'growth', 'quality', 'dividend', 'small_growth', 'main_inflow', 'northbound', 'tech_breakout', 'oversold_rebound', 'low_ps_growth'] },
+    pageSize: { type: 'integer', minimum: 1, maximum: 10, default: 10 },
+    exchange: { enum: ['SSE', 'SZSE', 'BSE'] },
+    market: { type: 'string', minLength: 1, maxLength: 32 },
+    industry: { type: 'string', minLength: 1, maxLength: 64 },
+    area: { type: 'string', minLength: 1, maxLength: 64 },
+    industries: { type: 'array', maxItems: 30, items: { type: 'string', minLength: 1, maxLength: 64 } },
+    areas: { type: 'array', maxItems: 30, items: { type: 'string', minLength: 1, maxLength: 64 } },
+    conceptCodes: { type: 'array', maxItems: 20, items: { type: 'string', minLength: 1, maxLength: 32 } },
+    isHs: { enum: ['N', 'H', 'S'] },
+    minAmount: { type: 'number' },
+    maxAmount: { type: 'number' },
+    minPsTtm: { type: 'number' },
+    maxPsTtm: { type: 'number' },
+    minCircMv: { type: 'number' },
+    maxCircMv: { type: 'number' },
+    minGrossMargin: { type: 'number' },
+    maxGrossMargin: { type: 'number' },
+    minNetMargin: { type: 'number' },
+    maxNetMargin: { type: 'number' },
+    maxDebtToAssets: { type: 'number' },
+    minCurrentRatio: { type: 'number' },
+    minQuickRatio: { type: 'number' },
+    minOcfToNetprofit: { type: 'number' },
+    macdSignal: { enum: ['golden_cross', 'death_cross', 'above_zero', 'below_zero'] },
+    kdjSignal: { enum: ['golden_cross', 'death_cross', 'overbought', 'oversold'] },
+    rsiSignal: { enum: ['overbought', 'oversold'] },
+    bollSignal: { enum: ['above_upper', 'below_lower', 'squeeze'] },
+    maTrend: { enum: ['bullish', 'bearish'] },
+    northboundOnly: { type: 'boolean' },
+    minBuySignalCount: { type: 'integer', minimum: 1, maximum: 5 },
+    sortBy: { enum: ['totalMv', 'circMv', 'peTtm', 'pb', 'psTtm', 'dvTtm', 'pctChg', 'turnoverRate', 'amount', 'close', 'roe', 'revenueYoy', 'netprofitYoy', 'grossMargin', 'netMargin', 'debtToAssets', 'mainNetInflow5d', 'buySignalCount', 'listDate'] },
+    sortOrder: { enum: ['asc', 'desc'] },
+  }
+  for (const field of numberFields) properties[field] = { type: 'number' }
+  return { type: 'object', additionalProperties: false, properties }
+}
+
+function stockScreenerOutputSchema(): JsonSchema {
+  const nullableNumber = { type: ['number', 'null'] } as JsonSchema
+  const itemProperties: Record<string, JsonSchema> = {
+    tsCode: { type: 'string' }, name: { type: ['string', 'null'] }, industry: { type: ['string', 'null'] }, market: { type: ['string', 'null'] },
+    close: nullableNumber, pctChg: nullableNumber, amount: nullableNumber, turnoverRate: nullableNumber, peTtm: nullableNumber, pb: nullableNumber,
+    psTtm: nullableNumber, dvTtm: nullableNumber, totalMv: nullableNumber, circMv: nullableNumber, revenueYoy: nullableNumber,
+    netprofitYoy: nullableNumber, roe: nullableNumber, grossMargin: nullableNumber, netMargin: nullableNumber, debtToAssets: nullableNumber,
+    currentRatio: nullableNumber, quickRatio: nullableNumber, ocfToNetprofit: nullableNumber, mainNetInflow5d: nullableNumber, mainNetInflow20d: nullableNumber,
+    buySignalCount: { type: ['integer', 'null'], minimum: 0, maximum: 5 }, buySignals: { type: ['array', 'null'], items: { enum: ['MACD_GOLDEN_CROSS', 'KDJ_GOLDEN_CROSS', 'MA_BULLISH', 'BOLL_OVERSOLD', 'RSI_OVERSOLD'] } },
+    listDate: { type: ['string', 'null'], format: 'date' }, latestFinDate: { type: ['string', 'null'], format: 'date' }, concepts: { type: ['array', 'null'], items: { type: 'string' } },
+  }
+  return {
+    type: 'object', additionalProperties: false, required: ['page', 'pageSize', 'total', 'items'],
+    properties: { page: { type: 'integer' }, pageSize: { type: 'integer' }, total: { type: 'integer' }, items: { type: 'array', maxItems: 10, items: { type: 'object', additionalProperties: false, required: ['tsCode'], properties: itemProperties } } },
+  }
 }
 
 function resolveSecurityDefinition(stock: StockToolFacade): ToolDefinition {

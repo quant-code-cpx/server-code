@@ -34,7 +34,7 @@ export function sanitizeExecutionError(value: unknown): string {
   return sanitizeAuditErrorMessage(value)
 }
 
-export function toJsonInput(value: Record<string, unknown>): Prisma.InputJsonValue {
+export function toJsonInput(value: Record<string, unknown> | unknown[]): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue
 }
 

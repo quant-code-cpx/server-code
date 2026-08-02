@@ -33,6 +33,7 @@ import { ValuationToolFacade } from './valuation-tool.facade'
     StockService,
     StockListService,
     StockToolFacade,
+    StockScreenerService,
     FinancialToolFacade,
     MoneyflowToolFacade,
     ValuationToolFacade,

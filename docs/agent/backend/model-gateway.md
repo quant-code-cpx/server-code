@@ -161,8 +161,8 @@ src/apps/agent/test/model-gateway/model-cost.spec.ts
 
 ## 12. Batch 023 已实现行为
 
-- 配置使用 `AGENT_MODEL_PROVIDERS` JSON array（1–16 项）。每项独立设置 `id/kind/model/displayName/priority/costTier/baseUrl/apiKey/timeoutMs/maxRetries/retryBaseMs` 与能力、数据等级、窗口和输出上限；旧 `AGENT_MODEL_*` 单 provider 配置继续可用。
-- 当前实现提供 `fake` 和 `openai-compatible` adapter。多个兼容 provider 用独立配置、能力与密钥隔离注册，不把供应商差异暴露给 Workflow。
+- 生产默认使用 `AGENT_MODEL_CONFIG_SOURCE=database`，数据库为空时不会写入占位或模拟供应商；管理员通过 `POST /api/agent/admin/model-providers/{list|create|update|delete|reload}` 动态维护真实 provider。每条模型配置有独立内部行 ID，`providerId` 和 `model` 不做唯一约束，列表与模型目录原样返回所有配置。API key 只保存加密值且不会在响应中返回。旧 `AGENT_MODEL_PROVIDERS` JSON array 和 `AGENT_MODEL_*` 单 provider 配置仅作为显式环境初始化来源，并且只接受真实 `openai-compatible` provider。
+- `fake` adapter 仅允许测试环境显式使用，运行时配置和管理 API 均拒绝 fake；多个兼容 provider 用独立配置、能力与密钥隔离注册，不把供应商差异暴露给 Workflow。
 - `ModelRouterService` 对每个候选执行 MANUAL 策略、熔断状态与 capability/data-class/output 限制；AUTO 选择 priority 最优的可用候选，MANUAL 不满足约束即拒绝。
 - `ProviderHealthService` 按 `(provider, model)` 累计无可见输出的可重试失败，到阈值后打开 circuit；open window 到期后恢复候选资格。成功会清空该模型失败状态。
 - 网关只在尚未发出可见输出的可重试失败后进行 fallback。每个尝试独立审计为 `AiModelCall`；切换持久化 `model.fallback` SSE 事件。已经输出的流失败会保留失败事实，不拼接第二个 provider 的半流。

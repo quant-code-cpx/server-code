@@ -22,6 +22,7 @@ import {
   ValidateNested,
 } from 'class-validator'
 import { AGENT_CAPABILITIES, type AgentCapability } from 'src/apps/agent/contracts'
+import { STOCK_RESEARCH_WORKFLOW_CURRENT } from 'src/apps/agent/workflow/workflows/stock-research.v2'
 import { CONDITION_METRIC_KEYS, CONDITION_OPERATORS, WATERMARK_DATASETS } from '../scheduled-research.policy'
 
 const SCHEDULE_ID_PATTERN = /^[A-Za-z0-9_-]{1,32}$/
@@ -152,11 +153,11 @@ export class CreateScheduledResearchDto {
   @Matches(/^[a-z][a-z0-9_]{1,127}$/)
   workflowKey: string = 'stock_research'
 
-  @ApiPropertyOptional({ default: 1, minimum: 1 })
+  @ApiPropertyOptional({ default: STOCK_RESEARCH_WORKFLOW_CURRENT.version, minimum: 1 })
   @IsOptional()
   @IsInt()
   @Min(1)
-  workflowVersion: number = 1
+  workflowVersion: number = STOCK_RESEARCH_WORKFLOW_CURRENT.version
 
   @ApiPropertyOptional({ enum: AiModelPolicy, default: AiModelPolicy.AUTO })
   @IsOptional()

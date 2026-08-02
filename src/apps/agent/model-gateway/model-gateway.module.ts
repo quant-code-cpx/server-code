@@ -16,14 +16,17 @@ import { ModelRouterService } from './model-router.service'
 import { ProviderHealthService } from './provider-health.service'
 import { AgentObservabilityModule } from '../observability/agent-observability.module'
 import { AgentMetricsService } from '../observability/agent-metrics.service'
+import { ModelProviderConfigService } from './model-provider-config.service'
 
 @Module({
   imports: [ConfigModule.forFeature(ModelConfig), AgentObservabilityModule],
   providers: [
+    ModelProviderConfigService,
     {
       provide: MODEL_PROVIDERS,
       inject: [ModelConfig.KEY],
-      useFactory: (config: IModelConfig): ModelProvider[] => config.providers.map(createProvider),
+      useFactory: (config: IModelConfig): ModelProvider[] =>
+        config.source === 'database' ? [] : config.providers.map(createProvider),
     },
     {
       provide: MODEL_PROVIDER,
@@ -37,7 +40,14 @@ import { AgentMetricsService } from '../observability/agent-metrics.service'
     ModelGatewayService,
     { provide: MODEL_GATEWAY, useExisting: ModelGatewayService },
   ],
-  exports: [MODEL_GATEWAY, ModelGatewayService, ModelCapabilityRegistry, ModelRouterService, ProviderHealthService],
+  exports: [
+    MODEL_GATEWAY,
+    ModelGatewayService,
+    ModelCapabilityRegistry,
+    ModelRouterService,
+    ProviderHealthService,
+    ModelProviderConfigService,
+  ],
 })
 export class ModelGatewayModule {}
 

@@ -29,7 +29,7 @@ export class ModelRouterService {
       if (!manual && requested && descriptor.model !== requested) reasonCodes.push('PREFERRED_MODEL_NOT_SELECTED')
       if (!this.health.isAvailable(descriptor)) reasonCodes.push('CIRCUIT_OPEN')
       try {
-        this.registry.assertRequestSupported(descriptor.model, request)
+        this.registry.assertDescriptorSupported(descriptor, request)
       } catch (error) {
         reasonCodes.push(error instanceof ModelGatewayError ? `CAPABILITY_${error.category}` : 'CAPABILITY_INVALID')
       }

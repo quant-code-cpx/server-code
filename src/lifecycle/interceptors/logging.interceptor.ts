@@ -12,7 +12,17 @@ const EXCLUDED_PATHS = [
   ...(process.env.LOG_EXCLUDED_PATHS?.split(',').map((s) => s.trim()) ?? []),
 ]
 
-const SENSITIVE_FIELDS = ['password', 'newPassword', 'oldPassword', 'token', 'secret', 'captchaCode']
+const SENSITIVE_FIELDS = [
+  'password',
+  'newPassword',
+  'oldPassword',
+  'token',
+  'secret',
+  'captchaCode',
+  'apiKey',
+  'encryptedApiKey',
+  'authorization',
+]
 
 function sanitizeBody(body: unknown): unknown {
   if (!body || typeof body !== 'object') return body

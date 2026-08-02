@@ -3,7 +3,7 @@ import { TOOL_ERROR_AGENT_CODE, ToolExecutionError } from '../tools/contracts/to
 import type { ToolResult } from '../tools/contracts/tool-result'
 import { ToolExecutorService } from '../tools/tool-executor.service'
 import { stableJson } from '../tools/tool-json'
-import { ToolRegistryService } from '../tools/tool-registry.service'
+import { ToolRegistryError, ToolRegistryService } from '../tools/tool-registry.service'
 import type { AgentExecutionRun } from '../execution/agent-run.repository'
 import type {
   CompiledResearchPlan,
@@ -37,17 +37,24 @@ export class WorkflowToolService {
   ) {}
 
   authorize(plan: CompiledResearchPlan): AuthorizedToolPlan {
-    const snapshot = this.registry.freezeSnapshot(plan.toolPins)
-    for (const pin of snapshot.entries) {
-      const definition = this.registry.get(pin.key, pin.version)
-      if (definition.policy.sideEffect !== 'READ' || !definition.policy.idempotent) {
-        throw new WorkflowValidationError(`MVP 工作流仅允许幂等 READ Tool：${pin.key}`)
+    try {
+      const snapshot = this.registry.freezeSnapshot(plan.toolPins)
+      for (const pin of snapshot.entries) {
+        const definition = this.registry.get(pin.key, pin.version)
+        if (definition.policy.sideEffect !== 'READ' || !definition.policy.idempotent) {
+          throw new WorkflowValidationError(`MVP 工作流仅允许幂等 READ Tool：${pin.key}`)
+        }
       }
-    }
-    return {
-      plan,
-      snapshotSignature: snapshot.signature,
-      allowedTools: snapshot.entries.map((pin) => pin.key),
+      return {
+        plan,
+        snapshotSignature: snapshot.signature,
+        allowedTools: snapshot.entries.map((pin) => pin.key),
+      }
+    } catch (error) {
+      if (error instanceof ToolRegistryError) {
+        throw new WorkflowExecutionError('TOOL', 6008, false, error.message)
+      }
+      throw error
     }
   }
 

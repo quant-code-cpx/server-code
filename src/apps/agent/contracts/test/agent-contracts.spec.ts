@@ -15,11 +15,12 @@ import {
 } from '..'
 
 describe('Agent 公共契约', () => {
-  it('固定 15 个 MVP 只读 Tool key，受控写 Tool 单独声明', () => {
+  it('固定 MVP 只读 Tool key，受控写 Tool 单独声明', () => {
     expect(AGENT_MVP_READ_TOOL_KEYS).toEqual([
       'resolve_security',
       'get_stock_price_history',
       'get_stock_overview',
+      'screen_stocks',
       'get_financial_statements',
       'get_financial_indicators',
       'get_stock_moneyflow',
@@ -51,8 +52,7 @@ describe('Agent 公共契约', () => {
     expect(MODEL_CALL_STATUSES).toEqual(['PENDING', 'STREAMING', 'RETRY_WAIT', 'SUCCEEDED', 'FAILED', 'CANCELLED'])
   })
 
-  it('15 个 SSE fixture 全部通过 runtime schema', () => {
-    expect(AGENT_EVENT_FIXTURES).toHaveLength(15)
+  it('SSE fixture 全部通过 runtime schema', () => {
     expect(AGENT_EVENT_FIXTURES.map((event) => event.type)).toEqual(AGENT_EVENT_TYPES)
     for (const fixture of AGENT_EVENT_FIXTURES) {
       expect(parseAgentSseEvent(fixture)).toEqual(fixture)

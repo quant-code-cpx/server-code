@@ -271,6 +271,10 @@ export class AgentRunRepository {
     if (command.targetStatus === AiAgentRunStatus.FAILED && !errorClass) {
       throw new AgentExecutionValidationError('FAILED Run 必须提供 errorClass')
     }
+    const errorMessage =
+      command.targetStatus === AiAgentRunStatus.FAILED && command.errorMessage != null
+        ? sanitizeExecutionError(command.errorMessage)
+        : null
 
     const run = await this.prisma.$transaction(async (tx) => {
       const locked = await this.events.lockRun(tx, id)
@@ -283,7 +287,7 @@ export class AgentRunRepository {
       }
       this.stateMachine.assertRunTransition(locked.run.status, command.targetStatus)
       await this.events.appendInTransaction(tx, locked.run, command.event)
-      await this.updateTerminalResponseMessage(tx, locked.run, command.targetStatus)
+      await this.updateTerminalResponseMessage(tx, locked.run, command.targetStatus, errorMessage)
       return tx.aiAgentRun.update({
         where: { id },
         data: {
@@ -292,10 +296,7 @@ export class AgentRunRepository {
           resultSummary: resultSummary ? toJsonInput(resultSummary) : Prisma.DbNull,
           errorCode: command.targetStatus === AiAgentRunStatus.FAILED ? (command.errorCode ?? null) : null,
           errorClass: command.targetStatus === AiAgentRunStatus.FAILED ? errorClass : null,
-          errorMessage:
-            command.targetStatus === AiAgentRunStatus.FAILED && command.errorMessage != null
-              ? sanitizeExecutionError(command.errorMessage)
-              : null,
+          errorMessage,
           endedAt: new Date(),
           leaseOwner: null,
           leaseExpiresAt: null,
@@ -311,6 +312,7 @@ export class AgentRunRepository {
     tx: Prisma.TransactionClient,
     run: AiAgentRun,
     targetStatus: AiAgentRunStatus,
+    errorMessage: string | null = null,
   ): Promise<void> {
     const messageStatus =
       targetStatus === AiAgentRunStatus.FAILED
@@ -319,6 +321,7 @@ export class AgentRunRepository {
           ? AiMessageStatus.CANCELLED
           : null
     if (!messageStatus) return
+    const failureText = messageStatus === AiMessageStatus.FAILED ? visibleFailureText(errorMessage) : null
     const updated = await tx.aiMessage.updateMany({
       where: {
         id: run.responseMessageId,
@@ -327,7 +330,18 @@ export class AgentRunRepository {
         role: AiMessageRole.ASSISTANT,
         status: { in: [AiMessageStatus.PENDING, AiMessageStatus.STREAMING] },
       },
-      data: { status: messageStatus, completedAt: new Date() },
+      data: {
+        status: messageStatus,
+        completedAt: new Date(),
+        ...(failureText
+          ? {
+              contentText: failureText,
+              contentBlocks: toJsonInput([
+                { blockId: 'run_failure', schemaVersion: 1, type: 'MARKDOWN', text: failureText },
+              ]),
+            }
+          : {}),
+      },
     })
     if (updated.count !== 1) throw new AgentRunConflictError('Agent response message 状态不可终止')
   }
@@ -575,6 +589,11 @@ export class AgentRunRepository {
   private logOperation(operation: string, startedAt: number, rowCount: number, runId: string): void {
     this.logger.log({ operation, durationMs: Date.now() - startedAt, rowCount, runId }, AgentRunRepository.name)
   }
+}
+
+function visibleFailureText(errorMessage: string | null): string {
+  const reason = (errorMessage?.trim() || '执行过程中发生错误').replaceAll('<', '‹').replaceAll('>', '›')
+  return `执行失败：${reason}\n\n可以直接点击重试。`
 }
 
 function isUniqueConstraintError(error: unknown): error is Prisma.PrismaClientKnownRequestError {

@@ -526,6 +526,46 @@ integrationDescribe('Agent Run/Step/Event Repository - 独立 PostgreSQL 集成�
     expect((await runs.findById(userA.id, created.id)).status).toBe(AiAgentRunStatus.COMPLETED)
   })
 
+  it('FAILED Run 把安全错误原因写入助手消息，前端不再得到空内容', async () => {
+    const created = await runs.createRun(await makeRunCommand())
+    const claimed = await runs.claimRun(created.id, 'worker-failed-message')
+
+    const failed = await runs.transition(created.id, {
+      workerId: 'worker-failed-message',
+      expectedVersion: claimed.statusVersion,
+      targetStatus: AiAgentRunStatus.FAILED,
+      event: {
+        eventType: 'agent.failed',
+        traceId: created.traceId,
+        payload: { error: { code: 6005, message: '模型结构化输出校验失败 (length)' } },
+      },
+      errorCode: 6005,
+      errorClass: 'MODEL',
+      errorMessage: '模型结构化输出校验失败 (length)',
+    })
+
+    expect(failed).toMatchObject({
+      status: AiAgentRunStatus.FAILED,
+      errorCode: 6005,
+      errorClass: 'MODEL',
+      errorMessage: '模型结构化输出校验失败 (length)',
+    })
+    await expect(
+      client!.aiMessage.findUniqueOrThrow({ where: { id: created.responseMessageId } }),
+    ).resolves.toMatchObject({
+      status: AiMessageStatus.FAILED,
+      contentText: '执行失败：模型结构化输出校验失败 (length)\n\n可以直接点击重试。',
+      contentBlocks: [
+        {
+          blockId: 'run_failure',
+          schemaVersion: 1,
+          type: 'MARKDOWN',
+          text: '执行失败：模型结构化输出校验失败 (length)\n\n可以直接点击重试。',
+        },
+      ],
+    })
+  })
+
   it('queued 取消直接终态；running 取消先请求再协作完成，重复取消幂等', async () => {
     const queued = await runs.createRun(await makeRunCommand())
     const queuedCancelled = await runs.requestCancel({

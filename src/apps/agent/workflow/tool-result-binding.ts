@@ -89,7 +89,8 @@ function resolveBinding(binding: ToolResultBinding, resultsByCallId: ReadonlyMap
     throw new ToolResultBindingUnavailableError(binding.callId, `依赖 Tool ${binding.callId} 无可用结果`)
   }
   let current: unknown = result.data
-  for (const segment of binding.path) {
+  for (const [index, rawSegment] of binding.path.entries()) {
+    const segment = resolveLegacyResultCollectionAlias(current, rawSegment, index)
     if (typeof segment === 'number') {
       if (!Array.isArray(current) || !Object.prototype.hasOwnProperty.call(current, segment)) {
         throw missingPath(binding)
@@ -102,6 +103,19 @@ function resolveBinding(binding: ToolResultBinding, resultsByCallId: ReadonlyMap
   }
   if (current === undefined) throw missingPath(binding)
   return current
+}
+
+function resolveLegacyResultCollectionAlias(current: unknown, segment: string | number, index: number): string | number {
+  if (
+    index === 0 &&
+    segment === 'results' &&
+    isRecord(current) &&
+    !Object.prototype.hasOwnProperty.call(current, 'results') &&
+    Array.isArray(current.candidates)
+  ) {
+    return 'candidates'
+  }
+  return segment
 }
 
 function missingPath(binding: ToolResultBinding): ToolResultBindingUnavailableError {

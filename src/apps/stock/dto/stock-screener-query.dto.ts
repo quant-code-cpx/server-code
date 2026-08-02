@@ -32,6 +32,7 @@ export enum ScreenerSortBy {
   NET_MARGIN = 'netMargin',
   DEBT_TO_ASSETS = 'debtToAssets',
   MAIN_NET_INFLOW_5D = 'mainNetInflow5d',
+  BUY_SIGNAL_COUNT = 'buySignalCount',
   LIST_DATE = 'listDate',
 }
 
@@ -306,6 +307,14 @@ export class ScreenerFiltersDto {
   @Type(() => Number)
   @IsNumber()
   minMainNetInflow20d?: number
+
+  @ApiPropertyOptional({ description: '最少买入信号数量（MACD、KDJ、均线、BOLL、RSI，共 5 项）' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(5)
+  minBuySignalCount?: number
 
   // ─── 技术指标维度 ───
   @ApiPropertyOptional({

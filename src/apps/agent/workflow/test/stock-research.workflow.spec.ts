@@ -45,6 +45,7 @@ import type {
   WorkflowCheckpoint,
 } from '../workflow.types'
 import { STOCK_RESEARCH_WORKFLOW_V1 } from '../workflows/stock-research.v1'
+import { STOCK_RESEARCH_WORKFLOW_DEFINITIONS, STOCK_RESEARCH_WORKFLOW_V2 } from '../workflows/stock-research.v2'
 
 const config = buildAgentExecutionConfig({})
 const logger = { log: jest.fn(), warn: jest.fn(), error: jest.fn() } as unknown as LoggerService
@@ -67,6 +68,21 @@ describe('Stock research workflow v1', () => {
     expect(definition.contentHash).toBe('d3c8f8f62d420105790f0a5ea30745da5475880686a514703a58c1ea0bbc5676')
     expect(definition.promptContentHash).toBe('b66049e69d902b3e81da94ac5b8d2e6964715c50ec9767df2745c622118418ed')
     expect(() => registry.register(STOCK_RESEARCH_WORKFLOW_V1)).toThrow('Workflow Registry 已冻结')
+  })
+
+  it('V1 保持只读 Tool hash；V2 独立纳入受控写 Tool', () => {
+    const registry = new WorkflowRegistryService(STOCK_RESEARCH_WORKFLOW_DEFINITIONS)
+    registry.onModuleInit()
+
+    const v1 = registry.resolve('stock_research', 1)
+    const v2 = registry.resolve('stock_research', 2)
+
+    expect(v1.toolAllowlist).not.toContain('save_research_report')
+    expect(v1.contentHash).toBe('d3c8f8f62d420105790f0a5ea30745da5475880686a514703a58c1ea0bbc5676')
+    expect(v2.toolAllowlist).toContain('save_research_report')
+    expect(v2.contentHash).toBe('40bb600a69c34204d72dab4fb7cc2e444c12f66bbdad45f4d790ea85ca4319b8')
+    expect(v2.promptContentHash).toBe(v1.promptContentHash)
+    expect(() => registry.register(STOCK_RESEARCH_WORKFLOW_V2)).toThrow('Workflow Registry 已冻结')
   })
 
   it('只接受白名单、已授权 capability、无环且不超预算的 Tool 计划', () => {

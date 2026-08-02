@@ -10,6 +10,7 @@ const enabledTools = [
   'resolve_security',
   'get_stock_price_history',
   'get_stock_overview',
+  'screen_stocks',
   'get_market_snapshot',
   'get_sector_membership',
   'get_user_watchlist',
@@ -99,6 +100,8 @@ function harness() {
       asOf: null,
       sourceModels: ['StockBasic'],
     }),
+    screenStocks: jest.fn().mockResolvedValue({ page: 1, pageSize: 10, total: 1, items: [{ tsCode: '600000.SH', name: '浦发银行', pctChg: 3.2 }] }),
+    getScreenerPresets: jest.fn().mockReturnValue({ presets: [{ id: 'main_inflow', name: '主力资金流入', description: '', filters: { minMainNetInflow5d: 0 } }] }),
   }
   const market = {
     snapshot: jest.fn().mockResolvedValue({
@@ -160,7 +163,7 @@ function harness() {
 }
 
 describe('Batch 007 stock/market Tool adapters', () => {
-  it('[SMT-E2E-001] 六 definitions schema 可编译、Registry 唯一注册且均为 READ/idempotent', () => {
+  it('[SMT-E2E-001] definitions schema 可编译、Registry 唯一注册且均为 READ/idempotent', () => {
     const { definitions } = harness()
     const validator = new ToolSchemaValidator()
     const registry = new ToolRegistryService(validator, config as never, definitions)
@@ -170,9 +173,17 @@ describe('Batch 007 stock/market Tool adapters', () => {
     expect(
       definitions.every((definition) => definition.policy.sideEffect === 'READ' && definition.policy.idempotent),
     ).toBe(true)
-    expect(registry.freezeSnapshot().entries).toHaveLength(6)
+    expect(registry.freezeSnapshot().entries).toHaveLength(7)
     expect(Object.keys(registry.implementationStatus())).toEqual([...AGENT_TOOL_KEYS])
     for (const key of enabledTools) expect(registry.implementationStatus()[key]).toEqual([1])
+  })
+
+  it('screen_stocks 使用真实选股器并返回前十结果', async () => {
+    const { definitions, stock } = harness()
+    const definition = definitions.find((item) => item.key === 'screen_stocks')!
+    const result = await definition.execute({ preset: 'main_inflow', pageSize: 10 }, context())
+    expect(stock.screenStocks).toHaveBeenCalledWith(expect.objectContaining({ minMainNetInflow5d: 0, page: 1, pageSize: 10 }))
+    expect(result.data).toMatchObject({ total: 1, items: [{ tsCode: '600000.SH' }] })
   })
 
   it('[SMT-SEC-001] strict schema 拒绝伪造 userId/where/orderBy，Facade 零调用', () => {
@@ -311,6 +322,7 @@ describe('Batch 007 stock/market Tool adapters', () => {
         limit: 100,
       },
       get_stock_overview: { tsCodes: ['600000.SH'], sections: ['BASIC'] },
+      screen_stocks: { preset: 'none', pageSize: 10 },
       get_market_snapshot: { sections: ['INDEX_QUOTES'] },
       get_sector_membership: {
         mode: 'SECTORS_FOR_SECURITY',
@@ -337,11 +349,12 @@ describe('Batch 007 stock/market Tool adapters', () => {
       ),
     )
 
-    expect(results.flat()).toHaveLength(120)
+    expect(results.flat()).toHaveLength(140)
     expect(results.flat().every((result) => result.ok)).toBe(true)
     expect(stock.resolveSecurity).toHaveBeenCalledTimes(20)
     expect(stock.getPriceHistory).toHaveBeenCalledTimes(20)
     expect(stock.getOverview).toHaveBeenCalledTimes(20)
+    expect(stock.screenStocks).toHaveBeenCalledTimes(20)
     expect(market.snapshot).toHaveBeenCalledTimes(20)
     expect(sector.membership).toHaveBeenCalledTimes(20)
     expect(watchlist.read.mock.calls.map((call) => call[0])).toEqual(

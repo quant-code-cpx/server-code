@@ -60,7 +60,7 @@ import { WorkflowFinalizationService } from './workflow/workflow-finalization.se
 import { WorkflowModelService } from './workflow/workflow-model.service'
 import { AGENT_WORKFLOW_DEFINITIONS, WorkflowRegistryService } from './workflow/workflow-registry.service'
 import { WorkflowToolService } from './workflow/workflow-tool.service'
-import { STOCK_RESEARCH_WORKFLOW_V1 } from './workflow/workflows/stock-research.v1'
+import { STOCK_RESEARCH_WORKFLOW_DEFINITIONS } from './workflow/workflows/stock-research.v2'
 import { AgentController } from './api/agent.controller'
 import { AgentStrictBodyGuard } from './api/agent-strict-body.guard'
 import { AgentErrorInterceptor } from './api/agent-error.interceptor'
@@ -84,6 +84,7 @@ import { AgentObservabilityModule } from './observability/agent-observability.mo
 import { AgentMetricsService } from './observability/agent-metrics.service'
 import { AgentEvaluationService } from './observability/evaluation/agent-evaluation.service'
 import { AgentEvaluationAdminController } from './api/agent-evaluation-admin.controller'
+import { ModelProviderAdminController } from './api/model-provider-admin.controller'
 import { RolesGuard } from 'src/lifecycle/guard/roles.guard'
 import { RetrievalModule } from './retrieval/retrieval.module'
 
@@ -110,7 +111,13 @@ import { RetrievalModule } from './retrieval/retrieval.module'
     AgentObservabilityModule,
     RetrievalModule,
   ],
-  controllers: [AgentController, AgentMemoryController, AgentStreamController, AgentEvaluationAdminController],
+  controllers: [
+    AgentController,
+    AgentMemoryController,
+    AgentStreamController,
+    AgentEvaluationAdminController,
+    ModelProviderAdminController,
+  ],
   providers: [
     AgentConversationRepository,
     AgentMessageRepository,
@@ -154,7 +161,7 @@ import { RetrievalModule } from './retrieval/retrieval.module'
     CompleteNode,
     WorkflowEngineService,
     AgentOrchestratorService,
-    { provide: AGENT_WORKFLOW_DEFINITIONS, useValue: Object.freeze([STOCK_RESEARCH_WORKFLOW_V1]) },
+    { provide: AGENT_WORKFLOW_DEFINITIONS, useValue: STOCK_RESEARCH_WORKFLOW_DEFINITIONS },
     {
       provide: AGENT_TOOL_DEFINITIONS,
       inject: [

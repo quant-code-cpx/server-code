@@ -159,9 +159,18 @@ export class OpenAiCompatibleProvider implements ModelProvider {
 }
 
 function toOpenAiRequest(request: ProviderModelRequest): Record<string, unknown> {
+  const messages = request.messages.map(toOpenAiMessage)
+  if (request.responseSchema) {
+    // DeepSeek and several OpenAI-compatible gateways reject json_schema. Keep
+    // strict validation in the gateway while asking upstream for JSON mode.
+    messages.unshift({
+      role: 'system',
+      content: `Return exactly one JSON object matching this JSON Schema. No markdown or commentary. Schema: ${JSON.stringify(request.responseSchema)}`,
+    })
+  }
   const body: Record<string, unknown> = {
     model: request.model,
-    messages: request.messages.map(toOpenAiMessage),
+    messages,
     stream: true,
     stream_options: { include_usage: true },
     max_tokens: request.maxOutputTokens,
@@ -181,14 +190,7 @@ function toOpenAiRequest(request: ProviderModelRequest): Record<string, unknown>
     body.tool_choice = 'auto'
   }
   if (request.responseSchema) {
-    body.response_format = {
-      type: 'json_schema',
-      json_schema: {
-        name: 'agent_response',
-        strict: true,
-        schema: request.responseSchema,
-      },
-    }
+    body.response_format = { type: 'json_object' }
   }
   return body
 }

@@ -24,8 +24,8 @@ type MockHandler = (
 ) => void | Promise<void>
 
 describe('Model Gateway 配置', () => {
-  it('开发默认 fake；OpenAI-compatible 缺 key/base URL/model/capability 时拒绝', () => {
-    expect(buildModelConfig({}, 'development').provider).toBe('fake')
+  it('开发环境未配置 provider；OpenAI-compatible 缺 key/base URL/model/capability 时拒绝', () => {
+    expect(() => buildModelConfig({}, 'development')).toThrow('AGENT_MODEL_PROVIDER')
     expect(() => buildModelConfig({ AGENT_MODEL_PROVIDER: 'openai-compatible' }, 'development')).toThrow(
       'AGENT_MODEL_BASE_URL',
     )
@@ -43,6 +43,13 @@ describe('Model Gateway 配置', () => {
         'development',
       ),
     ).toThrow('AGENT_MODEL_API_KEY')
+  })
+
+  it('database source 允许生产环境不配置 provider，由数据库启动时接管', () => {
+    const config = buildModelConfig({ AGENT_MODEL_CONFIG_SOURCE: 'database' }, 'production')
+
+    expect(config.source).toBe('database')
+    expect(config.providers[0]).toMatchObject({ id: 'database-pending', kind: 'openai-compatible' })
   })
 
   it('生产强制 HTTPS origin allowlist，禁止 HTTP 和 URL userinfo/query', () => {
@@ -417,9 +424,7 @@ describe('Model Gateway provider contract 与 OpenAI-compatible adapter', () => 
     expect(calls).toBe(2)
     expect(result.data).toEqual({ score: 7 })
     expect(result.repaired).toBe(true)
-    expect(requests[0].body.response_format).toEqual(
-      expect.objectContaining({ type: 'json_schema', json_schema: expect.objectContaining({ strict: true }) }),
-    )
+    expect(requests[0].body.response_format).toEqual(expect.objectContaining({ type: 'json_object' }))
   })
 
   it('repair 后仍非法返回 INVALID_OUTPUT；不进行第三次调用', async () => {

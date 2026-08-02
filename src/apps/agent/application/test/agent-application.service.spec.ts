@@ -2,12 +2,14 @@ import { BadRequestException } from '@nestjs/common'
 import { Test, TestingModule } from '@nestjs/testing'
 import { AiAgentRunStatus, AiConversationStatus, AiModelPolicy } from '@prisma/client'
 import { buildAgentApiConfig } from 'src/config/agent-api.config'
+import { ModelConfig } from 'src/config/model.config'
 import { AgentQueueService } from 'src/queue/agent/agent-queue.service'
 import { LoggerService } from 'src/shared/logger/logger.service'
 import { AgentRestReadRepository } from '../../api/agent-rest-read.repository'
 import { AgentConversationRepository } from '../../conversation/agent-conversation.repository'
 import { AgentRunRepository } from '../../execution/agent-run.repository'
 import { ModelCapabilityRegistry } from '../../model-gateway/model-capability.registry'
+import { ProviderHealthService } from '../../model-gateway/provider-health.service'
 import { WorkflowRegistryService } from '../../workflow/workflow-registry.service'
 import { AgentConversationService } from '../agent-conversation.service'
 import { AgentInteractionRepository } from '../agent-interaction.repository'
@@ -31,7 +33,7 @@ describe('AgentConversationService', () => {
         .fn()
         .mockResolvedValue(conversation({ modelPolicy: AiModelPolicy.MANUAL, preferredModel: 'model-v1' })),
     }
-    models = { get: jest.fn().mockReturnValue({ model: 'model-v1' }) }
+    models = { get: jest.fn().mockReturnValue({ model: 'model-v1', dataClasses: ['USER_PRIVATE'] }) }
     summaries = {
       currentMetadata: jest.fn().mockResolvedValue({
         summaryId: 'summary_1',
@@ -51,6 +53,11 @@ describe('AgentConversationService', () => {
         { provide: AgentConversationRepository, useValue: repository },
         { provide: AgentRestReadRepository, useValue: { listMessages: jest.fn() } },
         { provide: ModelCapabilityRegistry, useValue: models },
+        {
+          provide: ProviderHealthService,
+          useValue: { isAvailable: jest.fn().mockReturnValue(true), snapshot: jest.fn() },
+        },
+        { provide: ModelConfig.KEY, useValue: { providers: [] } },
         { provide: ConversationSummaryService, useValue: summaries },
       ],
     }).compile()
@@ -151,7 +158,7 @@ describe('AgentRunService', () => {
           useValue: {
             snapshot: jest.fn().mockReturnValue({
               workflowKey: 'stock_research',
-              version: 1,
+              version: 2,
               contentHash: 'workflow-hash',
               prompt: { promptKey: 'stock_research_system', version: 1, contentHash: 'prompt-hash' },
             }),
@@ -182,6 +189,7 @@ describe('AgentRunService', () => {
         allowedScopes: ['PUBLIC_MARKET_DATA', 'PUBLIC_WEB', 'USER_PRIVATE'],
       }),
     )
+    expect(interactions.send.mock.calls[0][0].workflow).toMatchObject({ workflowVersion: 2 })
   })
 
   it('非法 pageContext 时间范围在写库前拒绝', async () => {

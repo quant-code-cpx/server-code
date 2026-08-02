@@ -26,11 +26,32 @@ const SCREENER_SORT_MAP: Record<ScreenerSortBy, string> = {
   [ScreenerSortBy.NET_MARGIN]: 'fi.netprofit_margin',
   [ScreenerSortBy.DEBT_TO_ASSETS]: 'fi.debt_to_assets',
   [ScreenerSortBy.MAIN_NET_INFLOW_5D]: 'mf_agg.main_net_5d',
+  [ScreenerSortBy.BUY_SIGNAL_COUNT]: '"buySignalCount"',
   [ScreenerSortBy.LIST_DATE]: 'sb.list_date',
 }
 
 /** 布林带缩口判定阈值：上下轨差值 < 中轨 × BOLL_SQUEEZE_THRESHOLD 视为缩口 */
 const BOLL_SQUEEZE_THRESHOLD = 0.05
+
+const BUY_SIGNAL_COUNT_SQL = Prisma.sql`(
+  CASE WHEN stf.macd_dif > stf.macd_dea
+         AND (stf.prev_macd_dif - stf.prev_macd_dea) <= 0 THEN 1 ELSE 0 END
+  + CASE WHEN stf.kdj_k > stf.kdj_d
+           AND (stf.prev_kdj_k - stf.prev_kdj_d) <= 0 THEN 1 ELSE 0 END
+  + CASE WHEN d.close > stf.boll_mid AND stf.macd_dif > 0 THEN 1 ELSE 0 END
+  + CASE WHEN d.close < stf.boll_lower THEN 1 ELSE 0 END
+  + CASE WHEN stf.rsi_6 < 20 THEN 1 ELSE 0 END
+)`
+
+const BUY_SIGNALS_SQL = Prisma.sql`array_remove(ARRAY[
+  CASE WHEN stf.macd_dif > stf.macd_dea
+         AND (stf.prev_macd_dif - stf.prev_macd_dea) <= 0 THEN 'MACD_GOLDEN_CROSS' END,
+  CASE WHEN stf.kdj_k > stf.kdj_d
+         AND (stf.prev_kdj_k - stf.prev_kdj_d) <= 0 THEN 'KDJ_GOLDEN_CROSS' END,
+  CASE WHEN d.close > stf.boll_mid AND stf.macd_dif > 0 THEN 'MA_BULLISH' END,
+  CASE WHEN d.close < stf.boll_lower THEN 'BOLL_OVERSOLD' END,
+  CASE WHEN stf.rsi_6 < 20 THEN 'RSI_OVERSOLD' END
+]::text[], NULL)`
 
 // 内置选股预设
 interface ScreenerPreset {
@@ -41,6 +62,16 @@ interface ScreenerPreset {
 }
 
 const BUILT_IN_PRESETS: ScreenerPreset[] = [
+  {
+    id: 'buy_signal_ranking',
+    name: '全市场买入信号排行',
+    description: '扫描全部上市股票，统计 MACD、KDJ、均线、BOLL、RSI 五类买入信号并按命中数排序',
+    filters: {
+      minBuySignalCount: 1,
+      sortBy: ScreenerSortBy.BUY_SIGNAL_COUNT,
+      sortOrder: 'desc',
+    },
+  },
   {
     id: 'value',
     name: '低估值蓝筹',
@@ -268,6 +299,12 @@ export class StockScreenerService {
       moneyflowConditions.push(Prisma.sql`mf_agg.main_net_20d >= ${query.minMainNetInflow20d}`)
     }
 
+    const needsBuySignalScore =
+      query.minBuySignalCount !== undefined || sortBy === ScreenerSortBy.BUY_SIGNAL_COUNT
+    if (query.minBuySignalCount !== undefined) {
+      technicalConditions.push(Prisma.sql`${BUY_SIGNAL_COUNT_SQL} >= ${query.minBuySignalCount}`)
+    }
+
     // 技术指标
     if (query.minRsi6 !== undefined) technicalConditions.push(Prisma.sql`stf.rsi_6 >= ${query.minRsi6}`)
     if (query.maxRsi6 !== undefined) technicalConditions.push(Prisma.sql`stf.rsi_6 <= ${query.maxRsi6}`)
@@ -416,7 +453,7 @@ export class StockScreenerService {
           ORDER BY trade_date DESC LIMIT 2
         ) ranked
       ) stf ON true`
-    const technicalJoin = technicalConditions.length > 0 ? technicalFactorJoin : Prisma.empty
+    const technicalJoin = technicalConditions.length > 0 || needsBuySignalScore ? technicalFactorJoin : Prisma.empty
 
     // 概念板块 JOIN（INNER JOIN 强制匹配）
     // 注意字段语义：tm.ts_code = 板块代码，tm.con_code = 成分股票代码（constituent code）
@@ -441,7 +478,8 @@ export class StockScreenerService {
       query.bollSignal === 'above_upper' ||
       query.bollSignal === 'below_lower' ||
       query.maTrend === 'bullish' ||
-      query.maTrend === 'bearish'
+      query.maTrend === 'bearish' ||
+      needsBuySignalScore
 
     const countValuationJoin = valuationConditions.length > 0 ? valuationJoin : Prisma.empty
     const countMarketJoin = marketConditions.length > 0 || technicalNeedsMarketAlias ? marketJoin : Prisma.empty
@@ -480,7 +518,17 @@ export class StockScreenerService {
       latestFinDate: Date | null
       mainNetInflow5d: number | null
       mainNetInflow20d: number | null
+      buySignalCount: number | null
+      buySignals: string[] | null
     }
+
+    const buySignalSelect = needsBuySignalScore
+      ? Prisma.sql`${BUY_SIGNAL_COUNT_SQL} AS "buySignalCount", ${BUY_SIGNALS_SQL} AS "buySignals"`
+      : Prisma.sql`NULL::integer AS "buySignalCount", NULL::text[] AS "buySignals"`
+    const secondarySort =
+      sortBy === ScreenerSortBy.BUY_SIGNAL_COUNT
+        ? Prisma.sql`, d.pct_chg DESC NULLS LAST, sb.ts_code ASC`
+        : Prisma.sql`, sb.ts_code ASC`
 
     const [countResult, items] = await Promise.all([
       this.prisma.$queryRaw<[{ count: bigint }]>`
@@ -523,7 +571,8 @@ export class StockScreenerService {
           fi.ocf_to_netprofit   AS "ocfToNetprofit",
           fi.end_date           AS "latestFinDate",
           mf_agg.main_net_5d    AS "mainNetInflow5d",
-          mf_agg.main_net_20d   AS "mainNetInflow20d"
+          mf_agg.main_net_20d   AS "mainNetInflow20d",
+          ${buySignalSelect}
         FROM stock_basic_profiles sb
         ${valuationJoin}
         ${marketJoin}
@@ -533,7 +582,7 @@ export class StockScreenerService {
         ${conceptJoinSql}
         ${northboundJoinSql}
         ${whereClause}
-        ORDER BY ${sortCol} ${sortDir}
+        ORDER BY ${sortCol} ${sortDir}${secondarySort}
         LIMIT ${pageSize} OFFSET ${offset}
       `,
     ])
@@ -599,6 +648,8 @@ export class StockScreenerService {
         ocfToNetprofit: r.ocfToNetprofit !== null ? Number(r.ocfToNetprofit) : null,
         mainNetInflow5d: r.mainNetInflow5d !== null ? Number(r.mainNetInflow5d) : null,
         mainNetInflow20d: r.mainNetInflow20d !== null ? Number(r.mainNetInflow20d) : null,
+        buySignalCount: r.buySignalCount !== null ? Number(r.buySignalCount) : null,
+        buySignals: Array.isArray(r.buySignals) ? r.buySignals : null,
         concepts: conceptMap.get(r.tsCode) ?? null,
       })),
     }

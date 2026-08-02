@@ -42,21 +42,21 @@ model AiEvaluationRun {
 }
 
 model AiEvaluationResult {
-  id                String          @id @default(cuid()) @db.VarChar(32)
-  evaluationRunId   String          @map("evaluation_run_id") @db.VarChar(32)
-  caseId            String          @map("case_id") @db.VarChar(128)
-  caseHash          String          @map("case_hash") @db.Char(64)
-  passed            Boolean
-  factScore         Decimal         @map("fact_score") @db.Decimal(8, 6)
-  citationCoverage  Decimal         @map("citation_coverage") @db.Decimal(8, 6)
-  toolTraceMatch    Boolean         @map("tool_trace_match")
-  latencyMs         Int             @map("latency_ms")
-  cost              Decimal         @default(0) @db.Decimal(18, 8)
-  costCurrency      String          @default("CNY") @map("cost_currency") @db.Char(3)
-  failures          Json            @default("[]") @db.JsonB
-  evidenceSummary   Json?           @map("evidence_summary") @db.JsonB
-  artifactRef       String?         @map("artifact_ref") @db.VarChar(512)
-  createdAt         DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+  id               String   @id @default(cuid()) @db.VarChar(32)
+  evaluationRunId  String   @map("evaluation_run_id") @db.VarChar(32)
+  caseId           String   @map("case_id") @db.VarChar(128)
+  caseHash         String   @map("case_hash") @db.Char(64)
+  passed           Boolean
+  factScore        Decimal  @map("fact_score") @db.Decimal(8, 6)
+  citationCoverage Decimal  @map("citation_coverage") @db.Decimal(8, 6)
+  toolTraceMatch   Boolean  @map("tool_trace_match")
+  latencyMs        Int      @map("latency_ms")
+  cost             Decimal  @default(0) @db.Decimal(18, 8)
+  costCurrency     String   @default("CNY") @map("cost_currency") @db.Char(3)
+  failures         Json     @default("[]") @db.JsonB
+  evidenceSummary  Json?    @map("evidence_summary") @db.JsonB
+  artifactRef      String?  @map("artifact_ref") @db.VarChar(512)
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   evaluationRun AiEvaluationRun @relation(fields: [evaluationRunId], references: [id], onDelete: Restrict)
 

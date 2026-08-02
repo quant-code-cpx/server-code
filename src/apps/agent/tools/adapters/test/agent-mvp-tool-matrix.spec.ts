@@ -40,7 +40,7 @@ const config = {
   valuationMinSamples: 60,
 } as IAgentToolsConfig
 
-const successInputs: Readonly<Record<AgentToolKey, unknown>> = {
+const successInputs: Readonly<Record<Exclude<AgentToolKey, 'save_research_report'>, unknown>> = {
   resolve_security: { query: '浦发银行' },
   get_stock_price_history: {
     tsCode: '600000.SH',
@@ -52,6 +52,7 @@ const successInputs: Readonly<Record<AgentToolKey, unknown>> = {
     limit: 100,
   },
   get_stock_overview: { tsCodes: ['600000.SH'], sections: ['BASIC'] },
+  screen_stocks: { preset: 'main_inflow', pageSize: 10 },
   get_financial_statements: {
     tsCode: '600519.SH',
     statementTypes: ['INCOME'],
@@ -220,7 +221,7 @@ describe('Batch 018 MVP 15 Tool 成功与权限/边界统一矩阵', () => {
     async ({ toolKey, input, expectedCode, expectedStatus, prepare }) => {
       const { executor, audit, mocks } = createToolHarness()
       prepare?.(mocks)
-      const runId = `failure_${AGENT_MVP_READ_TOOL_KEYS.indexOf(toolKey) + 1}`
+      const runId = `failure_${AGENT_MVP_READ_TOOL_KEYS.indexOf(toolKey as (typeof AGENT_MVP_READ_TOOL_KEYS)[number]) + 1}`
 
       try {
         await executor.execute(
@@ -539,6 +540,8 @@ function createToolMocks() {
       asOf: '2024-06-28',
       sourceModels: ['StockBasic'],
     }),
+    screenStocks: jest.fn().mockResolvedValue({ page: 1, pageSize: 10, total: 1, items: [{ tsCode: '600000.SH', name: '浦发银行' }] }),
+    getScreenerPresets: jest.fn().mockReturnValue({ presets: [{ id: 'main_inflow', name: '主力资金流入', description: '', filters: { minMainNetInflow5d: 0 } }] }),
   }
   const market = {
     snapshot: jest.fn().mockResolvedValue({

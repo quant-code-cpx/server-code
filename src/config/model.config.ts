@@ -4,6 +4,7 @@ export const MODEL_CONFIG_TOKEN = 'agentModel'
 
 export type AgentModelProviderName = 'fake' | 'openai-compatible'
 export type AgentModelCostTier = 'LOW' | 'MEDIUM' | 'HIGH'
+export type AgentModelConfigSource = 'env' | 'database'
 
 export interface ModelDescriptorConfig {
   contextWindow: number
@@ -29,6 +30,7 @@ export interface AgentModelProviderConfig {
 }
 
 export interface ModelConfigEnvironment {
+  AGENT_MODEL_CONFIG_SOURCE?: string
   AGENT_MODEL_PROVIDER?: string
   AGENT_MODEL_PROVIDERS?: string
   AGENT_MODEL_BASE_URL?: string
@@ -48,6 +50,7 @@ export interface ModelConfigEnvironment {
 }
 
 export interface IModelConfig {
+  source: AgentModelConfigSource
   /** Legacy primary provider fields. Keep old deployments and adapters compatible. */
   provider: AgentModelProviderName
   baseUrl: string | null
@@ -77,16 +80,17 @@ const COST_TIER_VALUES = new Set<AgentModelCostTier>(['LOW', 'MEDIUM', 'HIGH'])
 
 export function buildModelConfig(env: ModelConfigEnvironment, nodeEnv = 'development'): IModelConfig {
   const isProduction = nodeEnv === 'production'
-  const providers = env.AGENT_MODEL_PROVIDERS?.trim()
-    ? parseProviders(env.AGENT_MODEL_PROVIDERS, isProduction)
-    : [buildLegacyProvider(env, isProduction)]
-  const modelNames = new Set<string>()
-  for (const provider of providers) {
-    if (modelNames.has(provider.defaultModel)) throw new Error('[AgentModel] 不同 provider 的 model 名必须唯一')
-    modelNames.add(provider.defaultModel)
-  }
+  const isTest = nodeEnv === 'test'
+  const source = env.AGENT_MODEL_CONFIG_SOURCE?.trim().toLowerCase() === 'database' ? 'database' : 'env'
+  const providers =
+    source === 'database'
+      ? [buildDatabasePlaceholderProvider()]
+      : env.AGENT_MODEL_PROVIDERS?.trim()
+        ? parseProviders(env.AGENT_MODEL_PROVIDERS, isProduction, isTest)
+        : [buildLegacyProvider(env, isProduction, isTest)]
   const primary = providers[0]
   return {
+    source,
     provider: primary.kind,
     baseUrl: primary.baseUrl,
     apiKey: primary.apiKey,
@@ -113,14 +117,42 @@ export function buildModelConfig(env: ModelConfigEnvironment, nodeEnv = 'develop
   }
 }
 
+function buildDatabasePlaceholderProvider(): AgentModelProviderConfig {
+  return {
+    id: 'database-pending',
+    kind: 'openai-compatible',
+    displayName: 'Database pending',
+    defaultModel: 'database-pending',
+    priority: 0,
+    costTier: 'LOW',
+    baseUrl: null,
+    apiKey: null,
+    timeoutMs: 120_000,
+    maxRetries: 0,
+    retryBaseMs: 0,
+    descriptor: {
+      contextWindow: 32_768,
+      maxOutputTokens: 4_096,
+      capabilities: ['STREAMING', 'STRUCTURED_OUTPUT', 'TOOL_CALLING'],
+      reasoningEfforts: ['LOW', 'MEDIUM', 'HIGH'],
+      dataClasses: ['PUBLIC', 'USER_PRIVATE', 'PORTFOLIO_SENSITIVE'],
+    },
+  }
+}
+
 export const ModelConfig = registerAs(MODEL_CONFIG_TOKEN, () => buildModelConfig(process.env, process.env.NODE_ENV))
 
-function buildLegacyProvider(env: ModelConfigEnvironment, isProduction: boolean): AgentModelProviderConfig {
+function buildLegacyProvider(
+  env: ModelConfigEnvironment,
+  isProduction: boolean,
+  isTest: boolean,
+): AgentModelProviderConfig {
   const kindRaw = env.AGENT_MODEL_PROVIDER?.trim()
   if (isProduction && !kindRaw)
     throw new Error('[AgentModel] 生产环境必须显式配置 AGENT_MODEL_PROVIDER 或 AGENT_MODEL_PROVIDERS')
-  const kind = (kindRaw || 'fake') as AgentModelProviderName
+  const kind = (kindRaw || (isTest ? 'fake' : '')) as AgentModelProviderName
   if (!SUPPORTED_PROVIDERS.has(kind)) throw new Error(`[AgentModel] AGENT_MODEL_PROVIDER 不支持：${kind}`)
+  if (kind === 'fake' && !isTest) throw new Error('[AgentModel] fake provider 仅允许测试环境')
   const common = parseCommon(env)
   if (kind === 'fake') {
     return {
@@ -156,7 +188,7 @@ function buildLegacyProvider(env: ModelConfigEnvironment, isProduction: boolean)
   }
 }
 
-function parseProviders(raw: string, isProduction: boolean): AgentModelProviderConfig[] {
+function parseProviders(raw: string, isProduction: boolean, isTest: boolean): AgentModelProviderConfig[] {
   let input: unknown
   try {
     input = JSON.parse(raw)
@@ -166,14 +198,11 @@ function parseProviders(raw: string, isProduction: boolean): AgentModelProviderC
   if (!Array.isArray(input) || input.length < 1 || input.length > 16) {
     throw new Error('[AgentModel] AGENT_MODEL_PROVIDERS 必须包含 1-16 个 provider')
   }
-  const ids = new Set<string>()
   return input
     .map((entry, index) => {
       const value = asRecord(entry, `AGENT_MODEL_PROVIDERS[${index}]`)
       const id = requireIdentifier(value.id, `AGENT_MODEL_PROVIDERS[${index}].id`)
-      if (ids.has(id)) throw new Error('[AgentModel] AGENT_MODEL_PROVIDERS provider id 不能重复')
-      ids.add(id)
-      const kind = requireProviderKind(value.kind, `AGENT_MODEL_PROVIDERS[${index}].kind`)
+      const kind = requireProviderKind(value.kind, `AGENT_MODEL_PROVIDERS[${index}].kind`, isTest)
       const defaultModel = requireIdentifier(value.model, `AGENT_MODEL_PROVIDERS[${index}].model`)
       const descriptor = parseInlineDescriptor(value, index, kind === 'fake')
       if (!descriptor.capabilities.includes('STREAMING')) {
@@ -419,10 +448,11 @@ function optionalIdentifier(value: unknown): string | null {
   return /^[A-Za-z0-9_-]{1,128}$/.test(normalized) ? normalized : null
 }
 
-function requireProviderKind(value: unknown, name: string): AgentModelProviderName {
+function requireProviderKind(value: unknown, name: string, isTest: boolean): AgentModelProviderName {
   if (typeof value !== 'string' || !SUPPORTED_PROVIDERS.has(value as AgentModelProviderName)) {
     throw new Error(`[AgentModel] ${name} 不支持`)
   }
+  if (value === 'fake' && !isTest) throw new Error(`[AgentModel] ${name} 仅允许测试环境使用 fake`)
   return value as AgentModelProviderName
 }
 

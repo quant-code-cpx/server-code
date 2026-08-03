@@ -31,6 +31,33 @@ async function flushPromises() {
 }
 
 describe('CacheService', () => {
+  it('returns an explicit cacheHit marker without invoking the loader on a valid hit', async () => {
+    const redis = buildRedisMock()
+    redis.get.mockResolvedValueOnce(JSON.stringify({ value: 1 }))
+    const service = new CacheService(redis as never, buildLoggerMock() as never)
+    const loader = jest.fn()
+
+    await expect(
+      service.rememberJsonWithStatus({
+        namespace: CACHE_NAMESPACE.FACTOR_ANALYSIS,
+        key: 'factor:ic:hit',
+        ttlSeconds: 60,
+        loader,
+      }),
+    ).resolves.toEqual({ value: { value: 1 }, cacheHit: true })
+    expect(loader).not.toHaveBeenCalled()
+  })
+
+  it('builds canonical SHA-256 cache keys independent of object property order', () => {
+    const service = new CacheService(buildRedisMock() as never, buildLoggerMock() as never)
+
+    const first = service.buildSha256Key('technical-signal:test', { tsCode: '000001.SZ', horizons: [1, 5] })
+    const second = service.buildSha256Key('technical-signal:test', { horizons: [1, 5], tsCode: '000001.SZ' })
+
+    expect(first).toBe(second)
+    expect(first).toMatch(/^technical-signal:test:[a-f0-9]{64}$/)
+  })
+
   it('同 key 并发 miss → 只执行一次 loader，两个调用共享结果', async () => {
     const redis = buildRedisMock()
     const service = new CacheService(redis as never, buildLoggerMock() as never)

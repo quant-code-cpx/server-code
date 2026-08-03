@@ -16,6 +16,11 @@ interface RememberJsonOptions<T> {
   skipCacheIf?: (value: T) => boolean
 }
 
+export interface CacheRememberJsonResult<T> {
+  value: T
+  cacheHit: boolean
+}
+
 export interface CacheNamespaceMetrics {
   namespace: string
   keyCount: number
@@ -52,7 +57,27 @@ export class CacheService {
     return `${prefix}:${digest}`
   }
 
+  /** SHA-256 key variant for contracts that require a collision-resistant public key recipe. */
+  buildSha256Key(prefix: string, payload?: unknown): string {
+    if (payload === undefined) {
+      return prefix
+    }
+
+    const digest = createHash('sha256').update(stableStringify(payload)).digest('hex')
+    return `${prefix}:${digest}`
+  }
+
   async rememberJson<T>({ namespace, key, ttlSeconds, loader, skipCacheIf }: RememberJsonOptions<T>): Promise<T> {
+    return (await this.rememberJsonWithStatus({ namespace, key, ttlSeconds, loader, skipCacheIf })).value
+  }
+
+  async rememberJsonWithStatus<T>({
+    namespace,
+    key,
+    ttlSeconds,
+    loader,
+    skipCacheIf,
+  }: RememberJsonOptions<T>): Promise<CacheRememberJsonResult<T>> {
     try {
       const cached = await this.redis.get(key)
       if (cached !== null) {
@@ -63,7 +88,7 @@ export class CacheService {
           await Promise.allSettled([this.redis.del(key), this.recordCacheMiss(namespace)])
         } else {
           await this.recordCacheHit(namespace)
-          return parsed.value
+          return { value: parsed.value, cacheHit: true }
         }
       } else {
         await this.recordCacheMiss(namespace)
@@ -72,12 +97,15 @@ export class CacheService {
       this.logger.warn(`缓存读取失败，已回源数据库: ${key} (${this.formatError(error)})`, CacheService.name)
     }
 
-    const inFlight = this.inFlightJsonLoads.get(key) as Promise<T> | undefined
+    const inFlight = this.inFlightJsonLoads.get(key) as Promise<CacheRememberJsonResult<T>> | undefined
     if (inFlight) {
       return inFlight
     }
 
-    const loadPromise = this.loadAndWriteJson({ namespace, key, ttlSeconds, loader, skipCacheIf })
+    const loadPromise = this.loadAndWriteJson({ namespace, key, ttlSeconds, loader, skipCacheIf }).then((value) => ({
+      value,
+      cacheHit: false,
+    }))
     this.inFlightJsonLoads.set(key, loadPromise)
     try {
       return await loadPromise

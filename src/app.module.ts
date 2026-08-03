@@ -42,6 +42,7 @@ import { AgentModule } from './apps/agent/agent.module'
 import { WebSearchModule } from './apps/web-search/web-search.module'
 import { AgentQueueModule } from './queue/agent/agent-queue.module'
 import { ScheduledResearchModule } from './apps/scheduled-research/scheduled-research.module'
+import { TechnicalSignalModule } from './apps/technical-signal/technical-signal.module'
 import { buildProcessRoleConfig } from './config/process-role.config'
 
 const processRole = buildProcessRoleConfig(process.env)
@@ -112,6 +113,7 @@ const processRole = buildProcessRoleConfig(process.env)
     WebSearchModule,
     AgentModule,
     ScheduledResearchModule,
+    TechnicalSignalModule,
     AgentQueueModule.register({ workerEnabled: processRole.agentWorkerEnabled }),
 
     // ── 队列模块（BullMQ 回测任务） ──

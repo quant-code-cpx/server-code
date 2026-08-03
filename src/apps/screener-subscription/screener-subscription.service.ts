@@ -1,7 +1,10 @@
 import { BadRequestException, HttpException, HttpStatus, Injectable, Logger, NotFoundException } from '@nestjs/common'
 import { InjectQueue } from '@nestjs/bullmq'
 import { Queue } from 'bullmq'
-import { Prisma, SubscriptionFrequency, SubscriptionStatus } from '@prisma/client'
+import { Prisma, SubscriptionFrequency, SubscriptionRunStatus, SubscriptionStatus } from '@prisma/client'
+import dayjs from 'dayjs'
+import timezone from 'dayjs/plugin/timezone'
+import utc from 'dayjs/plugin/utc'
 import { PrismaService } from 'src/shared/prisma.service'
 import { SCREENER_SUBSCRIPTION_QUEUE, ScreenerSubscriptionJobName } from 'src/constant/queue.constant'
 import {
@@ -10,12 +13,28 @@ import {
   UpdateSubscriptionDto,
   ValidateSubscriptionDto,
 } from './dto/subscription.dto'
-import { MAX_SUBSCRIPTIONS_PER_USER, MANUAL_TRIGGER_COOLDOWN_MS } from './constants/subscription.constant'
+import {
+  buildSubscriptionQueueJobId,
+  MANUAL_TRIGGER_COOLDOWN_MS,
+  MAX_CONSECUTIVE_FAILS,
+  MAX_SUBSCRIPTIONS_PER_USER,
+} from './constants/subscription.constant'
 import { StockEntryItemDto } from './dto/subscription-response.dto'
+import {
+  DEFAULT_STOCK_SCREENING_TRIGGER_SPEC,
+  RuleFingerprintService,
+  RuleNormalizerService,
+  stableRuleStringify,
+} from './rule'
+
+dayjs.extend(utc)
+dayjs.extend(timezone)
 
 interface TradeCalRow {
   cal_date: Date | string
 }
+
+type NextTradeCalRow = TradeCalRow
 
 interface RawStockMetaRow {
   tsCode: string
@@ -25,6 +44,8 @@ interface RawStockMetaRow {
   pctChg: number | null
 }
 
+const DATA_NOT_READY_RECOVERY_BATCH_SIZE = 500
+
 @Injectable()
 export class ScreenerSubscriptionService {
   private readonly logger = new Logger(ScreenerSubscriptionService.name)
@@ -32,6 +53,8 @@ export class ScreenerSubscriptionService {
   constructor(
     private readonly prisma: PrismaService,
     @InjectQueue(SCREENER_SUBSCRIPTION_QUEUE) private readonly queue: Queue,
+    private readonly ruleNormalizer: RuleNormalizerService,
+    private readonly ruleFingerprint: RuleFingerprintService,
   ) {}
 
   // ── Trade date ─────────────────────────────────────────────────────────────
@@ -47,15 +70,65 @@ export class ScreenerSubscriptionService {
       LIMIT 1
     `)
     if (rows.length) {
-      const r = rows[0].cal_date instanceof Date ? rows[0].cal_date : new Date(rows[0].cal_date as string)
-      return `${r.getFullYear()}${String(r.getMonth() + 1).padStart(2, '0')}${String(r.getDate()).padStart(2, '0')}`
+      return this.formatTradeDate(rows[0].cal_date)
     }
     return todayStr
   }
 
+  /** 当前上海自然日；订阅调度与交易日 SQL 不依赖部署机时区。 */
   private todayStr(): string {
-    const now = new Date()
-    return `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`
+    return dayjs().tz('Asia/Shanghai').format('YYYYMMDD')
+  }
+
+  private formatTradeDate(value: Date | string): string {
+    return dayjs(value).tz('Asia/Shanghai').format('YYYYMMDD')
+  }
+
+  /**
+   * 仅在当天是交易日时调度；周/月频由“下一个开市日”判定，避免自然日周一/月初误跑。
+   */
+  async getDispatchFrequencies(): Promise<{ tradeDate: string; frequencies: SubscriptionFrequency[] } | null> {
+    const tradeDate = this.todayStr()
+    const todayRows = await this.prisma.$queryRaw<TradeCalRow[]>(Prisma.sql`
+      SELECT cal_date
+      FROM exchange_trade_calendars
+      WHERE exchange = 'SSE' AND is_open = '1'
+        AND cal_date = ${tradeDate}::date
+      LIMIT 1
+    `)
+    if (!todayRows.length) return null
+
+    const nextRows = await this.prisma.$queryRaw<NextTradeCalRow[]>(Prisma.sql`
+      SELECT cal_date
+      FROM exchange_trade_calendars
+      WHERE exchange = 'SSE' AND is_open = '1'
+        AND cal_date > ${tradeDate}::date
+      ORDER BY cal_date ASC
+      LIMIT 1
+    `)
+
+    const frequencies: SubscriptionFrequency[] = [SubscriptionFrequency.DAILY]
+    if (!nextRows[0]) {
+      // 日历未来水位不完整时无法可靠判断周/月最后交易日；宁可只执行日频，
+      // 也不能把普通日误投递成周频/月频。
+      this.logger.warn(`Trade calendar has no next open date after ${tradeDate}; skip weekly/monthly dispatch`)
+      return { tradeDate, frequencies }
+    }
+
+    const nextTradeDate = this.formatTradeDate(nextRows[0].cal_date)
+    if (this.isNextWeekOrLater(tradeDate, nextTradeDate)) {
+      frequencies.push(SubscriptionFrequency.WEEKLY)
+    }
+    if (tradeDate.slice(0, 6) !== nextTradeDate.slice(0, 6)) {
+      frequencies.push(SubscriptionFrequency.MONTHLY)
+    }
+    return { tradeDate, frequencies }
+  }
+
+  private isNextWeekOrLater(tradeDate: string, nextTradeDate: string): boolean {
+    const current = dayjs.tz(tradeDate, 'YYYYMMDD', 'Asia/Shanghai').startOf('week')
+    const next = dayjs.tz(nextTradeDate, 'YYYYMMDD', 'Asia/Shanghai').startOf('week')
+    return next.valueOf() > current.valueOf()
   }
 
   // ── Strategy enrichment ────────────────────────────────────────────────────
@@ -120,12 +193,16 @@ export class ScreenerSubscriptionService {
       filters = dto.filters!
     }
 
+    const ruleMetadata = this.createLegacyRuleMetadata(filters)
     const created = await this.prisma.screenerSubscription.create({
       data: {
         userId,
         name: dto.name,
         strategyId: dto.strategyId ?? null,
         filters: filters as Parameters<typeof this.prisma.screenerSubscription.create>[0]['data']['filters'],
+        ruleSpec: ruleMetadata.ruleSpec as unknown as Prisma.InputJsonObject,
+        triggerSpec: ruleMetadata.triggerSpec as Prisma.InputJsonObject,
+        ruleFingerprint: ruleMetadata.fingerprint,
         sortBy: dto.sortBy ?? null,
         sortOrder: dto.sortOrder ?? null,
         frequency: dto.frequency ?? SubscriptionFrequency.DAILY,
@@ -149,25 +226,55 @@ export class ScreenerSubscriptionService {
       resolvedFilters = strategy.filters as Record<string, unknown>
     }
 
+    const suppliedFilters =
+      resolvedFilters ??
+      (dto.filters !== undefined && (dto.strategyId === undefined || dto.strategyId === null) ? dto.filters : undefined)
+    const filtersChanged = suppliedFilters !== undefined && !this.areSameRuleFilters(sub.filters, suppliedFilters)
+    const ruleMetadata = filtersChanged ? this.createLegacyRuleMetadata(suppliedFilters!) : null
+
     const updated = await this.prisma.screenerSubscription.update({
       where: { id },
       data: {
         ...(dto.name !== undefined && { name: dto.name }),
         ...(dto.frequency !== undefined && { frequency: dto.frequency }),
         ...(dto.strategyId !== undefined && { strategyId: dto.strategyId }),
-        ...(resolvedFilters !== undefined && {
-          filters: resolvedFilters as Parameters<typeof this.prisma.screenerSubscription.update>[0]['data']['filters'],
+        ...(suppliedFilters !== undefined && {
+          filters: suppliedFilters as Parameters<typeof this.prisma.screenerSubscription.update>[0]['data']['filters'],
         }),
-        ...(dto.filters !== undefined &&
-          dto.strategyId === undefined && {
-            filters: dto.filters as Parameters<typeof this.prisma.screenerSubscription.update>[0]['data']['filters'],
-          }),
+        ...(filtersChanged && {
+          ruleVersion: { increment: 1 },
+          ruleSpec: ruleMetadata!.ruleSpec as unknown as Prisma.InputJsonObject,
+          ruleFingerprint: ruleMetadata!.fingerprint,
+          lastRunAt: null,
+          lastEvaluatedTradeDate: null,
+          lastClaimedTradeDate: null,
+          lastRunResult: Prisma.DbNull,
+          lastMatchCodes: [],
+        }),
         ...(dto.sortBy !== undefined && { sortBy: dto.sortBy }),
         ...(dto.sortOrder !== undefined && { sortOrder: dto.sortOrder }),
       },
     })
     const [enriched] = await this.enrichWithStrategyInfo([updated])
     return enriched
+  }
+
+  private createLegacyRuleMetadata(filters: Record<string, unknown>) {
+    const ruleSpec = this.ruleNormalizer.normalizeLegacyStockScreeningRule(filters)
+    return {
+      ruleSpec,
+      triggerSpec: { ...DEFAULT_STOCK_SCREENING_TRIGGER_SPEC },
+      fingerprint: this.ruleFingerprint.create(ruleSpec).fingerprint,
+    }
+  }
+
+  private areSameRuleFilters(current: unknown, next: unknown): boolean {
+    try {
+      return stableRuleStringify(current) === stableRuleStringify(next)
+    } catch {
+      // 旧 JSON 结构异常时宁可重置基线，也不能让新旧规则混合比较。
+      return false
+    }
   }
 
   async remove(userId: number, id: number) {
@@ -222,10 +329,61 @@ export class ScreenerSubscriptionService {
     const tradeDate = await this.getLatestTradeDateStr()
     const job = await this.queue.add(
       ScreenerSubscriptionJobName.EXECUTE_SUBSCRIPTION,
-      { subscriptionId: id, tradeDate },
-      { removeOnComplete: 50, removeOnFail: 20 },
+      { subscriptionId: id, tradeDate, ruleVersion: sub.ruleVersion },
+      {
+        jobId: buildSubscriptionQueueJobId(id, tradeDate, sub.ruleVersion),
+        attempts: MAX_CONSECUTIVE_FAILS + 1,
+        backoff: { type: 'exponential', delay: 30_000 },
+        removeOnComplete: 50,
+        removeOnFail: true,
+      },
     )
     return { jobId: job.id, message: '任务已加入队列' }
+  }
+
+  /**
+   * 数据同步迟到的 run 由 scheduler 重新投递同一 runKey。只选择仍是当前规则版本、
+   * 仍启用的订阅；过期规则不会无限重试。处理器会用 recovery 标记避免旧 run 覆写新基线。
+   */
+  async retryDataNotReadyRuns(): Promise<number> {
+    const skippedRuns = await this.prisma.screenerSubscriptionLog.findMany({
+      where: {
+        status: SubscriptionRunStatus.SKIPPED_DATA_NOT_READY,
+        subscription: { status: SubscriptionStatus.ACTIVE },
+      },
+      select: {
+        subscriptionId: true,
+        tradeDate: true,
+        ruleVersion: true,
+        subscription: { select: { ruleVersion: true } },
+      },
+      orderBy: [{ tradeDate: 'asc' }, { id: 'asc' }],
+      take: DATA_NOT_READY_RECOVERY_BATCH_SIZE,
+    })
+    const recoverableRuns = skippedRuns.filter((run) => run.ruleVersion === run.subscription.ruleVersion)
+    if (!recoverableRuns.length) return 0
+
+    await this.queue.addBulk(
+      recoverableRuns.map((run) => ({
+        name: ScreenerSubscriptionJobName.EXECUTE_SUBSCRIPTION,
+        data: {
+          subscriptionId: run.subscriptionId,
+          tradeDate: run.tradeDate,
+          ruleVersion: run.ruleVersion,
+          recovery: true,
+        },
+        opts: {
+          jobId: buildSubscriptionQueueJobId(run.subscriptionId, run.tradeDate, run.ruleVersion),
+          attempts: MAX_CONSECUTIVE_FAILS + 1,
+          backoff: { type: 'exponential', delay: 30_000 },
+          priority: 1,
+          removeOnComplete: 50,
+          removeOnFail: true,
+        },
+      })),
+    )
+    this.logger.log(`Requeued ${recoverableRuns.length} data-not-ready subscription runs`)
+    return recoverableRuns.length
   }
 
   async getLogs(userId: number, id: number, query: SubscriptionLogsQueryDto) {

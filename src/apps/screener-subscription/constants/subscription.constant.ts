@@ -9,3 +9,13 @@ export const LOG_RETENTION_DAYS = 90
 
 /** 手动触发最短冷却时间（毫秒） */
 export const MANUAL_TRIGGER_COOLDOWN_MS = 5 * 60 * 1000
+
+/** 数据库正式运行幂等键。 */
+export const buildSubscriptionRunKey = (subscriptionId: number, tradeDate: string, ruleVersion: number): string =>
+  `subscription:${subscriptionId}:${tradeDate}:v${ruleVersion}`
+
+/**
+ * BullMQ 自定义 job ID。使用连字符而非冒号，避免与 BullMQ 的内部 key 分隔符冲突。
+ */
+export const buildSubscriptionQueueJobId = (subscriptionId: number, tradeDate: string, ruleVersion: number): string =>
+  `subscription-${subscriptionId}-${tradeDate}-v${ruleVersion}`

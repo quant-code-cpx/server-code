@@ -30,10 +30,11 @@ function buildModelMock() {
 
 /** 完整的 Prisma mock service */
 export function createMockPrismaService() {
-  return {
+  const prisma = {
     // ── 行情 ──────────────────────────────────────────────────────────────
     daily: buildModelMock(),
     dailyBasic: buildModelMock(),
+    stkFactor: buildModelMock(),
     adjFactor: buildModelMock(),
     weekly: buildModelMock(),
     monthly: buildModelMock(),
@@ -122,16 +123,25 @@ export function createMockPrismaService() {
     tushareSyncRetryQueue: buildModelMock(),
 
     // ── 事务 & 原始查询 ────────────────────────────────────────────────────
-    $transaction: jest.fn(async (arg: unknown) => {
-      if (typeof arg === 'function') return arg({})
-      if (Array.isArray(arg)) return Promise.all(arg)
-      return arg
-    }),
+    $transaction: jest.fn(),
     $executeRaw: jest.fn().mockResolvedValue(0),
     $queryRaw: jest.fn().mockResolvedValue([]),
     $connect: jest.fn().mockResolvedValue(undefined),
     $disconnect: jest.fn().mockResolvedValue(undefined),
   }
+
+  // Interactive transaction must expose same delegate mocks as outer client.
+  // This makes transaction assertions exercise real repository calls instead of
+  // silently invoking callbacks with an empty object.
+  prisma.$transaction.mockImplementation(async (arg: unknown) => {
+    if (typeof arg === 'function') {
+      return (arg as (tx: typeof prisma) => unknown)(prisma)
+    }
+    if (Array.isArray(arg)) return Promise.all(arg)
+    return arg
+  })
+
+  return prisma
 }
 
 export type MockPrismaService = ReturnType<typeof createMockPrismaService>

@@ -1,26 +1,32 @@
-import { Test, TestingModule } from '@nestjs/testing'
+import {
+  Prisma,
+  SubscriptionFrequency,
+  SubscriptionRuleType,
+  SubscriptionRunStatus,
+  SubscriptionStatus,
+} from '@prisma/client'
 import { Job } from 'bullmq'
-import { SubscriptionFrequency, SubscriptionStatus } from '@prisma/client'
-import { ScreenerSubscriptionProcessor } from '../screener-subscription.processor'
-import { PrismaService } from 'src/shared/prisma.service'
-import { StockService } from 'src/apps/stock/stock.service'
-import { EventsGateway } from 'src/websocket/events.gateway'
+import { StockScreenerService } from 'src/apps/stock/stock-screener.service'
 import { ScreenerSubscriptionJobName } from 'src/constant/queue.constant'
-import { MAX_CONSECUTIVE_FAILS } from '../constants/subscription.constant'
+import { EventsGateway } from 'src/websocket/events.gateway'
 import { createMockPrismaService } from 'test/helpers/prisma-mock'
+import {
+  buildSubscriptionQueueJobId,
+  buildSubscriptionRunKey,
+  MAX_CONSECUTIVE_FAILS,
+} from '../constants/subscription.constant'
+import { ScreenerSubscriptionProcessor } from '../screener-subscription.processor'
+import {
+  CollectionTriggerPlan,
+  RuleNormalizerService,
+  RuleSpecValidationException,
+  TriggerPlannerService,
+} from '../rule'
+import { SubscriptionDataReadinessService } from '../subscription-data-readiness.service'
 
-// ── Job 工厂 ──────────────────────────────────────────────────────────────────
-
-function makeJob<T>(name: string, data: T): jest.Mocked<Job<T>> {
-  return {
-    id: 'job-1',
-    name,
-    data,
-    updateProgress: jest.fn(),
-  } as unknown as jest.Mocked<Job<T>>
+function makeJob(name: string, data: Record<string, unknown>, id = 'job-1'): Job {
+  return { id, name, data } as Job
 }
-
-// ── 活跃订阅 builder ──────────────────────────────────────────────────────────
 
 function buildSub(overrides: Record<string, unknown> = {}) {
   return {
@@ -29,10 +35,25 @@ function buildSub(overrides: Record<string, unknown> = {}) {
     name: '测试订阅',
     status: SubscriptionStatus.ACTIVE,
     filters: { minPe: 10 },
-    sortBy: null,
-    sortOrder: null,
-    lastMatchCodes: [],
+    ruleType: SubscriptionRuleType.STOCK_SCREENING,
+    ruleVersion: 2,
+    triggerSpec: null,
+    lastEvaluatedTradeDate: '20260731',
+    lastMatchCodes: ['000001.SZ'],
     consecutiveFails: 0,
+    ...overrides,
+  }
+}
+
+function buildPlan(overrides: Partial<CollectionTriggerPlan> = {}): CollectionTriggerPlan {
+  return {
+    isInitialBaseline: false,
+    matchedCodes: ['000001.SZ', '000002.SZ'],
+    observedEnterCodes: ['000002.SZ'],
+    observedExitCodes: [],
+    enterCodes: ['000002.SZ'],
+    exitCodes: [],
+    hits: [{ tsCode: '000002.SZ', kind: 'ENTER' }],
     ...overrides,
   }
 }
@@ -40,234 +61,654 @@ function buildSub(overrides: Record<string, unknown> = {}) {
 describe('ScreenerSubscriptionProcessor', () => {
   let processor: ScreenerSubscriptionProcessor
   let prisma: ReturnType<typeof createMockPrismaService>
-  let stockService: jest.Mocked<Pick<StockService, 'screener'>>
+  let stockScreener: jest.Mocked<Pick<StockScreenerService, 'screenCodes'>>
+  let dataReadiness: jest.Mocked<Pick<SubscriptionDataReadinessService, 'checkStockScreening'>>
   let eventsGateway: jest.Mocked<Pick<EventsGateway, 'emitToUser'>>
+  let queue: { addBulk: jest.Mock }
+  let triggerPlanner: jest.Mocked<Pick<TriggerPlannerService, 'planCollection'>>
+  let ruleNormalizer: jest.Mocked<
+    Pick<RuleNormalizerService, 'normalizeRuleSpec' | 'normalizeLegacyStockScreeningRule'>
+  >
 
-  beforeEach(async () => {
+  beforeEach(() => {
     prisma = createMockPrismaService()
-    stockService = { screener: jest.fn() }
+    prisma.screenerSubscription.updateMany.mockResolvedValue({ count: 1 } as never)
+    prisma.screenerSubscriptionLog.updateMany.mockResolvedValue({ count: 1 } as never)
+    stockScreener = { screenCodes: jest.fn() }
+    dataReadiness = {
+      checkStockScreening: jest.fn().mockResolvedValue({
+        ready: true,
+        tradeDate: '20260803',
+        dataVersions: { DAILY: 'target:20260803' },
+        missing: [],
+      }),
+    }
     eventsGateway = { emitToUser: jest.fn() }
+    queue = { addBulk: jest.fn().mockResolvedValue([]) }
+    triggerPlanner = { planCollection: jest.fn() }
+    ruleNormalizer = {
+      normalizeRuleSpec: jest.fn().mockImplementation((ruleSpec) => ruleSpec as never),
+      normalizeLegacyStockScreeningRule: jest.fn().mockImplementation((filters) => ({ filters }) as never),
+    }
 
-    const module: TestingModule = await Test.createTestingModule({
-      providers: [
-        ScreenerSubscriptionProcessor,
-        { provide: PrismaService, useValue: prisma },
-        { provide: StockService, useValue: stockService },
-        { provide: EventsGateway, useValue: eventsGateway },
-      ],
-    }).compile()
-
-    processor = module.get(ScreenerSubscriptionProcessor)
+    processor = new ScreenerSubscriptionProcessor(
+      prisma as never,
+      stockScreener as never,
+      dataReadiness as never,
+      eventsGateway as never,
+      queue as never,
+      triggerPlanner as never,
+      ruleNormalizer as never,
+    )
   })
 
   afterEach(() => jest.clearAllMocks())
 
-  // ── EXECUTE_SUBSCRIPTION ──────────────────────────────────────────────────
-
   describe('execute_subscription', () => {
-    it('成功命中新股票 → 更新订阅、写日志、emitToUser', async () => {
-      const sub = buildSub({ lastMatchCodes: ['000001.SZ'] })
-      prisma.screenerSubscription.findUnique.mockResolvedValue(sub as never)
-      prisma.screenerSubscription.update.mockResolvedValue({} as never)
-      prisma.screenerSubscriptionLog.create.mockResolvedValue({} as never)
-      stockService.screener.mockResolvedValue({ items: [{ tsCode: '000001.SZ' }, { tsCode: '000002.SZ' }] } as never)
-
-      const job = makeJob(ScreenerSubscriptionJobName.EXECUTE_SUBSCRIPTION, {
-        subscriptionId: 1,
-        tradeDate: '2026-04-09',
+    it('后续运行仅保存和通知 ENTER 触发的差集，不泄露观察到的 EXIT', async () => {
+      const sub = buildSub({ lastMatchCodes: ['000001.SZ', '000003.SZ'] })
+      const runKey = buildSubscriptionRunKey(sub.id, '20260803', sub.ruleVersion)
+      const plan = buildPlan({
+        matchedCodes: ['000001.SZ', '000002.SZ'],
+        observedEnterCodes: ['000002.SZ'],
+        observedExitCodes: ['000003.SZ'],
+        enterCodes: ['000002.SZ'],
+        exitCodes: [],
+        hits: [{ tsCode: '000002.SZ', kind: 'ENTER' }],
       })
-      await processor.process(job)
+      prisma.screenerSubscription.findUnique.mockResolvedValue(sub as never)
+      prisma.screenerSubscriptionLog.create.mockResolvedValue({ id: 100, runKey } as never)
+      stockScreener.screenCodes.mockResolvedValue({
+        tradeDate: '20260803',
+        total: 2,
+        matchedCodes: ['000001.SZ', '000002.SZ'],
+      })
+      triggerPlanner.planCollection.mockReturnValue(plan)
 
-      expect(prisma.screenerSubscription.update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: { id: 1 },
-          data: expect.objectContaining({
-            consecutiveFails: 0,
-            lastMatchCodes: ['000001.SZ', '000002.SZ'],
-          }),
-        }),
+      await processor.process(
+        makeJob(
+          ScreenerSubscriptionJobName.EXECUTE_SUBSCRIPTION,
+          { subscriptionId: sub.id, tradeDate: '20260803', ruleVersion: sub.ruleVersion },
+          'worker-job-9',
+        ),
       )
+
+      expect(stockScreener.screenCodes).toHaveBeenCalledWith({ filters: sub.filters, tradeDate: '20260803' })
+      expect(triggerPlanner.planCollection).toHaveBeenCalledWith({
+        hasBaseline: true,
+        previousMatchCodes: ['000001.SZ', '000003.SZ'],
+        currentMatchCodes: ['000001.SZ', '000002.SZ'],
+        triggerSpec: undefined,
+      })
       expect(prisma.screenerSubscriptionLog.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
-            subscriptionId: 1,
+            subscriptionId: sub.id,
+            runKey,
+            jobId: 'worker-job-9',
+            tradeDate: '20260803',
+            ruleVersion: sub.ruleVersion,
+            status: SubscriptionRunStatus.RUNNING,
+          }),
+        }),
+      )
+      expect(prisma.screenerSubscription.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            id: sub.id,
+            ruleVersion: sub.ruleVersion,
+            status: SubscriptionStatus.ACTIVE,
+          }),
+          data: expect.objectContaining({
+            lastEvaluatedTradeDate: '20260803',
+            lastMatchCodes: ['000001.SZ', '000002.SZ'],
+            consecutiveFails: 0,
+            lastRunResult: expect.objectContaining({
+              tradeDate: '20260803',
+              matchCount: 2,
+              newEntryCount: 1,
+              exitCount: 0,
+              runKey,
+              ruleVersion: sub.ruleVersion,
+            }),
+          }),
+        }),
+      )
+      expect(prisma.screenerSubscriptionLog.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ id: 100, status: SubscriptionRunStatus.RUNNING }),
+          data: expect.objectContaining({
+            status: SubscriptionRunStatus.SUCCESS,
             matchCount: 2,
-            newEntryCount: 1, // 000002.SZ is new
+            triggerCount: 1,
+            newEntryCodes: ['000002.SZ'],
             exitCount: 0,
+            exitCodes: [],
+            dataVersions: expect.objectContaining({ screenedAsOfTradeDate: '20260803' }),
           }),
         }),
       )
       expect(eventsGateway.emitToUser).toHaveBeenCalledWith(
         sub.userId,
         'screener_subscription_alert',
-        expect.objectContaining({ subscriptionId: 1, newEntryCodes: ['000002.SZ'] }),
+        expect.objectContaining({
+          subscriptionId: sub.id,
+          tradeDate: '20260803',
+          newEntryCodes: ['000002.SZ'],
+          exitCodes: [],
+          totalMatch: 2,
+        }),
       )
     })
 
-    it('无新增股票 → 不推送 WS 消息', async () => {
-      const sub = buildSub({ lastMatchCodes: ['000001.SZ'] })
+    it('首次成功只建立完整基线，不产生 ENTER 或通知', async () => {
+      const sub = buildSub({ lastEvaluatedTradeDate: null, lastMatchCodes: [] })
+      const runKey = buildSubscriptionRunKey(sub.id, '20260803', sub.ruleVersion)
       prisma.screenerSubscription.findUnique.mockResolvedValue(sub as never)
-      prisma.screenerSubscription.update.mockResolvedValue({} as never)
-      prisma.screenerSubscriptionLog.create.mockResolvedValue({} as never)
-      stockService.screener.mockResolvedValue({ items: [{ tsCode: '000001.SZ' }] } as never)
-
-      const job = makeJob(ScreenerSubscriptionJobName.EXECUTE_SUBSCRIPTION, {
-        subscriptionId: 1,
-        tradeDate: '2026-04-09',
+      prisma.screenerSubscriptionLog.create.mockResolvedValue({ id: 101, runKey } as never)
+      stockScreener.screenCodes.mockResolvedValue({
+        tradeDate: '20260803',
+        total: 2,
+        matchedCodes: ['000001.SZ', '000002.SZ'],
       })
-      await processor.process(job)
+      triggerPlanner.planCollection.mockReturnValue(
+        buildPlan({
+          isInitialBaseline: true,
+          matchedCodes: ['000001.SZ', '000002.SZ'],
+          observedEnterCodes: ['000001.SZ', '000002.SZ'],
+          observedExitCodes: [],
+          enterCodes: [],
+          exitCodes: [],
+          hits: [],
+        }),
+      )
 
+      await processor.process(
+        makeJob(ScreenerSubscriptionJobName.EXECUTE_SUBSCRIPTION, {
+          subscriptionId: sub.id,
+          tradeDate: '20260803',
+          ruleVersion: sub.ruleVersion,
+        }),
+      )
+
+      expect(triggerPlanner.planCollection).toHaveBeenCalledWith(
+        expect.objectContaining({ hasBaseline: false, currentMatchCodes: ['000001.SZ', '000002.SZ'] }),
+      )
+      expect(prisma.screenerSubscription.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            lastMatchCodes: ['000001.SZ', '000002.SZ'],
+            lastRunResult: expect.objectContaining({ newEntryCount: 0, exitCount: 0 }),
+          }),
+        }),
+      )
+      expect(prisma.screenerSubscriptionLog.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            status: SubscriptionRunStatus.SUCCESS,
+            triggerCount: 0,
+            newEntryCodes: [],
+            exitCodes: [],
+          }),
+        }),
+      )
       expect(eventsGateway.emitToUser).not.toHaveBeenCalled()
     })
 
-    it('退出股票 → 日志中 exitCodes 正确', async () => {
-      const sub = buildSub({ lastMatchCodes: ['000001.SZ', '000002.SZ'] })
+    it('数据未就绪时标记为 skipped 并交给 BullMQ 重试，不执行筛选或累计业务失败', async () => {
+      const sub = buildSub()
+      const runKey = buildSubscriptionRunKey(sub.id, '20260803', sub.ruleVersion)
       prisma.screenerSubscription.findUnique.mockResolvedValue(sub as never)
-      prisma.screenerSubscription.update.mockResolvedValue({} as never)
-      prisma.screenerSubscriptionLog.create.mockResolvedValue({} as never)
-      stockService.screener.mockResolvedValue({ items: [{ tsCode: '000001.SZ' }] } as never)
-
-      const job = makeJob(ScreenerSubscriptionJobName.EXECUTE_SUBSCRIPTION, {
-        subscriptionId: 1,
-        tradeDate: '2026-04-09',
+      prisma.screenerSubscriptionLog.create.mockResolvedValue({ id: 107, runKey } as never)
+      dataReadiness.checkStockScreening.mockResolvedValue({
+        ready: false,
+        tradeDate: '20260803',
+        dataVersions: { DAILY: 'target:20260803:coverage:4990/5000' },
+        missing: ['DAILY_NOT_READY'],
       })
-      await processor.process(job)
 
-      expect(prisma.screenerSubscriptionLog.create).toHaveBeenCalledWith(
+      await expect(
+        processor.process(
+          makeJob(ScreenerSubscriptionJobName.EXECUTE_SUBSCRIPTION, {
+            subscriptionId: sub.id,
+            tradeDate: '20260803',
+            ruleVersion: sub.ruleVersion,
+          }),
+        ),
+      ).rejects.toThrow('Subscription data is not ready: DAILY_NOT_READY')
+
+      expect(stockScreener.screenCodes).not.toHaveBeenCalled()
+      expect(triggerPlanner.planCollection).not.toHaveBeenCalled()
+      expect(prisma.screenerSubscription.updateMany).toHaveBeenCalledTimes(1)
+      expect(prisma.screenerSubscriptionLog.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({ exitCount: 1, exitCodes: ['000002.SZ'] }),
+          where: expect.objectContaining({ id: 107, status: SubscriptionRunStatus.RUNNING }),
+          data: expect.objectContaining({
+            status: SubscriptionRunStatus.SKIPPED_DATA_NOT_READY,
+            errorCode: 'DATA_NOT_READY',
+            dataVersions: { DAILY: 'target:20260803:coverage:4990/5000' },
+          }),
         }),
       )
     })
 
-    it('订阅不存在 → 直接返回，不调用 screener', async () => {
-      prisma.screenerSubscription.findUnique.mockResolvedValue(null)
-      const job = makeJob(ScreenerSubscriptionJobName.EXECUTE_SUBSCRIPTION, {
-        subscriptionId: 99,
-        tradeDate: '2026-04-09',
-      })
-      await processor.process(job)
-      expect(stockService.screener).not.toHaveBeenCalled()
-    })
-
-    it('订阅已非 ACTIVE → 直接返回', async () => {
-      prisma.screenerSubscription.findUnique.mockResolvedValue(buildSub({ status: SubscriptionStatus.PAUSED }) as never)
-      const job = makeJob(ScreenerSubscriptionJobName.EXECUTE_SUBSCRIPTION, {
-        subscriptionId: 1,
-        tradeDate: '2026-04-09',
-      })
-      await processor.process(job)
-      expect(stockService.screener).not.toHaveBeenCalled()
-    })
-
-    it('screener 抛出 → consecutiveFails+1，写入失败日志', async () => {
-      const sub = buildSub({ consecutiveFails: 0 })
+    it('不截断超过 500 个匹配，完整集合交给 planner 并持久化', async () => {
+      const fullCodes = Array.from({ length: 501 }, (_, index) => `${String(index + 1).padStart(6, '0')}.SZ`)
+      const sub = buildSub({ lastMatchCodes: fullCodes.slice(0, 500) })
+      const runKey = buildSubscriptionRunKey(sub.id, '20260803', sub.ruleVersion)
       prisma.screenerSubscription.findUnique.mockResolvedValue(sub as never)
-      prisma.screenerSubscription.update.mockResolvedValue({} as never)
-      prisma.screenerSubscriptionLog.create.mockResolvedValue({} as never)
-      stockService.screener.mockRejectedValue(new Error('screener failed'))
-
-      const job = makeJob(ScreenerSubscriptionJobName.EXECUTE_SUBSCRIPTION, {
-        subscriptionId: 1,
-        tradeDate: '2026-04-09',
-      })
-      await processor.process(job)
-
-      expect(prisma.screenerSubscription.update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({ consecutiveFails: 1 }),
+      prisma.screenerSubscriptionLog.create.mockResolvedValue({ id: 102, runKey } as never)
+      stockScreener.screenCodes.mockResolvedValue({ tradeDate: '20260803', total: 501, matchedCodes: fullCodes })
+      triggerPlanner.planCollection.mockReturnValue(
+        buildPlan({
+          matchedCodes: fullCodes,
+          observedEnterCodes: [fullCodes[500]],
+          observedExitCodes: [],
+          enterCodes: [fullCodes[500]],
+          exitCodes: [],
+          hits: [{ tsCode: fullCodes[500], kind: 'ENTER' }],
         }),
       )
-      expect(prisma.screenerSubscriptionLog.create).toHaveBeenCalledWith(
+
+      await processor.process(
+        makeJob(ScreenerSubscriptionJobName.EXECUTE_SUBSCRIPTION, {
+          subscriptionId: sub.id,
+          tradeDate: '20260803',
+          ruleVersion: sub.ruleVersion,
+        }),
+      )
+
+      expect(triggerPlanner.planCollection).toHaveBeenCalledWith(
+        expect.objectContaining({ currentMatchCodes: fullCodes }),
+      )
+      expect(prisma.screenerSubscription.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({ success: false, errorMessage: 'screener failed' }),
+          data: expect.objectContaining({
+            lastMatchCodes: fullCodes,
+            lastRunResult: expect.objectContaining({ matchCount: 501, newEntryCount: 1, exitCount: 0 }),
+          }),
         }),
       )
     })
 
-    it(`连续失败达 ${MAX_CONSECUTIVE_FAILS} 次 → 状态改为 ERROR`, async () => {
+    it('过期 ruleVersion job 直接返回，不领取 run 或评估', async () => {
+      const sub = buildSub({ ruleVersion: 3 })
+      prisma.screenerSubscription.findUnique.mockResolvedValue(sub as never)
+
+      await processor.process(
+        makeJob(ScreenerSubscriptionJobName.EXECUTE_SUBSCRIPTION, {
+          subscriptionId: sub.id,
+          tradeDate: '20260803',
+          ruleVersion: 2,
+        }),
+      )
+
+      expect(prisma.screenerSubscriptionLog.findUnique).not.toHaveBeenCalled()
+      expect(prisma.screenerSubscriptionLog.create).not.toHaveBeenCalled()
+      expect(stockScreener.screenCodes).not.toHaveBeenCalled()
+      expect(triggerPlanner.planCollection).not.toHaveBeenCalled()
+    })
+
+    it('交易日不晚于已成功基线时直接跳过，防止旧 job 覆盖新结果', async () => {
+      const sub = buildSub({ lastEvaluatedTradeDate: '20260803' })
+      prisma.screenerSubscription.findUnique.mockResolvedValue(sub as never)
+
+      await processor.process(
+        makeJob(ScreenerSubscriptionJobName.EXECUTE_SUBSCRIPTION, {
+          subscriptionId: sub.id,
+          tradeDate: '20260803',
+          ruleVersion: sub.ruleVersion,
+        }),
+      )
+
+      expect(prisma.screenerSubscriptionLog.findUnique).not.toHaveBeenCalled()
+      expect(stockScreener.screenCodes).not.toHaveBeenCalled()
+      expect(triggerPlanner.planCollection).not.toHaveBeenCalled()
+      expect(prisma.screenerSubscription.updateMany).not.toHaveBeenCalled()
+    })
+
+    it('提交时被同规则版本的更新交易日抢先覆盖，记录 superseded warning 且不通知', async () => {
+      const sub = buildSub({ lastEvaluatedTradeDate: '20260801' })
+      const runKey = buildSubscriptionRunKey(sub.id, '20260803', sub.ruleVersion)
+      prisma.screenerSubscription.findUnique.mockResolvedValue(sub as never)
+      prisma.screenerSubscriptionLog.create.mockResolvedValue({ id: 103, runKey } as never)
+      prisma.screenerSubscription.updateMany
+        .mockResolvedValueOnce({ count: 1 } as never)
+        .mockResolvedValueOnce({ count: 0 } as never)
+      stockScreener.screenCodes.mockResolvedValue({
+        tradeDate: '20260803',
+        total: 2,
+        matchedCodes: ['000001.SZ', '000002.SZ'],
+      })
+      triggerPlanner.planCollection.mockReturnValue(buildPlan())
+
+      await processor.process(
+        makeJob(ScreenerSubscriptionJobName.EXECUTE_SUBSCRIPTION, {
+          subscriptionId: sub.id,
+          tradeDate: '20260803',
+          ruleVersion: sub.ruleVersion,
+        }),
+      )
+
+      expect(prisma.screenerSubscriptionLog.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ id: 103, status: SubscriptionRunStatus.SUCCESS }),
+          data: expect.objectContaining({
+            warningCount: 1,
+            errorCode: 'STALE_RUN_SUPERSEDED',
+          }),
+        }),
+      )
+      expect(eventsGateway.emitToUser).not.toHaveBeenCalled()
+    })
+
+    it('同一 runKey 已成功时不重新评估或重复通知', async () => {
+      const sub = buildSub()
+      const runKey = buildSubscriptionRunKey(sub.id, '20260803', sub.ruleVersion)
+      prisma.screenerSubscription.findUnique.mockResolvedValue(sub as never)
+      prisma.screenerSubscriptionLog.findUnique.mockResolvedValue({
+        id: 103,
+        runKey,
+        status: SubscriptionRunStatus.SUCCESS,
+      } as never)
+
+      await processor.process(
+        makeJob(ScreenerSubscriptionJobName.EXECUTE_SUBSCRIPTION, {
+          subscriptionId: sub.id,
+          tradeDate: '20260803',
+          ruleVersion: sub.ruleVersion,
+        }),
+      )
+
+      expect(prisma.screenerSubscriptionLog.create).not.toHaveBeenCalled()
+      expect(prisma.screenerSubscriptionLog.updateMany).not.toHaveBeenCalled()
+      expect(stockScreener.screenCodes).not.toHaveBeenCalled()
+      expect(eventsGateway.emitToUser).not.toHaveBeenCalled()
+    })
+
+    it('已有新鲜 RUNNING run 时拒绝 job 重试，不改写 run 或累计业务失败', async () => {
+      const sub = buildSub()
+      const runKey = buildSubscriptionRunKey(sub.id, '20260803', sub.ruleVersion)
+      prisma.screenerSubscription.findUnique.mockResolvedValue(sub as never)
+      prisma.screenerSubscriptionLog.findUnique.mockResolvedValue({
+        id: 104,
+        runKey,
+        status: SubscriptionRunStatus.RUNNING,
+      } as never)
+      prisma.screenerSubscriptionLog.updateMany.mockResolvedValue({ count: 0 } as never)
+
+      await expect(
+        processor.process(
+          makeJob(ScreenerSubscriptionJobName.EXECUTE_SUBSCRIPTION, {
+            subscriptionId: sub.id,
+            tradeDate: '20260803',
+            ruleVersion: sub.ruleVersion,
+          }),
+        ),
+      ).rejects.toThrow(`Subscription run ${runKey} is already in progress`)
+
+      expect(prisma.screenerSubscriptionLog.create).not.toHaveBeenCalled()
+      expect(prisma.screenerSubscription.updateMany).toHaveBeenCalledTimes(1)
+      expect(prisma.screenerSubscriptionLog.update).not.toHaveBeenCalled()
+      expect(stockScreener.screenCodes).not.toHaveBeenCalled()
+      expect(eventsGateway.emitToUser).not.toHaveBeenCalled()
+    })
+
+    it('并发创建同一 runKey 的唯一冲突会拒绝 job 重试，不误标记为完成', async () => {
+      const sub = buildSub()
+      const runKey = buildSubscriptionRunKey(sub.id, '20260803', sub.ruleVersion)
+      prisma.screenerSubscription.findUnique.mockResolvedValue(sub as never)
+      prisma.screenerSubscriptionLog.findUnique
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({ id: 104, runKey, status: SubscriptionRunStatus.RUNNING } as never)
+      prisma.screenerSubscriptionLog.create.mockRejectedValue(
+        new Prisma.PrismaClientKnownRequestError('duplicate run key', { code: 'P2002', clientVersion: 'test' }),
+      )
+
+      await expect(
+        processor.process(
+          makeJob(ScreenerSubscriptionJobName.EXECUTE_SUBSCRIPTION, {
+            subscriptionId: sub.id,
+            tradeDate: '20260803',
+            ruleVersion: sub.ruleVersion,
+          }),
+        ),
+      ).rejects.toThrow(`Subscription run ${runKey} is already in progress`)
+
+      expect(stockScreener.screenCodes).not.toHaveBeenCalled()
+      expect(prisma.screenerSubscription.updateMany).toHaveBeenCalledTimes(1)
+      expect(prisma.screenerSubscriptionLog.update).not.toHaveBeenCalled()
+      expect(eventsGateway.emitToUser).not.toHaveBeenCalled()
+    })
+
+    it('失败 run 由原子 updateMany 重新领取后可重试', async () => {
+      const sub = buildSub()
+      const runKey = buildSubscriptionRunKey(sub.id, '20260803', sub.ruleVersion)
+      prisma.screenerSubscription.findUnique.mockResolvedValue(sub as never)
+      prisma.screenerSubscriptionLog.findUnique.mockResolvedValue({
+        id: 104,
+        runKey,
+        status: SubscriptionRunStatus.FAILED,
+      } as never)
+      prisma.screenerSubscriptionLog.updateMany.mockResolvedValue({ count: 1 } as never)
+      stockScreener.screenCodes.mockResolvedValue({
+        tradeDate: '20260803',
+        total: 2,
+        matchedCodes: ['000001.SZ', '000002.SZ'],
+      })
+      triggerPlanner.planCollection.mockReturnValue(buildPlan())
+
+      await processor.process(
+        makeJob(ScreenerSubscriptionJobName.EXECUTE_SUBSCRIPTION, {
+          subscriptionId: sub.id,
+          tradeDate: '20260803',
+          ruleVersion: sub.ruleVersion,
+        }),
+      )
+
+      expect(prisma.screenerSubscriptionLog.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ id: 104 }),
+          data: expect.objectContaining({ status: SubscriptionRunStatus.RUNNING }),
+        }),
+      )
+      expect(prisma.screenerSubscriptionLog.create).not.toHaveBeenCalled()
+      expect(stockScreener.screenCodes).toHaveBeenCalledTimes(1)
+    })
+
+    it('规则校验失败写入 RULE_INVALID、递增失败并抛给 BullMQ 重试', async () => {
+      const sub = buildSub({ consecutiveFails: 1 })
+      const runKey = buildSubscriptionRunKey(sub.id, '20260803', sub.ruleVersion)
+      prisma.screenerSubscription.findUnique
+        .mockResolvedValueOnce(sub as never)
+        .mockResolvedValueOnce({ consecutiveFails: 2 } as never)
+      prisma.screenerSubscription.updateMany
+        .mockResolvedValueOnce({ count: 1 } as never)
+        .mockResolvedValueOnce({ count: 0 } as never)
+      prisma.screenerSubscriptionLog.create.mockResolvedValue({ id: 105, runKey } as never)
+      stockScreener.screenCodes.mockResolvedValue({ tradeDate: '20260803', total: 1, matchedCodes: ['000001.SZ'] })
+      triggerPlanner.planCollection.mockImplementation(() => {
+        throw new RuleSpecValidationException([
+          { code: 'TRIGGER_MODE_INVALID', path: '$.triggerSpec.mode', message: 'mode 无效' },
+        ])
+      })
+
+      await expect(
+        processor.process(
+          makeJob(ScreenerSubscriptionJobName.EXECUTE_SUBSCRIPTION, {
+            subscriptionId: sub.id,
+            tradeDate: '20260803',
+            ruleVersion: sub.ruleVersion,
+          }),
+        ),
+      ).rejects.toMatchObject({ code: 'RULE_INVALID', message: '订阅规则无效' })
+
+      expect(prisma.screenerSubscription.updateMany).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({
+          where: expect.objectContaining({
+            id: sub.id,
+            ruleVersion: sub.ruleVersion,
+            status: SubscriptionStatus.ACTIVE,
+          }),
+          data: { consecutiveFails: { increment: 1 } },
+        }),
+      )
+      expect(prisma.screenerSubscriptionLog.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ id: 105, status: SubscriptionRunStatus.RUNNING }),
+          data: expect.objectContaining({
+            status: SubscriptionRunStatus.FAILED,
+            errorCode: 'RULE_INVALID',
+            errorMessage: '订阅规则无效',
+          }),
+        }),
+      )
+      expect(eventsGateway.emitToUser).not.toHaveBeenCalled()
+    })
+
+    it(`第 ${MAX_CONSECUTIVE_FAILS} 次评估失败转 ERROR，写 EVALUATION_FAILED 并通知一次`, async () => {
       const sub = buildSub({ consecutiveFails: MAX_CONSECUTIVE_FAILS - 1 })
-      prisma.screenerSubscription.findUnique.mockResolvedValue(sub as never)
-      prisma.screenerSubscription.update.mockResolvedValue({} as never)
-      prisma.screenerSubscriptionLog.create.mockResolvedValue({} as never)
-      stockService.screener.mockRejectedValue(new Error('fail again'))
+      const runKey = buildSubscriptionRunKey(sub.id, '20260803', sub.ruleVersion)
+      prisma.screenerSubscription.findUnique
+        .mockResolvedValueOnce(sub as never)
+        .mockResolvedValueOnce({ consecutiveFails: MAX_CONSECUTIVE_FAILS } as never)
+      prisma.screenerSubscription.updateMany
+        .mockResolvedValueOnce({ count: 1 } as never)
+        .mockResolvedValueOnce({ count: 1 } as never)
+      prisma.screenerSubscriptionLog.create.mockResolvedValue({ id: 106, runKey } as never)
+      stockScreener.screenCodes.mockRejectedValue(new Error('database detail must not leak'))
 
-      const job = makeJob(ScreenerSubscriptionJobName.EXECUTE_SUBSCRIPTION, {
-        subscriptionId: 1,
-        tradeDate: '2026-04-09',
-      })
-      await processor.process(job)
+      await expect(
+        processor.process(
+          makeJob(ScreenerSubscriptionJobName.EXECUTE_SUBSCRIPTION, {
+            subscriptionId: sub.id,
+            tradeDate: '20260803',
+            ruleVersion: sub.ruleVersion,
+          }),
+        ),
+      ).rejects.toMatchObject({ code: 'EVALUATION_FAILED', message: '订阅规则执行失败' })
 
-      expect(prisma.screenerSubscription.update).toHaveBeenCalledWith(
+      expect(prisma.screenerSubscription.updateMany).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({ data: { consecutiveFails: { increment: 1 } } }),
+      )
+      expect(prisma.screenerSubscription.updateMany).toHaveBeenNthCalledWith(
+        3,
         expect.objectContaining({
-          data: expect.objectContaining({ status: SubscriptionStatus.ERROR }),
+          where: expect.objectContaining({ consecutiveFails: { gte: MAX_CONSECUTIVE_FAILS } }),
+          data: { status: SubscriptionStatus.ERROR },
+        }),
+      )
+      expect(prisma.screenerSubscriptionLog.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ status: SubscriptionRunStatus.FAILED, errorCode: 'EVALUATION_FAILED' }),
+        }),
+      )
+      expect(eventsGateway.emitToUser).toHaveBeenCalledWith(
+        sub.userId,
+        'screener_subscription_failed',
+        expect.objectContaining({
+          subscriptionId: sub.id,
+          tradeDate: '20260803',
+          errorCode: 'EVALUATION_FAILED',
+          error: '订阅规则执行失败',
+          consecutiveFails: MAX_CONSECUTIVE_FAILS,
         }),
       )
     })
   })
-
-  // ── BATCH_EXECUTE ─────────────────────────────────────────────────────────
 
   describe('batch_execute', () => {
-    it('查询所有 ACTIVE+DAILY 订阅，逐一执行', async () => {
-      const subs = [buildSub({ id: 1 }), buildSub({ id: 2 })]
-      prisma.screenerSubscription.findMany.mockResolvedValueOnce(subs as never)
-      // 每次 findUnique 返回对应订阅
-      prisma.screenerSubscription.findUnique
-        .mockResolvedValueOnce(subs[0] as never)
-        .mockResolvedValueOnce(subs[1] as never)
-      prisma.screenerSubscription.update.mockResolvedValue({} as never)
-      prisma.screenerSubscriptionLog.create.mockResolvedValue({} as never)
-      stockService.screener.mockResolvedValue({ list: [] } as never)
+    it('按页只 fan-out 单订阅 job，携带规则版本与 BullMQ retry 策略', async () => {
+      prisma.screenerSubscription.findMany
+        .mockResolvedValueOnce([
+          { id: 1, ruleVersion: 2 },
+          { id: 2, ruleVersion: 4 },
+        ] as never)
+        .mockResolvedValueOnce([{ id: 3, ruleVersion: 1 }] as never)
+        .mockResolvedValueOnce([] as never)
 
-      const job = makeJob(ScreenerSubscriptionJobName.BATCH_EXECUTE, {
-        frequency: SubscriptionFrequency.DAILY,
-        tradeDate: '2026-04-09',
-      })
-      await processor.process(job)
-
-      expect(prisma.screenerSubscription.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: { status: SubscriptionStatus.ACTIVE, frequency: SubscriptionFrequency.DAILY },
+      await processor.process(
+        makeJob(ScreenerSubscriptionJobName.BATCH_EXECUTE, {
+          frequency: SubscriptionFrequency.DAILY,
+          tradeDate: '20260803',
         }),
       )
-      expect(stockService.screener).toHaveBeenCalledTimes(2)
+
+      expect(prisma.screenerSubscription.findMany).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({
+          where: { status: SubscriptionStatus.ACTIVE, frequency: SubscriptionFrequency.DAILY },
+          select: { id: true, ruleVersion: true },
+          orderBy: { id: 'asc' },
+          take: 100,
+        }),
+      )
+      expect(prisma.screenerSubscription.findMany).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({ cursor: { id: 2 }, skip: 1 }),
+      )
+      expect(queue.addBulk).toHaveBeenNthCalledWith(1, [
+        expect.objectContaining({
+          name: ScreenerSubscriptionJobName.EXECUTE_SUBSCRIPTION,
+          data: {
+            subscriptionId: 1,
+            tradeDate: '20260803',
+            ruleVersion: 2,
+            expectedFrequency: SubscriptionFrequency.DAILY,
+          },
+          opts: {
+            jobId: buildSubscriptionQueueJobId(1, '20260803', 2),
+            attempts: MAX_CONSECUTIVE_FAILS + 1,
+            backoff: { type: 'exponential', delay: 30_000 },
+            removeOnComplete: 50,
+            removeOnFail: true,
+          },
+        }),
+        expect.objectContaining({
+          data: {
+            subscriptionId: 2,
+            tradeDate: '20260803',
+            ruleVersion: 4,
+            expectedFrequency: SubscriptionFrequency.DAILY,
+          },
+          opts: expect.objectContaining({ jobId: buildSubscriptionQueueJobId(2, '20260803', 4) }),
+        }),
+      ])
+      expect(queue.addBulk).toHaveBeenNthCalledWith(2, [
+        expect.objectContaining({
+          data: {
+            subscriptionId: 3,
+            tradeDate: '20260803',
+            ruleVersion: 1,
+            expectedFrequency: SubscriptionFrequency.DAILY,
+          },
+          opts: expect.objectContaining({ jobId: buildSubscriptionQueueJobId(3, '20260803', 1) }),
+        }),
+      ])
+      expect(stockScreener.screenCodes).not.toHaveBeenCalled()
     })
 
-    it('单个订阅执行失败 → 不影响其他订阅', async () => {
-      const subs = [buildSub({ id: 1 }), buildSub({ id: 2 })]
-      prisma.screenerSubscription.findMany.mockResolvedValueOnce(subs as never)
-      prisma.screenerSubscription.findUnique
-        .mockResolvedValueOnce(subs[0] as never)
-        .mockResolvedValueOnce(subs[1] as never)
-      prisma.screenerSubscription.update.mockResolvedValue({} as never)
-      prisma.screenerSubscriptionLog.create.mockResolvedValue({} as never)
-      stockService.screener.mockRejectedValueOnce(new Error('sub1 fail')).mockResolvedValueOnce({ list: [] } as never)
+    it('无活跃订阅时不创建队列 job', async () => {
+      prisma.screenerSubscription.findMany.mockResolvedValue([] as never)
 
-      const job = makeJob(ScreenerSubscriptionJobName.BATCH_EXECUTE, {
-        frequency: SubscriptionFrequency.DAILY,
-        tradeDate: '2026-04-09',
-      })
-      await expect(processor.process(job)).resolves.not.toThrow()
-      expect(stockService.screener).toHaveBeenCalledTimes(2)
-    })
+      await processor.process(
+        makeJob(ScreenerSubscriptionJobName.BATCH_EXECUTE, {
+          frequency: SubscriptionFrequency.MONTHLY,
+          tradeDate: '20260831',
+        }),
+      )
 
-    it('无活跃订阅 → 不调用 screener', async () => {
-      prisma.screenerSubscription.findMany.mockResolvedValueOnce([])
-      const job = makeJob(ScreenerSubscriptionJobName.BATCH_EXECUTE, {
-        frequency: SubscriptionFrequency.WEEKLY,
-        tradeDate: '2026-04-07',
-      })
-      await processor.process(job)
-      expect(stockService.screener).not.toHaveBeenCalled()
+      expect(queue.addBulk).not.toHaveBeenCalled()
+      expect(stockScreener.screenCodes).not.toHaveBeenCalled()
     })
   })
 
-  // ── 未知 job ──────────────────────────────────────────────────────────────
+  it('未知 job 直接返回，不评估或入队', async () => {
+    await expect(processor.process(makeJob('unknown', {}))).resolves.toBeUndefined()
 
-  it('process(unknown-job) — 直接返回，不抛出', async () => {
-    const job = makeJob('unknown', {})
-    await expect(processor.process(job)).resolves.not.toThrow()
-    expect(stockService.screener).not.toHaveBeenCalled()
+    expect(stockScreener.screenCodes).not.toHaveBeenCalled()
+    expect(queue.addBulk).not.toHaveBeenCalled()
   })
 })

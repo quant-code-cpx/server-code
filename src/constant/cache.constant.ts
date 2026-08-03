@@ -11,6 +11,7 @@ export const CACHE_NAMESPACE = {
   INDUSTRY_ROTATION: 'industry-rotation',
   INDUSTRY: 'industry',
   PORTFOLIO: 'portfolio',
+  STOCK_TECHNICAL_SIGNAL_STATISTICS: 'stock-technical-signal-statistics',
   TUSHARE_SYNC_OVERVIEW: 'tushare-sync-overview',
 } as const
 
@@ -21,6 +22,7 @@ export const CACHE_TTL_SECONDS = {
   STOCK_SEARCH: 10 * 60,
   STOCK_OVERVIEW: 10 * 60,
   STOCK_METADATA: 60 * 60,
+  STOCK_TECHNICAL_SIGNAL_STATISTICS: 24 * 60 * 60,
   TRADE_CALENDAR: 24 * 60 * 60,
 } as const
 
@@ -39,8 +41,15 @@ export const CACHE_KEY_PREFIX = {
   PORTFOLIO_PNL_TODAY: 'portfolio:pnl:today',
   PORTFOLIO_PNL_HIST: 'portfolio:pnl:hist',
   PORTFOLIO_RISK: 'portfolio:risk',
+  STOCK_TECHNICAL_SIGNAL_STATISTICS: 'stock:technical-signal:statistics',
 } as const
 
 export const MONITORED_CACHE_NAMESPACES = Object.values(CACHE_NAMESPACE)
 
-export const SYNC_INVALIDATION_PREFIXES = ['market:', 'factor:', 'ind-rotation:', 'portfolio:', 'stock:factors:'] as const
+export const SYNC_INVALIDATION_PREFIXES = [
+  'market:',
+  'factor:',
+  'ind-rotation:',
+  'portfolio:',
+  'stock:factors:',
+] as const

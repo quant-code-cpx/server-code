@@ -197,6 +197,36 @@ const BUILT_IN_PRESETS: ScreenerPreset[] = [
 
 const MAX_SCREENER_STRATEGIES = 20
 
+/**
+ * 条件订阅内部使用的无分页选股请求。
+ *
+ * `tradeDate` 固定本次评估可见的数据上限，格式为 YYYYMMDD。
+ * 它不是 Controller DTO，避免把订阅执行语义暴露为普通选股接口参数。
+ */
+export interface ScreenCodesOptions {
+  filters: ScreenerFiltersDto
+  tradeDate: string
+}
+
+/** 条件订阅评估所需的完整命中集合。 */
+export interface ScreenCodesResult {
+  tradeDate: string
+  total: number
+  matchedCodes: string[]
+}
+
+interface ScreenerFilterContext {
+  valuationConditions: Prisma.Sql[]
+  marketConditions: Prisma.Sql[]
+  financialConditions: Prisma.Sql[]
+  moneyflowConditions: Prisma.Sql[]
+  technicalConditions: Prisma.Sql[]
+  needsBuySignalScore: boolean
+  needsConceptJoin: boolean
+  needsNorthboundJoin: boolean
+  whereClause: Prisma.Sql
+}
+
 @Injectable()
 export class StockScreenerService {
   constructor(
@@ -211,164 +241,17 @@ export class StockScreenerService {
     const sortBy = query.sortBy ?? ScreenerSortBy.TOTAL_MV
     const sortOrder = query.sortOrder ?? 'desc'
 
-    const stockConditions: Prisma.Sql[] = [Prisma.sql`sb.list_status = 'L'`]
-    const valuationConditions: Prisma.Sql[] = []
-    const marketConditions: Prisma.Sql[] = []
-    const financialConditions: Prisma.Sql[] = []
-    const moneyflowConditions: Prisma.Sql[] = []
-    const technicalConditions: Prisma.Sql[] = []
-
-    if (query.exchange) stockConditions.push(Prisma.sql`sb.exchange = ${query.exchange}::"StockExchange"`)
-    if (query.market) stockConditions.push(Prisma.sql`sb.market = ${query.market}`)
-    // 多行业/多地域优先于单选
-    if (query.industries?.length) {
-      stockConditions.push(Prisma.sql`sb.industry = ANY(${query.industries})`)
-    } else if (query.industry) {
-      stockConditions.push(Prisma.sql`sb.industry = ${query.industry}`)
-    }
-    if (query.areas?.length) {
-      stockConditions.push(Prisma.sql`sb.area = ANY(${query.areas})`)
-    } else if (query.area) {
-      stockConditions.push(Prisma.sql`sb.area = ${query.area}`)
-    }
-    if (query.isHs) stockConditions.push(Prisma.sql`sb.is_hs = ${query.isHs}`)
-
-    // 估值
-    if (query.minPeTtm !== undefined) valuationConditions.push(Prisma.sql`db.pe_ttm >= ${query.minPeTtm}`)
-    if (query.maxPeTtm !== undefined) valuationConditions.push(Prisma.sql`db.pe_ttm <= ${query.maxPeTtm}`)
-    if (query.minPb !== undefined) valuationConditions.push(Prisma.sql`db.pb >= ${query.minPb}`)
-    if (query.maxPb !== undefined) valuationConditions.push(Prisma.sql`db.pb <= ${query.maxPb}`)
-    if (query.minDvTtm !== undefined) valuationConditions.push(Prisma.sql`db.dv_ttm >= ${query.minDvTtm}`)
-    if (query.minTotalMv !== undefined) valuationConditions.push(Prisma.sql`db.total_mv >= ${query.minTotalMv}`)
-    if (query.maxTotalMv !== undefined) valuationConditions.push(Prisma.sql`db.total_mv <= ${query.maxTotalMv}`)
-    if (query.minCircMv !== undefined) valuationConditions.push(Prisma.sql`db.circ_mv >= ${query.minCircMv}`)
-    if (query.maxCircMv !== undefined) valuationConditions.push(Prisma.sql`db.circ_mv <= ${query.maxCircMv}`)
-    if (query.minPsTtm !== undefined) valuationConditions.push(Prisma.sql`db.ps_ttm >= ${query.minPsTtm}`)
-    if (query.maxPsTtm !== undefined) valuationConditions.push(Prisma.sql`db.ps_ttm <= ${query.maxPsTtm}`)
-    if (query.minTurnoverRate !== undefined)
-      valuationConditions.push(Prisma.sql`db.turnover_rate >= ${query.minTurnoverRate}`)
-    if (query.maxTurnoverRate !== undefined)
-      valuationConditions.push(Prisma.sql`db.turnover_rate <= ${query.maxTurnoverRate}`)
-
-    // 行情
-    if (query.minPctChg !== undefined) marketConditions.push(Prisma.sql`d.pct_chg >= ${query.minPctChg}`)
-    if (query.maxPctChg !== undefined) marketConditions.push(Prisma.sql`d.pct_chg <= ${query.maxPctChg}`)
-    if (query.minAmount !== undefined) marketConditions.push(Prisma.sql`d.amount >= ${query.minAmount}`)
-    if (query.maxAmount !== undefined) marketConditions.push(Prisma.sql`d.amount <= ${query.maxAmount}`)
-
-    // 成长
-    if (query.minRevenueYoy !== undefined)
-      financialConditions.push(Prisma.sql`fi.revenue_yoy >= ${query.minRevenueYoy}`)
-    if (query.maxRevenueYoy !== undefined)
-      financialConditions.push(Prisma.sql`fi.revenue_yoy <= ${query.maxRevenueYoy}`)
-    if (query.minNetprofitYoy !== undefined)
-      financialConditions.push(Prisma.sql`fi.netprofit_yoy >= ${query.minNetprofitYoy}`)
-    if (query.maxNetprofitYoy !== undefined)
-      financialConditions.push(Prisma.sql`fi.netprofit_yoy <= ${query.maxNetprofitYoy}`)
-
-    // 盈利
-    if (query.minRoe !== undefined) financialConditions.push(Prisma.sql`fi.roe >= ${query.minRoe}`)
-    if (query.maxRoe !== undefined) financialConditions.push(Prisma.sql`fi.roe <= ${query.maxRoe}`)
-    if (query.minGrossMargin !== undefined)
-      financialConditions.push(Prisma.sql`fi.grossprofit_margin >= ${query.minGrossMargin}`)
-    if (query.maxGrossMargin !== undefined)
-      financialConditions.push(Prisma.sql`fi.grossprofit_margin <= ${query.maxGrossMargin}`)
-    if (query.minNetMargin !== undefined)
-      financialConditions.push(Prisma.sql`fi.netprofit_margin >= ${query.minNetMargin}`)
-    if (query.maxNetMargin !== undefined)
-      financialConditions.push(Prisma.sql`fi.netprofit_margin <= ${query.maxNetMargin}`)
-
-    // 财务健康
-    if (query.maxDebtToAssets !== undefined)
-      financialConditions.push(Prisma.sql`fi.debt_to_assets <= ${query.maxDebtToAssets}`)
-    if (query.minCurrentRatio !== undefined)
-      financialConditions.push(Prisma.sql`fi.current_ratio >= ${query.minCurrentRatio}`)
-    if (query.minQuickRatio !== undefined)
-      financialConditions.push(Prisma.sql`fi.quick_ratio >= ${query.minQuickRatio}`)
-
-    // 现金流
-    if (query.minOcfToNetprofit !== undefined) {
-      financialConditions.push(Prisma.sql`fi.ocf_to_netprofit >= ${query.minOcfToNetprofit}`)
-    }
-
-    // 资金流
-    if (query.minMainNetInflow5d !== undefined) {
-      moneyflowConditions.push(Prisma.sql`mf_agg.main_net_5d >= ${query.minMainNetInflow5d}`)
-    }
-    if (query.minMainNetInflow20d !== undefined) {
-      moneyflowConditions.push(Prisma.sql`mf_agg.main_net_20d >= ${query.minMainNetInflow20d}`)
-    }
-
-    const needsBuySignalScore =
-      query.minBuySignalCount !== undefined || sortBy === ScreenerSortBy.BUY_SIGNAL_COUNT
-    if (query.minBuySignalCount !== undefined) {
-      technicalConditions.push(Prisma.sql`${BUY_SIGNAL_COUNT_SQL} >= ${query.minBuySignalCount}`)
-    }
-
-    // 技术指标
-    if (query.minRsi6 !== undefined) technicalConditions.push(Prisma.sql`stf.rsi_6 >= ${query.minRsi6}`)
-    if (query.maxRsi6 !== undefined) technicalConditions.push(Prisma.sql`stf.rsi_6 <= ${query.maxRsi6}`)
-    if (query.macdSignal === 'golden_cross') {
-      // 当日 DIF 上穿 DEA：当日 dif > dea，前日 dif <= dea（使用 LATERAL 中已预取的 prev 列，无额外子查询）
-      technicalConditions.push(Prisma.sql`stf.macd_dif > stf.macd_dea`)
-      technicalConditions.push(Prisma.sql`(stf.prev_macd_dif - stf.prev_macd_dea) <= 0`)
-    } else if (query.macdSignal === 'death_cross') {
-      technicalConditions.push(Prisma.sql`stf.macd_dif < stf.macd_dea`)
-      technicalConditions.push(Prisma.sql`(stf.prev_macd_dif - stf.prev_macd_dea) >= 0`)
-    } else if (query.macdSignal === 'above_zero') {
-      technicalConditions.push(Prisma.sql`stf.macd_dif > 0`)
-    } else if (query.macdSignal === 'below_zero') {
-      technicalConditions.push(Prisma.sql`stf.macd_dif < 0`)
-    }
-    if (query.kdjSignal === 'overbought') {
-      technicalConditions.push(Prisma.sql`stf.kdj_j > 100`)
-    } else if (query.kdjSignal === 'oversold') {
-      technicalConditions.push(Prisma.sql`stf.kdj_j < 0`)
-    } else if (query.kdjSignal === 'golden_cross') {
-      technicalConditions.push(Prisma.sql`stf.kdj_k > stf.kdj_d`)
-      technicalConditions.push(Prisma.sql`(stf.prev_kdj_k - stf.prev_kdj_d) <= 0`)
-    } else if (query.kdjSignal === 'death_cross') {
-      technicalConditions.push(Prisma.sql`stf.kdj_k < stf.kdj_d`)
-      technicalConditions.push(Prisma.sql`(stf.prev_kdj_k - stf.prev_kdj_d) >= 0`)
-    }
-    if (query.rsiSignal === 'overbought') {
-      technicalConditions.push(Prisma.sql`stf.rsi_6 > 80`)
-    } else if (query.rsiSignal === 'oversold') {
-      technicalConditions.push(Prisma.sql`stf.rsi_6 < 20`)
-    }
-    // 布林带信号
-    if (query.bollSignal === 'above_upper') {
-      technicalConditions.push(Prisma.sql`d.close > stf.boll_upper`)
-    } else if (query.bollSignal === 'below_lower') {
-      technicalConditions.push(Prisma.sql`d.close < stf.boll_lower`)
-    } else if (query.bollSignal === 'squeeze') {
-      technicalConditions.push(Prisma.sql`(stf.boll_upper - stf.boll_lower) < stf.boll_mid * ${BOLL_SQUEEZE_THRESHOLD}`)
-    }
-    // 均线趋势（使用 boll_mid 作为 MA20 近似值，因为布林带中轨即为 20 日均线）
-    if (query.maTrend === 'bullish') {
-      technicalConditions.push(Prisma.sql`d.close > stf.boll_mid`)
-      technicalConditions.push(Prisma.sql`stf.macd_dif > 0`)
-    } else if (query.maTrend === 'bearish') {
-      technicalConditions.push(Prisma.sql`d.close < stf.boll_mid`)
-      technicalConditions.push(Prisma.sql`stf.macd_dif < 0`)
-    }
-
-    // 概念板块
-    const needsConceptJoin = query.conceptCodes && query.conceptCodes.length > 0
-    // 北向资金
-    const needsNorthboundJoin = query.northboundOnly === true
-
-    const whereClause = Prisma.sql`WHERE ${Prisma.join(
-      [
-        ...stockConditions,
-        ...valuationConditions,
-        ...marketConditions,
-        ...financialConditions,
-        ...moneyflowConditions,
-        ...technicalConditions,
-      ],
-      ' AND ',
-    )}`
+    const {
+      valuationConditions,
+      marketConditions,
+      financialConditions,
+      moneyflowConditions,
+      technicalConditions,
+      needsBuySignalScore,
+      needsConceptJoin,
+      needsNorthboundJoin,
+      whereClause,
+    } = this.buildScreenerFilterContext(query, sortBy)
     const sortCol = Prisma.raw(SCREENER_SORT_MAP[sortBy])
     const sortDir = Prisma.raw(sortOrder === 'asc' ? 'ASC NULLS LAST' : 'DESC NULLS LAST')
 
@@ -591,7 +474,7 @@ export class StockScreenerService {
 
     // 批量查询概念板块名称（仅对返回的结果集查询，避免 N+1）
     const tsCodes = items.map((r) => r.tsCode)
-    let conceptMap: Map<string, string[]> = new Map()
+    const conceptMap: Map<string, string[]> = new Map()
     if (tsCodes.length > 0) {
       interface ConceptRow {
         conCode: string
@@ -652,6 +535,351 @@ export class StockScreenerService {
         buySignals: Array.isArray(r.buySignals) ? r.buySignals : null,
         concepts: conceptMap.get(r.tsCode) ?? null,
       })),
+    }
+  }
+
+  /**
+   * 条件订阅使用的完整命中代码集合。
+   *
+   * 此方法不复用 Controller 分页结果；每个时序数据源均限制到 `tradeDate`，
+   * 财务数据以公告日而非报告期限制，避免把未来已披露的数据带入历史评估。
+   */
+  async screenCodes({ filters, tradeDate }: ScreenCodesOptions): Promise<ScreenCodesResult> {
+    if (!/^\d{8}$/.test(tradeDate)) {
+      throw new BadRequestException('tradeDate 格式应为 YYYYMMDD')
+    }
+
+    const {
+      valuationConditions,
+      marketConditions,
+      financialConditions,
+      moneyflowConditions,
+      technicalConditions,
+      needsBuySignalScore,
+      needsConceptJoin,
+      needsNorthboundJoin,
+      whereClause,
+    } = this.buildScreenerFilterContext(filters, undefined, tradeDate)
+
+    const valuationJoin = Prisma.sql`
+      LEFT JOIN LATERAL (
+        SELECT pe_ttm, pb, ps_ttm, dv_ttm, total_mv, circ_mv, turnover_rate
+        FROM stock_daily_valuation_metrics
+        WHERE ts_code = sb.ts_code
+          AND trade_date <= ${tradeDate}::date
+        ORDER BY trade_date DESC
+        LIMIT 1
+      ) db ON true`
+
+    const marketJoin = Prisma.sql`
+      LEFT JOIN LATERAL (
+        SELECT close, pct_chg, amount
+        FROM stock_daily_prices
+        WHERE ts_code = sb.ts_code
+          AND trade_date <= ${tradeDate}::date
+        ORDER BY trade_date DESC
+        LIMIT 1
+      ) d ON true`
+
+    const financialJoin = Prisma.sql`
+      LEFT JOIN LATERAL (
+        SELECT roe, grossprofit_margin, netprofit_margin,
+               revenue_yoy, netprofit_yoy, debt_to_assets,
+               current_ratio, quick_ratio, ocf_to_netprofit
+        FROM financial_indicator_snapshots
+        WHERE ts_code = sb.ts_code
+          AND ann_date IS NOT NULL
+          AND ann_date <= ${tradeDate}::date
+        ORDER BY ann_date DESC, end_date DESC
+        LIMIT 1
+      ) fi ON true`
+
+    const moneyflowAggregateJoin = Prisma.sql`
+      LEFT JOIN LATERAL (
+        SELECT
+          SUM(CASE WHEN rn <= 5 THEN
+            (COALESCE(buy_elg_amount, 0) - COALESCE(sell_elg_amount, 0)
+             + COALESCE(buy_lg_amount, 0) - COALESCE(sell_lg_amount, 0))
+          ELSE 0 END) AS main_net_5d,
+          SUM(CASE WHEN rn <= 20 THEN
+            (COALESCE(buy_elg_amount, 0) - COALESCE(sell_elg_amount, 0)
+             + COALESCE(buy_lg_amount, 0) - COALESCE(sell_lg_amount, 0))
+          ELSE 0 END) AS main_net_20d
+        FROM (
+          SELECT *, ROW_NUMBER() OVER (ORDER BY trade_date DESC) AS rn
+          FROM stock_capital_flows
+          WHERE ts_code = sb.ts_code
+            AND trade_date <= ${tradeDate}::date
+        ) sub
+        WHERE rn <= 20
+      ) mf_agg ON true`
+
+    const technicalFactorJoin = Prisma.sql`
+      LEFT JOIN LATERAL (
+        SELECT
+          MAX(CASE WHEN rn = 1 THEN macd_dif   END) AS macd_dif,
+          MAX(CASE WHEN rn = 1 THEN macd_dea   END) AS macd_dea,
+          MAX(CASE WHEN rn = 1 THEN kdj_k      END) AS kdj_k,
+          MAX(CASE WHEN rn = 1 THEN kdj_d      END) AS kdj_d,
+          MAX(CASE WHEN rn = 1 THEN kdj_j      END) AS kdj_j,
+          MAX(CASE WHEN rn = 1 THEN rsi_6      END) AS rsi_6,
+          MAX(CASE WHEN rn = 1 THEN boll_upper END) AS boll_upper,
+          MAX(CASE WHEN rn = 1 THEN boll_mid   END) AS boll_mid,
+          MAX(CASE WHEN rn = 1 THEN boll_lower END) AS boll_lower,
+          MAX(CASE WHEN rn = 2 THEN macd_dif   END) AS prev_macd_dif,
+          MAX(CASE WHEN rn = 2 THEN macd_dea   END) AS prev_macd_dea,
+          MAX(CASE WHEN rn = 2 THEN kdj_k      END) AS prev_kdj_k,
+          MAX(CASE WHEN rn = 2 THEN kdj_d      END) AS prev_kdj_d
+        FROM (
+          SELECT macd_dif, macd_dea, kdj_k, kdj_d, kdj_j, rsi_6,
+                 boll_upper, boll_mid, boll_lower,
+                 ROW_NUMBER() OVER (ORDER BY trade_date DESC) AS rn
+          FROM stock_technical_factors stf_inner
+          WHERE stf_inner.ts_code = sb.ts_code
+            AND stf_inner.trade_date <= ${tradeDate}::date
+          ORDER BY trade_date DESC
+          LIMIT 2
+        ) ranked
+      ) stf ON true`
+
+    // 同花顺成员表当前没有有效期字段；此处至少禁止读取评估日之后同步的数据。
+    const conceptJoinSql = needsConceptJoin
+      ? Prisma.sql`INNER JOIN ths_index_members tm ON tm.con_code = sb.ts_code
+          AND tm.is_new = 'Y'
+          AND tm.ts_code = ANY(${filters.conceptCodes!})
+          AND tm.synced_at < (${tradeDate}::date + INTERVAL '1 day')`
+      : Prisma.empty
+
+    const northboundJoinSql = needsNorthboundJoin
+      ? Prisma.sql`INNER JOIN LATERAL (
+          SELECT vol
+          FROM hk_hold_detail
+          WHERE ts_code = sb.ts_code
+            AND trade_date <= ${tradeDate}::date
+          ORDER BY trade_date DESC
+          LIMIT 1
+        ) hk ON hk.vol > 0`
+      : Prisma.empty
+
+    // 完整集合不代表要无条件扫描全部时序表。只拼接当前筛选表达式实际引用的 source，
+    // 保证与分页接口同一条件语义，同时避免每条订阅都对全市场执行无用 LATERAL 查询。
+    const technicalNeedsMarketAlias =
+      filters.bollSignal === 'above_upper' ||
+      filters.bollSignal === 'below_lower' ||
+      filters.maTrend === 'bullish' ||
+      filters.maTrend === 'bearish' ||
+      needsBuySignalScore
+    const screenValuationJoin = valuationConditions.length > 0 ? valuationJoin : Prisma.empty
+    const screenMarketJoin = marketConditions.length > 0 || technicalNeedsMarketAlias ? marketJoin : Prisma.empty
+    const screenFinancialJoin = financialConditions.length > 0 ? financialJoin : Prisma.empty
+    const screenMoneyflowJoin = moneyflowConditions.length > 0 ? moneyflowAggregateJoin : Prisma.empty
+    const screenTechnicalJoin = technicalConditions.length > 0 ? technicalFactorJoin : Prisma.empty
+
+    interface ScreenCodeRow {
+      tsCode: string
+    }
+
+    const rows = await this.prisma.$queryRaw<ScreenCodeRow[]>`
+      SELECT DISTINCT sb.ts_code AS "tsCode"
+      FROM stock_basic_profiles sb
+      ${screenValuationJoin}
+      ${screenMarketJoin}
+      ${screenFinancialJoin}
+      ${screenMoneyflowJoin}
+      ${screenTechnicalJoin}
+      ${conceptJoinSql}
+      ${northboundJoinSql}
+      ${whereClause}
+      ORDER BY sb.ts_code ASC
+    `
+
+    return {
+      tradeDate,
+      total: rows.length,
+      matchedCodes: rows.map((row) => row.tsCode),
+    }
+  }
+
+  /** 公共选股接口与订阅执行共享的筛选条件构建器。 */
+  private buildScreenerFilterContext(
+    query: ScreenerFiltersDto,
+    sortBy?: ScreenerSortBy,
+    tradeDate?: string,
+  ): ScreenerFilterContext {
+    // 普通接口延续“当前上市”语义；订阅/回放传入 tradeDate 时，改用上市、退市日期
+    // 还原该日可交易 universe，避免今天的 list_status 影响历史评估。
+    const stockConditions: Prisma.Sql[] = [
+      tradeDate
+        ? Prisma.sql`
+            (sb.list_date IS NULL OR sb.list_date <= ${tradeDate}::date)
+            AND (sb.delist_date IS NULL OR sb.delist_date > ${tradeDate}::date)
+          `
+        : Prisma.sql`sb.list_status = 'L'`,
+    ]
+    const valuationConditions: Prisma.Sql[] = []
+    const marketConditions: Prisma.Sql[] = []
+    const financialConditions: Prisma.Sql[] = []
+    const moneyflowConditions: Prisma.Sql[] = []
+    const technicalConditions: Prisma.Sql[] = []
+
+    if (query.exchange) stockConditions.push(Prisma.sql`sb.exchange = ${query.exchange}::"StockExchange"`)
+    if (query.market) stockConditions.push(Prisma.sql`sb.market = ${query.market}`)
+    // 多行业/多地域优先于单选
+    if (query.industries?.length) {
+      stockConditions.push(Prisma.sql`sb.industry = ANY(${query.industries})`)
+    } else if (query.industry) {
+      stockConditions.push(Prisma.sql`sb.industry = ${query.industry}`)
+    }
+    if (query.areas?.length) {
+      stockConditions.push(Prisma.sql`sb.area = ANY(${query.areas})`)
+    } else if (query.area) {
+      stockConditions.push(Prisma.sql`sb.area = ${query.area}`)
+    }
+    if (query.isHs) stockConditions.push(Prisma.sql`sb.is_hs = ${query.isHs}`)
+
+    // 估值
+    if (query.minPeTtm !== undefined) valuationConditions.push(Prisma.sql`db.pe_ttm >= ${query.minPeTtm}`)
+    if (query.maxPeTtm !== undefined) valuationConditions.push(Prisma.sql`db.pe_ttm <= ${query.maxPeTtm}`)
+    if (query.minPb !== undefined) valuationConditions.push(Prisma.sql`db.pb >= ${query.minPb}`)
+    if (query.maxPb !== undefined) valuationConditions.push(Prisma.sql`db.pb <= ${query.maxPb}`)
+    if (query.minDvTtm !== undefined) valuationConditions.push(Prisma.sql`db.dv_ttm >= ${query.minDvTtm}`)
+    if (query.minTotalMv !== undefined) valuationConditions.push(Prisma.sql`db.total_mv >= ${query.minTotalMv}`)
+    if (query.maxTotalMv !== undefined) valuationConditions.push(Prisma.sql`db.total_mv <= ${query.maxTotalMv}`)
+    if (query.minCircMv !== undefined) valuationConditions.push(Prisma.sql`db.circ_mv >= ${query.minCircMv}`)
+    if (query.maxCircMv !== undefined) valuationConditions.push(Prisma.sql`db.circ_mv <= ${query.maxCircMv}`)
+    if (query.minPsTtm !== undefined) valuationConditions.push(Prisma.sql`db.ps_ttm >= ${query.minPsTtm}`)
+    if (query.maxPsTtm !== undefined) valuationConditions.push(Prisma.sql`db.ps_ttm <= ${query.maxPsTtm}`)
+    if (query.minTurnoverRate !== undefined)
+      valuationConditions.push(Prisma.sql`db.turnover_rate >= ${query.minTurnoverRate}`)
+    if (query.maxTurnoverRate !== undefined)
+      valuationConditions.push(Prisma.sql`db.turnover_rate <= ${query.maxTurnoverRate}`)
+
+    // 行情
+    if (query.minPctChg !== undefined) marketConditions.push(Prisma.sql`d.pct_chg >= ${query.minPctChg}`)
+    if (query.maxPctChg !== undefined) marketConditions.push(Prisma.sql`d.pct_chg <= ${query.maxPctChg}`)
+    if (query.minAmount !== undefined) marketConditions.push(Prisma.sql`d.amount >= ${query.minAmount}`)
+    if (query.maxAmount !== undefined) marketConditions.push(Prisma.sql`d.amount <= ${query.maxAmount}`)
+
+    // 成长
+    if (query.minRevenueYoy !== undefined)
+      financialConditions.push(Prisma.sql`fi.revenue_yoy >= ${query.minRevenueYoy}`)
+    if (query.maxRevenueYoy !== undefined)
+      financialConditions.push(Prisma.sql`fi.revenue_yoy <= ${query.maxRevenueYoy}`)
+    if (query.minNetprofitYoy !== undefined)
+      financialConditions.push(Prisma.sql`fi.netprofit_yoy >= ${query.minNetprofitYoy}`)
+    if (query.maxNetprofitYoy !== undefined)
+      financialConditions.push(Prisma.sql`fi.netprofit_yoy <= ${query.maxNetprofitYoy}`)
+
+    // 盈利
+    if (query.minRoe !== undefined) financialConditions.push(Prisma.sql`fi.roe >= ${query.minRoe}`)
+    if (query.maxRoe !== undefined) financialConditions.push(Prisma.sql`fi.roe <= ${query.maxRoe}`)
+    if (query.minGrossMargin !== undefined)
+      financialConditions.push(Prisma.sql`fi.grossprofit_margin >= ${query.minGrossMargin}`)
+    if (query.maxGrossMargin !== undefined)
+      financialConditions.push(Prisma.sql`fi.grossprofit_margin <= ${query.maxGrossMargin}`)
+    if (query.minNetMargin !== undefined)
+      financialConditions.push(Prisma.sql`fi.netprofit_margin >= ${query.minNetMargin}`)
+    if (query.maxNetMargin !== undefined)
+      financialConditions.push(Prisma.sql`fi.netprofit_margin <= ${query.maxNetMargin}`)
+
+    // 财务健康
+    if (query.maxDebtToAssets !== undefined)
+      financialConditions.push(Prisma.sql`fi.debt_to_assets <= ${query.maxDebtToAssets}`)
+    if (query.minCurrentRatio !== undefined)
+      financialConditions.push(Prisma.sql`fi.current_ratio >= ${query.minCurrentRatio}`)
+    if (query.minQuickRatio !== undefined)
+      financialConditions.push(Prisma.sql`fi.quick_ratio >= ${query.minQuickRatio}`)
+
+    // 现金流
+    if (query.minOcfToNetprofit !== undefined) {
+      financialConditions.push(Prisma.sql`fi.ocf_to_netprofit >= ${query.minOcfToNetprofit}`)
+    }
+
+    // 资金流
+    if (query.minMainNetInflow5d !== undefined) {
+      moneyflowConditions.push(Prisma.sql`mf_agg.main_net_5d >= ${query.minMainNetInflow5d}`)
+    }
+    if (query.minMainNetInflow20d !== undefined) {
+      moneyflowConditions.push(Prisma.sql`mf_agg.main_net_20d >= ${query.minMainNetInflow20d}`)
+    }
+
+    const needsBuySignalScore = query.minBuySignalCount !== undefined || sortBy === ScreenerSortBy.BUY_SIGNAL_COUNT
+    if (query.minBuySignalCount !== undefined) {
+      technicalConditions.push(Prisma.sql`${BUY_SIGNAL_COUNT_SQL} >= ${query.minBuySignalCount}`)
+    }
+
+    // 技术指标
+    if (query.minRsi6 !== undefined) technicalConditions.push(Prisma.sql`stf.rsi_6 >= ${query.minRsi6}`)
+    if (query.maxRsi6 !== undefined) technicalConditions.push(Prisma.sql`stf.rsi_6 <= ${query.maxRsi6}`)
+    if (query.macdSignal === 'golden_cross') {
+      // 当日 DIF 上穿 DEA：当日 dif > dea，前日 dif <= dea（使用 LATERAL 中已预取的 prev 列，无额外子查询）
+      technicalConditions.push(Prisma.sql`stf.macd_dif > stf.macd_dea`)
+      technicalConditions.push(Prisma.sql`(stf.prev_macd_dif - stf.prev_macd_dea) <= 0`)
+    } else if (query.macdSignal === 'death_cross') {
+      technicalConditions.push(Prisma.sql`stf.macd_dif < stf.macd_dea`)
+      technicalConditions.push(Prisma.sql`(stf.prev_macd_dif - stf.prev_macd_dea) >= 0`)
+    } else if (query.macdSignal === 'above_zero') {
+      technicalConditions.push(Prisma.sql`stf.macd_dif > 0`)
+    } else if (query.macdSignal === 'below_zero') {
+      technicalConditions.push(Prisma.sql`stf.macd_dif < 0`)
+    }
+    if (query.kdjSignal === 'overbought') {
+      technicalConditions.push(Prisma.sql`stf.kdj_j > 100`)
+    } else if (query.kdjSignal === 'oversold') {
+      technicalConditions.push(Prisma.sql`stf.kdj_j < 0`)
+    } else if (query.kdjSignal === 'golden_cross') {
+      technicalConditions.push(Prisma.sql`stf.kdj_k > stf.kdj_d`)
+      technicalConditions.push(Prisma.sql`(stf.prev_kdj_k - stf.prev_kdj_d) <= 0`)
+    } else if (query.kdjSignal === 'death_cross') {
+      technicalConditions.push(Prisma.sql`stf.kdj_k < stf.kdj_d`)
+      technicalConditions.push(Prisma.sql`(stf.prev_kdj_k - stf.prev_kdj_d) >= 0`)
+    }
+    if (query.rsiSignal === 'overbought') {
+      technicalConditions.push(Prisma.sql`stf.rsi_6 > 80`)
+    } else if (query.rsiSignal === 'oversold') {
+      technicalConditions.push(Prisma.sql`stf.rsi_6 < 20`)
+    }
+    // 布林带信号
+    if (query.bollSignal === 'above_upper') {
+      technicalConditions.push(Prisma.sql`d.close > stf.boll_upper`)
+    } else if (query.bollSignal === 'below_lower') {
+      technicalConditions.push(Prisma.sql`d.close < stf.boll_lower`)
+    } else if (query.bollSignal === 'squeeze') {
+      technicalConditions.push(Prisma.sql`(stf.boll_upper - stf.boll_lower) < stf.boll_mid * ${BOLL_SQUEEZE_THRESHOLD}`)
+    }
+    // 均线趋势（使用 boll_mid 作为 MA20 近似值，因为布林带中轨即为 20 日均线）
+    if (query.maTrend === 'bullish') {
+      technicalConditions.push(Prisma.sql`d.close > stf.boll_mid`)
+      technicalConditions.push(Prisma.sql`stf.macd_dif > 0`)
+    } else if (query.maTrend === 'bearish') {
+      technicalConditions.push(Prisma.sql`d.close < stf.boll_mid`)
+      technicalConditions.push(Prisma.sql`stf.macd_dif < 0`)
+    }
+
+    const needsConceptJoin = (query.conceptCodes?.length ?? 0) > 0
+    const needsNorthboundJoin = query.northboundOnly === true
+    const whereClause = Prisma.sql`WHERE ${Prisma.join(
+      [
+        ...stockConditions,
+        ...valuationConditions,
+        ...marketConditions,
+        ...financialConditions,
+        ...moneyflowConditions,
+        ...technicalConditions,
+      ],
+      ' AND ',
+    )}`
+
+    return {
+      valuationConditions,
+      marketConditions,
+      financialConditions,
+      moneyflowConditions,
+      technicalConditions,
+      needsBuySignalScore,
+      needsConceptJoin,
+      needsNorthboundJoin,
+      whereClause,
     }
   }
 

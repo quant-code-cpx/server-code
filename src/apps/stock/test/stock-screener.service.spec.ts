@@ -66,7 +66,7 @@ function buildCacheServiceMock() {
 }
 
 function createService(prisma = buildPrismaMock(), cache = buildCacheServiceMock()): StockScreenerService {
-  // @ts-ignore 局部 mock，跳过 DI
+  // @ts-expect-error 局部 mock，跳过 DI
   return new StockScreenerService(prisma as PrismaService, cache as CacheService)
 }
 
@@ -306,6 +306,44 @@ describe('StockScreenerService', () => {
       const result = await service.screener({} as StockScreenerQueryDto)
       expect(result.items).toHaveLength(1)
       expect(result.items[0].concepts).toBeNull()
+    })
+  })
+
+  // ── screenCodes ────────────────────────────────────────────────────────────
+
+  describe('screenCodes()', () => {
+    it('命中超过 500 条时完整返回全部代码，不受 Controller 分页限制', async () => {
+      const prisma = buildPrismaMock()
+      const rows = Array.from({ length: 501 }, (_, index) => ({
+        tsCode: `${String(index).padStart(6, '0')}.SZ`,
+      }))
+      prisma.$queryRaw.mockResolvedValueOnce(rows)
+      const service = createService(prisma)
+
+      const result = await service.screenCodes({
+        filters: {},
+        tradeDate: '20260803',
+      })
+
+      expect(result).toEqual({
+        tradeDate: '20260803',
+        total: 501,
+        matchedCodes: rows.map((row) => row.tsCode),
+      })
+      expect(prisma.$queryRaw).toHaveBeenCalledTimes(1)
+    })
+
+    it('tradeDate 非 YYYYMMDD 时在查询前拒绝', async () => {
+      const prisma = buildPrismaMock()
+      const service = createService(prisma)
+
+      await expect(
+        service.screenCodes({
+          filters: {},
+          tradeDate: '2026-08-03',
+        }),
+      ).rejects.toThrow(BadRequestException)
+      expect(prisma.$queryRaw).not.toHaveBeenCalled()
     })
   })
 

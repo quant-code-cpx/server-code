@@ -8,6 +8,8 @@ import { ScreenerSubscriptionService } from './screener-subscription.service'
 import { ScreenerSubscriptionProcessor } from './screener-subscription.processor'
 import { ScreenerSubscriptionScheduler } from './screener-subscription.scheduler'
 import { buildProcessRoleConfig } from 'src/config/process-role.config'
+import { RuleFingerprintService, RuleNormalizerService, RuleSpecValidatorService, TriggerPlannerService } from './rule'
+import { SubscriptionDataReadinessService } from './subscription-data-readiness.service'
 
 const processRole = buildProcessRoleConfig(process.env)
 
@@ -17,6 +19,11 @@ const processRole = buildProcessRoleConfig(process.env)
   providers: [
     ScreenerSubscriptionService,
     ScreenerSubscriptionScheduler,
+    RuleSpecValidatorService,
+    RuleNormalizerService,
+    RuleFingerprintService,
+    TriggerPlannerService,
+    SubscriptionDataReadinessService,
     ...(processRole.queueWorkerEnabled ? [ScreenerSubscriptionProcessor] : []),
   ],
 })

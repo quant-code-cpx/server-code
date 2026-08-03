@@ -1,34 +1,48 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common'
 import { Test, TestingModule } from '@nestjs/testing'
-import { SubscriptionStatus } from '@prisma/client'
+import { Prisma, SubscriptionFrequency, SubscriptionRunStatus, SubscriptionStatus } from '@prisma/client'
 import { ScreenerSubscriptionService } from '../screener-subscription.service'
 import { PrismaService } from 'src/shared/prisma.service'
-import { SCREENER_SUBSCRIPTION_QUEUE } from 'src/constant/queue.constant'
+import { SCREENER_SUBSCRIPTION_QUEUE, ScreenerSubscriptionJobName } from 'src/constant/queue.constant'
 import { createMockPrismaService } from 'test/helpers/prisma-mock'
 import { getQueueToken } from '@nestjs/bullmq'
-import { MANUAL_TRIGGER_COOLDOWN_MS } from '../constants/subscription.constant'
+import {
+  buildSubscriptionQueueJobId,
+  MANUAL_TRIGGER_COOLDOWN_MS,
+  MAX_CONSECUTIVE_FAILS,
+} from '../constants/subscription.constant'
+import { RuleFingerprintService, RuleNormalizerService } from '../rule'
 
 describe('ScreenerSubscriptionService', () => {
   let service: ScreenerSubscriptionService
   let prisma: ReturnType<typeof createMockPrismaService>
-  let queue: { add: jest.Mock }
+  let queue: { add: jest.Mock; addBulk: jest.Mock }
+  let ruleNormalizer: jest.Mocked<Pick<RuleNormalizerService, 'normalizeLegacyStockScreeningRule'>>
+  let ruleFingerprint: jest.Mocked<Pick<RuleFingerprintService, 'create'>>
 
   beforeEach(async () => {
     prisma = createMockPrismaService()
-    queue = { add: jest.fn().mockResolvedValue({ id: 'job-1' }) }
+    queue = { add: jest.fn().mockResolvedValue({ id: 'job-1' }), addBulk: jest.fn().mockResolvedValue([]) }
+    ruleNormalizer = { normalizeLegacyStockScreeningRule: jest.fn().mockImplementation((filters) => filters as never) }
+    ruleFingerprint = { create: jest.fn().mockReturnValue({ fingerprint: 'legacy-rule-fingerprint' } as never) }
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ScreenerSubscriptionService,
         { provide: PrismaService, useValue: prisma },
         { provide: getQueueToken(SCREENER_SUBSCRIPTION_QUEUE), useValue: queue },
+        { provide: RuleNormalizerService, useValue: ruleNormalizer },
+        { provide: RuleFingerprintService, useValue: ruleFingerprint },
       ],
     }).compile()
 
     service = module.get(ScreenerSubscriptionService)
   })
 
-  afterEach(() => jest.clearAllMocks())
+  afterEach(() => {
+    jest.useRealTimers()
+    jest.clearAllMocks()
+  })
 
   // ── findAll ───────────────────────────────────────────────────────────────
 
@@ -54,6 +68,10 @@ describe('ScreenerSubscriptionService', () => {
 
     const result = await service.create(1, { name: '订阅1', filters: { minPe: 10 } })
     expect(result).toMatchObject({ id: 1, strategyName: null })
+    expect(prisma.screenerSubscription.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ ruleFingerprint: 'legacy-rule-fingerprint' }) }),
+    )
+    expect(ruleNormalizer.normalizeLegacyStockScreeningRule).toHaveBeenCalledWith({ minPe: 10 })
   })
 
   it('create — 用 strategyId → 取策略 filters', async () => {
@@ -101,6 +119,56 @@ describe('ScreenerSubscriptionService', () => {
   it('update — 不存在 → NotFoundException', async () => {
     prisma.screenerSubscription.findFirst.mockResolvedValue(null)
     await expect(service.update(1, 99, {})).rejects.toThrow(NotFoundException)
+  })
+
+  it('update — 筛选条件语义变化时递增 ruleVersion 并清空旧基线', async () => {
+    prisma.screenerSubscription.findFirst.mockResolvedValue({
+      id: 1,
+      filters: { minPe: 10, maxPb: 2 },
+      strategyId: null,
+      ruleVersion: 4,
+      lastRunAt: new Date('2026-08-01T12:00:00.000Z'),
+      lastEvaluatedTradeDate: '20260801',
+      lastRunResult: { matchCount: 3 },
+      lastMatchCodes: ['000001.SZ', '000002.SZ'],
+    } as never)
+    prisma.screenerSubscription.update.mockResolvedValue({ id: 1, strategyId: null } as never)
+    ruleFingerprint.create.mockReturnValue({ fingerprint: 'changed-rule-fingerprint' } as never)
+
+    await service.update(1, 1, { filters: { minPe: 15, maxPb: 2 } })
+
+    expect(prisma.screenerSubscription.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 1 },
+        data: expect.objectContaining({
+          filters: { minPe: 15, maxPb: 2 },
+          ruleVersion: { increment: 1 },
+          ruleFingerprint: 'changed-rule-fingerprint',
+          lastRunAt: null,
+          lastEvaluatedTradeDate: null,
+          lastRunResult: Prisma.DbNull,
+          lastMatchCodes: [],
+        }),
+      }),
+    )
+    expect(ruleNormalizer.normalizeLegacyStockScreeningRule).toHaveBeenCalledWith({ minPe: 15, maxPb: 2 })
+  })
+
+  it('update — 仅对象 key 顺序变化不重置基线或规则版本', async () => {
+    prisma.screenerSubscription.findFirst.mockResolvedValue({
+      id: 1,
+      filters: { minPe: 10, maxPb: 2 },
+      strategyId: null,
+    } as never)
+    prisma.screenerSubscription.update.mockResolvedValue({ id: 1, strategyId: null } as never)
+
+    await service.update(1, 1, { filters: { maxPb: 2, minPe: 10 } })
+
+    const updateInput = prisma.screenerSubscription.update.mock.calls[0][0]
+    expect(updateInput.data).not.toHaveProperty('ruleVersion')
+    expect(updateInput.data).not.toHaveProperty('lastMatchCodes')
+    expect(ruleNormalizer.normalizeLegacyStockScreeningRule).not.toHaveBeenCalled()
+    expect(ruleFingerprint.create).not.toHaveBeenCalled()
   })
 
   // ── remove ────────────────────────────────────────────────────────────────
@@ -158,17 +226,29 @@ describe('ScreenerSubscriptionService', () => {
 
   // ── manualRun ─────────────────────────────────────────────────────────────
 
-  it('manualRun — 正常（未运行过）→ 加入队列并返回 jobId', async () => {
-    prisma.screenerSubscription.findFirst.mockResolvedValue({ id: 1, lastRunAt: null } as never)
+  it('manualRun — 以当前 ruleVersion 和已锁定交易日创建可重试单订阅 job', async () => {
+    prisma.screenerSubscription.findFirst.mockResolvedValue({ id: 1, lastRunAt: null, ruleVersion: 7 } as never)
+    prisma.$queryRaw.mockResolvedValue([{ cal_date: new Date('2026-08-02T16:00:00.000Z') }] as never)
 
     const result = await service.manualRun(1, 1)
-    expect(queue.add).toHaveBeenCalled()
+    expect(queue.add).toHaveBeenCalledWith(
+      ScreenerSubscriptionJobName.EXECUTE_SUBSCRIPTION,
+      { subscriptionId: 1, tradeDate: '20260803', ruleVersion: 7 },
+      {
+        jobId: buildSubscriptionQueueJobId(1, '20260803', 7),
+        attempts: MAX_CONSECUTIVE_FAILS + 1,
+        backoff: { type: 'exponential', delay: 30_000 },
+        removeOnComplete: 50,
+        removeOnFail: true,
+      },
+    )
     expect(result.jobId).toBe('job-1')
   })
 
   it('manualRun — 上次运行距今超过冷却时间 → 正常加入队列', async () => {
     const lastRunAt = new Date(Date.now() - MANUAL_TRIGGER_COOLDOWN_MS - 1000)
-    prisma.screenerSubscription.findFirst.mockResolvedValue({ id: 1, lastRunAt } as never)
+    prisma.screenerSubscription.findFirst.mockResolvedValue({ id: 1, lastRunAt, ruleVersion: 2 } as never)
+    prisma.$queryRaw.mockResolvedValue([{ cal_date: new Date('2026-08-02T16:00:00.000Z') }] as never)
 
     const result = await service.manualRun(1, 1)
     expect(result.jobId).toBeDefined()
@@ -187,6 +267,89 @@ describe('ScreenerSubscriptionService', () => {
   it('manualRun — 不存在 → NotFoundException', async () => {
     prisma.screenerSubscription.findFirst.mockResolvedValue(null)
     await expect(service.manualRun(1, 99)).rejects.toThrow(NotFoundException)
+  })
+
+  it('retryDataNotReadyRuns — 仅补投递当前规则版本的 skipped run', async () => {
+    prisma.screenerSubscriptionLog.findMany.mockResolvedValue([
+      {
+        id: 11,
+        subscriptionId: 1,
+        tradeDate: '20260803',
+        ruleVersion: 2,
+        subscription: { ruleVersion: 2 },
+      },
+      {
+        id: 12,
+        subscriptionId: 2,
+        tradeDate: '20260803',
+        ruleVersion: 1,
+        subscription: { ruleVersion: 2 },
+      },
+    ] as never)
+
+    await expect(service.retryDataNotReadyRuns()).resolves.toBe(1)
+
+    expect(prisma.screenerSubscriptionLog.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ status: SubscriptionRunStatus.SKIPPED_DATA_NOT_READY }),
+      }),
+    )
+    expect(queue.addBulk).toHaveBeenCalledWith([
+      expect.objectContaining({
+        name: ScreenerSubscriptionJobName.EXECUTE_SUBSCRIPTION,
+        data: { subscriptionId: 1, tradeDate: '20260803', ruleVersion: 2, recovery: true },
+        opts: expect.objectContaining({
+          jobId: buildSubscriptionQueueJobId(1, '20260803', 2),
+          priority: 1,
+        }),
+      }),
+    ])
+  })
+
+  // ── 交易日 dispatcher ─────────────────────────────────────────────────────
+
+  it('getDispatchFrequencies — 休市日不调度任何频率', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-08-02T12:00:00+08:00'))
+    prisma.$queryRaw.mockResolvedValueOnce([] as never)
+
+    await expect(service.getDispatchFrequencies()).resolves.toBeNull()
+    expect(prisma.$queryRaw).toHaveBeenCalledTimes(1)
+  })
+
+  it('getDispatchFrequencies — 普通交易日只调度 DAILY', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-08-03T12:00:00+08:00'))
+    prisma.$queryRaw
+      .mockResolvedValueOnce([{ cal_date: new Date('2026-08-02T16:00:00.000Z') }] as never)
+      .mockResolvedValueOnce([{ cal_date: new Date('2026-08-03T16:00:00.000Z') }] as never)
+
+    await expect(service.getDispatchFrequencies()).resolves.toEqual({
+      tradeDate: '20260803',
+      frequencies: [SubscriptionFrequency.DAILY],
+    })
+  })
+
+  it('getDispatchFrequencies — 周最后交易日包含 WEEKLY，不依赖自然周一', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-08-07T12:00:00+08:00'))
+    prisma.$queryRaw
+      .mockResolvedValueOnce([{ cal_date: new Date('2026-08-06T16:00:00.000Z') }] as never)
+      .mockResolvedValueOnce([{ cal_date: new Date('2026-08-09T16:00:00.000Z') }] as never)
+
+    await expect(service.getDispatchFrequencies()).resolves.toEqual({
+      tradeDate: '20260807',
+      frequencies: [SubscriptionFrequency.DAILY, SubscriptionFrequency.WEEKLY],
+    })
+  })
+
+  it('getDispatchFrequencies — 月最后交易日包含 MONTHLY，即使不是自然月初', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-08-31T12:00:00+08:00'))
+    prisma.$queryRaw
+      .mockResolvedValueOnce([{ cal_date: new Date('2026-08-30T16:00:00.000Z') }] as never)
+      .mockResolvedValueOnce([{ cal_date: new Date('2026-08-31T16:00:00.000Z') }] as never)
+
+    await expect(service.getDispatchFrequencies()).resolves.toEqual({
+      tradeDate: '20260831',
+      frequencies: [SubscriptionFrequency.DAILY, SubscriptionFrequency.MONTHLY],
+    })
   })
 
   // ── getLogs ───────────────────────────────────────────────────────────────

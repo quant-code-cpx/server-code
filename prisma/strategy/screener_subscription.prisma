@@ -16,47 +16,125 @@ enum SubscriptionStatus {
   @@map("subscription_status")
 }
 
+/// 条件订阅规则来源。B0 仅执行 STOCK_SCREENING；其余类型为后续阶段预留。
+enum SubscriptionRuleType {
+  STOCK_SCREENING
+  FACTOR_SCREENING
+  SIGNAL_EVENT
+  COMPOSITE
+
+  @@map("subscription_rule_type")
+}
+
+/// 单次条件订阅运行状态。
+enum SubscriptionRunStatus {
+  QUEUED
+  RUNNING
+  SUCCESS
+  FAILED
+  SKIPPED_DATA_NOT_READY
+
+  @@map("subscription_run_status")
+}
+
+/// 条件订阅触发命中类型。
+enum SubscriptionHitKind {
+  ENTER
+  EXIT
+  EVENT
+
+  @@map("subscription_hit_kind")
+}
+
 /// 条件订阅
 model ScreenerSubscription {
-  id               Int                   @id @default(autoincrement())
-  userId           Int                   @map("user_id")
-  name             String                @db.VarChar(50)
-  strategyId       Int?                  @map("strategy_id")
-  filters          Json                  @db.JsonB
-  sortBy           String?               @map("sort_by") @db.VarChar(30)
-  sortOrder        String?               @map("sort_order") @db.VarChar(4)
-  frequency        SubscriptionFrequency @default(DAILY)
-  status           SubscriptionStatus    @default(ACTIVE)
-  lastRunAt        DateTime?             @map("last_run_at")
-  lastRunResult    Json?                 @map("last_run_result") @db.JsonB
-  lastMatchCodes   String[]              @default([]) @map("last_match_codes")
-  consecutiveFails Int                   @default(0) @map("consecutive_fails")
-  createdAt        DateTime              @default(now()) @map("created_at")
-  updatedAt        DateTime              @updatedAt @map("updated_at")
+  id                     Int                   @id @default(autoincrement())
+  userId                 Int                   @map("user_id")
+  name                   String                @db.VarChar(50)
+  strategyId             Int?                  @map("strategy_id")
+  filters                Json                  @db.JsonB // 迁移期保留
+  sortBy                 String?               @map("sort_by") @db.VarChar(30)
+  sortOrder              String?               @map("sort_order") @db.VarChar(4)
+  ruleType               SubscriptionRuleType  @default(STOCK_SCREENING) @map("rule_type")
+  ruleVersion            Int                   @default(1) @map("rule_version")
+  ruleSpec               Json?                 @map("rule_spec") @db.JsonB
+  triggerSpec            Json?                 @map("trigger_spec") @db.JsonB
+  notificationSpec       Json?                 @map("notification_spec") @db.JsonB
+  ruleFingerprint        String?               @map("rule_fingerprint") @db.VarChar(64)
+  frequency              SubscriptionFrequency @default(DAILY)
+  status                 SubscriptionStatus    @default(ACTIVE)
+  lastRunAt              DateTime?             @map("last_run_at")
+  lastEvaluatedTradeDate String?               @map("last_evaluated_trade_date") @db.VarChar(8)
+  lastClaimedTradeDate   String?               @map("last_claimed_trade_date") @db.VarChar(8)
+  lastRunResult          Json?                 @map("last_run_result") @db.JsonB
+  lastMatchCodes         String[]              @default([]) @map("last_match_codes")
+  consecutiveFails       Int                   @default(0) @map("consecutive_fails")
+  createdAt              DateTime              @default(now()) @map("created_at")
+  updatedAt              DateTime              @updatedAt @map("updated_at")
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  logs ScreenerSubscriptionLog[]
+  hits ScreenerSubscriptionHit[]
 
-  @@index([userId])
+  @@index([userId, ruleType])
   @@index([status, frequency])
+  @@index([ruleFingerprint])
   @@map("screener_subscriptions")
 }
 
 /// 订阅执行日志
 model ScreenerSubscriptionLog {
-  id             Int      @id @default(autoincrement())
-  subscriptionId Int      @map("subscription_id")
-  tradeDate      String   @map("trade_date") @db.VarChar(8)
-  matchCount     Int      @map("match_count")
-  newEntryCount  Int      @map("new_entry_count")
-  exitCount      Int      @map("exit_count")
-  newEntryCodes  String[] @default([]) @map("new_entry_codes")
-  exitCodes      String[] @default([]) @map("exit_codes")
-  executionMs    Int      @map("execution_ms")
-  success        Boolean  @default(true)
-  errorMessage   String?  @map("error_message") @db.Text
-  createdAt      DateTime @default(now()) @map("created_at")
+  id             Int                   @id @default(autoincrement())
+  subscriptionId Int                   @map("subscription_id")
+  runKey         String?               @unique @map("run_key") @db.VarChar(160)
+  jobId          String?               @map("job_id") @db.VarChar(100)
+  attemptToken   String?               @map("attempt_token") @db.VarChar(36)
+  tradeDate      String                @map("trade_date") @db.VarChar(8)
+  ruleVersion    Int                   @default(1) @map("rule_version")
+  status         SubscriptionRunStatus @default(QUEUED)
+  matchCount     Int                   @default(0) @map("match_count")
+  triggerCount   Int                   @default(0) @map("trigger_count")
+  newEntryCount  Int                   @default(0) @map("new_entry_count")
+  exitCount      Int                   @default(0) @map("exit_count")
+  newEntryCodes  String[]              @default([]) @map("new_entry_codes")
+  exitCodes      String[]              @default([]) @map("exit_codes")
+  dataVersions   Json?                 @map("data_versions") @db.JsonB
+  warningCount   Int                   @default(0) @map("warning_count")
+  executionMs    Int                   @default(0) @map("execution_ms")
+  success        Boolean               @default(false) // 迁移期兼容
+  errorCode      String?               @map("error_code") @db.VarChar(50)
+  errorMessage   String?               @map("error_message") @db.Text
+  startedAt      DateTime?             @map("started_at")
+  finishedAt     DateTime?             @map("finished_at")
+  createdAt      DateTime              @default(now()) @map("created_at")
+
+  subscription ScreenerSubscription      @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  hits         ScreenerSubscriptionHit[]
 
   @@index([subscriptionId, createdAt(sort: Desc)])
   @@index([subscriptionId, tradeDate])
   @@map("screener_subscription_logs")
+}
+
+/// 规则触发证据。B0 创建表并保持 run 级幂等，后续阶段开始写入详细命中。
+model ScreenerSubscriptionHit {
+  id             BigInt              @id @default(autoincrement())
+  subscriptionId Int                 @map("subscription_id")
+  logId          Int                 @map("log_id")
+  tradeDate      String              @map("trade_date") @db.VarChar(8)
+  eventTradeDate String?             @map("event_trade_date") @db.VarChar(8)
+  tsCode         String              @map("ts_code") @db.VarChar(16)
+  kind           SubscriptionHitKind
+  eventKey       String              @map("event_key") @db.VarChar(160)
+  evidence       Json                @db.JsonB
+  notifiedAt     DateTime?           @map("notified_at")
+  createdAt      DateTime            @default(now()) @map("created_at")
+
+  subscription ScreenerSubscription    @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  log          ScreenerSubscriptionLog @relation(fields: [logId], references: [id], onDelete: Cascade)
+
+  @@unique([subscriptionId, tradeDate, tsCode, kind, eventKey])
+  @@index([logId, id])
+  @@index([subscriptionId, tradeDate])
+  @@map("screener_subscription_hits")
 }

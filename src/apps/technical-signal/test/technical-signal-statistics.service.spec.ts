@@ -136,6 +136,41 @@ describe('TechnicalSignalStatisticsService', () => {
     })
   })
 
+  it('[BIZ] computes HS300 excess return using same entry mode and target date', async () => {
+    const timeline = buildTimeline({
+      dates: ['20260101', '20260102', '20260105', '20260106'],
+      bars: [quote('20260101', 100), quote('20260102', 100), quote('20260105', 96), quote('20260106', 92)],
+      benchmarkBars: [
+        benchmarkQuote('20260101', 100),
+        benchmarkQuote('20260102', 100),
+        benchmarkQuote('20260105', 105),
+        benchmarkQuote('20260106', 110),
+      ],
+    })
+    repository.loadTimeline.mockResolvedValueOnce(timeline)
+    setIndicatorPoints(service, [
+      point('20260101', true),
+      point('20260102', false),
+      point('20260105', false),
+      point('20260106', false),
+    ])
+
+    const response = await service.query({
+      tsCode: TS_CODE,
+      signals: [{ signalKey: SAR_BEARISH }],
+      periods: [TechnicalSignalPeriod.CUSTOM],
+      customStartDate: '20260101',
+      customEndDate: '20260106',
+      horizons: [2],
+      includeBenchmark: true,
+    } as TechnicalSignalStatisticsRequestDto)
+
+    // Stock: 100 -> 92 = -8%; HS300: 100 -> 110 = +10%; excess = -18%.
+    const horizon = response.groups[0].horizons[0]
+    expect(horizon.excess?.averageReturnPct).toBe(-18)
+    expect(horizon.benchmarkMissingCount).toBe(0)
+  })
+
   it.each([
     {
       name: 'malformed compact date',
@@ -183,6 +218,7 @@ function setIndicatorPoints(service: TechnicalSignalStatisticsService, points: r
 function buildTimeline(input: {
   dates: string[]
   bars: TechnicalSignalTimelineSnapshot['bars']
+  benchmarkBars?: Array<{ tradeDate: string; open: number; close: number }>
 }): TechnicalSignalTimelineSnapshot {
   return {
     stock: {
@@ -196,6 +232,9 @@ function buildTimeline(input: {
     calendarExchange: 'SZSE',
     openDates: input.dates,
     bars: input.bars,
+    benchmark: input.benchmarkBars
+      ? { tsCode: '000300.SH', bars: input.benchmarkBars, version: '000300.SH:20260108' }
+      : null,
     suspendedDates: new Set<string>(),
     dataVersions: {
       tradeCal: 'SZSE:20260108',
@@ -205,6 +244,10 @@ function buildTimeline(input: {
       indexDaily: null,
     },
   }
+}
+
+function benchmarkQuote(tradeDate: string, close: number, open = close) {
+  return { tradeDate, open, close }
 }
 
 function quote(

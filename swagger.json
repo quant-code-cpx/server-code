@@ -9750,6 +9750,178 @@
         ]
       }
     },
+    "/screener-subscription/metrics": {
+      "post": {
+        "operationId": "ScreenerSubscriptionController_metrics",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubscriptionMetricsDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ResponseModel"
+                    },
+                    {
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/SubscriptionMetricsResponseDto"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "summary": "获取条件订阅规则指标目录",
+        "tags": [
+          "ScreenerSubscription - 条件订阅"
+        ]
+      }
+    },
+    "/screener-subscription/preview": {
+      "post": {
+        "operationId": "ScreenerSubscriptionController_preview",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PreviewSubscriptionDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ResponseModel"
+                    },
+                    {
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/PreviewSubscriptionResponseDto"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "summary": "预览规则命中集合，不写订阅状态也不发送通知",
+        "tags": [
+          "ScreenerSubscription - 条件订阅"
+        ]
+      }
+    },
+    "/screener-subscription/hits": {
+      "post": {
+        "operationId": "ScreenerSubscriptionController_hits",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubscriptionHitsDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ResponseModel"
+                    },
+                    {
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/SubscriptionHitListResponseDto"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "summary": "查询单次运行的命中证据",
+        "tags": [
+          "ScreenerSubscription - 条件订阅"
+        ]
+      }
+    },
+    "/screener-subscription/run/status": {
+      "post": {
+        "operationId": "ScreenerSubscriptionController_runStatus",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubscriptionRunStatusDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ResponseModel"
+                    },
+                    {
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/SubscriptionRunStatusResponseDto"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "summary": "查询手动运行状态",
+        "tags": [
+          "ScreenerSubscription - 条件订阅"
+        ]
+      }
+    },
     "/strategy-draft/list": {
       "post": {
         "operationId": "StrategyDraftController_getDrafts",
@@ -14402,6 +14574,370 @@
         ]
       }
     },
+    "/agent/admin/evaluations/run": {
+      "post": {
+        "operationId": "AgentEvaluationAdminController_run",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunAgentEvaluationDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ResponseModel"
+                    },
+                    {
+                      "properties": {
+                        "data": {
+                          "type": "object"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "执行版本化 fake Agent 评测（管理员）",
+        "tags": [
+          "Agent - 管理员评测"
+        ]
+      }
+    },
+    "/agent/admin/evaluations/status": {
+      "post": {
+        "operationId": "AgentEvaluationAdminController_status",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentEvaluationStatusDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ResponseModel"
+                    },
+                    {
+                      "properties": {
+                        "data": {
+                          "type": "object"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "查询 Agent 评测运行状态与版本摘要（管理员）",
+        "tags": [
+          "Agent - 管理员评测"
+        ]
+      }
+    },
+    "/agent/admin/evaluations/detail": {
+      "post": {
+        "operationId": "AgentEvaluationAdminController_detail",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentEvaluationDetailDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ResponseModel"
+                    },
+                    {
+                      "properties": {
+                        "data": {
+                          "type": "object"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "查询 Agent 评测单例结果（管理员）",
+        "tags": [
+          "Agent - 管理员评测"
+        ]
+      }
+    },
+    "/agent/admin/model-providers/list": {
+      "post": {
+        "operationId": "ModelProviderAdminController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ResponseModel"
+                    },
+                    {
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/ModelProviderListResponseDto"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "查询模型供应商配置（不返回 API key）",
+        "tags": [
+          "Agent - 模型供应商管理"
+        ]
+      }
+    },
+    "/agent/admin/model-providers/create": {
+      "post": {
+        "operationId": "ModelProviderAdminController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateModelProviderDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ResponseModel"
+                    },
+                    {
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/ModelProviderAdminResponseDto"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "新增模型供应商并立即刷新网关",
+        "tags": [
+          "Agent - 模型供应商管理"
+        ]
+      }
+    },
+    "/agent/admin/model-providers/update": {
+      "post": {
+        "operationId": "ModelProviderAdminController_update",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateModelProviderDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ResponseModel"
+                    },
+                    {
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/ModelProviderAdminResponseDto"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "更新模型供应商并立即刷新网关",
+        "tags": [
+          "Agent - 模型供应商管理"
+        ]
+      }
+    },
+    "/agent/admin/model-providers/delete": {
+      "post": {
+        "operationId": "ModelProviderAdminController_delete",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModelProviderIdDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ResponseModel"
+                    },
+                    {
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/ModelProviderDeleteResponseDto"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "删除模型供应商并立即刷新网关",
+        "tags": [
+          "Agent - 模型供应商管理"
+        ]
+      }
+    },
+    "/agent/admin/model-providers/reload": {
+      "post": {
+        "operationId": "ModelProviderAdminController_reload",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ResponseModel"
+                    },
+                    {
+                      "properties": {
+                        "data": {
+                          "type": "object"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "从数据库重新加载模型供应商配置",
+        "tags": [
+          "Agent - 模型供应商管理"
+        ]
+      }
+    },
     "/agent/reports/list": {
       "post": {
         "operationId": "ResearchReportController_list",
@@ -15023,6 +15559,150 @@
         "summary": "分页查询任务 execution 与关联 Run 状态",
         "tags": [
           "Agent - 定时与条件研究"
+        ]
+      }
+    },
+    "/stock/detail/analysis/signal-definitions/list": {
+      "post": {
+        "operationId": "TechnicalSignalController_listDefinitions",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TechnicalSignalDefinitionListRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ResponseModel"
+                    },
+                    {
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/TechnicalSignalDefinitionListResponseDto"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "个股技术信号统计：标准信号定义目录",
+        "tags": [
+          "Technical Signal - 个股技术信号统计"
+        ]
+      }
+    },
+    "/stock/detail/analysis/signal-statistics/query": {
+      "post": {
+        "operationId": "TechnicalSignalController_queryStatistics",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TechnicalSignalStatisticsRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ResponseModel"
+                    },
+                    {
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/TechnicalSignalStatisticsResponseDto"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "个股技术信号统计：全窗口摘要",
+        "tags": [
+          "Technical Signal - 个股技术信号统计"
+        ]
+      }
+    },
+    "/stock/detail/analysis/signal-occurrences/list": {
+      "post": {
+        "operationId": "TechnicalSignalController_listOccurrences",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TechnicalSignalOccurrenceListRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ResponseModel"
+                    },
+                    {
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/TechnicalSignalOccurrenceListResponseDto"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "个股技术信号统计：信号样本明细",
+        "tags": [
+          "Technical Signal - 个股技术信号统计"
         ]
       }
     }
@@ -16035,6 +16715,17 @@
             "type": "number",
             "example": 100
           },
+          "reproducibilityStatus": {
+            "type": "string",
+            "example": "VERIFIED"
+          },
+          "qualityFlags": {
+            "example": [],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
           "createdAt": {
             "type": "string",
             "example": "2024-01-15T08:00:00.000Z"
@@ -16053,6 +16744,8 @@
           "endDate",
           "benchmarkTsCode",
           "progress",
+          "reproducibilityStatus",
+          "qualityFlags",
           "createdAt"
         ]
       },
@@ -16272,6 +16965,39 @@
           "priceMode": {
             "type": "string"
           },
+          "engineVersion": {
+            "type": "string",
+            "nullable": true
+          },
+          "dataContractVersion": {
+            "type": "string",
+            "nullable": true
+          },
+          "universePolicyVersion": {
+            "type": "string",
+            "nullable": true
+          },
+          "financialAsOfPolicyVersion": {
+            "type": "string",
+            "nullable": true
+          },
+          "adjustmentPolicyVersion": {
+            "type": "string",
+            "nullable": true
+          },
+          "reproducibilityStatus": {
+            "type": "string"
+          },
+          "reproducibilityManifest": {
+            "type": "object",
+            "nullable": true
+          },
+          "qualityFlags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
           "summary": {
             "$ref": "#/components/schemas/BacktestRunSummaryMetricsDto"
           },
@@ -16300,6 +17026,8 @@
           "initialCapital",
           "rebalanceFrequency",
           "priceMode",
+          "reproducibilityStatus",
+          "qualityFlags",
           "summary",
           "createdAt"
         ]
@@ -23425,6 +24153,10 @@
             "type": "number",
             "description": "近20日主力净流入最小值（万元）"
           },
+          "minBuySignalCount": {
+            "type": "number",
+            "description": "最少买入信号数量（MACD、KDJ、均线、BOLL、RSI，共 5 项）"
+          },
           "macdSignal": {
             "type": "string",
             "description": "MACD 信号筛选",
@@ -23513,6 +24245,7 @@
               "netMargin",
               "debtToAssets",
               "mainNetInflow5d",
+              "buySignalCount",
               "listDate"
             ],
             "description": "排序字段",
@@ -23649,6 +24382,7 @@
               "netMargin",
               "debtToAssets",
               "mainNetInflow5d",
+              "buySignalCount",
               "listDate"
             ]
           },
@@ -23737,6 +24471,7 @@
               "netMargin",
               "debtToAssets",
               "mainNetInflow5d",
+              "buySignalCount",
               "listDate"
             ]
           },
@@ -23941,6 +24676,10 @@
             "type": "number",
             "description": "近20日主力净流入最小值（万元）"
           },
+          "minBuySignalCount": {
+            "type": "number",
+            "description": "最少买入信号数量（MACD、KDJ、均线、BOLL、RSI，共 5 项）"
+          },
           "macdSignal": {
             "type": "string",
             "description": "MACD 信号筛选",
@@ -24041,6 +24780,7 @@
               "netMargin",
               "debtToAssets",
               "mainNetInflow5d",
+              "buySignalCount",
               "listDate"
             ],
             "description": "默认排序字段"
@@ -28826,6 +29566,12 @@
           },
           "exitCount": {
             "type": "number"
+          },
+          "runKey": {
+            "type": "string"
+          },
+          "ruleVersion": {
+            "type": "number"
           }
         },
         "required": [
@@ -28868,6 +29614,32 @@
             "type": "string",
             "nullable": true
           },
+          "ruleType": {
+            "type": "string",
+            "enum": [
+              "STOCK_SCREENING",
+              "FACTOR_SCREENING",
+              "SIGNAL_EVENT",
+              "COMPOSITE"
+            ]
+          },
+          "ruleVersion": {
+            "type": "number"
+          },
+          "ruleSpec": {
+            "type": "object",
+            "additionalProperties": true,
+            "nullable": true
+          },
+          "triggerSpec": {
+            "type": "object",
+            "additionalProperties": true,
+            "nullable": true
+          },
+          "ruleFingerprint": {
+            "type": "string",
+            "nullable": true
+          },
           "frequency": {
             "type": "string"
           },
@@ -28876,6 +29648,10 @@
           },
           "lastRunAt": {
             "format": "date-time",
+            "type": "string",
+            "nullable": true
+          },
+          "lastEvaluatedTradeDate": {
             "type": "string",
             "nullable": true
           },
@@ -28909,6 +29685,8 @@
           "id",
           "name",
           "filters",
+          "ruleType",
+          "ruleVersion",
           "frequency",
           "status",
           "lastMatchCodes",
@@ -28959,6 +29737,18 @@
             "type": "object",
             "description": "直接传入选股条件（与 strategyId 二选一）"
           },
+          "ruleSpec": {
+            "type": "object",
+            "description": "规则协议 v1。新客户端必须使用该字段，不能与 filters/strategyId 同传。"
+          },
+          "triggerSpec": {
+            "type": "object",
+            "description": "触发协议。省略时使用规则类型默认值。"
+          },
+          "notificationSpec": {
+            "type": "object",
+            "description": "通知配置"
+          },
           "frequency": {
             "type": "string",
             "enum": [
@@ -29005,6 +29795,20 @@
           "filters": {
             "type": "object",
             "description": "更新选股条件"
+          },
+          "ruleSpec": {
+            "type": "object",
+            "description": "规则协议 v1。与 filters/strategyId 互斥。"
+          },
+          "triggerSpec": {
+            "type": "object"
+          },
+          "notificationSpec": {
+            "type": "object"
+          },
+          "expectedUpdatedAt": {
+            "type": "string",
+            "description": "详情接口返回的 updatedAt；用于防止双页面覆盖。"
           },
           "sortBy": {
             "type": "string"
@@ -29088,10 +29892,34 @@
           "subscriptionId": {
             "type": "number"
           },
+          "runKey": {
+            "type": "string",
+            "nullable": true
+          },
+          "jobId": {
+            "type": "string",
+            "nullable": true
+          },
           "tradeDate": {
             "type": "string"
           },
+          "ruleVersion": {
+            "type": "number"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "QUEUED",
+              "RUNNING",
+              "SUCCESS",
+              "FAILED",
+              "SKIPPED_DATA_NOT_READY"
+            ]
+          },
           "matchCount": {
+            "type": "number"
+          },
+          "triggerCount": {
             "type": "number"
           },
           "newEntryCount": {
@@ -29130,7 +29958,29 @@
           "success": {
             "type": "boolean"
           },
+          "dataVersions": {
+            "type": "object",
+            "additionalProperties": true,
+            "nullable": true
+          },
+          "warningCount": {
+            "type": "number"
+          },
+          "errorCode": {
+            "type": "string",
+            "nullable": true
+          },
           "errorMessage": {
+            "type": "string",
+            "nullable": true
+          },
+          "startedAt": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
+          },
+          "finishedAt": {
+            "format": "date-time",
             "type": "string",
             "nullable": true
           },
@@ -29143,13 +29993,17 @@
           "id",
           "subscriptionId",
           "tradeDate",
+          "ruleVersion",
+          "status",
           "matchCount",
+          "triggerCount",
           "newEntryCount",
           "exitCount",
           "newEntryCodes",
           "exitCodes",
           "executionMs",
           "success",
+          "warningCount",
           "createdAt"
         ]
       },
@@ -29229,10 +30083,409 @@
           "filters": {
             "type": "object"
           },
+          "ruleSpec": {
+            "type": "object",
+            "description": "规则协议 v1。与 filters/strategyId 互斥。"
+          },
           "strategyId": {
             "type": "number"
           }
         }
+      },
+      "SubscriptionMetricDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "version": {
+            "type": "number"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "STOCK",
+              "FACTOR",
+              "SIGNAL"
+            ]
+          },
+          "category": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "valueType": {
+            "type": "string",
+            "enum": [
+              "NUMBER",
+              "PERCENT",
+              "ENUM",
+              "BOOLEAN",
+              "EVENT"
+            ]
+          },
+          "operators": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "availability": {
+            "type": "string",
+            "enum": [
+              "ENABLED",
+              "DISABLED",
+              "DATA_NOT_READY"
+            ]
+          },
+          "requiredDataSets": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "semanticsVersion": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "source",
+          "category",
+          "label",
+          "description",
+          "valueType",
+          "operators",
+          "availability",
+          "requiredDataSets",
+          "semanticsVersion"
+        ]
+      },
+      "SubscriptionMetricsResponseDto": {
+        "type": "object",
+        "properties": {
+          "catalogVersion": {
+            "type": "string"
+          },
+          "metrics": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SubscriptionMetricDto"
+            }
+          }
+        },
+        "required": [
+          "catalogVersion",
+          "metrics"
+        ]
+      },
+      "SubscriptionMetricsDto": {
+        "type": "object",
+        "properties": {
+          "sources": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "STOCK",
+                "FACTOR",
+                "SIGNAL"
+              ]
+            }
+          },
+          "catalogVersion": {
+            "type": "string",
+            "description": "客户端当前目录版本；不一致时响应仍返回新目录。"
+          }
+        }
+      },
+      "SubscriptionHitEvidenceDto": {
+        "type": "object",
+        "properties": {
+          "tsCode": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "details": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "required": [
+          "tsCode",
+          "kind",
+          "reason",
+          "details"
+        ]
+      },
+      "PreviewSubscriptionResponseDto": {
+        "type": "object",
+        "properties": {
+          "ruleFingerprint": {
+            "type": "string"
+          },
+          "catalogVersion": {
+            "type": "string"
+          },
+          "asOfTradeDate": {
+            "type": "string"
+          },
+          "universeCount": {
+            "type": "number"
+          },
+          "matchedCount": {
+            "type": "number"
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "matchedStocks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StockEntryItemDto"
+            }
+          },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SubscriptionHitEvidenceDto"
+            }
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "dataVersions": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "executionMs": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "ruleFingerprint",
+          "catalogVersion",
+          "asOfTradeDate",
+          "universeCount",
+          "matchedCount",
+          "truncated",
+          "matchedStocks",
+          "evidence",
+          "warnings",
+          "dataVersions",
+          "executionMs"
+        ]
+      },
+      "PreviewSubscriptionDto": {
+        "type": "object",
+        "properties": {
+          "ruleSpec": {
+            "type": "object",
+            "description": "待预览规则协议 v1"
+          },
+          "triggerSpec": {
+            "type": "object",
+            "description": "触发协议；仅用于校验和返回默认值。"
+          },
+          "tradeDate": {
+            "type": "string",
+            "description": "数据截止交易日，YYYYMMDD；省略时取最近开市日。"
+          },
+          "limit": {
+            "type": "number",
+            "default": 20,
+            "minimum": 1,
+            "maximum": 100
+          }
+        },
+        "required": [
+          "ruleSpec"
+        ]
+      },
+      "SubscriptionHitDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "subscriptionId": {
+            "type": "number"
+          },
+          "logId": {
+            "type": "number"
+          },
+          "tradeDate": {
+            "type": "string"
+          },
+          "eventTradeDate": {
+            "type": "string",
+            "nullable": true
+          },
+          "tsCode": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "ENTER",
+              "EXIT",
+              "EVENT"
+            ]
+          },
+          "eventKey": {
+            "type": "string"
+          },
+          "evidence": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "notifiedAt": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "subscriptionId",
+          "logId",
+          "tradeDate",
+          "tsCode",
+          "kind",
+          "eventKey",
+          "evidence",
+          "createdAt"
+        ]
+      },
+      "SubscriptionHitListResponseDto": {
+        "type": "object",
+        "properties": {
+          "hits": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SubscriptionHitDto"
+            }
+          },
+          "total": {
+            "type": "number"
+          },
+          "page": {
+            "type": "number"
+          },
+          "pageSize": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "hits",
+          "total",
+          "page",
+          "pageSize"
+        ]
+      },
+      "SubscriptionHitsDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "number",
+            "description": "订阅 ID"
+          },
+          "logId": {
+            "type": "number",
+            "description": "运行日志 ID"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "ENTER",
+              "EXIT",
+              "EVENT"
+            ]
+          },
+          "page": {
+            "type": "number",
+            "default": 1,
+            "minimum": 1
+          },
+          "pageSize": {
+            "type": "number",
+            "default": 20,
+            "minimum": 1,
+            "maximum": 100
+          }
+        },
+        "required": [
+          "id",
+          "logId"
+        ]
+      },
+      "SubscriptionRunStatusResponseDto": {
+        "type": "object",
+        "properties": {
+          "jobId": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "QUEUED",
+              "RUNNING",
+              "SUCCESS",
+              "FAILED",
+              "SKIPPED_DATA_NOT_READY",
+              "NOT_FOUND"
+            ]
+          },
+          "subscriptionId": {
+            "type": "number",
+            "nullable": true
+          },
+          "logId": {
+            "type": "number",
+            "nullable": true
+          },
+          "errorCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "errorMessage": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "jobId",
+          "status"
+        ]
+      },
+      "SubscriptionRunStatusDto": {
+        "type": "object",
+        "properties": {
+          "jobId": {
+            "type": "string",
+            "description": "manual run 返回的 BullMQ jobId"
+          }
+        },
+        "required": [
+          "jobId"
+        ]
       },
       "StrategyDraftDto": {
         "type": "object",
@@ -31974,9 +33227,10 @@
             "type": "string",
             "enum": [
               "UP",
-              "DOWN"
+              "DOWN",
+              "BROKEN"
             ],
-            "description": "涨停/跌停方向"
+            "description": "涨停/跌停/炸板类型"
           },
           "industry": {
             "type": "string",
@@ -32043,9 +33297,10 @@
             "type": "string",
             "enum": [
               "UP",
-              "DOWN"
+              "DOWN",
+              "BROKEN"
             ],
-            "description": "涨停/跌停方向"
+            "description": "涨停/跌停/炸板类型"
           },
           "minStreak": {
             "type": "number",
@@ -34421,6 +35676,454 @@
           "afterSequence"
         ]
       },
+      "RunAgentEvaluationDto": {
+        "type": "object",
+        "properties": {
+          "clientRequestId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "dataset": {
+            "type": "string",
+            "enum": [
+              "mvp"
+            ],
+            "default": "mvp"
+          },
+          "provider": {
+            "type": "string",
+            "enum": [
+              "fake"
+            ],
+            "default": "fake"
+          }
+        },
+        "required": [
+          "clientRequestId"
+        ]
+      },
+      "AgentEvaluationStatusDto": {
+        "type": "object",
+        "properties": {
+          "evaluationRunId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "evaluationRunId"
+        ]
+      },
+      "AgentEvaluationDetailDto": {
+        "type": "object",
+        "properties": {
+          "evaluationRunId": {
+            "type": "string"
+          },
+          "caseId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "evaluationRunId",
+          "caseId"
+        ]
+      },
+      "ModelProviderAdminResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "providerId": {
+            "type": "string",
+            "description": "供应商标识；同一供应商可对应多个模型配置"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "priority": {
+            "type": "number"
+          },
+          "costTier": {
+            "type": "string"
+          },
+          "baseUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "apiKeyConfigured": {
+            "type": "boolean"
+          },
+          "apiKeyLastFour": {
+            "type": "string",
+            "nullable": true
+          },
+          "contextWindow": {
+            "type": "number"
+          },
+          "maxOutputTokens": {
+            "type": "number"
+          },
+          "capabilities": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "reasoningEfforts": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "dataClasses": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "timeoutMs": {
+            "type": "number"
+          },
+          "maxRetries": {
+            "type": "number"
+          },
+          "retryBaseMs": {
+            "type": "number"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "providerId",
+          "kind",
+          "displayName",
+          "model",
+          "priority",
+          "costTier",
+          "apiKeyConfigured",
+          "contextWindow",
+          "maxOutputTokens",
+          "capabilities",
+          "reasoningEfforts",
+          "dataClasses",
+          "timeoutMs",
+          "maxRetries",
+          "retryBaseMs",
+          "enabled",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "ModelProviderListResponseDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ModelProviderAdminResponseDto"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "CreateModelProviderDto": {
+        "type": "object",
+        "properties": {
+          "providerId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,128}$",
+            "example": "deepseek",
+            "description": "可被多个模型配置复用的供应商标识"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "openai-compatible"
+            ]
+          },
+          "displayName": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "model": {
+            "type": "string",
+            "maxLength": 128,
+            "example": "deepseek-chat"
+          },
+          "priority": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1000,
+            "default": 0
+          },
+          "costTier": {
+            "type": "string",
+            "enum": [
+              "LOW",
+              "MEDIUM",
+              "HIGH"
+            ],
+            "default": "MEDIUM"
+          },
+          "baseUrl": {
+            "type": "string",
+            "format": "uri",
+            "description": "OpenAI-compatible API 根地址，生产必须是 allowlist 中的 HTTPS"
+          },
+          "apiKey": {
+            "type": "string",
+            "writeOnly": true,
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "contextWindow": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 10000000
+          },
+          "maxOutputTokens": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 1000000
+          },
+          "capabilities": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "STREAMING",
+                "STRUCTURED_OUTPUT",
+                "TOOL_CALLING",
+                "PARALLEL_TOOL_CALLING",
+                "VISION",
+                "REASONING_EFFORT"
+              ]
+            }
+          },
+          "reasoningEfforts": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "LOW",
+                "MEDIUM",
+                "HIGH"
+              ]
+            }
+          },
+          "dataClasses": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "PUBLIC",
+                "USER_PRIVATE",
+                "PORTFOLIO_SENSITIVE"
+              ]
+            }
+          },
+          "timeoutMs": {
+            "type": "number",
+            "minimum": 100,
+            "maximum": 300000,
+            "default": 120000
+          },
+          "maxRetries": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 2,
+            "default": 2
+          },
+          "retryBaseMs": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 10000,
+            "default": 200
+          },
+          "enabled": {
+            "type": "object",
+            "default": true
+          }
+        },
+        "required": [
+          "providerId",
+          "kind",
+          "displayName",
+          "model",
+          "priority",
+          "costTier",
+          "contextWindow",
+          "maxOutputTokens",
+          "capabilities",
+          "reasoningEfforts",
+          "dataClasses",
+          "timeoutMs",
+          "maxRetries",
+          "retryBaseMs"
+        ]
+      },
+      "UpdateModelProviderDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,128}$"
+          },
+          "providerId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,128}$",
+            "description": "可被多个模型配置复用的供应商标识"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "openai-compatible"
+            ]
+          },
+          "displayName": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "model": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "priority": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1000
+          },
+          "costTier": {
+            "type": "string",
+            "enum": [
+              "LOW",
+              "MEDIUM",
+              "HIGH"
+            ]
+          },
+          "baseUrl": {
+            "type": "string",
+            "format": "uri"
+          },
+          "apiKey": {
+            "type": "string",
+            "writeOnly": true,
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "contextWindow": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 10000000
+          },
+          "maxOutputTokens": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 1000000
+          },
+          "capabilities": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "STREAMING",
+                "STRUCTURED_OUTPUT",
+                "TOOL_CALLING",
+                "PARALLEL_TOOL_CALLING",
+                "VISION",
+                "REASONING_EFFORT"
+              ]
+            }
+          },
+          "reasoningEfforts": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "LOW",
+                "MEDIUM",
+                "HIGH"
+              ]
+            }
+          },
+          "dataClasses": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "PUBLIC",
+                "USER_PRIVATE",
+                "PORTFOLIO_SENSITIVE"
+              ]
+            }
+          },
+          "timeoutMs": {
+            "type": "number",
+            "minimum": 100,
+            "maximum": 300000
+          },
+          "maxRetries": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 2
+          },
+          "retryBaseMs": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 10000
+          },
+          "enabled": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "ModelProviderDeleteResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "deleted": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "deleted"
+        ]
+      },
+      "ModelProviderIdDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,128}$"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
       "ResearchReportResponseDto": {
         "type": "object",
         "properties": {
@@ -35138,7 +36841,7 @@
           },
           "workflowVersion": {
             "type": "number",
-            "default": 1,
+            "default": 4,
             "minimum": 1
           },
           "modelPolicy": {
@@ -35499,6 +37202,863 @@
         },
         "required": [
           "taskId"
+        ]
+      },
+      "TechnicalSignalDefinitionDto": {
+        "type": "object",
+        "properties": {
+          "signalKey": {
+            "type": "string"
+          },
+          "semanticsVersion": {
+            "type": "string"
+          },
+          "definitionHash": {
+            "type": "string",
+            "description": "定义的 SHA-256 内容哈希"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "direction": {
+            "type": "string",
+            "enum": [
+              "BULLISH",
+              "BEARISH",
+              "CONTEXTUAL"
+            ]
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "LOCAL_QFQ_OHLCV"
+            ]
+          },
+          "description": {
+            "type": "string"
+          },
+          "parameters": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "stable": {
+            "type": "boolean"
+          },
+          "deprecatedAt": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "signalKey",
+          "semanticsVersion",
+          "definitionHash",
+          "displayName",
+          "direction",
+          "source",
+          "description",
+          "parameters",
+          "stable"
+        ]
+      },
+      "TechnicalSignalDefinitionListResponseDto": {
+        "type": "object",
+        "properties": {
+          "definitions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TechnicalSignalDefinitionDto"
+            }
+          }
+        },
+        "required": [
+          "definitions"
+        ]
+      },
+      "TechnicalSignalDefinitionListRequestDto": {
+        "type": "object",
+        "properties": {
+          "signalKeys": {
+            "maxItems": 14,
+            "description": "需要查询的 signalKey；缺省返回完整标准目录",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "includeDeprecated": {
+            "type": "boolean",
+            "default": false,
+            "description": "是否返回已废弃定义"
+          }
+        }
+      },
+      "ReturnDistributionDto": {
+        "type": "object",
+        "properties": {
+          "sampleCount": {
+            "type": "number"
+          },
+          "upCount": {
+            "type": "number"
+          },
+          "downCount": {
+            "type": "number"
+          },
+          "flatCount": {
+            "type": "number"
+          },
+          "upRatio": {
+            "type": "number",
+            "nullable": true
+          },
+          "downRatio": {
+            "type": "number",
+            "nullable": true
+          },
+          "flatRatio": {
+            "type": "number",
+            "nullable": true
+          },
+          "averageReturnPct": {
+            "type": "number",
+            "nullable": true,
+            "description": "百分数"
+          },
+          "medianReturnPct": {
+            "type": "number",
+            "nullable": true,
+            "description": "百分数"
+          },
+          "minimumReturnPct": {
+            "type": "number",
+            "nullable": true,
+            "description": "百分数"
+          },
+          "maximumReturnPct": {
+            "type": "number",
+            "nullable": true,
+            "description": "百分数"
+          },
+          "stdDevPct": {
+            "type": "number",
+            "nullable": true,
+            "description": "百分数"
+          },
+          "p25ReturnPct": {
+            "type": "number",
+            "nullable": true,
+            "description": "百分数"
+          },
+          "p75ReturnPct": {
+            "type": "number",
+            "nullable": true,
+            "description": "百分数"
+          },
+          "meanConfidenceLowerPct": {
+            "type": "number",
+            "nullable": true,
+            "description": "百分数"
+          },
+          "meanConfidenceUpperPct": {
+            "type": "number",
+            "nullable": true,
+            "description": "百分数"
+          }
+        },
+        "required": [
+          "sampleCount",
+          "upCount",
+          "downCount",
+          "flatCount"
+        ]
+      },
+      "DirectionalDistributionDto": {
+        "type": "object",
+        "properties": {
+          "sampleCount": {
+            "type": "number"
+          },
+          "successCount": {
+            "type": "number"
+          },
+          "failureCount": {
+            "type": "number"
+          },
+          "flatCount": {
+            "type": "number"
+          },
+          "successRatio": {
+            "type": "number",
+            "nullable": true
+          },
+          "averageDirectionalReturnPct": {
+            "type": "number",
+            "nullable": true,
+            "description": "百分数"
+          },
+          "medianDirectionalReturnPct": {
+            "type": "number",
+            "nullable": true,
+            "description": "百分数"
+          },
+          "minimumDirectionalReturnPct": {
+            "type": "number",
+            "nullable": true,
+            "description": "百分数"
+          },
+          "maximumDirectionalReturnPct": {
+            "type": "number",
+            "nullable": true,
+            "description": "百分数"
+          },
+          "stdDevDirectionalReturnPct": {
+            "type": "number",
+            "nullable": true,
+            "description": "百分数"
+          },
+          "p25DirectionalReturnPct": {
+            "type": "number",
+            "nullable": true,
+            "description": "百分数"
+          },
+          "p75DirectionalReturnPct": {
+            "type": "number",
+            "nullable": true,
+            "description": "百分数"
+          },
+          "meanDirectionalConfidenceLowerPct": {
+            "type": "number",
+            "nullable": true,
+            "description": "百分数"
+          },
+          "meanDirectionalConfidenceUpperPct": {
+            "type": "number",
+            "nullable": true,
+            "description": "百分数"
+          },
+          "successConfidenceLower": {
+            "type": "number",
+            "nullable": true
+          },
+          "successConfidenceUpper": {
+            "type": "number",
+            "nullable": true
+          }
+        },
+        "required": [
+          "sampleCount",
+          "successCount",
+          "failureCount",
+          "flatCount"
+        ]
+      },
+      "ExcursionDistributionDto": {
+        "type": "object",
+        "properties": {
+          "completePathCount": {
+            "type": "number"
+          },
+          "partialPathCount": {
+            "type": "number"
+          },
+          "averageMfePct": {
+            "type": "number",
+            "nullable": true,
+            "description": "百分数"
+          },
+          "medianMfePct": {
+            "type": "number",
+            "nullable": true,
+            "description": "百分数"
+          },
+          "averageMaePct": {
+            "type": "number",
+            "nullable": true,
+            "description": "百分数"
+          },
+          "medianMaePct": {
+            "type": "number",
+            "nullable": true,
+            "description": "百分数"
+          },
+          "averageDirectionalMfePct": {
+            "type": "number",
+            "nullable": true,
+            "description": "百分数"
+          },
+          "averageDirectionalMaePct": {
+            "type": "number",
+            "nullable": true,
+            "description": "百分数"
+          }
+        },
+        "required": [
+          "completePathCount",
+          "partialPathCount"
+        ]
+      },
+      "SignalHorizonStatisticsDto": {
+        "type": "object",
+        "properties": {
+          "horizon": {
+            "type": "number"
+          },
+          "eligibleOutcomeCount": {
+            "type": "number"
+          },
+          "validOutcomeCount": {
+            "type": "number"
+          },
+          "immatureCount": {
+            "type": "number"
+          },
+          "missingCount": {
+            "type": "number"
+          },
+          "overlappingOccurrenceCount": {
+            "type": "number"
+          },
+          "missingReasons": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "number"
+            }
+          },
+          "benchmarkMissingCount": {
+            "type": "number"
+          },
+          "benchmarkMissingReasons": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "number"
+            }
+          },
+          "raw": {
+            "$ref": "#/components/schemas/ReturnDistributionDto"
+          },
+          "directional": {
+            "$ref": "#/components/schemas/DirectionalDistributionDto"
+          },
+          "excess": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ReturnDistributionDto"
+              }
+            ]
+          },
+          "excursion": {
+            "$ref": "#/components/schemas/ExcursionDistributionDto"
+          },
+          "minSampleDate": {
+            "type": "string",
+            "nullable": true
+          },
+          "maxSampleDate": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "horizon",
+          "eligibleOutcomeCount",
+          "validOutcomeCount",
+          "immatureCount",
+          "missingCount",
+          "overlappingOccurrenceCount",
+          "missingReasons",
+          "benchmarkMissingCount",
+          "benchmarkMissingReasons",
+          "raw",
+          "directional",
+          "excursion"
+        ]
+      },
+      "SignalPeriodStatisticsDto": {
+        "type": "object",
+        "properties": {
+          "period": {
+            "type": "string",
+            "enum": [
+              "1Y",
+              "3Y",
+              "CUSTOM"
+            ]
+          },
+          "requestedStartDate": {
+            "type": "string"
+          },
+          "actualStartDate": {
+            "type": "string",
+            "nullable": true
+          },
+          "endDate": {
+            "type": "string"
+          },
+          "signalKey": {
+            "type": "string"
+          },
+          "semanticsVersion": {
+            "type": "string"
+          },
+          "definitionHash": {
+            "type": "string"
+          },
+          "direction": {
+            "type": "string",
+            "enum": [
+              "BULLISH",
+              "BEARISH",
+              "CONTEXTUAL"
+            ]
+          },
+          "evaluable": {
+            "type": "boolean"
+          },
+          "notEvaluableReason": {
+            "type": "string",
+            "nullable": true
+          },
+          "requiredValidRows": {
+            "type": "number"
+          },
+          "actualValidRows": {
+            "type": "number"
+          },
+          "occurrenceCount": {
+            "type": "number"
+          },
+          "horizons": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SignalHorizonStatisticsDto"
+            }
+          }
+        },
+        "required": [
+          "period",
+          "requestedStartDate",
+          "endDate",
+          "signalKey",
+          "semanticsVersion",
+          "definitionHash",
+          "direction",
+          "evaluable",
+          "requiredValidRows",
+          "actualValidRows",
+          "occurrenceCount",
+          "horizons"
+        ]
+      },
+      "TechnicalSignalStatisticsResponseDto": {
+        "type": "object",
+        "properties": {
+          "meta": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "groups": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SignalPeriodStatisticsDto"
+            }
+          }
+        },
+        "required": [
+          "meta",
+          "groups"
+        ]
+      },
+      "TechnicalSignalSelectorDto": {
+        "type": "object",
+        "properties": {
+          "signalKey": {
+            "type": "string",
+            "example": "macd.golden-cross",
+            "description": "标准技术信号 key"
+          },
+          "semanticsVersion": {
+            "type": "string",
+            "example": "macd.v1",
+            "description": "语义版本；缺省解析当前 stable 版本"
+          }
+        },
+        "required": [
+          "signalKey"
+        ]
+      },
+      "TechnicalSignalStatisticsRequestDto": {
+        "type": "object",
+        "properties": {
+          "tsCode": {
+            "type": "string",
+            "example": "000001.SZ",
+            "description": "A 股 ts_code"
+          },
+          "signals": {
+            "maxItems": 14,
+            "description": "信号定义；缺省为全部 14 个稳定定义",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TechnicalSignalSelectorDto"
+            }
+          },
+          "periods": {
+            "type": "array",
+            "default": [
+              "1Y",
+              "3Y"
+            ],
+            "items": {
+              "type": "string",
+              "enum": [
+                "1Y",
+                "3Y",
+                "CUSTOM"
+              ]
+            }
+          },
+          "customStartDate": {
+            "type": "string",
+            "example": "20240101",
+            "description": "CUSTOM 起始日期，YYYYMMDD"
+          },
+          "customEndDate": {
+            "type": "string",
+            "example": "20261231",
+            "description": "CUSTOM 截止日期，YYYYMMDD；缺省为 dataAsOf"
+          },
+          "horizons": {
+            "default": [
+              1,
+              3,
+              5,
+              10,
+              20
+            ],
+            "maxItems": 10,
+            "type": "array",
+            "items": {
+              "type": "number",
+              "maximum": 60,
+              "minimum": 1
+            }
+          },
+          "asOfTradeDate": {
+            "type": "string",
+            "example": "20260731",
+            "description": "数据截止交易日 YYYYMMDD；缺省取共同 READY 日"
+          },
+          "entryMode": {
+            "type": "string",
+            "enum": [
+              "SIGNAL_CLOSE",
+              "NEXT_OPEN"
+            ],
+            "default": "SIGNAL_CLOSE"
+          },
+          "includeBenchmark": {
+            "type": "boolean",
+            "default": false,
+            "description": "是否计算沪深 300 超额收益；基准全历史未就绪时返回 409"
+          },
+          "benchmarkTsCode": {
+            "type": "string",
+            "example": "000300.SH",
+            "description": "基准代码；v1 仅支持沪深 300"
+          }
+        },
+        "required": [
+          "tsCode"
+        ]
+      },
+      "TechnicalSignalOutcomeDto": {
+        "type": "object",
+        "properties": {
+          "horizon": {
+            "type": "number"
+          },
+          "expectedEntryDate": {
+            "type": "string"
+          },
+          "expectedTargetDate": {
+            "type": "string"
+          },
+          "qualityStatus": {
+            "type": "string",
+            "enum": [
+              "VALID",
+              "IMMATURE",
+              "MISSING"
+            ]
+          },
+          "missingReason": {
+            "type": "string",
+            "nullable": true
+          },
+          "entryRawPrice": {
+            "type": "number",
+            "nullable": true
+          },
+          "entryAdjFactor": {
+            "type": "number",
+            "nullable": true
+          },
+          "targetRawPrice": {
+            "type": "number",
+            "nullable": true
+          },
+          "targetAdjFactor": {
+            "type": "number",
+            "nullable": true
+          },
+          "rawReturnPct": {
+            "type": "number",
+            "nullable": true,
+            "description": "百分数"
+          },
+          "directionalReturnPct": {
+            "type": "number",
+            "nullable": true,
+            "description": "百分数"
+          },
+          "benchmarkReturnPct": {
+            "type": "number",
+            "nullable": true,
+            "description": "百分数"
+          },
+          "excessReturnPct": {
+            "type": "number",
+            "nullable": true,
+            "description": "百分数"
+          },
+          "benchmarkMissingReason": {
+            "type": "string",
+            "nullable": true
+          },
+          "pathCoverageStatus": {
+            "type": "string",
+            "enum": [
+              "COMPLETE",
+              "PARTIAL",
+              "NOT_APPLICABLE"
+            ]
+          },
+          "pathMissingDates": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "rawMfePct": {
+            "type": "number",
+            "nullable": true,
+            "description": "百分数"
+          },
+          "rawMaePct": {
+            "type": "number",
+            "nullable": true,
+            "description": "百分数"
+          },
+          "directionalMfePct": {
+            "type": "number",
+            "nullable": true,
+            "description": "百分数"
+          },
+          "directionalMaePct": {
+            "type": "number",
+            "nullable": true,
+            "description": "百分数"
+          }
+        },
+        "required": [
+          "horizon",
+          "expectedEntryDate",
+          "expectedTargetDate",
+          "qualityStatus",
+          "pathCoverageStatus",
+          "pathMissingDates"
+        ]
+      },
+      "TechnicalSignalOccurrenceItemDto": {
+        "type": "object",
+        "properties": {
+          "signalId": {
+            "type": "string"
+          },
+          "tsCode": {
+            "type": "string"
+          },
+          "signalKey": {
+            "type": "string"
+          },
+          "semanticsVersion": {
+            "type": "string"
+          },
+          "definitionHash": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "indicatorAlgorithmVersion": {
+            "type": "string"
+          },
+          "signalDate": {
+            "type": "string"
+          },
+          "direction": {
+            "type": "string",
+            "enum": [
+              "BULLISH",
+              "BEARISH",
+              "CONTEXTUAL"
+            ]
+          },
+          "evidence": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "outcomes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TechnicalSignalOutcomeDto"
+            }
+          }
+        },
+        "required": [
+          "signalId",
+          "tsCode",
+          "signalKey",
+          "semanticsVersion",
+          "definitionHash",
+          "source",
+          "indicatorAlgorithmVersion",
+          "signalDate",
+          "direction",
+          "evidence",
+          "outcomes"
+        ]
+      },
+      "TechnicalSignalOccurrenceListResponseDto": {
+        "type": "object",
+        "properties": {
+          "total": {
+            "type": "number"
+          },
+          "page": {
+            "type": "number"
+          },
+          "pageSize": {
+            "type": "number"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TechnicalSignalOccurrenceItemDto"
+            }
+          }
+        },
+        "required": [
+          "total",
+          "page",
+          "pageSize",
+          "items"
+        ]
+      },
+      "TechnicalSignalOccurrenceListRequestDto": {
+        "type": "object",
+        "properties": {
+          "tsCode": {
+            "type": "string",
+            "example": "000001.SZ",
+            "description": "A 股 ts_code"
+          },
+          "signalKey": {
+            "type": "string",
+            "example": "macd.golden-cross",
+            "description": "标准技术信号 key"
+          },
+          "semanticsVersion": {
+            "type": "string",
+            "example": "macd.v1",
+            "description": "语义版本；缺省解析当前 stable 版本"
+          },
+          "startDate": {
+            "type": "string",
+            "example": "20240101",
+            "description": "信号日期窗口起始，YYYYMMDD"
+          },
+          "endDate": {
+            "type": "string",
+            "example": "20261231",
+            "description": "信号日期窗口截止，YYYYMMDD"
+          },
+          "horizons": {
+            "default": [
+              1
+            ],
+            "maxItems": 10,
+            "type": "array",
+            "items": {
+              "type": "number",
+              "maximum": 60,
+              "minimum": 1
+            }
+          },
+          "asOfTradeDate": {
+            "type": "string",
+            "example": "20260731",
+            "description": "数据截止交易日 YYYYMMDD；缺省取共同 READY 日"
+          },
+          "entryMode": {
+            "type": "string",
+            "enum": [
+              "SIGNAL_CLOSE",
+              "NEXT_OPEN"
+            ],
+            "default": "SIGNAL_CLOSE"
+          },
+          "includeBenchmark": {
+            "type": "boolean",
+            "default": false,
+            "description": "是否计算沪深 300 超额收益"
+          },
+          "benchmarkTsCode": {
+            "type": "string",
+            "example": "000300.SH",
+            "description": "基准代码；v1 仅支持沪深 300"
+          },
+          "qualityStatuses": {
+            "type": "array",
+            "description": "只返回含指定质量状态的 occurrence",
+            "items": {
+              "type": "string",
+              "enum": [
+                "VALID",
+                "IMMATURE",
+                "MISSING"
+              ]
+            }
+          },
+          "page": {
+            "type": "number",
+            "default": 1,
+            "minimum": 1
+          },
+          "pageSize": {
+            "type": "number",
+            "default": 20,
+            "minimum": 1,
+            "maximum": 100
+          }
+        },
+        "required": [
+          "tsCode",
+          "signalKey",
+          "startDate",
+          "endDate"
         ]
       }
     }

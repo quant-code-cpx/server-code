@@ -5,6 +5,8 @@ import timezone from 'dayjs/plugin/timezone'
 import utc from 'dayjs/plugin/utc'
 import { ScreenerFiltersDto } from 'src/apps/stock/dto/stock-screener-query.dto'
 import { PrismaService } from 'src/shared/prisma.service'
+import { FactorScreeningRuleSpec, SignalEventRuleSpec, StockScreeningRuleSpec, SubscriptionRuleType } from './rule'
+import { isSpecialTreatmentStockName } from './rule/subscription-universe.util'
 
 dayjs.extend(utc)
 dayjs.extend(timezone)
@@ -91,6 +93,114 @@ interface CountRow {
 @Injectable()
 export class SubscriptionDataReadinessService {
   constructor(private readonly prisma: PrismaService) {}
+
+  async checkRule(
+    ruleSpec: StockScreeningRuleSpec | FactorScreeningRuleSpec | SignalEventRuleSpec,
+    tradeDate: string,
+  ): Promise<SubscriptionDataReadinessResult> {
+    if (ruleSpec.type === SubscriptionRuleType.STOCK_SCREENING) {
+      return this.checkStockScreening({ filters: ruleSpec.filters as ScreenerFiltersDto, tradeDate })
+    }
+    if (ruleSpec.type === SubscriptionRuleType.SIGNAL_EVENT) return this.checkSignalEvent(ruleSpec, tradeDate)
+    return this.checkFactorScreening(ruleSpec, tradeDate)
+  }
+
+  /** B3 快照门禁：必须存在同一 catalogVersion 的完整日级快照，事件表才可被消费。 */
+  async checkSignalEvent(ruleSpec: SignalEventRuleSpec, tradeDate: string): Promise<SubscriptionDataReadinessResult> {
+    const targetDate = this.parseTradeDate(tradeDate)
+    if (!targetDate) return this.notReady(tradeDate, ['TRADE_DATE_INVALID'])
+    try {
+      const [isOpen, universeCodes] = await Promise.all([
+        this.prisma.tradeCal.findFirst({
+          where: { exchange: StockExchange.SSE, isOpen: '1', calDate: targetDate },
+          select: { calDate: true },
+        }),
+        this.resolveFactorUniverse(targetDate, ruleSpec),
+      ])
+      const snapshots = await this.prisma.technicalSignalDailySnapshot.findMany({
+        where: { tradeDate, tsCode: { in: universeCodes } },
+        select: { tsCode: true, catalogVersion: true },
+      })
+      const coverageByCatalog = new Map<string, Set<string>>()
+      for (const snapshot of snapshots) {
+        const codes = coverageByCatalog.get(snapshot.catalogVersion) ?? new Set<string>()
+        codes.add(snapshot.tsCode)
+        coverageByCatalog.set(snapshot.catalogVersion, codes)
+      }
+      const [catalogVersion, coveredCodes] = [...coverageByCatalog.entries()].sort(
+        (left, right) => right[1].size - left[1].size,
+      )[0] ?? [null, new Set<string>()]
+      const coverage = universeCodes.length > 0 ? coveredCodes.size / universeCodes.length : 0
+      const missing = new Set<string>()
+      if (!isOpen) missing.add('TRADE_CAL_NOT_OPEN')
+      if (universeCodes.length === 0) missing.add('TECHNICAL_SIGNAL_UNIVERSE_EMPTY')
+      if (!catalogVersion || coverage < MIN_TARGET_COVERAGE) missing.add('TECHNICAL_SIGNAL_NOT_READY')
+      const dataVersions =
+        catalogVersion && coverage >= MIN_TARGET_COVERAGE
+          ? {
+              TECHNICAL_SIGNAL: `target:${tradeDate}:coverage:${coveredCodes.size}/${universeCodes.length}:catalog:${catalogVersion}`,
+            }
+          : {}
+      return { ready: missing.size === 0, tradeDate, dataVersions, missing: [...missing].sort() }
+    } catch {
+      return this.notReady(tradeDate, ['TECHNICAL_SIGNAL_READINESS_CHECK_FAILED'])
+    }
+  }
+
+  /** B2 快照门禁：不回退到实时计算，任一因子覆盖不足均禁止评估。 */
+  async checkFactorScreening(
+    ruleSpec: FactorScreeningRuleSpec,
+    tradeDate: string,
+  ): Promise<SubscriptionDataReadinessResult> {
+    const targetDate = this.parseTradeDate(tradeDate)
+    if (!targetDate) return this.notReady(tradeDate, ['TRADE_DATE_INVALID'])
+    try {
+      const [isOpen, universeCodes] = await Promise.all([
+        this.prisma.tradeCal.findFirst({
+          where: { exchange: StockExchange.SSE, isOpen: '1', calDate: targetDate },
+          select: { calDate: true },
+        }),
+        this.resolveFactorUniverse(targetDate, ruleSpec),
+      ])
+      const snapshots = await this.prisma.factorSnapshot.findMany({
+        where: {
+          tradeDate,
+          factorName: { in: ruleSpec.conditions.map((condition) => condition.factorId) },
+          tsCode: { in: universeCodes },
+          value: { not: null },
+        },
+        select: { factorName: true, syncedAt: true },
+      })
+      const missing = new Set<string>()
+      const dataVersions: Record<string, string> = {}
+      if (!isOpen) missing.add('TRADE_CAL_NOT_OPEN')
+      if (universeCodes.length === 0) missing.add('FACTOR_UNIVERSE_EMPTY')
+      const snapshotStats = new Map<string, { count: number; syncedAt: Date }>()
+      for (const snapshot of snapshots) {
+        const current = snapshotStats.get(snapshot.factorName)
+        snapshotStats.set(snapshot.factorName, {
+          count: (current?.count ?? 0) + 1,
+          syncedAt: !current || snapshot.syncedAt > current.syncedAt ? snapshot.syncedAt : current.syncedAt,
+        })
+      }
+      for (const condition of ruleSpec.conditions) {
+        const summary = snapshotStats.get(condition.factorId)
+        const coverage = summary && universeCodes.length > 0 ? summary.count / universeCodes.length : 0
+        if (!summary || coverage < 0.99) {
+          missing.add(`FACTOR_SNAPSHOT_NOT_READY:${condition.factorId}`)
+          continue
+        }
+        dataVersions[`FACTOR_SNAPSHOT:${condition.factorId}`] = [
+          `target:${tradeDate}`,
+          `coverage:${summary.count}/${universeCodes.length}`,
+          `synced:${summary.syncedAt.toISOString()}`,
+        ].join(':')
+      }
+      return { ready: missing.size === 0, tradeDate, dataVersions, missing: [...missing].sort() }
+    } catch {
+      return this.notReady(tradeDate, ['FACTOR_SNAPSHOT_READINESS_CHECK_FAILED'])
+    }
+  }
 
   /**
    * B0 只判定现有基础选股所依赖的数据。同步日志证明任务完成，目标日
@@ -461,6 +571,35 @@ export class SubscriptionDataReadinessService {
         ],
       },
     })
+  }
+
+  private async resolveFactorUniverse(
+    tradeDate: Date,
+    ruleSpec: FactorScreeningRuleSpec | SignalEventRuleSpec,
+  ): Promise<string[]> {
+    const [stocks, dailyCodes] = await Promise.all([
+      this.prisma.stockBasic.findMany({
+        where: {
+          listStatus: 'L',
+          AND: [
+            { OR: [{ listDate: null }, { listDate: { lte: tradeDate } }] },
+            { OR: [{ delistDate: null }, { delistDate: { gt: tradeDate } }] },
+          ],
+        },
+        select: { tsCode: true, name: true },
+      }),
+      ruleSpec.universe.excludeSuspended
+        ? this.prisma.daily.findMany({ where: { tradeDate }, select: { tsCode: true } })
+        : Promise.resolve([]),
+    ])
+    const activeDaily = new Set(dailyCodes.map((row) => row.tsCode))
+    return stocks
+      .filter((stock) => {
+        if (ruleSpec.universe.excludeSt && isSpecialTreatmentStockName(stock.name)) return false
+        if (ruleSpec.universe.excludeBse && stock.tsCode.endsWith('.BJ')) return false
+        return !ruleSpec.universe.excludeSuspended || activeDaily.has(stock.tsCode)
+      })
+      .map((stock) => stock.tsCode)
   }
 
   private async countMatureTradableUniverse(targetDate: Date, eligibleBefore: Date): Promise<number> {

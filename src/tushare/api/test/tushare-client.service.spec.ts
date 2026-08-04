@@ -75,9 +75,7 @@ describe('TushareClient', () => {
 
   describe('call() — 正常解析', () => {
     it('应将 { fields, items } 正确解析为对象数组', async () => {
-      fetchSpy.mockResolvedValueOnce(
-        okResponse(['ts_code', 'name'], [['000001.SZ', '平安银行']]),
-      )
+      fetchSpy.mockResolvedValueOnce(okResponse(['ts_code', 'name'], [['000001.SZ', '平安银行']]))
 
       const client = createClient()
       const result = await client.call({ api_name: 'stock_basic' })
@@ -209,6 +207,23 @@ describe('TushareClient', () => {
   })
 
   // ── parseRecords 私有方法 ─────────────────────────────────────────────────
+
+  describe('index_daily 频控', () => {
+    it('[BIZ] 同一 index_daily 通道串行且最小间隔 120ms', async () => {
+      fetchSpy.mockResolvedValue(okResponse(['ts_code'], [['000300.SH']]))
+      const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(1_000)
+      const client = createClient()
+      const clientInternals = client as unknown as { sleep: (ms: number) => Promise<void> }
+      const sleepSpy = jest.spyOn(clientInternals, 'sleep').mockImplementation(async () => undefined)
+
+      await Promise.all([client.call({ api_name: 'index_daily' }), client.call({ api_name: 'index_daily' })])
+
+      expect(fetchSpy).toHaveBeenCalledTimes(2)
+      expect(sleepSpy).toHaveBeenCalledWith(120)
+      sleepSpy.mockRestore()
+      nowSpy.mockRestore()
+    })
+  })
 
   describe('parseRecords（私有方法）', () => {
     it('应将标准 TushareResponse 正确解析为对象数组', () => {

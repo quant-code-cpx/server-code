@@ -15,6 +15,16 @@ type LimitItemsQuery = Pick<
   'limitType' | 'industry' | 'keyword' | 'minStreak' | 'sortBy' | 'sortOrder'
 >
 
+type LimitType = 'UP' | 'DOWN' | 'BROKEN'
+type LimitStreakStatus = 'FIRST_LIMIT' | 'CONSECUTIVE' | 'FLUSH'
+type LimitSealPattern = 'ONE_LINE' | 'EARLY_SEAL' | 'LATE_SEAL' | 'REOPENED'
+
+const LIMIT_TYPE_TO_SOURCE: Record<LimitType, string> = {
+  UP: 'U',
+  DOWN: 'D',
+  BROKEN: 'Z',
+}
+
 @Injectable()
 export class AlertLimitService {
   constructor(private readonly prisma: PrismaService) {}
@@ -162,7 +172,7 @@ export class AlertLimitService {
   private buildWhere(actualDate: string, dto: LimitItemsQuery): Prisma.LimitListDWhereInput {
     return {
       tradeDate: parseCompactTradeDateToUtcDate(actualDate),
-      ...(dto.limitType ? { limit: dto.limitType === 'UP' ? 'U' : 'D' } : {}),
+      ...(dto.limitType ? { limit: LIMIT_TYPE_TO_SOURCE[dto.limitType] } : {}),
       ...(dto.industry ? { industry: { contains: dto.industry, mode: 'insensitive' } } : {}),
       ...(dto.keyword
         ? {
@@ -176,7 +186,8 @@ export class AlertLimitService {
   }
 
   private mapLimitRow(row: Awaited<ReturnType<PrismaService['limitListD']['findMany']>>[number], concepts: string[]) {
-    const streakDays = this.getStreakDays(row)
+    const limitType = this.normalizeLimitType(row.limit)
+    const streakDays = limitType === 'BROKEN' ? 0 : this.getStreakDays(row)
     const sealRatio = row.amount && row.fdAmount ? Number(row.fdAmount) / Number(row.amount) : null
     // fdPercent: 封单金额(万元) / 流通市值(亿元*10000) × 100，即封单占流通市值百分比
     const fdPercent =
@@ -201,21 +212,18 @@ export class AlertLimitService {
       firstSealTime: row.firstTime,
       lastSealTime: row.lastTime,
       openTimes: row.openTimes,
-      limitType: this.normalizeLimitType(row.limit),
-      pctChgLimit: row.pctChg,
-      sealPattern: this.getSealPattern(row.firstTime, row.openTimes),
+      limitType,
+      pctChgLimit: this.getPctChgLimit(row),
+      sealPattern: limitType === 'DOWN' ? null : this.getSealPattern(row.firstTime, row.openTimes),
       sealRatio: sealRatio == null ? null : Math.round(sealRatio * 10000) / 10000,
       fdPercent,
       streakDays,
-      streakStatus: this.normalizeLimitType(row.limit) === 'DOWN' ? `${streakDays}连跌停` : `${streakDays}连板`,
+      streakStatus: this.getStreakStatus(limitType, streakDays),
       upStat: row.upStat,
     }
   }
 
-  private getSealPattern(
-    firstTime: string | null,
-    openTimes: number | null,
-  ): 'ONE_LINE' | 'EARLY_SEAL' | 'LATE_SEAL' | 'REOPENED' {
+  private getSealPattern(firstTime: string | null, openTimes: number | null): LimitSealPattern {
     if ((openTimes ?? 0) > 0) return 'REOPENED'
     if (!firstTime) return 'LATE_SEAL'
     const compact = firstTime.replace(/:/g, '')
@@ -224,16 +232,34 @@ export class AlertLimitService {
     return 'LATE_SEAL'
   }
 
+  private getPctChgLimit(row: { tsCode: string; name: string | null }): number {
+    const name = (row.name ?? '').toUpperCase()
+    if (name.includes('ST')) return 5
+
+    const code = row.tsCode.split('.')[0] ?? ''
+    if (row.tsCode.endsWith('.BJ') || code.startsWith('8') || code.startsWith('4') || code.startsWith('92')) {
+      return 30
+    }
+    if (code.startsWith('300') || code.startsWith('301') || code.startsWith('688')) return 20
+    return 10
+  }
+
   private getStreakDays(row: { limitTimes: number | null; upStat: string | null }): number {
     if (row.limitTimes && row.limitTimes > 0) return row.limitTimes
     const match = row.upStat?.match(/(\d+)/)
     return match ? Number(match[1]) : 1
   }
 
-  private normalizeLimitType(limit: string | null): 'UP' | 'DOWN' | 'OTHER' {
+  private getStreakStatus(type: LimitType, streakDays: number): LimitStreakStatus | null {
+    if (type === 'BROKEN') return 'FLUSH'
+    if (type === 'UP') return streakDays > 1 ? 'CONSECUTIVE' : 'FIRST_LIMIT'
+    return null
+  }
+
+  private normalizeLimitType(limit: string | null): LimitType {
     if (limit === 'U') return 'UP'
     if (limit === 'D') return 'DOWN'
-    return 'OTHER'
+    return 'BROKEN'
   }
 
   private async loadConcepts(tsCodes: string[]): Promise<Map<string, string[]>> {

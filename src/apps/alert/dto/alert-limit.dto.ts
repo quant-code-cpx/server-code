@@ -8,10 +8,10 @@ export class AlertLimitListDto {
   @Matches(/^\d{8}$/)
   tradeDate?: string
 
-  @ApiPropertyOptional({ enum: ['UP', 'DOWN'], description: '涨停/跌停方向' })
+  @ApiPropertyOptional({ enum: ['UP', 'DOWN', 'BROKEN'], description: '涨停/跌停/炸板类型' })
   @IsOptional()
-  @IsIn(['UP', 'DOWN'])
-  limitType?: 'UP' | 'DOWN'
+  @IsIn(['UP', 'DOWN', 'BROKEN'])
+  limitType?: 'UP' | 'DOWN' | 'BROKEN'
 
   @ApiPropertyOptional({ description: '行业筛选' })
   @IsOptional()
@@ -78,10 +78,10 @@ export class AlertLimitNextDayPerfDto {
   @Matches(/^\d{8}$/)
   tradeDate?: string
 
-  @ApiPropertyOptional({ enum: ['UP', 'DOWN'], description: '涨停/跌停方向' })
+  @ApiPropertyOptional({ enum: ['UP', 'DOWN', 'BROKEN'], description: '涨停/跌停/炸板类型' })
   @IsOptional()
-  @IsIn(['UP', 'DOWN'])
-  limitType?: 'UP' | 'DOWN'
+  @IsIn(['UP', 'DOWN', 'BROKEN'])
+  limitType?: 'UP' | 'DOWN' | 'BROKEN'
 
   @ApiPropertyOptional({ description: '最小连板/连跌停天数' })
   @IsOptional()

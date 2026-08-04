@@ -46,21 +46,61 @@ export type UniverseSpec = AllAUniverseSpec | IndexUniverseSpec | WatchlistGroup
 export interface StockScreeningRuleSpec {
   type: SubscriptionRuleType.STOCK_SCREENING
   version: 1
-  universe: UniverseSpec
+  universe: AllAUniverseSpec
   filters: RuleJsonObject
 }
 
-/**
- * B2+ 规则类型的协议占位。B0 validator 会明确拒绝这些类型，不能误执行。
- */
+export type FactorRuleOperator = 'GT' | 'GTE' | 'LT' | 'LTE' | 'BETWEEN' | 'TOP_PERCENT' | 'BOTTOM_PERCENT'
+
+export interface FactorConditionSpec {
+  factorId: string
+  operator: FactorRuleOperator
+  value: number | [number, number]
+}
+
+export interface FactorScreeningRuleSpec {
+  type: SubscriptionRuleType.FACTOR_SCREENING
+  version: 1
+  universe: AllAUniverseSpec
+  conditions: FactorConditionSpec[]
+  sortBy?: string
+  sortOrder?: 'ASC' | 'DESC'
+}
+
+export type SignalEventType =
+  | 'GOLDEN_CROSS'
+  | 'DEATH_CROSS'
+  | 'OVERBOUGHT_ENTER'
+  | 'OVERSOLD_ENTER'
+  | 'BREAK_UP'
+  | 'BREAK_DOWN'
+
+export interface SignalConditionSpec {
+  metricId: string
+  eventType: SignalEventType
+  threshold?: number
+  strengthAtLeast?: number
+}
+
+export interface SignalEventRuleSpec {
+  type: SubscriptionRuleType.SIGNAL_EVENT
+  version: 1
+  universe: AllAUniverseSpec
+  conditions: SignalConditionSpec[]
+  minSatisfied: number
+}
+
 export interface FutureSubscriptionRuleSpec {
-  type: SubscriptionRuleType.FACTOR_SCREENING | SubscriptionRuleType.SIGNAL_EVENT | SubscriptionRuleType.COMPOSITE
+  type: SubscriptionRuleType.COMPOSITE
   version: number
-  universe?: UniverseSpec
   [key: string]: unknown
 }
 
-export type SubscriptionRuleSpec = StockScreeningRuleSpec | FutureSubscriptionRuleSpec
+export type SubscriptionRuleSpec =
+  | StockScreeningRuleSpec
+  | FactorScreeningRuleSpec
+  | SignalEventRuleSpec
+  | FutureSubscriptionRuleSpec
 
 export type SubscriptionTriggerMode = 'ENTER' | 'EXIT' | 'BOTH' | 'EVENT'
 export type SubscriptionEventWindow = 'CURRENT_TRADE_DATE' | 'SINCE_LAST_SUCCESS'
@@ -76,6 +116,14 @@ export interface SubscriptionTriggerSpec {
 export const DEFAULT_STOCK_SCREENING_TRIGGER_SPEC: Readonly<SubscriptionTriggerSpec> = {
   mode: 'ENTER',
   notifyOnInitialMatch: false,
+  eventWindow: 'CURRENT_TRADE_DATE',
+  cooldownTradingDays: 0,
+  maxHitsPerNotification: 20,
+}
+
+export const DEFAULT_SIGNAL_EVENT_TRIGGER_SPEC: Readonly<SubscriptionTriggerSpec> = {
+  mode: 'EVENT',
+  notifyOnInitialMatch: true,
   eventWindow: 'CURRENT_TRADE_DATE',
   cooldownTradingDays: 0,
   maxHitsPerNotification: 20,

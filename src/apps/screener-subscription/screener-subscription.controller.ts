@@ -7,19 +7,25 @@ import { ScreenerSubscriptionService } from './screener-subscription.service'
 import {
   CreateSubscriptionDto,
   SubscriptionIdDto,
+  SubscriptionHitsDto,
   SubscriptionLogsBodyDto,
-  SubscriptionLogsQueryDto,
+  SubscriptionMetricsDto,
+  SubscriptionRunStatusDto,
+  PreviewSubscriptionDto,
   UpdateSubscriptionBodyDto,
-  UpdateSubscriptionDto,
   ValidateSubscriptionDto,
 } from './dto/subscription.dto'
 import { ApiSuccessResponse } from 'src/common/decorators/api-success-response.decorator'
 import {
   ManualRunResponseDto,
+  PreviewSubscriptionResponseDto,
   SubscriptionDto,
+  SubscriptionHitListResponseDto,
   SubscriptionListResponseDto,
   SubscriptionLogListResponseDto,
   SubscriptionMessageResponseDto,
+  SubscriptionMetricsResponseDto,
+  SubscriptionRunStatusResponseDto,
   ValidateSubscriptionResponseDto,
 } from './dto/subscription-response.dto'
 
@@ -97,5 +103,33 @@ export class ScreenerSubscriptionController {
   @ApiSuccessResponse(ValidateSubscriptionResponseDto)
   validate(@CurrentUser() user: TokenPayload, @Body() dto: ValidateSubscriptionDto) {
     return this.subscriptionService.validate(user.id, dto)
+  }
+
+  @Post('metrics')
+  @ApiOperation({ summary: '获取条件订阅规则指标目录' })
+  @ApiSuccessResponse(SubscriptionMetricsResponseDto)
+  metrics(@CurrentUser() user: TokenPayload, @Body() dto: SubscriptionMetricsDto) {
+    return this.subscriptionService.metrics(user.id, dto)
+  }
+
+  @Post('preview')
+  @ApiOperation({ summary: '预览规则命中集合，不写订阅状态也不发送通知' })
+  @ApiSuccessResponse(PreviewSubscriptionResponseDto)
+  preview(@CurrentUser() user: TokenPayload, @Body() dto: PreviewSubscriptionDto) {
+    return this.subscriptionService.preview(user.id, dto)
+  }
+
+  @Post('hits')
+  @ApiOperation({ summary: '查询单次运行的命中证据' })
+  @ApiSuccessResponse(SubscriptionHitListResponseDto)
+  hits(@CurrentUser() user: TokenPayload, @Body() dto: SubscriptionHitsDto) {
+    return this.subscriptionService.getHits(user.id, dto)
+  }
+
+  @Post('run/status')
+  @ApiOperation({ summary: '查询手动运行状态' })
+  @ApiSuccessResponse(SubscriptionRunStatusResponseDto)
+  runStatus(@CurrentUser() user: TokenPayload, @Body() dto: SubscriptionRunStatusDto) {
+    return this.subscriptionService.getRunStatus(user.id, dto.jobId)
   }
 }

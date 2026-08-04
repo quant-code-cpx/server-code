@@ -34,6 +34,7 @@ function buildMockHelper() {
     replaceTradeDateRows: jest.fn(async () => 100),
     replaceDateRangeRows: jest.fn(async () => 100),
     updateProgress: jest.fn(async () => undefined),
+    markRunning: jest.fn(async () => undefined),
     resetProgress: jest.fn(async () => undefined),
     markCompleted: jest.fn(async () => undefined),
     enqueueRetry: jest.fn(async () => undefined),
@@ -42,6 +43,10 @@ function buildMockHelper() {
     deleteRowsBeforeDate: jest.fn(async () => 0),
     getRecentOpenTradeDates: jest.fn(async () => [] as string[]),
     isTaskSyncedToday: jest.fn(async () => false),
+    prisma: {
+      tradeCal: { findMany: jest.fn(async () => []) },
+      indexDaily: { findMany: jest.fn(async () => []) },
+    },
   }
 }
 
@@ -70,6 +75,22 @@ function dailyApiRow() {
     pre_close: 10,
     change: 0.5,
     pct_chg: 5,
+    vol: 1000,
+    amount: 10000,
+  }
+}
+
+function indexDailyApiRow(tradeDate: string) {
+  return {
+    ts_code: '000300.SH',
+    trade_date: tradeDate,
+    open: 100,
+    high: 101,
+    low: 99,
+    close: 100,
+    pre_close: 100,
+    change: 0,
+    pct_chg: 0,
     vol: 1000,
     amount: 10000,
   }
@@ -318,6 +339,96 @@ describe('MarketSyncService', () => {
       await service.syncAdjFactor('20240101', 'incremental')
 
       expect(api.getAdjFactorByTradeDate).toHaveBeenCalledWith('20240101')
+    })
+  })
+
+  // ── syncIndexDaily() ──────────────────────────────────────────────────────
+
+  describe('syncIndexDaily()', () => {
+    it('[BIZ] full 模式从 19901219 开始，并写入可续传断点', async () => {
+      const helper = buildMockHelper()
+      helper.getOpenTradeDatesBetween.mockResolvedValue(['19901219', '19901220'])
+      const api = buildMockApi()
+      api.getCoreIndexDailyByTradeDate.mockResolvedValue([indexDailyApiRow('19901219')])
+
+      await createService(api, helper).syncIndexDaily('19901220', 'full')
+
+      expect(helper.getOpenTradeDatesBetween).toHaveBeenCalledWith('19901219', '19901220')
+      expect(helper.updateProgress).toHaveBeenCalledWith(TushareSyncTaskName.INDEX_DAILY, '19901220', 2, 2)
+      expect(helper.markCompleted).toHaveBeenCalledWith(TushareSyncTaskName.INDEX_DAILY)
+      expect(helper.writeSyncLog).toHaveBeenCalledWith(
+        TushareSyncTaskName.INDEX_DAILY,
+        expect.objectContaining({
+          status: 'SUCCESS',
+          payload: expect.objectContaining({ mode: 'full', rangeStart: '19901219', failedDates: [] }),
+        }),
+        expect.any(Date),
+      )
+    })
+
+    it('[BIZ] full 模式 RUNNING 断点续传，不能重置回起点', async () => {
+      const helper = buildMockHelper()
+      helper.getResumeKey.mockResolvedValue('20050104')
+      helper.addDays.mockImplementation((date: string) => (date === '20050104' ? '20050105' : '20240102'))
+      helper.getOpenTradeDatesBetween.mockResolvedValue(['20050105'])
+      const api = buildMockApi()
+      api.getCoreIndexDailyByTradeDate.mockResolvedValue([indexDailyApiRow('20050105')])
+
+      await createService(api, helper).syncIndexDaily('20050105', 'full')
+
+      expect(helper.getOpenTradeDatesBetween).toHaveBeenCalledWith('20050105', '20050105')
+      expect(helper.resetProgress).not.toHaveBeenCalled()
+    })
+
+    it('[BIZ] incremental 模式遇到 RUNNING 全量任务时优先续传断点', async () => {
+      const helper = buildMockHelper()
+      helper.getResumeKey.mockResolvedValue('20050104')
+      helper.addDays.mockImplementation((date: string) => (date === '20050104' ? '20050105' : '20240102'))
+      helper.getOpenTradeDatesBetween.mockResolvedValue(['20050105'])
+      const api = buildMockApi()
+      api.getCoreIndexDailyByTradeDate.mockResolvedValue([indexDailyApiRow('20050105')])
+
+      await createService(api, helper).syncIndexDaily('20050105', 'incremental')
+
+      expect(helper.getLatestDateString).not.toHaveBeenCalled()
+      expect(helper.getOpenTradeDatesBetween).toHaveBeenCalledWith('20050105', '20050105')
+    })
+
+    it('[BIZ] 首次和原地重试都失败时，断点不越过缺口且任务保持未完成', async () => {
+      const helper = buildMockHelper()
+      helper.getOpenTradeDatesBetween.mockResolvedValue(['19901219', '19901220'])
+      const api = buildMockApi()
+      api.getCoreIndexDailyByTradeDate.mockRejectedValue(new Error('网络超时'))
+
+      await createService(api, helper).syncIndexDaily('19901220', 'full')
+
+      expect(api.getCoreIndexDailyByTradeDate).toHaveBeenCalledTimes(4)
+      expect(helper.enqueueRetry).toHaveBeenCalledTimes(2)
+      expect(helper.markCompleted).not.toHaveBeenCalled()
+      expect(helper.writeSyncLog).toHaveBeenCalledWith(
+        TushareSyncTaskName.INDEX_DAILY,
+        expect.objectContaining({ status: 'FAILED' }),
+        expect.any(Date),
+      )
+    })
+
+    it('[BIZ] 精确重试绕过成功日志且不标记全任务完成', async () => {
+      const helper = buildMockHelper()
+      helper.isTaskSyncedForTradeDate.mockResolvedValue(true)
+      helper.getOpenTradeDatesBetween.mockResolvedValue(['20240102'])
+      const api = buildMockApi()
+      api.getCoreIndexDailyByTradeDate.mockResolvedValue([indexDailyApiRow('20240102')])
+
+      await createService(api, helper).syncIndexDaily('20240102', 'incremental', {
+        trigger: 'manual',
+        mode: 'incremental',
+        targetTradeDate: '20240102',
+        retryExactTarget: true,
+      })
+
+      expect(helper.isTaskSyncedForTradeDate).not.toHaveBeenCalled()
+      expect(helper.markCompleted).not.toHaveBeenCalled()
+      expect(api.getCoreIndexDailyByTradeDate).toHaveBeenCalledWith('20240102')
     })
   })
 

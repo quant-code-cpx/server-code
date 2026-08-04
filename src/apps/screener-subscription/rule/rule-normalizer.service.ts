@@ -1,9 +1,11 @@
 import { Injectable } from '@nestjs/common'
 import {
   LEGACY_ALL_A_UNIVERSE,
+  FactorScreeningRuleSpec,
   RuleJsonObject,
   RuleJsonValue,
   StockScreeningRuleSpec,
+  SignalEventRuleSpec,
   SubscriptionRuleType,
   SubscriptionTriggerSpec,
 } from './subscription-rule.types'
@@ -17,37 +19,53 @@ import { RuleSpecValidatorService } from './rule-spec-validator.service'
 export class RuleNormalizerService {
   constructor(private readonly validator: RuleSpecValidatorService) {}
 
-  normalizeRuleSpec(input: unknown): StockScreeningRuleSpec {
+  normalizeRuleSpec(input: unknown): StockScreeningRuleSpec | FactorScreeningRuleSpec | SignalEventRuleSpec {
     const ruleSpec = this.validator.validateRuleSpec(input)
-    if (ruleSpec.universe.type !== 'ALL_A') {
-      // validator 已保证此分支不可达；保留防线，避免未来放宽类型后静默改变 B0 语义。
-      throw new TypeError('B0 仅支持 ALL_A universe')
+    const universe = {
+      type: 'ALL_A' as const,
+      excludeSt: ruleSpec.universe.excludeSt,
+      excludeSuspended: ruleSpec.universe.excludeSuspended,
+      excludeBse: ruleSpec.universe.excludeBse,
+    }
+    if (ruleSpec.type === SubscriptionRuleType.STOCK_SCREENING) {
+      return { type: ruleSpec.type, version: 1, universe, filters: normalizeJsonObject(ruleSpec.filters) }
+    }
+    if (ruleSpec.type === SubscriptionRuleType.SIGNAL_EVENT) {
+      return {
+        type: ruleSpec.type,
+        version: 1,
+        universe,
+        conditions: ruleSpec.conditions.map((condition) => ({ ...condition })),
+        minSatisfied: ruleSpec.minSatisfied,
+      }
     }
     return {
-      type: SubscriptionRuleType.STOCK_SCREENING,
+      type: ruleSpec.type,
       version: 1,
-      universe: {
-        type: 'ALL_A',
-        excludeSt: ruleSpec.universe.excludeSt,
-        excludeSuspended: ruleSpec.universe.excludeSuspended,
-        excludeBse: ruleSpec.universe.excludeBse,
-      },
-      filters: normalizeJsonObject(ruleSpec.filters),
-    }
+      universe,
+      conditions: ruleSpec.conditions.map((condition) => ({ ...condition })),
+      ...(ruleSpec.sortBy ? { sortBy: ruleSpec.sortBy } : {}),
+      ...(ruleSpec.sortOrder ? { sortOrder: ruleSpec.sortOrder } : {}),
+    } as FactorScreeningRuleSpec
   }
 
-  normalizeTriggerSpec(input: unknown = undefined): SubscriptionTriggerSpec {
-    return this.validator.validateTriggerSpec(input)
+  normalizeTriggerSpec(
+    input: unknown = undefined,
+    ruleType = SubscriptionRuleType.STOCK_SCREENING,
+  ): SubscriptionTriggerSpec {
+    return this.validator.validateTriggerSpec(input, ruleType)
   }
 
   /** 将存量 filters 显式包装为冻结的 B0 ruleSpec，供迁移/双读适配器调用。 */
   normalizeLegacyStockScreeningRule(filters: unknown): StockScreeningRuleSpec {
-    return this.normalizeRuleSpec({
+    const ruleSpec = this.normalizeRuleSpec({
       type: SubscriptionRuleType.STOCK_SCREENING,
       version: 1,
       universe: { ...LEGACY_ALL_A_UNIVERSE },
       filters,
     })
+    if (ruleSpec.type !== SubscriptionRuleType.STOCK_SCREENING) throw new TypeError('legacy 规则必须是基础选股规则')
+    return ruleSpec
   }
 }
 

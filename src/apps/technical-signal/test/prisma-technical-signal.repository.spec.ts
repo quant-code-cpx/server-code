@@ -1,4 +1,5 @@
 import { ConflictException } from '@nestjs/common'
+import { TushareSyncProgressStatus } from '@prisma/client'
 import { PrismaService } from 'src/shared/prisma.service'
 import {
   LoadTechnicalSignalTimelineInput,
@@ -13,6 +14,10 @@ interface PrismaMock {
   adjFactor: { findFirst: PrismaMethod; findMany: PrismaMethod }
   tradeCal: { findFirst: PrismaMethod; findMany: PrismaMethod }
   suspendD: { findFirst: PrismaMethod; findMany: PrismaMethod }
+  indexDaily: { findMany: PrismaMethod }
+  tushareSyncProgress: { findUnique: PrismaMethod }
+  tushareSyncRetryQueue: { count: PrismaMethod }
+  tushareSyncLog: { findMany: PrismaMethod }
 }
 
 const versionAt = new Date('2024-01-05T00:00:00.000Z')
@@ -29,6 +34,7 @@ function createPrismaMock(options?: {
   suspendedDates?: string[]
   dailyWatermark?: string
   adjFactorWatermark?: string
+  benchmarkReady?: boolean
 }): PrismaMock {
   const calendarDates = options?.calendarDates ?? ['20240102', '20240103', '20240104']
   const dailyRows =
@@ -81,6 +87,31 @@ function createPrismaMock(options?: {
       findFirst: jest.fn().mockResolvedValue({ syncedAt: versionAt }),
       findMany: jest.fn().mockResolvedValue(suspendedDates.map((tradeDate) => ({ tradeDate }))),
     },
+    indexDaily: {
+      findMany: jest.fn().mockResolvedValue(
+        calendarDates.map((tradeDate) => ({
+          tradeDate: utcDate(tradeDate),
+          open: 100,
+          close: 100,
+          syncedAt: versionAt,
+        })),
+      ),
+    },
+    tushareSyncProgress: {
+      findUnique: jest.fn().mockResolvedValue({
+        status: options?.benchmarkReady ? TushareSyncProgressStatus.COMPLETED : TushareSyncProgressStatus.RUNNING,
+      }),
+    },
+    tushareSyncRetryQueue: { count: jest.fn().mockResolvedValue(0) },
+    tushareSyncLog: {
+      findMany: jest
+        .fn()
+        .mockResolvedValue(
+          options?.benchmarkReady
+            ? [{ payload: { mode: 'full', rangeStart: '19901219', failedDates: [], coverageMissingDates: [] } }]
+            : [],
+        ),
+    },
   }
 }
 
@@ -107,7 +138,7 @@ async function expectConflict(promise: Promise<unknown>, message: string): Promi
 }
 
 describe('PrismaTechnicalSignalRepository', () => {
-  it('请求基准超额收益时立即拒绝，且不发起任何数据库查询', async () => {
+  it('基准全历史任务未完成时拒绝超额收益请求', async () => {
     const prisma = createPrismaMock()
     const repository = new PrismaTechnicalSignalRepository(prisma as unknown as PrismaService)
 
@@ -116,15 +147,18 @@ describe('PrismaTechnicalSignalRepository', () => {
       'TECHNICAL_SIGNAL_BENCHMARK_NOT_READY',
     )
 
-    expect(prisma.stockBasic.findUnique).not.toHaveBeenCalled()
-    expect(prisma.daily.findFirst).not.toHaveBeenCalled()
-    expect(prisma.daily.findMany).not.toHaveBeenCalled()
-    expect(prisma.adjFactor.findFirst).not.toHaveBeenCalled()
-    expect(prisma.adjFactor.findMany).not.toHaveBeenCalled()
-    expect(prisma.tradeCal.findFirst).not.toHaveBeenCalled()
-    expect(prisma.tradeCal.findMany).not.toHaveBeenCalled()
-    expect(prisma.suspendD.findFirst).not.toHaveBeenCalled()
-    expect(prisma.suspendD.findMany).not.toHaveBeenCalled()
+    expect(prisma.stockBasic.findUnique).toHaveBeenCalled()
+    expect(prisma.tushareSyncProgress.findUnique).toHaveBeenCalled()
+  })
+
+  it('完整基座、无重试项且覆盖齐全时加载 HS300 基准行情', async () => {
+    const prisma = createPrismaMock({ benchmarkReady: true })
+    const repository = new PrismaTechnicalSignalRepository(prisma as unknown as PrismaService)
+
+    const result = await repository.loadTimeline(createInput({ includeBenchmark: true, benchmarkTsCode: '000300.SH' }))
+
+    expect(result.benchmark).toMatchObject({ tsCode: '000300.SH', bars: expect.any(Array) })
+    expect(result.dataVersions.indexDaily).toContain('000300.SH:through:20240103')
   })
 
   it('.BJ 股票固定使用 SSE 交易日历，不查询 BSE 日历', async () => {

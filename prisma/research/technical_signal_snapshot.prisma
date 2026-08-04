@@ -1,0 +1,37 @@
+/// 日级技术指标统一语义的物化截面；同一 catalogVersion 可安全重跑。
+model TechnicalSignalDailySnapshot {
+  id             BigInt   @id @default(autoincrement())
+  tsCode         String   @map("ts_code") @db.VarChar(16)
+  tradeDate      String   @map("trade_date") @db.VarChar(8)
+  catalogVersion String   @map("catalog_version") @db.VarChar(40)
+  bullishCount   Int      @map("bullish_count")
+  bearishCount   Int      @map("bearish_count")
+  totalScore     Decimal? @map("total_score") @db.Decimal(10, 4)
+  metrics        Json     @db.JsonB
+  dataVersions   Json     @map("data_versions") @db.JsonB
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@unique([tsCode, tradeDate, catalogVersion])
+  @@index([tradeDate, bullishCount])
+  @@map("technical_signal_daily_snapshots")
+}
+
+/// 技术事件为不可变事实。订阅命中复制 evidence，避免后续算法升级改写历史解释。
+model TechnicalSignalEvent {
+  id               BigInt   @id @default(autoincrement())
+  tsCode           String   @map("ts_code") @db.VarChar(16)
+  tradeDate        String   @map("trade_date") @db.VarChar(8)
+  metricId         String   @map("metric_id") @db.VarChar(50)
+  semanticsVersion String   @map("semantics_version") @db.VarChar(30)
+  eventType        String   @map("event_type") @db.VarChar(40)
+  direction        String?  @db.VarChar(10)
+  strength         Decimal? @db.Decimal(10, 4)
+  eventKey         String   @map("event_key") @db.VarChar(160)
+  evidence         Json     @db.JsonB
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  @@unique([tsCode, tradeDate, eventKey])
+  @@index([tradeDate, metricId, eventType])
+  @@index([tsCode, tradeDate(sort: Desc)])
+  @@map("technical_signal_events")
+}

@@ -55,6 +55,8 @@ export class TushareClient {
    */
   private static readonly DOCUMENTED_RATE_LIMIT_MS = new Map<string, number>([
     ['daily', 120], // doc_id=27：每分钟最多 500 次 → 120ms
+    // index_daily 全历史回补按交易日串行请求，固定保守上限 500 次/分钟。
+    ['index_daily', 120],
     ['cyq_chips', 350], // 文档限制 200次/分钟 → ceil(60000/200)=300ms，加安全余量取 350ms
     ['ths_member', 200], // 同花顺成分股按板块循环时统一节流
   ])

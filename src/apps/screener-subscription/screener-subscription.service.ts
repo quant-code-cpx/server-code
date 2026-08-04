@@ -1,4 +1,13 @@
-import { BadRequestException, HttpException, HttpStatus, Injectable, Logger, NotFoundException } from '@nestjs/common'
+import {
+  BadRequestException,
+  ConflictException,
+  HttpException,
+  HttpStatus,
+  Injectable,
+  Logger,
+  NotFoundException,
+  UnprocessableEntityException,
+} from '@nestjs/common'
 import { InjectQueue } from '@nestjs/bullmq'
 import { Queue } from 'bullmq'
 import { Prisma, SubscriptionFrequency, SubscriptionRunStatus, SubscriptionStatus } from '@prisma/client'
@@ -9,7 +18,10 @@ import { PrismaService } from 'src/shared/prisma.service'
 import { SCREENER_SUBSCRIPTION_QUEUE, ScreenerSubscriptionJobName } from 'src/constant/queue.constant'
 import {
   CreateSubscriptionDto,
+  PreviewSubscriptionDto,
+  SubscriptionHitsDto,
   SubscriptionLogsQueryDto,
+  SubscriptionMetricsDto,
   UpdateSubscriptionDto,
   ValidateSubscriptionDto,
 } from './dto/subscription.dto'
@@ -24,8 +36,11 @@ import {
   DEFAULT_STOCK_SCREENING_TRIGGER_SPEC,
   RuleFingerprintService,
   RuleNormalizerService,
-  stableRuleStringify,
+  SubscriptionRuleType,
 } from './rule'
+import { MetricCatalogService } from './metric-catalog'
+import { SubscriptionEvaluatorRegistry } from './evaluator'
+import { SubscriptionDataReadinessService } from './subscription-data-readiness.service'
 
 dayjs.extend(utc)
 dayjs.extend(timezone)
@@ -55,6 +70,9 @@ export class ScreenerSubscriptionService {
     @InjectQueue(SCREENER_SUBSCRIPTION_QUEUE) private readonly queue: Queue,
     private readonly ruleNormalizer: RuleNormalizerService,
     private readonly ruleFingerprint: RuleFingerprintService,
+    private readonly metricCatalog: MetricCatalogService,
+    private readonly evaluatorRegistry: SubscriptionEvaluatorRegistry,
+    private readonly dataReadiness: SubscriptionDataReadinessService,
   ) {}
 
   // ── Trade date ─────────────────────────────────────────────────────────────
@@ -177,35 +195,43 @@ export class ScreenerSubscriptionService {
       throw new BadRequestException(`订阅数量已达上限（最多 ${MAX_SUBSCRIPTIONS_PER_USER} 个）`)
     }
 
-    if (!dto.strategyId && !dto.filters) {
-      throw new BadRequestException('strategyId 和 filters 必传其一')
-    }
+    this.assertRuleSourceExclusive(dto)
+    if (!dto.ruleSpec && !dto.strategyId && !dto.filters)
+      throw new BadRequestException('ruleSpec、strategyId 和 filters 必传其一')
 
     let filters: Record<string, unknown>
+    let ruleMetadata: ReturnType<ScreenerSubscriptionService['createRuleMetadata']>
 
-    if (dto.strategyId) {
+    if (dto.ruleSpec) {
+      ruleMetadata = this.createRuleMetadata(dto.ruleSpec, dto.triggerSpec)
+      filters = ruleMetadata.ruleSpec.type === SubscriptionRuleType.STOCK_SCREENING ? ruleMetadata.ruleSpec.filters : {}
+    } else if (dto.strategyId) {
       const strategy = await this.prisma.screenerStrategy.findFirst({
         where: { id: dto.strategyId, userId },
       })
       if (!strategy) throw new NotFoundException(`选股策略 ${dto.strategyId} 不存在`)
       filters = strategy.filters as Record<string, unknown>
+      ruleMetadata = this.createLegacyRuleMetadata(filters)
     } else {
       filters = dto.filters!
+      ruleMetadata = this.createLegacyRuleMetadata(filters)
     }
 
-    const ruleMetadata = this.createLegacyRuleMetadata(filters)
     const created = await this.prisma.screenerSubscription.create({
       data: {
         userId,
         name: dto.name,
         strategyId: dto.strategyId ?? null,
         filters: filters as Parameters<typeof this.prisma.screenerSubscription.create>[0]['data']['filters'],
+        ruleType: ruleMetadata.ruleSpec.type,
         ruleSpec: ruleMetadata.ruleSpec as unknown as Prisma.InputJsonObject,
-        triggerSpec: ruleMetadata.triggerSpec as Prisma.InputJsonObject,
+        triggerSpec: ruleMetadata.triggerSpec as unknown as Prisma.InputJsonObject,
+        notificationSpec: this.normalizeNotificationSpec(dto.notificationSpec) as Prisma.InputJsonObject,
         ruleFingerprint: ruleMetadata.fingerprint,
         sortBy: dto.sortBy ?? null,
         sortOrder: dto.sortOrder ?? null,
         frequency: dto.frequency ?? SubscriptionFrequency.DAILY,
+        status: dto.status ?? SubscriptionStatus.ACTIVE,
       },
     })
     const [enriched] = await this.enrichWithStrategyInfo([created])
@@ -215,6 +241,10 @@ export class ScreenerSubscriptionService {
   async update(userId: number, id: number, dto: UpdateSubscriptionDto) {
     const sub = await this.prisma.screenerSubscription.findFirst({ where: { id, userId } })
     if (!sub) throw new NotFoundException('订阅不存在')
+    if (dto.expectedUpdatedAt && sub.updatedAt.toISOString() !== dto.expectedUpdatedAt) {
+      throw new ConflictException({ code: 'SUBSCRIPTION_CONFLICT', message: '订阅已被其他页面修改，请刷新后重试' })
+    }
+    this.assertRuleSourceExclusive(dto)
 
     // If strategyId is being (re)set, resolve filters from strategy
     let resolvedFilters: Record<string, unknown> | undefined
@@ -226,25 +256,48 @@ export class ScreenerSubscriptionService {
       resolvedFilters = strategy.filters as Record<string, unknown>
     }
 
-    const suppliedFilters =
-      resolvedFilters ??
-      (dto.filters !== undefined && (dto.strategyId === undefined || dto.strategyId === null) ? dto.filters : undefined)
-    const filtersChanged = suppliedFilters !== undefined && !this.areSameRuleFilters(sub.filters, suppliedFilters)
-    const ruleMetadata = filtersChanged ? this.createLegacyRuleMetadata(suppliedFilters!) : null
+    const suppliedFilters = dto.ruleSpec
+      ? undefined
+      : (resolvedFilters ??
+        (dto.filters !== undefined && (dto.strategyId === undefined || dto.strategyId === null)
+          ? dto.filters
+          : undefined))
+    const suppliedMetadata = dto.ruleSpec
+      ? this.createRuleMetadata(dto.ruleSpec, dto.triggerSpec)
+      : suppliedFilters !== undefined
+        ? this.createLegacyRuleMetadata(suppliedFilters)
+        : null
+    const currentFingerprint =
+      sub.ruleFingerprint ?? this.createLegacyRuleMetadata(sub.filters as Record<string, unknown>).fingerprint
+    const ruleChanged = suppliedMetadata !== null && suppliedMetadata.fingerprint !== currentFingerprint
+    const nextTriggerSpec =
+      dto.triggerSpec !== undefined
+        ? this.ruleNormalizer.normalizeTriggerSpec(dto.triggerSpec, sub.ruleType as SubscriptionRuleType)
+        : dto.ruleSpec !== undefined
+          ? suppliedMetadata?.triggerSpec
+          : undefined
 
     const updated = await this.prisma.screenerSubscription.update({
       where: { id },
       data: {
         ...(dto.name !== undefined && { name: dto.name }),
         ...(dto.frequency !== undefined && { frequency: dto.frequency }),
+        ...(dto.status !== undefined && { status: dto.status }),
         ...(dto.strategyId !== undefined && { strategyId: dto.strategyId }),
         ...(suppliedFilters !== undefined && {
           filters: suppliedFilters as Parameters<typeof this.prisma.screenerSubscription.update>[0]['data']['filters'],
         }),
-        ...(filtersChanged && {
+        ...(suppliedMetadata && {
+          ruleType: suppliedMetadata.ruleSpec.type,
+          ruleSpec: suppliedMetadata.ruleSpec as unknown as Prisma.InputJsonObject,
+          ruleFingerprint: suppliedMetadata.fingerprint,
+        }),
+        ...(nextTriggerSpec && { triggerSpec: nextTriggerSpec as unknown as Prisma.InputJsonObject }),
+        ...(dto.notificationSpec !== undefined && {
+          notificationSpec: this.normalizeNotificationSpec(dto.notificationSpec) as Prisma.InputJsonObject,
+        }),
+        ...(ruleChanged && {
           ruleVersion: { increment: 1 },
-          ruleSpec: ruleMetadata!.ruleSpec as unknown as Prisma.InputJsonObject,
-          ruleFingerprint: ruleMetadata!.fingerprint,
           lastRunAt: null,
           lastEvaluatedTradeDate: null,
           lastClaimedTradeDate: null,
@@ -260,20 +313,47 @@ export class ScreenerSubscriptionService {
   }
 
   private createLegacyRuleMetadata(filters: Record<string, unknown>) {
-    const ruleSpec = this.ruleNormalizer.normalizeLegacyStockScreeningRule(filters)
+    return this.createRuleMetadata(this.ruleNormalizer.normalizeLegacyStockScreeningRule(filters))
+  }
+
+  private createRuleMetadata(ruleSpecInput: unknown, triggerSpecInput: unknown = undefined) {
+    const ruleSpec = this.ruleNormalizer.normalizeRuleSpec(ruleSpecInput)
     return {
       ruleSpec,
-      triggerSpec: { ...DEFAULT_STOCK_SCREENING_TRIGGER_SPEC },
+      triggerSpec: this.ruleNormalizer.normalizeTriggerSpec(triggerSpecInput, ruleSpec.type),
       fingerprint: this.ruleFingerprint.create(ruleSpec).fingerprint,
     }
   }
 
-  private areSameRuleFilters(current: unknown, next: unknown): boolean {
-    try {
-      return stableRuleStringify(current) === stableRuleStringify(next)
-    } catch {
-      // 旧 JSON 结构异常时宁可重置基线，也不能让新旧规则混合比较。
-      return false
+  private normalizeNotificationSpec(input: unknown = undefined): Record<string, unknown> {
+    if (input === undefined)
+      return { inApp: true, maxHitsPerNotification: DEFAULT_STOCK_SCREENING_TRIGGER_SPEC.maxHitsPerNotification }
+    if (!input || typeof input !== 'object' || Array.isArray(input)) {
+      throw new BadRequestException({ code: 'RULE_INVALID', message: 'notificationSpec 必须是对象' })
+    }
+    const value = input as Record<string, unknown>
+    if (value.inApp !== undefined && typeof value.inApp !== 'boolean') {
+      throw new BadRequestException({ code: 'RULE_INVALID', message: 'notificationSpec.inApp 必须是布尔值' })
+    }
+    const maxHits = value.maxHitsPerNotification
+    if (maxHits !== undefined && (!Number.isInteger(maxHits) || (maxHits as number) < 1 || (maxHits as number) > 100)) {
+      throw new BadRequestException({
+        code: 'RULE_INVALID',
+        message: 'notificationSpec.maxHitsPerNotification 必须为 1 到 100 的整数',
+      })
+    }
+    return {
+      inApp: value.inApp ?? true,
+      maxHitsPerNotification: maxHits ?? DEFAULT_STOCK_SCREENING_TRIGGER_SPEC.maxHitsPerNotification,
+    }
+  }
+
+  private assertRuleSourceExclusive(dto: { ruleSpec?: unknown; filters?: unknown; strategyId?: unknown }): void {
+    if (dto.ruleSpec !== undefined && (dto.filters !== undefined || dto.strategyId !== undefined)) {
+      throw new BadRequestException({
+        code: 'RULE_SOURCE_CONFLICT',
+        message: 'ruleSpec 不能与 filters 或 strategyId 同时提交',
+      })
     }
   }
 
@@ -421,14 +501,20 @@ export class ScreenerSubscriptionService {
   }
 
   async validate(userId: number, dto: ValidateSubscriptionDto) {
+    this.assertRuleSourceExclusive(dto)
+    const requestedFingerprint = dto.ruleSpec ? this.createRuleMetadata(dto.ruleSpec).fingerprint : null
     const existing = await this.prisma.screenerSubscription.findMany({
       where: { userId, ...(dto.id !== undefined && { id: { not: dto.id } }) },
-      select: { id: true, name: true, filters: true, strategyId: true },
+      select: { id: true, name: true, filters: true, strategyId: true, ruleFingerprint: true },
     })
 
     const similarSubscriptions: Array<{ id: number; name: string; similarity: string }> = []
 
     for (const sub of existing) {
+      if (requestedFingerprint && sub.ruleFingerprint === requestedFingerprint) {
+        similarSubscriptions.push({ id: sub.id, name: sub.name, similarity: 'SAME_RULE' })
+        continue
+      }
       // Check strategyId match
       if (dto.strategyId !== undefined && dto.strategyId !== null && sub.strategyId === dto.strategyId) {
         similarSubscriptions.push({ id: sub.id, name: sub.name, similarity: 'SAME_STRATEGY' })
@@ -443,11 +529,162 @@ export class ScreenerSubscriptionService {
     return { hasDuplicate: similarSubscriptions.length > 0, similarSubscriptions }
   }
 
+  async metrics(_userId: number, dto: SubscriptionMetricsDto) {
+    const result = await this.metricCatalog.list(dto.sources)
+    return {
+      ...result,
+      ...(dto.catalogVersion && dto.catalogVersion !== result.catalogVersion
+        ? { warning: { code: 'CATALOG_VERSION_UPDATED', message: '指标目录已更新，请使用本次响应中的 catalogVersion' } }
+        : {}),
+    }
+  }
+
+  async preview(userId: number, dto: PreviewSubscriptionDto) {
+    const startedAt = Date.now()
+    const ruleMetadata = this.createRuleMetadata(dto.ruleSpec, dto.triggerSpec)
+    const tradeDate = dto.tradeDate ?? (await this.getLatestTradeDateStr())
+    const readiness = await this.dataReadiness.checkRule(ruleMetadata.ruleSpec, tradeDate)
+    if (!readiness.ready) {
+      throw new UnprocessableEntityException({
+        code: 'DATA_NOT_READY',
+        message: '指定交易日的订阅数据尚未就绪',
+        details: { tradeDate, missing: readiness.missing, dataVersions: readiness.dataVersions },
+      })
+    }
+
+    const evaluator = this.evaluatorRegistry.get(ruleMetadata.ruleSpec.type)
+    const outcome = await evaluator.evaluate(
+      {
+        userId,
+        tradeDate,
+        previousSuccessfulTradeDate: null,
+        ruleVersion: 1,
+        preview: true,
+        eventWindow: ruleMetadata.triggerSpec.eventWindow,
+      },
+      ruleMetadata.ruleSpec,
+    )
+    const limit = dto.limit ?? 20
+    const eventCandidates =
+      ruleMetadata.ruleSpec.type === SubscriptionRuleType.SIGNAL_EVENT ? (outcome.eventHits ?? []).slice(0, limit) : []
+    const codes =
+      ruleMetadata.ruleSpec.type === SubscriptionRuleType.SIGNAL_EVENT
+        ? [...new Set(eventCandidates.map((candidate) => candidate.tsCode))]
+        : outcome.matchedCodes.slice(0, limit)
+    const meta = await this.fetchStockMeta(codes, tradeDate)
+    const evidence = await evaluator.explain(
+      {
+        userId,
+        tradeDate,
+        previousSuccessfulTradeDate: null,
+        ruleVersion: 1,
+        preview: true,
+        eventWindow: ruleMetadata.triggerSpec.eventWindow,
+      },
+      ruleMetadata.ruleSpec,
+      ruleMetadata.ruleSpec.type === SubscriptionRuleType.SIGNAL_EVENT
+        ? eventCandidates.map((candidate) => ({ ...candidate, kind: 'EVENT' as const }))
+        : codes.map((tsCode) => ({ tsCode, kind: 'MATCH' as const })),
+    )
+    const catalog = await this.metricCatalog.list()
+
+    return {
+      ruleFingerprint: ruleMetadata.fingerprint,
+      catalogVersion: catalog.catalogVersion,
+      asOfTradeDate: outcome.asOfTradeDate,
+      universeCount: outcome.universeCount,
+      matchedCount: outcome.matchedCodes.length,
+      truncated:
+        ruleMetadata.ruleSpec.type === SubscriptionRuleType.SIGNAL_EVENT
+          ? (outcome.eventHits?.length ?? 0) > eventCandidates.length
+          : outcome.matchedCodes.length > codes.length,
+      matchedStocks: codes.map(
+        (code) => meta.get(code) ?? { tsCode: code, name: null, industry: null, close: null, pctChg: null },
+      ),
+      evidence,
+      warnings: outcome.warnings,
+      dataVersions: { ...readiness.dataVersions, ...outcome.dataVersions },
+      executionMs: Date.now() - startedAt,
+    }
+  }
+
+  async getHits(userId: number, dto: SubscriptionHitsDto) {
+    const sub = await this.prisma.screenerSubscription.findFirst({
+      where: { id: dto.id, userId },
+      select: { id: true },
+    })
+    if (!sub) throw new NotFoundException('订阅不存在')
+
+    const page = dto.page ?? 1
+    const pageSize = dto.pageSize ?? 20
+    const where = { subscriptionId: sub.id, logId: dto.logId, ...(dto.kind ? { kind: dto.kind } : {}) }
+    const [hits, total] = await Promise.all([
+      this.prisma.screenerSubscriptionHit.findMany({
+        where,
+        orderBy: { id: 'asc' },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+      this.prisma.screenerSubscriptionHit.count({ where }),
+    ])
+
+    return {
+      hits: hits.map((hit) => ({ ...hit, id: hit.id.toString(), evidence: hit.evidence as Record<string, unknown> })),
+      total,
+      page,
+      pageSize,
+    }
+  }
+
+  async getRunStatus(userId: number, jobId: string) {
+    const log = await this.prisma.screenerSubscriptionLog.findFirst({
+      where: { jobId, subscription: { userId } },
+      select: { id: true, subscriptionId: true, status: true, errorCode: true, errorMessage: true },
+    })
+    if (log) {
+      return {
+        jobId,
+        status: log.status,
+        subscriptionId: log.subscriptionId,
+        logId: log.id,
+        errorCode: log.errorCode,
+        errorMessage: log.errorMessage,
+      }
+    }
+
+    const job = await this.queue.getJob(jobId)
+    const subscriptionId = this.readSubscriptionIdFromJob(job?.data)
+    if (!job || !subscriptionId) return { jobId, status: 'NOT_FOUND', subscriptionId: null, logId: null }
+    const owned = await this.prisma.screenerSubscription.findFirst({
+      where: { id: subscriptionId, userId },
+      select: { id: true },
+    })
+    if (!owned) throw new NotFoundException('订阅不存在')
+
+    const state = await job.getState()
+    return {
+      jobId,
+      status:
+        state === 'active' ? 'RUNNING' : state === 'failed' ? 'FAILED' : state === 'completed' ? 'SUCCESS' : 'QUEUED',
+      subscriptionId,
+      logId: null,
+      errorCode: null,
+      errorMessage: null,
+    }
+  }
+
+  private readSubscriptionIdFromJob(data: unknown): number | null {
+    if (!data || typeof data !== 'object' || Array.isArray(data)) return null
+    const value = (data as Record<string, unknown>).subscriptionId
+    return typeof value === 'number' && Number.isInteger(value) && value > 0 ? value : null
+  }
+
   // ── Stock metadata helper ──────────────────────────────────────────────────
 
-  private async fetchStockMeta(tsCodes: string[]): Promise<Map<string, StockEntryItemDto>> {
+  private async fetchStockMeta(tsCodes: string[], tradeDate?: string): Promise<Map<string, StockEntryItemDto>> {
     if (!tsCodes.length) return new Map()
     try {
+      const quoteAsOf = tradeDate ? Prisma.sql`AND trade_date <= ${tradeDate}::date` : Prisma.empty
       const rows = await this.prisma.$queryRaw<RawStockMetaRow[]>(Prisma.sql`
         SELECT
           sb.ts_code   AS "tsCode",
@@ -460,6 +697,7 @@ export class ScreenerSubscriptionService {
           SELECT close, pct_chg
           FROM stock_daily_prices
           WHERE ts_code = sb.ts_code
+          ${quoteAsOf}
           ORDER BY trade_date DESC
           LIMIT 1
         ) d ON true

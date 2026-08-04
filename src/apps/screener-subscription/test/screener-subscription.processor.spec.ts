@@ -6,7 +6,6 @@ import {
   SubscriptionStatus,
 } from '@prisma/client'
 import { Job } from 'bullmq'
-import { StockScreenerService } from 'src/apps/stock/stock-screener.service'
 import { ScreenerSubscriptionJobName } from 'src/constant/queue.constant'
 import { EventsGateway } from 'src/websocket/events.gateway'
 import { createMockPrismaService } from 'test/helpers/prisma-mock'
@@ -16,6 +15,7 @@ import {
   MAX_CONSECUTIVE_FAILS,
 } from '../constants/subscription.constant'
 import { ScreenerSubscriptionProcessor } from '../screener-subscription.processor'
+import { SubscriptionEvaluatorRegistry } from '../evaluator'
 import {
   CollectionTriggerPlan,
   RuleNormalizerService,
@@ -61,13 +61,14 @@ function buildPlan(overrides: Partial<CollectionTriggerPlan> = {}): CollectionTr
 describe('ScreenerSubscriptionProcessor', () => {
   let processor: ScreenerSubscriptionProcessor
   let prisma: ReturnType<typeof createMockPrismaService>
-  let stockScreener: jest.Mocked<Pick<StockScreenerService, 'screenCodes'>>
-  let dataReadiness: jest.Mocked<Pick<SubscriptionDataReadinessService, 'checkStockScreening'>>
+  let stockScreener: { screenCodes: jest.Mock }
+  let dataReadiness: jest.Mocked<Pick<SubscriptionDataReadinessService, 'checkRule'>>
+  let evaluatorRegistry: jest.Mocked<Pick<SubscriptionEvaluatorRegistry, 'get'>>
   let eventsGateway: jest.Mocked<Pick<EventsGateway, 'emitToUser'>>
   let queue: { addBulk: jest.Mock }
   let triggerPlanner: jest.Mocked<Pick<TriggerPlannerService, 'planCollection'>>
   let ruleNormalizer: jest.Mocked<
-    Pick<RuleNormalizerService, 'normalizeRuleSpec' | 'normalizeLegacyStockScreeningRule'>
+    Pick<RuleNormalizerService, 'normalizeRuleSpec' | 'normalizeLegacyStockScreeningRule' | 'normalizeTriggerSpec'>
   >
 
   beforeEach(() => {
@@ -76,7 +77,7 @@ describe('ScreenerSubscriptionProcessor', () => {
     prisma.screenerSubscriptionLog.updateMany.mockResolvedValue({ count: 1 } as never)
     stockScreener = { screenCodes: jest.fn() }
     dataReadiness = {
-      checkStockScreening: jest.fn().mockResolvedValue({
+      checkRule: jest.fn().mockResolvedValue({
         ready: true,
         tradeDate: '20260803',
         dataVersions: { DAILY: 'target:20260803' },
@@ -88,17 +89,46 @@ describe('ScreenerSubscriptionProcessor', () => {
     triggerPlanner = { planCollection: jest.fn() }
     ruleNormalizer = {
       normalizeRuleSpec: jest.fn().mockImplementation((ruleSpec) => ruleSpec as never),
-      normalizeLegacyStockScreeningRule: jest.fn().mockImplementation((filters) => ({ filters }) as never),
+      normalizeLegacyStockScreeningRule: jest.fn().mockImplementation(
+        (filters) =>
+          ({
+            type: SubscriptionRuleType.STOCK_SCREENING,
+            version: 1,
+            universe: { market: 'ALL_A', excludeSt: true, excludeBse: true, excludeSuspended: true },
+            filters,
+          }) as never,
+      ),
+      normalizeTriggerSpec: jest.fn().mockReturnValue({
+        mode: 'ENTER',
+        notifyOnInitialMatch: false,
+        eventWindow: 'CURRENT_TRADE_DATE',
+        cooldownTradingDays: 0,
+        maxHitsPerNotification: 20,
+      }),
     }
+    const evaluator = {
+      evaluate: jest.fn().mockImplementation(async (context, rule) => {
+        const result = await stockScreener.screenCodes({ filters: rule.filters, tradeDate: context.tradeDate })
+        return {
+          asOfTradeDate: result.tradeDate,
+          universeCount: result.total,
+          matchedCodes: result.matchedCodes,
+          dataVersions: { DAILY: `target:${result.tradeDate}` },
+          warnings: [],
+        }
+      }),
+      explain: jest.fn().mockResolvedValue([]),
+    }
+    evaluatorRegistry = { get: jest.fn().mockReturnValue(evaluator) }
 
     processor = new ScreenerSubscriptionProcessor(
       prisma as never,
-      stockScreener as never,
       dataReadiness as never,
       eventsGateway as never,
       queue as never,
       triggerPlanner as never,
       ruleNormalizer as never,
+      evaluatorRegistry as never,
     )
   })
 
@@ -188,6 +218,21 @@ describe('ScreenerSubscriptionProcessor', () => {
           }),
         }),
       )
+      expect(prisma.screenerSubscriptionHit.createMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: [
+            expect.objectContaining({
+              subscriptionId: sub.id,
+              logId: 100,
+              tradeDate: '20260803',
+              tsCode: '000002.SZ',
+              kind: 'ENTER',
+              evidence: expect.objectContaining({ reason: '股票新进入基础选股结果集' }),
+            }),
+          ],
+          skipDuplicates: true,
+        }),
+      )
       expect(eventsGateway.emitToUser).toHaveBeenCalledWith(
         sub.userId,
         'screener_subscription_alert',
@@ -260,7 +305,7 @@ describe('ScreenerSubscriptionProcessor', () => {
       const runKey = buildSubscriptionRunKey(sub.id, '20260803', sub.ruleVersion)
       prisma.screenerSubscription.findUnique.mockResolvedValue(sub as never)
       prisma.screenerSubscriptionLog.create.mockResolvedValue({ id: 107, runKey } as never)
-      dataReadiness.checkStockScreening.mockResolvedValue({
+      dataReadiness.checkRule.mockResolvedValue({
         ready: false,
         tradeDate: '20260803',
         dataVersions: { DAILY: 'target:20260803:coverage:4990/5000' },

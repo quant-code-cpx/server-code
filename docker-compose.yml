@@ -91,7 +91,7 @@ services:
       # 使用匿名 volume 覆盖容器内的 node_modules，
       # 防止主机的 node_modules（macOS）覆盖容器内（alpine）编译的原生模块
       - /app/node_modules
-    command: sh -c "pnpm exec prisma generate && pnpm exec prisma migrate deploy && pnpm start:dev"
+    command: sh -c "pnpm exec prisma generate && pnpm exec prisma migrate deploy && pnpm run agent:workflow:publish && pnpm start:dev"
     ports:
       - '${PORT:-3000}:3000'
     networks:
@@ -109,9 +109,8 @@ services:
       start_period: 30s
     restart: unless-stopped
 
-  # ── Agent BullMQ Worker（按需启用：--profile agent-worker）──────────────────
+  # ── Agent BullMQ Worker（消费 AI 研究 Run）──────────────────────────────────
   agent-worker:
-    profiles: ['agent-worker']
     build:
       context: .
       dockerfile: dockerfiles/app/Dockerfile

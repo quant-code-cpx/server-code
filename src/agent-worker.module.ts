@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common'
 import { ConfigModule } from '@nestjs/config'
 import { BullModule } from '@nestjs/bullmq'
 import { ConfigService } from '@nestjs/config'
+import { ScheduleModule } from '@nestjs/schedule'
 import configs from './config'
 import { AgentQueueModule } from './queue/agent/agent-queue.module'
 import { MetricsModule } from './shared/metrics/metrics.module'
@@ -11,6 +12,7 @@ import { IRedisConfig, REDIS_CONFIG_TOKEN } from './config/redis.config'
 @Module({
   imports: [
     ConfigModule.forRoot({ envFilePath: ['.env'], isGlobal: true, load: [...Object.values(configs)] }),
+    ScheduleModule.forRoot(),
     SharedModule,
     MetricsModule,
     BullModule.forRootAsync({

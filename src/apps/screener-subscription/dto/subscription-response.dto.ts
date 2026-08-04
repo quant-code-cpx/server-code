@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
-import { SubscriptionRuleType, SubscriptionRunStatus } from '@prisma/client'
+import { SubscriptionHitKind, SubscriptionRuleType, SubscriptionRunStatus } from '@prisma/client'
 
 export class LastRunResultDto {
   @ApiProperty() tradeDate: string
@@ -113,4 +113,76 @@ export class ValidateSubscriptionResponseDto {
     name: string
     similarity: string
   }>
+}
+
+export class SubscriptionMetricDto {
+  @ApiProperty() id: string
+  @ApiProperty() version: number
+  @ApiProperty({ enum: ['STOCK', 'FACTOR', 'SIGNAL'] }) source: string
+  @ApiProperty() category: string
+  @ApiProperty() label: string
+  @ApiProperty() description: string
+  @ApiProperty({ enum: ['NUMBER', 'PERCENT', 'ENUM', 'BOOLEAN', 'EVENT'] }) valueType: string
+  @ApiProperty({ type: [String] }) operators: string[]
+  @ApiPropertyOptional({ description: 'STOCK 指标对应的选股筛选字段' }) filterKey?: string
+  @ApiProperty({ enum: ['ENABLED', 'DISABLED', 'DATA_NOT_READY'] }) availability: string
+  @ApiProperty({ type: [String] }) requiredDataSets: string[]
+  @ApiProperty() semanticsVersion: string
+}
+
+export class SubscriptionMetricsResponseDto {
+  @ApiProperty() catalogVersion: string
+  @ApiProperty({ type: [SubscriptionMetricDto] }) metrics: SubscriptionMetricDto[]
+}
+
+export class SubscriptionHitEvidenceDto {
+  @ApiProperty() tsCode: string
+  @ApiProperty() kind: string
+  @ApiProperty() reason: string
+  @ApiProperty({ type: 'object', additionalProperties: true }) details: Record<string, unknown>
+}
+
+export class PreviewSubscriptionResponseDto {
+  @ApiProperty() ruleFingerprint: string
+  @ApiProperty() catalogVersion: string
+  @ApiProperty() asOfTradeDate: string
+  @ApiProperty() universeCount: number
+  @ApiProperty() matchedCount: number
+  @ApiProperty() truncated: boolean
+  @ApiProperty({ type: [StockEntryItemDto] }) matchedStocks: StockEntryItemDto[]
+  @ApiProperty({ type: [SubscriptionHitEvidenceDto] }) evidence: SubscriptionHitEvidenceDto[]
+  @ApiProperty({ type: [Object] }) warnings: Array<{ code: string; message: string }>
+  @ApiProperty({ type: 'object', additionalProperties: true }) dataVersions: Record<string, string>
+  @ApiProperty() executionMs: number
+}
+
+export class SubscriptionHitDto {
+  @ApiProperty() id: string
+  @ApiProperty() subscriptionId: number
+  @ApiProperty() logId: number
+  @ApiProperty() tradeDate: string
+  @ApiPropertyOptional({ nullable: true }) eventTradeDate?: string | null
+  @ApiProperty() tsCode: string
+  @ApiProperty({ enum: SubscriptionHitKind }) kind: SubscriptionHitKind
+  @ApiProperty() eventKey: string
+  @ApiProperty({ type: 'object', additionalProperties: true }) evidence: Record<string, unknown>
+  @ApiPropertyOptional({ nullable: true }) notifiedAt?: Date | null
+  @ApiProperty() createdAt: Date
+}
+
+export class SubscriptionHitListResponseDto {
+  @ApiProperty({ type: [SubscriptionHitDto] }) hits: SubscriptionHitDto[]
+  @ApiProperty() total: number
+  @ApiProperty() page: number
+  @ApiProperty() pageSize: number
+}
+
+export class SubscriptionRunStatusResponseDto {
+  @ApiProperty() jobId: string
+  @ApiProperty({ enum: ['QUEUED', 'RUNNING', 'SUCCESS', 'FAILED', 'SKIPPED_DATA_NOT_READY', 'NOT_FOUND'] })
+  status: string
+  @ApiPropertyOptional({ nullable: true }) subscriptionId?: number | null
+  @ApiPropertyOptional({ nullable: true }) logId?: number | null
+  @ApiPropertyOptional({ nullable: true }) errorCode?: string | null
+  @ApiPropertyOptional({ nullable: true }) errorMessage?: string | null
 }

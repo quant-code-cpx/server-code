@@ -27,6 +27,7 @@ import {
 import { SyncHelperService } from './sync-helper.service'
 import { TushareSyncMode, TushareSyncPlan, TushareSyncPlanContext } from './sync-plan.types'
 import { ValidationCollector } from './quality/validation-collector'
+import { mergeVerifiedLegacySuspendCorrections } from './verified-legacy-suspend-corrections'
 
 /**
  * FactorDataSyncService — 因子数据同步
@@ -173,7 +174,10 @@ export class FactorDataSyncService {
       fullSync: mode === 'full',
       fetchAndMap: async (td) => {
         const rows = await this.api.getSuspendDByTradeDate(td)
-        return rows.map((r) => mapSuspendDRecord(r, collector)).filter((r): r is NonNullable<typeof r> => Boolean(r))
+        const mapped = rows
+          .map((r) => mapSuspendDRecord(r, collector))
+          .filter((r): r is NonNullable<typeof r> => Boolean(r))
+        return mergeVerifiedLegacySuspendCorrections(td, mapped)
       },
       resolveDates: (start) => this.helper.getOpenTradeDatesBetween(start, targetTradeDate),
     })

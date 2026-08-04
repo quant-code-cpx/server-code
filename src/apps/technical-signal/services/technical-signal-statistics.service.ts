@@ -32,6 +32,7 @@ import {
 } from '../dto/technical-signal-response.dto'
 import {
   PrismaTechnicalSignalRepository,
+  type TechnicalSignalBenchmarkBar,
   type TechnicalSignalRawBar,
   type TechnicalSignalTimelineSnapshot,
 } from '../repositories/prisma-technical-signal.repository'
@@ -105,6 +106,7 @@ interface PreparedEvaluation {
 interface EvaluationContext {
   calendarIndexByDate: ReadonlyMap<string, number>
   barsByDate: ReadonlyMap<string, TechnicalSignalRawBar>
+  benchmarkBarsByDate: ReadonlyMap<string, TechnicalSignalBenchmarkBar>
 }
 
 interface OccurrenceWindow {
@@ -275,6 +277,9 @@ export class TechnicalSignalStatisticsService {
     const context: EvaluationContext = {
       calendarIndexByDate: new Map(timeline.openDates.map((date, index) => [date, index])),
       barsByDate: new Map(timeline.bars.map((bar) => [bar.tradeDate, bar])),
+      benchmarkBarsByDate: new Map<string, TechnicalSignalBenchmarkBar>(
+        timeline.benchmark?.bars.map((bar) => [bar.tradeDate, bar] as const) ?? [],
+      ),
     }
     const allOccurrences = detectTechnicalSignalOccurrences(points, {
       definitions: query.definitions,
@@ -419,6 +424,9 @@ export class TechnicalSignalStatisticsService {
     const missing = outcomes.filter((outcome) => outcome.qualityStatus === 'MISSING')
     const immature = outcomes.filter((outcome) => outcome.qualityStatus === 'IMMATURE')
     const rawReturns = valid.map((outcome) => outcome.rawReturn as number)
+    const excessReturns = valid
+      .map((outcome) => outcome.excessReturn)
+      .filter((value): value is number => value !== null)
     const partial = valid.filter((outcome) => outcome.pathCoverageStatus === 'PARTIAL')
     const complete = valid.filter((outcome) => outcome.pathCoverageStatus === 'COMPLETE')
     const overlappingOccurrenceCount = countOverlappingOutcomes(eligible)
@@ -427,6 +435,7 @@ export class TechnicalSignalStatisticsService {
 
     const raw = toReturnDistribution(rawReturns)
     const directional = toDirectionalDistribution(rawReturns, direction)
+    const excess = excessReturns.length > 0 ? toReturnDistribution(excessReturns) : null
     const excursion = toExcursionDistribution(complete, partial, direction)
     const missingReasons = {
       ENTRY_QUOTE_MISSING: missing.filter((outcome) => outcome.missingReason === 'ENTRY_QUOTE_MISSING').length,
@@ -454,11 +463,14 @@ export class TechnicalSignalStatisticsService {
       missingCount: missing.length,
       overlappingOccurrenceCount,
       missingReasons,
-      benchmarkMissingCount: 0,
-      benchmarkMissingReasons: { BENCHMARK_NOT_LISTED: 0 },
+      benchmarkMissingCount: valid.filter((outcome) => outcome.benchmarkMissingReason !== null).length,
+      benchmarkMissingReasons: {
+        BENCHMARK_NOT_LISTED: valid.filter((outcome) => outcome.benchmarkMissingReason === 'BENCHMARK_NOT_LISTED')
+          .length,
+      },
       raw,
       directional,
-      excess: null,
+      excess,
       excursion,
       minSampleDate: sampleDates[0] ?? null,
       maxSampleDate: sampleDates[sampleDates.length - 1] ?? null,
@@ -510,6 +522,14 @@ export class TechnicalSignalStatisticsService {
 
     const adjusted = calculateAdjustedReturn(entry, entry.adjFactor, target, target.adjFactor, entryMode)
     const directionalReturn = calculateDirectionalReturn(adjusted.rawReturn, occurrence.direction)
+    const benchmark = calculateBenchmarkOutcome({
+      expectedEntryDate,
+      expectedTargetDate,
+      entryMode,
+      timeline,
+      context,
+      rawReturn: adjusted.rawReturn,
+    })
     const path = calculateExcursion({
       timeline,
       startCalendarIndex: signalIndex + 1,
@@ -531,9 +551,9 @@ export class TechnicalSignalStatisticsService {
       targetAdjFactor: adjusted.targetAdjFactor,
       rawReturn: adjusted.rawReturn,
       directionalReturn,
-      benchmarkReturn: null,
-      excessReturn: null,
-      benchmarkMissingReason: null,
+      benchmarkReturn: benchmark.return,
+      excessReturn: benchmark.excessReturn,
+      benchmarkMissingReason: benchmark.missingReason,
       pathCoverageStatus: path.status,
       pathMissingDates: path.missingDates,
       rawMfe: path.rawMfe,
@@ -610,6 +630,33 @@ function emptyOutcome(input: {
     directionalMfe: null,
     directionalMae: null,
   }
+}
+
+function calculateBenchmarkOutcome(input: {
+  expectedEntryDate: string
+  expectedTargetDate: string
+  entryMode: TechnicalSignalEntryMode
+  timeline: TechnicalSignalTimelineSnapshot
+  context: EvaluationContext
+  rawReturn: number
+}): { return: number | null; excessReturn: number | null; missingReason: 'BENCHMARK_NOT_LISTED' | null } {
+  if (!input.timeline.benchmark) return { return: null, excessReturn: null, missingReason: null }
+  const firstBenchmarkDate = input.timeline.benchmark.bars[0]?.tradeDate
+  if (
+    !firstBenchmarkDate ||
+    input.expectedEntryDate < firstBenchmarkDate ||
+    input.expectedTargetDate < firstBenchmarkDate
+  ) {
+    return { return: null, excessReturn: null, missingReason: 'BENCHMARK_NOT_LISTED' }
+  }
+  const entry = input.context.benchmarkBarsByDate.get(input.expectedEntryDate)
+  const target = input.context.benchmarkBarsByDate.get(input.expectedTargetDate)
+  if (!entry || !target) {
+    throw new Error('TECHNICAL_SIGNAL_INTERNAL_ERROR: 基准已通过覆盖校验但行情缺失')
+  }
+  const entryPrice = input.entryMode === TechnicalSignalEntryMode.SIGNAL_CLOSE ? entry.close : entry.open
+  const benchmarkReturn = target.close / entryPrice - 1
+  return { return: benchmarkReturn, excessReturn: input.rawReturn - benchmarkReturn, missingReason: null }
 }
 
 function calculateExcursion(input: {

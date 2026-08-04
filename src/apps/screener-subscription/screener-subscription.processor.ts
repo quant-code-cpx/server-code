@@ -1,16 +1,8 @@
 import { randomUUID } from 'node:crypto'
 import { InjectQueue, Processor, WorkerHost } from '@nestjs/bullmq'
 import { Logger } from '@nestjs/common'
-import {
-  Prisma,
-  SubscriptionFrequency,
-  SubscriptionRuleType,
-  SubscriptionRunStatus,
-  SubscriptionStatus,
-} from '@prisma/client'
+import { Prisma, SubscriptionFrequency, SubscriptionRunStatus, SubscriptionStatus } from '@prisma/client'
 import { Job, Queue } from 'bullmq'
-import { StockScreenerService } from 'src/apps/stock/stock-screener.service'
-import { ScreenerFiltersDto } from 'src/apps/stock/dto/stock-screener-query.dto'
 import { SCREENER_SUBSCRIPTION_QUEUE, ScreenerSubscriptionJobName } from 'src/constant/queue.constant'
 import { PrismaService } from 'src/shared/prisma.service'
 import { EventsGateway } from 'src/websocket/events.gateway'
@@ -20,6 +12,7 @@ import {
   MAX_CONSECUTIVE_FAILS,
 } from './constants/subscription.constant'
 import { RuleNormalizerService, RuleSpecValidationException, TriggerPlannerService } from './rule'
+import { SubscriptionEvaluatorRegistry } from './evaluator'
 import {
   SubscriptionDataReadinessResult,
   SubscriptionDataReadinessService,
@@ -65,12 +58,12 @@ export class ScreenerSubscriptionProcessor extends WorkerHost {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly stockScreenerService: StockScreenerService,
     private readonly dataReadiness: SubscriptionDataReadinessService,
     private readonly eventsGateway: EventsGateway,
     @InjectQueue(SCREENER_SUBSCRIPTION_QUEUE) private readonly queue: Queue,
     private readonly triggerPlanner: TriggerPlannerService,
     private readonly ruleNormalizer: RuleNormalizerService,
+    private readonly evaluatorRegistry: SubscriptionEvaluatorRegistry,
   ) {
     super()
   }
@@ -143,43 +136,71 @@ export class ScreenerSubscriptionProcessor extends WorkerHost {
     const startMs = Date.now()
 
     try {
-      if (sub.ruleType !== SubscriptionRuleType.STOCK_SCREENING) {
-        throw new SubscriptionExecutionError('RULE_UNSUPPORTED', `暂不支持 ${sub.ruleType} 规则执行`)
-      }
-
       // 新协议优先读取已冻结的 ruleSpec；存量行仍双读 legacy filters，且同样经过
       // normalizer，防止把任意 JSON 直接带入 SQL 条件构建器。
       const normalizedRule = sub.ruleSpec
         ? this.ruleNormalizer.normalizeRuleSpec(sub.ruleSpec)
         : this.ruleNormalizer.normalizeLegacyStockScreeningRule(sub.filters)
-      const filters = normalizedRule.filters as unknown as ScreenerFiltersDto
-
-      const readiness = await this.dataReadiness.checkStockScreening({
-        filters,
-        tradeDate: data.tradeDate,
-      })
+      const normalizedTriggerSpec = this.ruleNormalizer.normalizeTriggerSpec(
+        sub.triggerSpec ?? undefined,
+        normalizedRule.type,
+      )
+      const readiness = await this.dataReadiness.checkRule(normalizedRule, data.tradeDate)
       if (!readiness.ready) {
         const recorded = await this.recordDataNotReady(run, startMs, readiness)
         if (!recorded) return
         throw new SubscriptionDataNotReadyError(readiness.missing)
       }
 
-      const result = await this.stockScreenerService.screenCodes({
-        filters,
-        tradeDate: data.tradeDate,
-      })
-      const triggerPlan = this.triggerPlanner.planCollection({
-        hasBaseline: sub.lastEvaluatedTradeDate !== null,
-        previousMatchCodes: sub.lastMatchCodes ?? [],
-        currentMatchCodes: result.matchedCodes,
-        triggerSpec: sub.triggerSpec ?? undefined,
-      })
-      const currentCodes = triggerPlan.matchedCodes
-      const newEntryCodes = triggerPlan.enterCodes
-      const exitCodes = triggerPlan.exitCodes
+      const evaluator = this.evaluatorRegistry.get(normalizedRule.type)
+      const outcome = await evaluator.evaluate(
+        {
+          userId: sub.userId,
+          tradeDate: data.tradeDate,
+          previousSuccessfulTradeDate: sub.lastEvaluatedTradeDate,
+          ruleVersion: sub.ruleVersion,
+          preview: false,
+          eventWindow: normalizedTriggerSpec.eventWindow,
+        },
+        normalizedRule,
+      )
+      const triggerPlan =
+        normalizedRule.type === 'SIGNAL_EVENT'
+          ? null
+          : this.triggerPlanner.planCollection({
+              hasBaseline: sub.lastEvaluatedTradeDate !== null,
+              previousMatchCodes: sub.lastMatchCodes ?? [],
+              currentMatchCodes: outcome.matchedCodes,
+              triggerSpec: sub.triggerSpec ?? undefined,
+            })
+      const currentCodes = triggerPlan?.matchedCodes ?? outcome.matchedCodes
+      const newEntryCodes = triggerPlan?.enterCodes ?? []
+      const exitCodes = triggerPlan?.exitCodes ?? []
+      const hits: Array<{ tsCode: string; kind: 'ENTER' | 'EXIT' | 'EVENT'; eventTradeDate?: string }> = triggerPlan
+        ? triggerPlan.hits
+        : (outcome.eventHits ?? []).map((hit) => ({ ...hit, kind: 'EVENT' as const }))
       const finishedAt = new Date()
       const executionMs = Date.now() - startMs
-      const dataVersions = { ...readiness.dataVersions, screenedAsOfTradeDate: result.tradeDate }
+      const evidence = await evaluator.explain(
+        {
+          userId: sub.userId,
+          tradeDate: data.tradeDate,
+          previousSuccessfulTradeDate: sub.lastEvaluatedTradeDate,
+          ruleVersion: sub.ruleVersion,
+          preview: false,
+          eventWindow: normalizedTriggerSpec.eventWindow,
+        },
+        normalizedRule,
+        hits,
+      )
+      const evidenceByHit = new Map(
+        evidence.map((item) => [`${item.tsCode}:${item.kind}:${item.details.eventTradeDate ?? ''}`, item]),
+      )
+      const dataVersions = {
+        ...readiness.dataVersions,
+        ...outcome.dataVersions,
+        ...(normalizedRule.type === 'STOCK_SCREENING' && { screenedAsOfTradeDate: outcome.asOfTradeDate }),
+      }
 
       const committed = await this.prisma.$transaction(async (tx) => {
         // 先完成带 attemptToken 的终态领取。若 lease 已被新 attempt 接管，旧 worker
@@ -193,7 +214,7 @@ export class ScreenerSubscriptionProcessor extends WorkerHost {
           data: {
             status: SubscriptionRunStatus.SUCCESS,
             matchCount: currentCodes.length,
-            triggerCount: triggerPlan.hits.length,
+            triggerCount: hits.length,
             newEntryCount: newEntryCodes.length,
             exitCount: exitCodes.length,
             newEntryCodes,
@@ -208,6 +229,39 @@ export class ScreenerSubscriptionProcessor extends WorkerHost {
           },
         })
         if (finalizedLog.count === 0) return false
+
+        // hit 是规则运行的可审计结果；数据库唯一键是通知去重的最终防线。
+        // 集合规则的首次基线不产生 hit；事件规则只写已物化的日级事件。
+        if (hits.length > 0) {
+          await tx.screenerSubscriptionHit.createMany({
+            data: hits.map((hit) => ({
+              subscriptionId: sub.id,
+              logId: run.id,
+              tradeDate: data.tradeDate,
+              eventTradeDate: hit.eventTradeDate ?? null,
+              tsCode: hit.tsCode,
+              kind: hit.kind,
+              eventKey:
+                hit.kind === 'EVENT'
+                  ? `rule:${sub.ruleFingerprint ?? `v${sub.ruleVersion}`}:event:${hit.eventTradeDate}`
+                  : `rule:${sub.ruleFingerprint ?? `v${sub.ruleVersion}`}:${hit.kind}`,
+              evidence: (evidenceByHit.get(`${hit.tsCode}:${hit.kind}:${hit.eventTradeDate ?? ''}`) ?? {
+                tsCode: hit.tsCode,
+                kind: hit.kind,
+                reason:
+                  normalizedRule.type === 'STOCK_SCREENING'
+                    ? hit.kind === 'ENTER'
+                      ? '股票新进入基础选股结果集'
+                      : '股票退出基础选股结果集'
+                    : hit.kind === 'ENTER'
+                      ? '股票新进入筛选结果集'
+                      : '股票退出筛选结果集',
+                details: { ruleType: sub.ruleType, ruleVersion: sub.ruleVersion, tradeDate: data.tradeDate },
+              }) as unknown as Prisma.InputJsonObject,
+            })),
+            skipDuplicates: true,
+          })
+        }
 
         const subscriptionUpdate = await tx.screenerSubscription.updateMany({
           where: {
@@ -259,8 +313,8 @@ export class ScreenerSubscriptionProcessor extends WorkerHost {
         return true
       })
 
-      // 首次成功运行仅写完整基线；newEntryCodes 已在上方归零。
-      if (committed && triggerPlan.hits.length > 0) {
+      // 首次集合运行仅写完整基线；事件规则没有集合基线。
+      if (committed && hits.length > 0) {
         try {
           this.eventsGateway.emitToUser(sub.userId, 'screener_subscription_alert', {
             subscriptionId: sub.id,
@@ -269,6 +323,25 @@ export class ScreenerSubscriptionProcessor extends WorkerHost {
             newEntryCodes,
             exitCodes,
             totalMatch: currentCodes.length,
+          })
+          this.eventsGateway.emitToUser(sub.userId, 'screener_subscription_triggered', {
+            subscriptionId: sub.id,
+            subscriptionName: sub.name,
+            ruleType: sub.ruleType,
+            tradeDate: data.tradeDate,
+            triggerCount: hits.length,
+            kinds: [...new Set(hits.map((hit) => hit.kind))],
+            preview: hits.slice(0, 20).map((hit) => ({
+              tsCode: hit.tsCode,
+              kind: hit.kind,
+              reason:
+                evidenceByHit.get(`${hit.tsCode}:${hit.kind}:${hit.eventTradeDate ?? ''}`)?.reason ??
+                (hit.kind === 'ENTER'
+                  ? '股票新进入筛选结果集'
+                  : hit.kind === 'EXIT'
+                    ? '股票退出筛选结果集'
+                    : '股票满足技术事件订阅规则'),
+            })),
           })
         } catch {
           this.logger.error(`Subscription ${sub.id} notification dispatch failed after run ${run.runKey} succeeded`)

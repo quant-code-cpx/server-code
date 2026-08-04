@@ -1,4 +1,10 @@
-import { INestApplication, ExecutionContext, ValidationPipe, NotFoundException, UnauthorizedException } from '@nestjs/common'
+import {
+  INestApplication,
+  ExecutionContext,
+  ValidationPipe,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common'
 import { Test, TestingModule } from '@nestjs/testing'
 import request from 'supertest'
 import { JwtAuthGuard } from 'src/lifecycle/guard/jwt-auth.guard'
@@ -25,6 +31,10 @@ const mockService = {
   resume: jest.fn(async () => ({ message: '已恢复' })),
   manualRun: jest.fn(async () => ({ jobId: 'job-1', message: '任务已加入队列' })),
   getLogs: jest.fn(async () => ({ logs: [], total: 0, page: 1, pageSize: 20 })),
+  metrics: jest.fn(async () => ({ catalogVersion: 'catalog-v1-test', metrics: [] })),
+  preview: jest.fn(async () => ({ matchedCount: 0, evidence: [] })),
+  getHits: jest.fn(async () => ({ hits: [], total: 0, page: 1, pageSize: 20 })),
+  getRunStatus: jest.fn(async () => ({ jobId: 'job-1', status: 'QUEUED' })),
 }
 
 describe('ScreenerSubscriptionController (integration)', () => {
@@ -123,6 +133,41 @@ describe('ScreenerSubscriptionController (integration)', () => {
         expect(res.body.code).toBe(0)
         expect(mockService.getLogs).toHaveBeenCalled()
       }))
+
+  it('POST /screener-subscription/metrics → 201', () =>
+    request(app.getHttpServer())
+      .post('/screener-subscription/metrics')
+      .send({ sources: ['STOCK'] })
+      .expect(201)
+      .expect(() => expect(mockService.metrics).toHaveBeenCalled()))
+
+  it('POST /screener-subscription/preview → 201', () =>
+    request(app.getHttpServer())
+      .post('/screener-subscription/preview')
+      .send({
+        ruleSpec: {
+          type: 'STOCK_SCREENING',
+          version: 1,
+          universe: { type: 'ALL_A', excludeSt: true, excludeSuspended: true, excludeBse: false },
+          filters: {},
+        },
+      })
+      .expect(201)
+      .expect(() => expect(mockService.preview).toHaveBeenCalled()))
+
+  it('POST /screener-subscription/hits → 201', () =>
+    request(app.getHttpServer())
+      .post('/screener-subscription/hits')
+      .send({ id: 1, logId: 1 })
+      .expect(201)
+      .expect(() => expect(mockService.getHits).toHaveBeenCalled()))
+
+  it('POST /screener-subscription/run/status → 201', () =>
+    request(app.getHttpServer())
+      .post('/screener-subscription/run/status')
+      .send({ jobId: 'job-1' })
+      .expect(201)
+      .expect(() => expect(mockService.getRunStatus).toHaveBeenCalled()))
 
   // CreateSubscriptionDto.name required (@IsString @MinLength(1) @MaxLength(50))
   it('[VAL] POST /screener-subscription/create 缺 name → 400', async () => {

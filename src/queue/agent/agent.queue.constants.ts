@@ -16,9 +16,9 @@ export function agentJobId(runId: string): string {
 }
 
 export function notificationJobId(deliveryId: string): string {
-  return `delivery:${deliveryId}`
+  return `delivery-${deliveryId}`
 }
 
 export function researchReportJobId(reportId: string, action: 'RENDER' | 'CLEANUP'): string {
-  return `report:${action.toLowerCase()}:${reportId}`
+  return `report-${action.toLowerCase()}-${reportId}`
 }

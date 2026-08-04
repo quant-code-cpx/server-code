@@ -12,19 +12,61 @@ import {
   MAX_CONSECUTIVE_FAILS,
 } from '../constants/subscription.constant'
 import { RuleFingerprintService, RuleNormalizerService } from '../rule'
+import { MetricCatalogService } from '../metric-catalog'
+import { SubscriptionEvaluatorRegistry } from '../evaluator'
+import { SubscriptionDataReadinessService } from '../subscription-data-readiness.service'
 
 describe('ScreenerSubscriptionService', () => {
   let service: ScreenerSubscriptionService
   let prisma: ReturnType<typeof createMockPrismaService>
   let queue: { add: jest.Mock; addBulk: jest.Mock }
-  let ruleNormalizer: jest.Mocked<Pick<RuleNormalizerService, 'normalizeLegacyStockScreeningRule'>>
+  let ruleNormalizer: jest.Mocked<
+    Pick<RuleNormalizerService, 'normalizeLegacyStockScreeningRule' | 'normalizeRuleSpec' | 'normalizeTriggerSpec'>
+  >
   let ruleFingerprint: jest.Mocked<Pick<RuleFingerprintService, 'create'>>
+  let metricCatalog: jest.Mocked<Pick<MetricCatalogService, 'list'>>
+  let evaluatorRegistry: jest.Mocked<Pick<SubscriptionEvaluatorRegistry, 'get'>>
+  let dataReadiness: jest.Mocked<Pick<SubscriptionDataReadinessService, 'checkStockScreening' | 'checkRule'>>
 
   beforeEach(async () => {
     prisma = createMockPrismaService()
     queue = { add: jest.fn().mockResolvedValue({ id: 'job-1' }), addBulk: jest.fn().mockResolvedValue([]) }
-    ruleNormalizer = { normalizeLegacyStockScreeningRule: jest.fn().mockImplementation((filters) => filters as never) }
+    ruleNormalizer = {
+      normalizeLegacyStockScreeningRule: jest.fn().mockImplementation(
+        (filters) =>
+          ({
+            type: 'STOCK_SCREENING',
+            version: 1,
+            universe: { type: 'ALL_A', excludeSt: true, excludeSuspended: true, excludeBse: false },
+            filters,
+          }) as never,
+      ),
+      normalizeRuleSpec: jest.fn().mockImplementation((ruleSpec) => ruleSpec as never),
+      normalizeTriggerSpec: jest.fn().mockReturnValue({
+        mode: 'ENTER',
+        notifyOnInitialMatch: false,
+        eventWindow: 'CURRENT_TRADE_DATE',
+        cooldownTradingDays: 0,
+        maxHitsPerNotification: 20,
+      } as never),
+    }
     ruleFingerprint = { create: jest.fn().mockReturnValue({ fingerprint: 'legacy-rule-fingerprint' } as never) }
+    metricCatalog = { list: jest.fn().mockReturnValue({ catalogVersion: 'catalog-v1-test', metrics: [] }) }
+    evaluatorRegistry = { get: jest.fn() }
+    dataReadiness = {
+      checkStockScreening: jest.fn().mockResolvedValue({
+        ready: true,
+        tradeDate: '20260803',
+        dataVersions: { MARKET_DAILY: '20260803' },
+        missing: [],
+      }),
+      checkRule: jest.fn().mockResolvedValue({
+        ready: true,
+        tradeDate: '20260803',
+        dataVersions: { MARKET_DAILY: '20260803' },
+        missing: [],
+      }),
+    }
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -33,6 +75,9 @@ describe('ScreenerSubscriptionService', () => {
         { provide: getQueueToken(SCREENER_SUBSCRIPTION_QUEUE), useValue: queue },
         { provide: RuleNormalizerService, useValue: ruleNormalizer },
         { provide: RuleFingerprintService, useValue: ruleFingerprint },
+        { provide: MetricCatalogService, useValue: metricCatalog },
+        { provide: SubscriptionEvaluatorRegistry, useValue: evaluatorRegistry },
+        { provide: SubscriptionDataReadinessService, useValue: dataReadiness },
       ],
     }).compile()
 
@@ -105,6 +150,13 @@ describe('ScreenerSubscriptionService', () => {
     await expect(service.create(1, { name: 'x' })).rejects.toThrow(BadRequestException)
   })
 
+  it('create — ruleSpec 与 legacy source 同传 → RULE_SOURCE_CONFLICT', async () => {
+    prisma.screenerSubscription.count.mockResolvedValue(0)
+    await expect(
+      service.create(1, { name: 'x', ruleSpec: { type: 'STOCK_SCREENING' }, filters: {} }),
+    ).rejects.toMatchObject({ response: expect.objectContaining({ code: 'RULE_SOURCE_CONFLICT' }) })
+  })
+
   // ── update ────────────────────────────────────────────────────────────────
 
   it('update — 存在 → 更新并返回（含策略信息）', async () => {
@@ -133,7 +185,9 @@ describe('ScreenerSubscriptionService', () => {
       lastMatchCodes: ['000001.SZ', '000002.SZ'],
     } as never)
     prisma.screenerSubscription.update.mockResolvedValue({ id: 1, strategyId: null } as never)
-    ruleFingerprint.create.mockReturnValue({ fingerprint: 'changed-rule-fingerprint' } as never)
+    ruleFingerprint.create
+      .mockReturnValueOnce({ fingerprint: 'changed-rule-fingerprint' } as never)
+      .mockReturnValueOnce({ fingerprint: 'legacy-rule-fingerprint' } as never)
 
     await service.update(1, 1, { filters: { minPe: 15, maxPb: 2 } })
 
@@ -154,11 +208,12 @@ describe('ScreenerSubscriptionService', () => {
     expect(ruleNormalizer.normalizeLegacyStockScreeningRule).toHaveBeenCalledWith({ minPe: 15, maxPb: 2 })
   })
 
-  it('update — 仅对象 key 顺序变化不重置基线或规则版本', async () => {
+  it('update — 仅对象 key 顺序变化时指纹相同，不重置基线或规则版本', async () => {
     prisma.screenerSubscription.findFirst.mockResolvedValue({
       id: 1,
       filters: { minPe: 10, maxPb: 2 },
       strategyId: null,
+      ruleFingerprint: 'legacy-rule-fingerprint',
     } as never)
     prisma.screenerSubscription.update.mockResolvedValue({ id: 1, strategyId: null } as never)
 
@@ -167,8 +222,8 @@ describe('ScreenerSubscriptionService', () => {
     const updateInput = prisma.screenerSubscription.update.mock.calls[0][0]
     expect(updateInput.data).not.toHaveProperty('ruleVersion')
     expect(updateInput.data).not.toHaveProperty('lastMatchCodes')
-    expect(ruleNormalizer.normalizeLegacyStockScreeningRule).not.toHaveBeenCalled()
-    expect(ruleFingerprint.create).not.toHaveBeenCalled()
+    expect(ruleNormalizer.normalizeLegacyStockScreeningRule).toHaveBeenCalled()
+    expect(ruleFingerprint.create).toHaveBeenCalled()
   })
 
   // ── remove ────────────────────────────────────────────────────────────────
@@ -374,5 +429,57 @@ describe('ScreenerSubscriptionService', () => {
   it('getLogs — 订阅不存在 → NotFoundException', async () => {
     prisma.screenerSubscription.findFirst.mockResolvedValue(null)
     await expect(service.getLogs(1, 99, {})).rejects.toThrow(NotFoundException)
+  })
+
+  it('preview — 完整集合只截断展示，证据与数据版本可联调', async () => {
+    const evaluator = {
+      evaluate: jest.fn().mockResolvedValue({
+        asOfTradeDate: '20260803',
+        universeCount: 3,
+        matchedCodes: ['000001.SZ', '000002.SZ', '000003.SZ'],
+        dataVersions: { MARKET_DAILY: 'asOf:20260803' },
+        warnings: [],
+      }),
+      explain: jest
+        .fn()
+        .mockResolvedValue([{ tsCode: '000001.SZ', kind: 'MATCH', reason: '命中', details: { minPeTtm: 10 } }]),
+    }
+    evaluatorRegistry.get.mockReturnValue(evaluator as never)
+    prisma.$queryRaw.mockResolvedValue([] as never)
+    const ruleSpec = {
+      type: 'STOCK_SCREENING',
+      version: 1,
+      universe: { type: 'ALL_A', excludeSt: true, excludeSuspended: true, excludeBse: false },
+      filters: { minPeTtm: 10 },
+    }
+
+    const result = await service.preview(1, { ruleSpec, tradeDate: '20260803', limit: 1 })
+
+    expect(result).toMatchObject({ matchedCount: 3, truncated: true, catalogVersion: 'catalog-v1-test' })
+    expect(result.matchedStocks).toHaveLength(1)
+    expect(evaluator.explain).toHaveBeenCalledWith(expect.anything(), ruleSpec, [
+      { tsCode: '000001.SZ', kind: 'MATCH' },
+    ])
+  })
+
+  it('getHits — 按 user/subscription/log 过滤并序列化 BigInt', async () => {
+    prisma.screenerSubscription.findFirst.mockResolvedValue({ id: 1 } as never)
+    prisma.screenerSubscriptionHit.findMany.mockResolvedValue([
+      {
+        id: BigInt(7),
+        subscriptionId: 1,
+        logId: 3,
+        tradeDate: '20260803',
+        evidence: { reason: '命中' },
+      },
+    ] as never)
+    prisma.screenerSubscriptionHit.count.mockResolvedValue(1)
+
+    const result = await service.getHits(1, { id: 1, logId: 3 })
+
+    expect(result.hits[0]?.id).toBe('7')
+    expect(prisma.screenerSubscriptionHit.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { subscriptionId: 1, logId: 3 } }),
+    )
   })
 })

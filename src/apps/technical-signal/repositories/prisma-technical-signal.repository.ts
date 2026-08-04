@@ -1,9 +1,18 @@
 import { ConflictException, Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common'
-import { StockExchange } from '@prisma/client'
+import {
+  StockExchange,
+  TushareSyncProgressStatus,
+  TushareSyncRetryStatus,
+  TushareSyncStatus,
+  TushareSyncTask,
+} from '@prisma/client'
 import { formatDateToCompactTradeDate, parseCompactTradeDateToUtcDate } from 'src/common/utils/trade-date.util'
 import { PrismaService } from 'src/shared/prisma.service'
 
 const MAX_HISTORY_ROWS = Number(process.env.TECHNICAL_SIGNAL_MAX_HISTORY_ROWS) || 12_000
+const HS300_TS_CODE = '000300.SH'
+const HS300_FIRST_TRADE_DATE = '20050104'
+const INDEX_DAILY_FULL_START_DATE = '19901219'
 
 export interface TechnicalSignalRawBar {
   tradeDate: string
@@ -23,6 +32,18 @@ export interface TechnicalSignalStockSnapshot {
   delistDate: string | null
 }
 
+export interface TechnicalSignalBenchmarkBar {
+  tradeDate: string
+  open: number
+  close: number
+}
+
+export interface TechnicalSignalBenchmarkSnapshot {
+  tsCode: string
+  bars: TechnicalSignalBenchmarkBar[]
+  version: string
+}
+
 type CalendarExchange = 'SSE' | 'SZSE'
 
 export interface TechnicalSignalTimelineSnapshot {
@@ -32,6 +53,7 @@ export interface TechnicalSignalTimelineSnapshot {
   /** 股票上市至日历未来覆盖末端的交易所开市日，升序。 */
   openDates: string[]
   bars: TechnicalSignalRawBar[]
+  benchmark: TechnicalSignalBenchmarkSnapshot | null
   suspendedDates: Set<string>
   dataVersions: {
     tradeCal: string
@@ -58,11 +80,6 @@ export class PrismaTechnicalSignalRepository {
   constructor(private readonly prisma: PrismaService) {}
 
   async loadTimeline(input: LoadTechnicalSignalTimelineInput): Promise<TechnicalSignalTimelineSnapshot> {
-    if (input.includeBenchmark) {
-      // 现有 000300.SH 只有约两年数据；在全历史回补和完整性门禁落地前，绝不返回伪超额收益。
-      throw new ConflictException('TECHNICAL_SIGNAL_BENCHMARK_NOT_READY: 000300.SH 全历史基座尚未就绪')
-    }
-
     const stock = await this.prisma.stockBasic.findUnique({
       where: { tsCode: input.tsCode },
       select: { tsCode: true, name: true, exchange: true, listDate: true, delistDate: true },
@@ -130,6 +147,10 @@ export class PrismaTechnicalSignalRepository {
     if (openDates.length - asOfIndex - 1 < input.maxHorizon) {
       throw new ConflictException('TECHNICAL_SIGNAL_DATA_NOT_READY: 交易日历未来 horizon 覆盖不足')
     }
+
+    const benchmark = input.includeBenchmark
+      ? await this.loadBenchmark(input.benchmarkTsCode ?? HS300_TS_CODE, dataAsOf)
+      : null
 
     const [dailyRows, adjFactorRows, suspendRows] = await Promise.all([
       this.prisma.daily.findMany({
@@ -209,14 +230,82 @@ export class PrismaTechnicalSignalRepository {
       calendarExchange,
       openDates,
       bars,
+      benchmark,
       suspendedDates,
       dataVersions: {
         tradeCal: `${calendarExchange}:through:${openDates[openDates.length - 1] ?? dataAsOf}:updated:${formatVersionTimestamp(tradeCalVersion?.syncedAt)}`,
         daily: `watermark:${latestDaily}:stockUpdated:${formatVersionTimestamp(dailyVersion?.syncedAt)}`,
         adjFactor: `watermark:${latestAdjFactor}:stockUpdated:${formatVersionTimestamp(adjFactorVersion?.syncedAt)}`,
         suspendD: `rows:${suspendRows.length}:through:${dataAsOf}:stockUpdated:${formatVersionTimestamp(suspendVersion?.syncedAt)}`,
-        indexDaily: null,
+        indexDaily: benchmark?.version ?? null,
       },
+    }
+  }
+
+  private async loadBenchmark(benchmarkTsCode: string, dataAsOf: string): Promise<TechnicalSignalBenchmarkSnapshot> {
+    if (benchmarkTsCode !== HS300_TS_CODE) {
+      throw new ConflictException(`TECHNICAL_SIGNAL_BENCHMARK_NOT_READY: 不支持基准 ${benchmarkTsCode}`)
+    }
+
+    const [progress, openRetries, successfulLogs] = await Promise.all([
+      this.prisma.tushareSyncProgress.findUnique({
+        where: { task: TushareSyncTask.INDEX_DAILY },
+        select: { status: true },
+      }),
+      this.prisma.tushareSyncRetryQueue.count({
+        where: { task: TushareSyncTask.INDEX_DAILY, status: { not: TushareSyncRetryStatus.SUCCEEDED } },
+      }),
+      this.prisma.tushareSyncLog.findMany({
+        where: { task: TushareSyncTask.INDEX_DAILY, status: TushareSyncStatus.SUCCESS },
+        orderBy: { startedAt: 'desc' },
+        select: { payload: true },
+      }),
+    ])
+    const hasSuccessfulFullBase = successfulLogs.some((log) => isSuccessfulIndexDailyFullBase(log.payload))
+    if (progress?.status !== TushareSyncProgressStatus.COMPLETED || openRetries > 0 || !hasSuccessfulFullBase) {
+      throw new ConflictException('TECHNICAL_SIGNAL_BENCHMARK_NOT_READY: 000300.SH 全历史基座尚未就绪')
+    }
+
+    const startDate = parseCompactTradeDateToUtcDate(HS300_FIRST_TRADE_DATE)
+    const endDate = parseCompactTradeDateToUtcDate(dataAsOf)
+    const benchmarkRows =
+      dataAsOf < HS300_FIRST_TRADE_DATE
+        ? []
+        : await this.prisma.indexDaily.findMany({
+            where: { tsCode: HS300_TS_CODE, tradeDate: { gte: startDate, lte: endDate } },
+            orderBy: { tradeDate: 'asc' },
+            select: { tradeDate: true, open: true, close: true, syncedAt: true },
+          })
+    if (dataAsOf >= HS300_FIRST_TRADE_DATE) {
+      const openDays = await this.prisma.tradeCal.findMany({
+        where: { exchange: 'SSE', calDate: { gte: startDate, lte: endDate }, isOpen: '1' },
+        select: { calDate: true },
+      })
+      const actualDates = new Set(
+        benchmarkRows
+          .map((row) => formatDateToCompactTradeDate(row.tradeDate))
+          .filter((date): date is string => date !== null),
+      )
+      if (actualDates.size !== openDays.length) {
+        throw new ConflictException('TECHNICAL_SIGNAL_BENCHMARK_NOT_READY: 000300.SH 历史覆盖存在缺口')
+      }
+    }
+
+    const bars = benchmarkRows.map((row) => {
+      const tradeDate = formatDateToCompactTradeDate(row.tradeDate)
+      if (!tradeDate || !isPositiveFinite(row.open) || !isPositiveFinite(row.close)) {
+        throw new ConflictException('TECHNICAL_SIGNAL_BENCHMARK_NOT_READY: 000300.SH 存在非法行情')
+      }
+      return { tradeDate, open: row.open, close: row.close }
+    })
+    const latestSyncedAt = benchmarkRows.reduce<Date | null>(
+      (latest, row) => (!latest || row.syncedAt > latest ? row.syncedAt : latest),
+      null,
+    )
+    return {
+      tsCode: HS300_TS_CODE,
+      bars,
+      version: `000300.SH:through:${dataAsOf}:updated:${formatVersionTimestamp(latestSyncedAt)}`,
     }
   }
 }
@@ -227,4 +316,21 @@ function isAShareExchange(exchange: string): exchange is 'SSE' | 'SZSE' | 'BSE' 
 
 function formatVersionTimestamp(value: Date | null | undefined): string {
   return value?.toISOString() ?? 'none'
+}
+
+function isPositiveFinite(value: number | null): value is number {
+  return value !== null && Number.isFinite(value) && value > 0
+}
+
+function isSuccessfulIndexDailyFullBase(payload: unknown): boolean {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return false
+  const record = payload as Record<string, unknown>
+  return (
+    record.mode === 'full' &&
+    record.rangeStart === INDEX_DAILY_FULL_START_DATE &&
+    Array.isArray(record.failedDates) &&
+    record.failedDates.length === 0 &&
+    Array.isArray(record.coverageMissingDates) &&
+    record.coverageMissingDates.length === 0
+  )
 }

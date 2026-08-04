@@ -15,10 +15,10 @@ describe('RuleFingerprintService', () => {
       type: SubscriptionRuleType.STOCK_SCREENING,
       version: 1,
       universe: { type: 'ALL_A' as const, excludeSt: true, excludeSuspended: true, excludeBse: false },
-      filters: { maxPeTtm: 20, minPeTtm: -0, nested: { b: 2, a: 1 } },
+      filters: { maxPeTtm: 20, minPeTtm: -0 },
     }
     const reordered = {
-      filters: { nested: { a: 1, b: 2 }, minPeTtm: 0, maxPeTtm: 20 },
+      filters: { minPeTtm: 0, maxPeTtm: 20 },
       universe: { excludeBse: false, excludeSuspended: true, excludeSt: true, type: 'ALL_A' as const },
       version: 1,
       type: SubscriptionRuleType.STOCK_SCREENING,

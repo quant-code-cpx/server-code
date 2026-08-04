@@ -19,8 +19,13 @@ function buildMockHelper() {
     syncTimeZone: 'Asia/Shanghai',
     syncStartDate: '20100101',
     prisma: {
+      $transaction: jest.fn(async (operations: Promise<unknown>[]) => Promise.all(operations)),
       indexWeight: {
         findFirst: jest.fn(async () => null as { tradeDate: string } | null),
+        createMany: jest.fn(async () => ({ count: 0 })),
+      },
+      suspendD: {
+        deleteMany: jest.fn(async () => ({ count: 0 })),
         createMany: jest.fn(async () => ({ count: 0 })),
       },
       stkSurv: {
@@ -36,14 +41,19 @@ function buildMockHelper() {
       const next = new Date(Date.UTC(year, month - 1, day + 1))
       return `${next.getUTCFullYear()}${String(next.getUTCMonth() + 1).padStart(2, '0')}${String(next.getUTCDate()).padStart(2, '0')}`
     }),
+    getOpenTradeDatesBetween: jest.fn(async () => [] as string[]),
     getLatestDateString: jest.fn(async () => null as string | null),
+    isTaskSyncedForTradeDate: jest.fn(async () => false),
+    toDate: jest.fn(
+      (date: string) => new Date(`${date.slice(0, 4)}-${date.slice(4, 6)}-${date.slice(6, 8)}T00:00:00.000Z`),
+    ),
     writeSyncLog: jest.fn(async () => undefined),
     flushValidationLogs: jest.fn(async () => 0),
   }
 }
 
 function createService(api = buildMockApi(), helper = buildMockHelper()) {
-  // @ts-ignore 局部 mock，跳过 DI
+  // @ts-expect-error 局部 mock，跳过 DI
   return new FactorDataSyncService(api as FactorDataApiService, helper as SyncHelperService)
 }
 
@@ -98,6 +108,61 @@ describe('FactorDataSyncService', () => {
         expect.objectContaining({ payload: expect.objectContaining({ rowCount: expect.any(Number) }) }),
         expect.any(Date),
       )
+    })
+  })
+
+  describe('syncSuspendD()', () => {
+    it('Tushare 早期停牌历史为空时仍保留已核验的 600089.SH 股东大会停牌事实', async () => {
+      const api = buildMockApi()
+      const helper = buildMockHelper()
+      helper.syncStartDate = '19980520'
+      helper.getOpenTradeDatesBetween.mockResolvedValue(['19980520'])
+      const service = createService(api, helper)
+
+      await service.syncSuspendD('19980520', 'full')
+
+      expect(api.getSuspendDByTradeDate).toHaveBeenCalledWith('19980520')
+      expect(helper.prisma.suspendD.createMany).toHaveBeenCalledWith({
+        data: [
+          {
+            tsCode: '600089.SH',
+            tradeDate: '19980520',
+            suspendTiming: null,
+            suspendType: 'S',
+          },
+        ],
+        skipDuplicates: true,
+      })
+    })
+
+    it('上游后续补齐同一停牌事实时不重复写入修正记录', async () => {
+      const api = buildMockApi()
+      api.getSuspendDByTradeDate.mockResolvedValue([
+        {
+          ts_code: '600089.SH',
+          trade_date: '19981120',
+          suspend_timing: '09:30-15:00',
+          suspend_type: 'S',
+        },
+      ])
+      const helper = buildMockHelper()
+      helper.syncStartDate = '19981120'
+      helper.getOpenTradeDatesBetween.mockResolvedValue(['19981120'])
+      const service = createService(api, helper)
+
+      await service.syncSuspendD('19981120', 'full')
+
+      expect(helper.prisma.suspendD.createMany).toHaveBeenCalledWith({
+        data: [
+          {
+            tsCode: '600089.SH',
+            tradeDate: '19981120',
+            suspendTiming: '09:30-15:00',
+            suspendType: 'S',
+          },
+        ],
+        skipDuplicates: true,
+      })
     })
   })
 

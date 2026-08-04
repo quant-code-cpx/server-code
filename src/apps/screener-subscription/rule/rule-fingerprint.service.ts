@@ -1,11 +1,11 @@
 import { Injectable } from '@nestjs/common'
 import { createHash } from 'crypto'
-import { StockScreeningRuleSpec } from './subscription-rule.types'
+import { FactorScreeningRuleSpec, SignalEventRuleSpec, StockScreeningRuleSpec } from './subscription-rule.types'
 import { RuleNormalizerService, stableRuleStringify } from './rule-normalizer.service'
 
 export interface RuleFingerprintResult {
   fingerprint: string
-  normalizedRuleSpec: StockScreeningRuleSpec
+  normalizedRuleSpec: StockScreeningRuleSpec | FactorScreeningRuleSpec | SignalEventRuleSpec
   semanticsVersions: string[]
 }
 

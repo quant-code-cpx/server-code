@@ -1,6 +1,7 @@
 import { buildAgentQueueConfig } from 'src/config/agent-queue.config'
 import { assertProcessEntrypoint, buildProcessRoleConfig } from 'src/config/process-role.config'
 import { AgentProcessor } from '../agent.processor'
+import { notificationJobId, researchReportJobId } from '../agent.queue.constants'
 import { buildAgentRedisConnection, AgentQueueModule } from '../agent-queue.module'
 import { AgentReconcilerService } from '../agent-reconciler.service'
 
@@ -76,5 +77,12 @@ describe('Agent process role gate', () => {
       tls: {},
       maxRetriesPerRequest: null,
     })
+  })
+
+  it('通知和报告使用 BullMQ 允许的自定义 jobId', () => {
+    expect(notificationJobId('delivery_1')).toBe('delivery-delivery_1')
+    expect(researchReportJobId('report_1', 'RENDER')).toBe('report-render-report_1')
+    expect(notificationJobId('delivery_1')).not.toContain(':')
+    expect(researchReportJobId('report_1', 'CLEANUP')).not.toContain(':')
   })
 })

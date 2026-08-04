@@ -20,13 +20,25 @@ describe('RuleSpecValidatorService', () => {
     expect(service.validateRuleSpec(validRule())).toEqual(validRule())
   })
 
-  it('拒绝尚未开放的未来规则类型和非 ALL_A universe', () => {
-    expect(() =>
+  it('接受 B2/B3 规则，并拒绝未开放类型和非 ALL_A universe', () => {
+    expect(
       service.validateRuleSpec({
-        ...validRule(),
         type: SubscriptionRuleType.FACTOR_SCREENING,
+        version: 1,
+        universe: validRule().universe,
+        conditions: [{ factorId: 'pe_ttm', operator: 'BETWEEN', value: [0, 20] }],
       }),
-    ).toThrow(RuleSpecValidationException)
+    ).toMatchObject({ type: SubscriptionRuleType.FACTOR_SCREENING })
+
+    expect(
+      service.validateRuleSpec({
+        type: SubscriptionRuleType.SIGNAL_EVENT,
+        version: 1,
+        universe: validRule().universe,
+        conditions: [{ metricId: 'signal.macd', eventType: 'GOLDEN_CROSS' }],
+        minSatisfied: 1,
+      }),
+    ).toMatchObject({ type: SubscriptionRuleType.SIGNAL_EVENT })
 
     expect(() =>
       service.validateRuleSpec({
@@ -46,5 +58,23 @@ describe('RuleSpecValidatorService', () => {
 
     expect(() => service.validateTriggerSpec({ mode: 'EVENT' })).toThrow(RuleSpecValidationException)
     expect(() => service.validateTriggerSpec({ notifyOnInitialMatch: true })).toThrow(RuleSpecValidationException)
+
+    expect(service.validateTriggerSpec(undefined, SubscriptionRuleType.SIGNAL_EVENT)).toMatchObject({
+      mode: 'EVENT',
+      notifyOnInitialMatch: true,
+      eventWindow: 'CURRENT_TRADE_DATE',
+    })
+    expect(() => service.validateTriggerSpec({ mode: 'ENTER' }, SubscriptionRuleType.SIGNAL_EVENT)).toThrow(
+      RuleSpecValidationException,
+    )
+  })
+
+  it('拒绝无法由基础选股执行器消费的未知筛选字段，避免静默全市场命中', () => {
+    expect(() =>
+      service.validateRuleSpec({
+        ...validRule(),
+        filters: { 'valuation.peTtm': 0 },
+      }),
+    ).toThrow(RuleSpecValidationException)
   })
 })

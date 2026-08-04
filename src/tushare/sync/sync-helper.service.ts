@@ -623,6 +623,24 @@ export class SyncHelperService {
     })
   }
 
+  /** 标记任务正在运行，但尚无可安全推进的成功断点。 */
+  async markRunning(task: TushareSyncTaskName, totalKeys?: number) {
+    await this.prisma.tushareSyncProgress.upsert({
+      where: { task: TushareSyncTask[task] },
+      create: {
+        task: TushareSyncTask[task],
+        lastSuccessKey: null,
+        completedKeys: 0,
+        totalKeys: totalKeys ?? null,
+        status: TushareSyncProgressStatus.RUNNING,
+      },
+      update: {
+        ...(totalKeys !== undefined ? { totalKeys } : {}),
+        status: TushareSyncProgressStatus.RUNNING,
+      },
+    })
+  }
+
   /** 标记任务为已完成，清除断点 */
   async markCompleted(task: TushareSyncTaskName) {
     await this.prisma.tushareSyncProgress.upsert({

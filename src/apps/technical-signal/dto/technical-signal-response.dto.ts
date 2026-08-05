@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
 import type { TechnicalSignalEvidence } from '../domain'
-import { TechnicalSignalEntryMode, TechnicalSignalPeriod } from './technical-signal-request.dto'
+import { TechnicalSignalPeriod } from './technical-signal-request.dto'
 
 export class TechnicalSignalDefinitionDto {
   @ApiProperty() signalKey: string

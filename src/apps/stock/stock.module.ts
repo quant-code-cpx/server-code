@@ -12,6 +12,7 @@ import { StockToolFacade } from './stock-tool.facade'
 import { FinancialToolFacade } from './financial-tool.facade'
 import { MoneyflowToolFacade } from './moneyflow-tool.facade'
 import { ValuationToolFacade } from './valuation-tool.facade'
+import { StockTechnicalToolFacade } from './stock-technical-tool.facade'
 
 @Module({
   imports: [TushareModule],
@@ -28,6 +29,7 @@ import { ValuationToolFacade } from './valuation-tool.facade'
     FinancialToolFacade,
     MoneyflowToolFacade,
     ValuationToolFacade,
+    StockTechnicalToolFacade,
   ],
   exports: [
     StockService,
@@ -37,6 +39,7 @@ import { ValuationToolFacade } from './valuation-tool.facade'
     FinancialToolFacade,
     MoneyflowToolFacade,
     ValuationToolFacade,
+    StockTechnicalToolFacade,
   ],
 })
 export class StockModule {}

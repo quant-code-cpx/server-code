@@ -10,14 +10,18 @@ import {
   type ModelGatewayPort,
   type ModelMessageRole,
   type ModelPurpose,
+  type ModelStructuredStreamObserver,
   type NormalizedMessage,
 } from '../model-gateway/model-gateway.port'
+import { ModelStreamPublicProjector, type PublicModelStreamEvent } from './model-stream-public-projector'
 import { WorkflowBudgetService } from './workflow-budget.service'
 import { WorkflowBudgetError, WorkflowCancelledError, WorkflowExecutionError } from './workflow.errors'
 import type { WorkflowBudgetLimits, WorkflowBudgetUsage } from './workflow.types'
 import type { ContextManifest } from './workflow.types'
+import type { WorkflowModelProfile } from './workflow.types'
 import { AgentCostService, type AgentCostEstimate } from '../observability/agent-cost.service'
 import type { ModelDescriptor, ModelUsage } from '../model-gateway/model-gateway.port'
+import { ModelContextBudgetService } from './model-context-budget.service'
 
 export interface WorkflowModelCommand {
   run: AgentExecutionRun
@@ -33,6 +37,7 @@ export interface WorkflowModelCommand {
   limits: WorkflowBudgetLimits
   workerId?: string
   signal?: AbortSignal
+  modelProfile?: WorkflowModelProfile
 }
 
 export interface WorkflowModelResult<T> {
@@ -49,6 +54,7 @@ export class WorkflowModelService {
     @Inject(MODEL_GATEWAY) private readonly gateway: ModelGatewayPort,
     private readonly audit: AgentAuditRepository,
     private readonly budgets: WorkflowBudgetService,
+    private readonly contextBudgets: ModelContextBudgetService,
     @Optional() private readonly events?: AgentEventRepository,
     @Optional() private readonly costs?: AgentCostService,
   ) {}
@@ -56,21 +62,14 @@ export class WorkflowModelService {
   async generateStructured<T>(command: WorkflowModelCommand): Promise<WorkflowModelResult<T>> {
     const estimatedInputTokens = this.budgets.estimateInputTokens(command.messages)
     this.budgets.assertCanCallModel(command.usage, estimatedInputTokens, command.limits)
-    const routingRequest = createModelRequest(command, 'route_selection')
-    let route: ReturnType<ModelGatewayPort['select']>
-    try {
-      route = this.gateway.select(routingRequest)
-    } catch (error) {
-      if (error instanceof ModelGatewayError) {
-        throw new WorkflowExecutionError('MODEL', modelErrorCode(error), error.retryable, error.message)
-      }
-      throw error
-    }
-    const candidates = route.candidates.filter(
+    const routeCandidates = command.modelProfile
+      ? command.modelProfile.candidates.map((descriptor) => ({ descriptor, reasonCodes: ['RUN_PROFILE'] }))
+      : this.resolveRouteCandidates(command)
+    const candidates = routeCandidates.filter(
       ({ descriptor }) => estimatedInputTokens + command.maxOutputTokens <= descriptor.contextWindow,
     )
     if (candidates.length === 0) {
-      throw new WorkflowBudgetError('模型上下文窗口不足', 6018)
+      throw new WorkflowBudgetError('当前上下文无法装入目标模型，请切换到上下文更大的模型', 6048)
     }
 
     for (let index = 0; index < candidates.length; index += 1) {
@@ -117,10 +116,17 @@ export class WorkflowModelService {
       }
 
       try {
+        const streamObserver = this.createStreamObserver(command, call.id, {
+          messageCount: command.messages.length,
+          estimatedInputTokens,
+          maxOutputTokens: command.maxOutputTokens,
+          contextWindow: descriptor.contextWindow,
+        })
         const result = await this.gateway.generateStructuredForModel<T>(
           createModelRequest(command, call.id),
-          descriptor.model,
+          descriptor,
           command.signal,
+          streamObserver,
         )
         const cost = this.estimateCost(descriptor, result.completion.usage)
         await this.audit.finishModelCall(command.run.userId, call.id, {
@@ -138,6 +144,7 @@ export class WorkflowModelService {
         })
         const usage = mergeUsage(command.usage, result.completion.usage, cost, command.limits)
         this.budgets.assertUsage(usage, command.limits)
+        await this.appendModelCompletedEvent(command, call.id, descriptor, Date.now() - startedAt, result)
         return {
           data: result.data,
           usage,
@@ -157,12 +164,9 @@ export class WorkflowModelService {
           throw new WorkflowCancelledError('模型调用已取消')
         }
         await this.audit.failModelCall(command.run.userId, call.id, failure)
-        if (
-          error instanceof ModelGatewayError &&
-          error.retryable &&
-          !error.visibleOutput &&
-          index < candidates.length - 1
-        ) {
+        const willFallback = canFallbackToNextModel(error, index, candidates.length)
+        await this.appendModelFailedEvent(command, call.id, descriptor, Date.now() - startedAt, error, willFallback)
+        if (willFallback && error instanceof ModelGatewayError) {
           await this.appendFallbackEvent(command, descriptor, candidates[index + 1].descriptor, error.category)
           continue
         }
@@ -176,20 +180,63 @@ export class WorkflowModelService {
   }
 
   resolveInputTokenBudget(
-    run: AgentExecutionRun,
+    profile: WorkflowModelProfile,
     usage: WorkflowBudgetUsage,
     limits: WorkflowBudgetLimits,
-    maxOutputTokens: number,
   ): number {
     this.budgets.assertUsage(usage, limits)
-    const descriptor = this.gateway.getCapabilities(run.preferredModel)
-    const remainingRunBudget = limits.maxInputTokens - usage.inputTokens
-    const remainingModelWindow = descriptor.contextWindow - maxOutputTokens
-    const budget = Math.min(remainingRunBudget, remainingModelWindow)
-    if (!Number.isInteger(budget) || budget < 1) {
-      throw new WorkflowBudgetError('模型上下文 Token 预算已耗尽', 6018)
+    return this.contextBudgets.resolve(profile, usage, limits).inputBudget
+  }
+
+  resolveMaxOutputTokens(
+    profile: WorkflowModelProfile,
+    usage: WorkflowBudgetUsage,
+    limits: WorkflowBudgetLimits,
+  ): number {
+    return this.contextBudgets.resolve(profile, usage, limits).maxOutputTokens
+  }
+
+  resolveModelProfile(run: AgentExecutionRun): WorkflowModelProfile {
+    let route: ReturnType<ModelGatewayPort['select']>
+    try {
+      route = this.gateway.select({
+        modelPolicy: run.modelPolicy,
+        preferredModel: run.preferredModel,
+        purpose: 'PLAN',
+        messages: [modelMessage('user', 'route capability check')],
+        responseSchema: { type: 'object', additionalProperties: false },
+        maxOutputTokens: 1,
+        deadlineAt: run.deadlineAt.toISOString(),
+        dataClass: 'USER_PRIVATE',
+        trace: { runId: run.id, modelCallId: 'route_profile', traceId: run.traceId },
+      })
+    } catch (error) {
+      if (error instanceof ModelGatewayError) {
+        throw new WorkflowExecutionError('MODEL', modelErrorCode(error), error.retryable, error.message)
+      }
+      throw error
     }
-    return budget
+    return {
+      selectedProvider: route.selected.provider,
+      selectedModel: route.selected.model,
+      candidates: route.candidates.map(({ descriptor }) => ({
+        ...descriptor,
+        capabilities: [...descriptor.capabilities],
+        reasoningEfforts: [...descriptor.reasoningEfforts],
+        dataClasses: [...descriptor.dataClasses],
+      })),
+    }
+  }
+
+  private resolveRouteCandidates(command: WorkflowModelCommand) {
+    try {
+      return this.gateway.select(createModelRequest(command, 'route_selection')).candidates
+    } catch (error) {
+      if (error instanceof ModelGatewayError) {
+        throw new WorkflowExecutionError('MODEL', modelErrorCode(error), error.retryable, error.message)
+      }
+      throw error
+    }
   }
 
   private async appendFallbackEvent(
@@ -210,6 +257,97 @@ export class WorkflowModelService {
         toProvider: to.provider,
         toModel: to.model,
         reasonCode,
+      },
+    })
+  }
+
+  private createStreamObserver(
+    command: WorkflowModelCommand,
+    modelCallId: string,
+    traceContext: {
+      messageCount: number
+      estimatedInputTokens: number
+      maxOutputTokens: number
+      contextWindow: number
+    },
+  ): ModelStructuredStreamObserver | undefined {
+    if (!command.workerId || !this.events) return undefined
+    const projector = new ModelStreamPublicProjector(command.purpose, modelCallId, traceContext, async (event) => {
+      await this.appendPublicModelStreamEvent(command, event)
+    })
+    return async (event) => projector.observe(event)
+  }
+
+  private async appendPublicModelStreamEvent(
+    command: WorkflowModelCommand,
+    event: PublicModelStreamEvent,
+  ): Promise<void> {
+    if (!command.workerId || !this.events) return
+    await this.events.appendEvent(command.run.id, {
+      workerId: command.workerId,
+      eventType: event.eventType,
+      stepId: command.stepId,
+      traceId: command.run.traceId,
+      payload: event.payload,
+    })
+  }
+
+  private async appendModelCompletedEvent<T>(
+    command: WorkflowModelCommand,
+    modelCallId: string,
+    descriptor: ModelDescriptor,
+    durationMs: number,
+    result: { repaired: boolean; completion: { usage: ModelUsage | null; finishReason: string | null } },
+  ): Promise<void> {
+    if (!command.workerId || !this.events) return
+    const usage = result.completion.usage
+    await this.events.appendEvent(command.run.id, {
+      workerId: command.workerId,
+      eventType: 'model.completed',
+      stepId: command.stepId,
+      traceId: command.run.traceId,
+      payload: {
+        modelCallId,
+        provider: descriptor.provider,
+        model: descriptor.model,
+        purpose: command.purpose,
+        durationMs,
+        repaired: result.repaired,
+        finishReason: result.completion.finishReason,
+        usage: usage
+          ? {
+              inputTokens: usage.inputTokens,
+              outputTokens: usage.outputTokens,
+              ...(usage.cachedTokens == null ? {} : { cachedTokens: usage.cachedTokens }),
+              ...(usage.reasoningTokens == null ? {} : { reasoningTokens: usage.reasoningTokens }),
+            }
+          : null,
+      },
+    })
+  }
+
+  private async appendModelFailedEvent(
+    command: WorkflowModelCommand,
+    modelCallId: string,
+    descriptor: ModelDescriptor,
+    durationMs: number,
+    error: unknown,
+    willFallback: boolean,
+  ): Promise<void> {
+    if (!command.workerId || !this.events) return
+    await this.events.appendEvent(command.run.id, {
+      workerId: command.workerId,
+      eventType: 'model.failed',
+      stepId: command.stepId,
+      traceId: command.run.traceId,
+      payload: {
+        modelCallId,
+        provider: descriptor.provider,
+        model: descriptor.model,
+        purpose: command.purpose,
+        durationMs,
+        error: publicModelStreamError(error),
+        willFallback,
       },
     })
   }
@@ -301,7 +439,31 @@ function modelErrorCode(error: unknown): number {
   if (!(error instanceof ModelGatewayError)) return 6005
   if (error.category === 'RATE_LIMIT') return 6006
   if (error.category === 'TIMEOUT') return 6007
+  if (error.category === 'CONTEXT_LENGTH') return 6048
   return 6005
+}
+
+function canFallbackToNextModel(error: unknown, index: number, candidateCount: number): boolean {
+  return (
+    error instanceof ModelGatewayError && error.retryable && !error.visibleOutput && index < candidateCount - 1
+  )
+}
+
+function publicModelStreamError(error: unknown): {
+  code: number
+  message: string
+  retryable: boolean
+  category: 'AUTH' | 'MODEL' | 'TIMEOUT'
+} {
+  if (!(error instanceof ModelGatewayError)) {
+    return { code: 6005, message: '模型调用失败', retryable: true, category: 'MODEL' }
+  }
+  return {
+    code: modelErrorCode(error),
+    message: error.message,
+    retryable: error.retryable,
+    category: error.category === 'AUTH' ? 'AUTH' : error.category === 'TIMEOUT' ? 'TIMEOUT' : 'MODEL',
+  }
 }
 
 function asRecord(value: unknown): Record<string, unknown> {

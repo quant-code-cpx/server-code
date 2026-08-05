@@ -9,8 +9,16 @@ import { PrismaService } from 'src/shared/prisma.service'
 import { LoggerService } from 'src/shared/logger/logger.service'
 import { EventsGateway } from 'src/websocket/events.gateway'
 import { EventStudyService } from 'src/apps/event-study/event-study.service'
+import { DistributedCronLockService } from 'src/shared/scheduler/distributed-cron-lock.service'
 
-const mockLogger = { log: () => {}, warn: () => {}, error: () => {}, debug: () => {}, verbose: () => {}, devLog: () => {} }
+const mockLogger = {
+  log: () => {},
+  warn: () => {},
+  error: () => {},
+  debug: () => {},
+  verbose: () => {},
+  devLog: () => {},
+}
 
 describe('Alert — 真实 DB 集成测试', () => {
   let calendarService: AlertCalendarService
@@ -22,9 +30,16 @@ describe('Alert — 真实 DB 集成测试', () => {
   beforeAll(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
-        AlertCalendarService, MarketAnomalyService, AlertLimitService, PrismaService,
+        AlertCalendarService,
+        MarketAnomalyService,
+        AlertLimitService,
+        PrismaService,
         { provide: LoggerService, useValue: mockLogger },
         { provide: EventsGateway, useValue: { broadcast: () => {} } },
+        {
+          provide: DistributedCronLockService,
+          useValue: { runIfScheduler: async (_key: string, task: () => unknown) => task() },
+        },
         {
           provide: EventStudyService,
           useValue: {
@@ -47,7 +62,7 @@ describe('Alert — 真实 DB 集成测试', () => {
   }, 15000)
 
   afterAll(async () => {
-    if (dbAvailable) {
+    if (dbAvailable && prisma) {
       await prisma.$disconnect()
     }
   })
@@ -65,7 +80,10 @@ describe('Alert — 真实 DB 集成测试', () => {
 
   it('calendar/list — 按类型过滤', async () => {
     if (skipWhenDbUnavailable()) return
-    const r = await calendarService.getCalendar({ startDate: '20260501', endDate: '20260523', types: ['DIVIDEND' as any] }, 2)
+    const r = await calendarService.getCalendar(
+      { startDate: '20260501', endDate: '20260523', types: ['DIVIDEND' as any] },
+      2,
+    )
     expect(r).toBeDefined()
   }, 30000)
 

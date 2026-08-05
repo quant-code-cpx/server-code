@@ -22,8 +22,7 @@ import { SyncHelperService } from './sync-helper.service'
 import { TushareSyncMode, TushareSyncPlan, TushareSyncPlanContext } from './sync-plan.types'
 import { ValidationCollector } from './quality/validation-collector'
 
-const INDEX_DAILY_FULL_START_DATE = '19901219'
-const INDEX_DAILY_BENCHMARK_START_DATE = '20050104'
+const INDEX_DAILY_HISTORY_YEARS = 5
 const INDEX_DAILY_PROGRESS_INTERVAL = 50
 
 /**
@@ -444,7 +443,7 @@ export class MarketSyncService {
   }
 
   // ─── 核心指数日线 ──────────────────────────────────────────────────────────
-  // 全历史回补以 19901219 为起点。000300.SH 于 20050104 起必须覆盖每个 SSE 开市日。
+  // 最近五年回补。000300.SH 需覆盖该窗口内每个 SSE 开市日。
 
   async syncIndexDaily(
     targetTradeDate: string,
@@ -468,7 +467,7 @@ export class MarketSyncService {
       startDate = targetTradeDate
     } else if (mode === 'full') {
       const resumeKey = await this.helper.getResumeKey(TushareSyncTaskName.INDEX_DAILY)
-      startDate = resumeKey ? this.helper.addDays(resumeKey, 1) : INDEX_DAILY_FULL_START_DATE
+      startDate = resumeKey ? this.helper.addDays(resumeKey, 1) : this.getIndexDailyCoverageStartDate(targetTradeDate)
       if (resumeKey) this.logger.log(`[核心指数日线] 从断点 ${resumeKey} 恢复，起始 ${startDate}`)
     } else {
       const resumeKey = await this.helper.getResumeKey(TushareSyncTaskName.INDEX_DAILY)
@@ -477,7 +476,9 @@ export class MarketSyncService {
         this.logger.log(`[核心指数日线] 从断点 ${resumeKey} 恢复，起始 ${startDate}`)
       } else {
         const latestDate = await this.helper.getLatestDateString('indexDaily')
-        startDate = latestDate ? this.helper.addDays(latestDate, 1) : INDEX_DAILY_FULL_START_DATE
+        startDate = latestDate
+          ? this.helper.addDays(latestDate, 1)
+          : this.getIndexDailyCoverageStartDate(targetTradeDate)
       }
     }
 
@@ -497,14 +498,56 @@ export class MarketSyncService {
 
     if (!retryExactTarget) await this.helper.markRunning(TushareSyncTaskName.INDEX_DAILY, tradeDates.length)
 
+    const collector = new ValidationCollector(TushareSyncTaskName.INDEX_DAILY)
+
     this.logger.log(
       `[核心指数日线] 开始同步 ${tradeDates.length} 个交易日: ${tradeDates[0]} → ${tradeDates[tradeDates.length - 1]}`,
     )
 
+    if (mode === 'full') {
+      const totalRows = await this.fetchAndPersistCoreIndexDailyRange(startDate, targetTradeDate, collector)
+      const coverageMissingDates = await this.findMissingHs300Dates(targetTradeDate)
+      for (const date of coverageMissingDates) {
+        await this.helper.enqueueRetry(TushareSyncTaskName.INDEX_DAILY, date, '000300.SH 覆盖校验缺失')
+      }
+
+      const complete = coverageMissingDates.length === 0
+      await this.helper.updateProgress(
+        TushareSyncTaskName.INDEX_DAILY,
+        tradeDates[tradeDates.length - 1],
+        tradeDates.length,
+        tradeDates.length,
+      )
+      if (complete) await this.helper.markCompleted(TushareSyncTaskName.INDEX_DAILY)
+      context?.onProgress?.(tradeDates.length, tradeDates.length, tradeDates[tradeDates.length - 1])
+      this.logger.log(
+        `[核心指数日线] 区间同步结束，${totalRows} 条${coverageMissingDates.length ? `，沪深300缺失 ${coverageMissingDates.length} 日` : ''}`,
+      )
+      await this.helper.flushValidationLogs(collector)
+      await this.helper.writeSyncLog(
+        TushareSyncTaskName.INDEX_DAILY,
+        {
+          status: complete ? TushareSyncExecutionStatus.SUCCESS : TushareSyncExecutionStatus.FAILED,
+          message: complete ? `核心指数日线同步完成，${totalRows} 条` : `核心指数日线同步未完成，${totalRows} 条`,
+          tradeDate: this.helper.toDate(tradeDates[tradeDates.length - 1]),
+          payload: {
+            mode,
+            rowCount: totalRows,
+            dateCount: tradeDates.length,
+            rangeStart: startDate,
+            rangeEnd: targetTradeDate,
+            failedDates: [],
+            coverageMissingDates,
+          },
+        },
+        startedAt,
+      )
+      return
+    }
+
     let totalRows = 0
     const failed: Array<{ date: string; error: string }> = []
     let progressBlocked = false
-    const collector = new ValidationCollector(TushareSyncTaskName.INDEX_DAILY)
 
     for (const [i, td] of tradeDates.entries()) {
       try {
@@ -551,13 +594,7 @@ export class MarketSyncService {
       }
     }
 
-    let coverageMissingDates: string[] = []
-    if (!retryExactTarget && failed.length === 0 && mode === 'full') {
-      coverageMissingDates = await this.findMissingHs300Dates(targetTradeDate)
-      for (const date of coverageMissingDates) {
-        await this.helper.enqueueRetry(TushareSyncTaskName.INDEX_DAILY, date, '000300.SH 覆盖校验缺失')
-      }
-    }
+    const coverageMissingDates: string[] = []
 
     const complete = failed.length === 0 && coverageMissingDates.length === 0
     if (complete && !retryExactTarget) await this.helper.markCompleted(TushareSyncTaskName.INDEX_DAILY)
@@ -577,7 +614,7 @@ export class MarketSyncService {
           mode,
           rowCount: totalRows,
           dateCount: tradeDates.length,
-          rangeStart: retryExactTarget ? targetTradeDate : INDEX_DAILY_FULL_START_DATE,
+          rangeStart: retryExactTarget ? targetTradeDate : this.getIndexDailyCoverageStartDate(targetTradeDate),
           rangeEnd: targetTradeDate,
           failedDates: failed,
           coverageMissingDates,
@@ -595,8 +632,32 @@ export class MarketSyncService {
     return this.helper.replaceTradeDateRows('indexDaily', this.helper.toDate(tradeDate), mapped)
   }
 
+  private async fetchAndPersistCoreIndexDailyRange(
+    startDate: string,
+    endDate: string,
+    collector: ValidationCollector,
+  ): Promise<number> {
+    const rows = await this.api.getCoreIndexDailyByDateRange(startDate, endDate)
+    const mapped = rows
+      .map((row) => mapIndexDailyRecord(row, collector))
+      .filter((row): row is NonNullable<typeof row> => Boolean(row))
+    const rowsByTradeDate = new Map<string, typeof mapped>()
+
+    for (const row of mapped) {
+      const tradeDate =
+        typeof row.tradeDate === 'string' ? row.tradeDate.replaceAll('-', '') : this.helper.formatDate(row.tradeDate)
+      rowsByTradeDate.set(tradeDate, [...(rowsByTradeDate.get(tradeDate) ?? []), row])
+    }
+
+    let totalRows = 0
+    for (const [tradeDate, tradeDateRows] of rowsByTradeDate) {
+      totalRows += await this.helper.replaceTradeDateRows('indexDaily', this.helper.toDate(tradeDate), tradeDateRows)
+    }
+    return totalRows
+  }
+
   private async findMissingHs300Dates(targetTradeDate: string): Promise<string[]> {
-    const startDate = this.helper.toDate(INDEX_DAILY_BENCHMARK_START_DATE)
+    const startDate = this.helper.toDate(this.getIndexDailyCoverageStartDate(targetTradeDate))
     const endDate = this.helper.toDate(targetTradeDate)
     if (startDate > endDate) return []
     const [openDays, hs300Rows] = await Promise.all([
@@ -611,6 +672,14 @@ export class MarketSyncService {
     ])
     const actualDates = new Set(hs300Rows.map((row) => this.helper.formatDate(row.tradeDate)))
     return openDays.map((row) => this.helper.formatDate(row.calDate)).filter((date) => !actualDates.has(date))
+  }
+
+  private getIndexDailyCoverageStartDate(targetTradeDate: string): string {
+    const year = Number(targetTradeDate.slice(0, 4)) - INDEX_DAILY_HISTORY_YEARS
+    const month = Number(targetTradeDate.slice(4, 6))
+    const day = Number(targetTradeDate.slice(6, 8))
+    const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate()
+    return `${year}${String(month).padStart(2, '0')}${String(Math.min(day, lastDay)).padStart(2, '0')}`
   }
 
   private async syncByTradeDate(opts: {

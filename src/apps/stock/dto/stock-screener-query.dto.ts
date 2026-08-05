@@ -2,6 +2,7 @@ import { ApiPropertyOptional } from '@nestjs/swagger'
 import { Transform, Type } from 'class-transformer'
 import {
   ArrayMaxSize,
+  ArrayMinSize,
   IsArray,
   IsBoolean,
   IsEnum,
@@ -10,6 +11,7 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  Matches,
   Max,
   Min,
 } from 'class-validator'
@@ -40,6 +42,15 @@ export type ScreenerSortOrder = 'asc' | 'desc'
 
 export class ScreenerFiltersDto {
   // ─── 基本面筛选 ───
+  @ApiPropertyOptional({ description: '限定股票代码，最多 20 个', type: [String] })
+  @IsOptional()
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(20)
+  @IsString({ each: true })
+  @Matches(/^\d{6}\.(SH|SZ|BJ)$/, { each: true, message: 'tsCodes 格式应为 000001.SZ' })
+  tsCodes?: string[]
+
   @ApiPropertyOptional({ description: '交易所：SSE / SZSE / BSE' })
   @IsOptional()
   @IsString()

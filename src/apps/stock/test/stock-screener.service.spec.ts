@@ -168,6 +168,78 @@ describe('StockScreenerService', () => {
       expect(result.total).toBe(0)
     })
 
+    it('[BIZ] v2 在 SQL 层限定 tsCodes，并按五项诚实启发式返回原始证据', async () => {
+      const prisma = buildPrismaMock()
+      mockScreenerQueryRaw(
+        prisma,
+        [
+          {
+            tsCode: '600089.SH',
+            name: '特变电工',
+            industry: '电气设备',
+            market: '主板',
+            listDate: new Date('1997-06-18'),
+            latestFinDate: null,
+            close: 12,
+            pctChg: 2,
+            amount: 100,
+            turnoverRate: 1,
+            peTtm: 10,
+            pb: 1,
+            psTtm: 1,
+            dvTtm: 2,
+            totalMv: 1000,
+            circMv: 800,
+            revenueYoy: null,
+            netprofitYoy: null,
+            roe: null,
+            grossMargin: null,
+            netMargin: null,
+            debtToAssets: null,
+            currentRatio: null,
+            quickRatio: null,
+            ocfToNetprofit: null,
+            mainNetInflow5d: null,
+            mainNetInflow20d: null,
+            buySignalCount: 3,
+            buySignals: ['MACD_GOLDEN_CROSS', 'KDJ_GOLDEN_CROSS', 'RSI_OVERSOLD'],
+            macdDif: 1,
+            macdDea: 0,
+            previousMacdDif: -1,
+            previousMacdDea: 0,
+            kdjK: 60,
+            kdjD: 50,
+            previousKdjK: 40,
+            previousKdjD: 50,
+            bollMid: 13,
+            bollLower: 10,
+            rsi6: 19,
+          },
+        ],
+        1,
+      )
+      prisma.$queryRaw.mockResolvedValueOnce([])
+      const service = createService(prisma)
+
+      const result = await service.screener(
+        { tsCodes: ['600089.SH'], page: 1, pageSize: 20 } as StockScreenerQueryDto,
+        { includeHeuristicDetails: true, forceHeuristicRanking: true },
+      )
+
+      expect(prisma.$queryRaw.mock.calls.some((args) => containsExactArray(args, ['600089.SH']))).toBe(true)
+      expect(result.items[0]).toMatchObject({
+        heuristicCatalogVersion: 'stock-screener-heuristics.v1',
+        screeningHeuristicCount: 3,
+        screeningHeuristics: [
+          { key: 'MACD_GOLDEN_CROSS', matched: true },
+          { key: 'KDJ_GOLDEN_CROSS', matched: true },
+          { key: 'MACD_POSITIVE_AND_CLOSE_ABOVE_BOLL_MID', matched: false },
+          { key: 'CLOSE_BELOW_BOLL_LOWER', matched: false },
+          { key: 'RSI6_BELOW_20', matched: true, evidence: { rsi6: 19 } },
+        ],
+      })
+    })
+
     it('指定分页参数 → page/pageSize 正确反映在返回值中', async () => {
       const prisma = buildPrismaMock()
       mockScreenerQueryRaw(prisma, [], 100)
@@ -718,3 +790,13 @@ describe('StockScreenerService', () => {
     })
   })
 })
+
+function containsExactArray(value: unknown, expected: string[], seen = new WeakSet<object>()): boolean {
+  if (Array.isArray(value)) {
+    if (value.length === expected.length && value.every((item, index) => item === expected[index])) return true
+    return value.some((item) => containsExactArray(item, expected, seen))
+  }
+  if (!value || typeof value !== 'object' || seen.has(value)) return false
+  seen.add(value)
+  return Object.values(value).some((item) => containsExactArray(item, expected, seen))
+}

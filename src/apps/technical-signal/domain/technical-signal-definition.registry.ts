@@ -4,7 +4,6 @@ import {
   TECHNICAL_INDICATOR_ALGORITHM_VERSION,
   type IndicatorPoint,
   type TechnicalSignalDefinition,
-  type TechnicalSignalDirection,
   type TechnicalSignalEvidence,
   type TechnicalSignalEvidenceValue,
 } from './technical-signal.types'

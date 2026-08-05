@@ -456,6 +456,47 @@ integrationDescribe('Agent 审计/引用 Repository — 临时数据库集成测
     ).rejects.toThrow('terminal AI model call is immutable')
   })
 
+  it('同一 Run 的不同 Workflow Step 可使用相同模型、purpose 和 attempt，审计身份按 Step 隔离', async () => {
+    const secondStep = await client!.aiAgentStep.create({
+      data: {
+        runId: runA.id,
+        stepKey: 'audit-step-model-second',
+        kind: AiAgentStepKind.PLAN,
+        ordinal: 1,
+        inputHash: sha256('{"step":2}'),
+      },
+    })
+    const base = {
+      userId: userA.id,
+      scopeId: runA.id,
+      runId: runA.id,
+      promptVersionId: runA.promptVersionId,
+      provider: 'openai-compatible',
+      model: 'research-model',
+      purpose: 'PLAN',
+      attemptCount: 1,
+    }
+
+    const selected = await auditRepository.beginModelCall({
+      ...base,
+      stepId: stepA.id,
+      request: { phase: 'select_tools' },
+    })
+    const planned = await auditRepository.beginModelCall({
+      ...base,
+      stepId: secondStep.id,
+      request: { phase: 'plan' },
+    })
+    const replayed = await auditRepository.beginModelCall({
+      ...base,
+      stepId: secondStep.id,
+      request: { phase: 'plan' },
+    })
+
+    expect(planned.id).not.toBe(selected.id)
+    expect(replayed.id).toBe(planned.id)
+  })
+
   it('失败审计幂等并脱敏 error message', async () => {
     const call = await auditRepository.beginToolCall({
       userId: userA.id,

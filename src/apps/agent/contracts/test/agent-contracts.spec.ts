@@ -6,6 +6,8 @@ import {
   AGENT_MVP_READ_TOOL_KEYS,
   AGENT_RUN_STATUSES,
   AGENT_TOOL_KEYS,
+  AGENT_V6_TOOL_KEYS,
+  AGENT_V7_TOOL_KEYS,
   MESSAGE_BLOCK_FIXTURES,
   MODEL_CALL_STATUSES,
   TOOL_CALL_STATUSES,
@@ -35,6 +37,20 @@ describe('Agent 公共契约', () => {
       'fetch_web_page',
     ])
     expect(AGENT_TOOL_KEYS).toContain('save_research_report')
+    expect(AGENT_TOOL_KEYS).toEqual(
+      expect.arrayContaining([
+        'get_index_market_data',
+        'get_fund_research',
+        'get_industry_rotation',
+        'get_factor_analysis',
+        'get_macro_snapshot',
+        'get_option_market',
+        'get_convertible_bond_market',
+        'run_event_study',
+      ]),
+    )
+    expect(AGENT_V6_TOOL_KEYS).not.toContain('get_macro_snapshot')
+    expect(AGENT_V7_TOOL_KEYS).not.toContain('run_event_study')
   })
 
   it('Run、ToolCall、ModelCall 状态与 canonical 文档一致', () => {
@@ -92,8 +108,8 @@ describe('Agent 公共契约', () => {
     ).toThrow(AgentProtocolError)
   })
 
-  it('6001–6046 与 6099 全部进入 ErrorEnum，且 code 不重复', () => {
-    const expectedCodes = [...Array.from({ length: 46 }, (_value, index) => 6001 + index), 6099]
+  it('6001–6049 与 6099 全部进入 ErrorEnum，且 code 不重复', () => {
+    const expectedCodes = [...Array.from({ length: 49 }, (_value, index) => 6001 + index), 6099]
     expect(AGENT_ERROR_DEFINITIONS.map((definition) => definition.code)).toEqual(expectedCodes)
     expect(new Set(AGENT_ERROR_DEFINITIONS.map((definition) => definition.code))).toHaveProperty(
       'size',

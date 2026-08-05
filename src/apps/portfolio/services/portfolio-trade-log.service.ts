@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common'
+import type { Prisma } from '@prisma/client'
 import { parseCompactTradeDateToUtcDate } from 'src/common/utils/trade-date.util'
 import { PrismaService } from 'src/shared/prisma.service'
 import { TradeLogQueryDto, TradeLogSummaryDto } from '../dto/trade-log.dto'
@@ -19,8 +20,11 @@ export interface TradeLogParams {
 export class PortfolioTradeLogService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async log(params: TradeLogParams): Promise<void> {
-    await this.prisma.portfolioTradeLog.create({
+  async log(
+    params: TradeLogParams,
+    client: Pick<Prisma.TransactionClient, 'portfolioTradeLog'> = this.prisma,
+  ): Promise<void> {
+    await client.portfolioTradeLog.create({
       data: {
         portfolioId: params.portfolioId,
         userId: params.userId,

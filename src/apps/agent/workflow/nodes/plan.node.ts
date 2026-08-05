@@ -1,9 +1,9 @@
 import { Injectable } from '@nestjs/common'
 import { ContextBuilderService } from '../../memory/context-builder.service'
 import { ToolRegistryService } from '../../tools/tool-registry.service'
+import { parseMarketScreeningRequest } from '../market-screening-recovery'
 import { WorkflowModelService } from '../workflow-model.service'
 import type { ResearchPlan } from '../workflow.types'
-import { RESEARCH_PLAN_SCHEMA } from '../workflows/stock-research.v1'
 import { WorkflowValidationError } from '../workflow.errors'
 import type { WorkflowNodeExecutionContext, WorkflowNodeHandler } from './workflow-node'
 
@@ -19,16 +19,47 @@ export class PlanNode implements WorkflowNodeHandler {
 
   async execute({ run, workflow, state, limits, stepId, workerId, signal }: WorkflowNodeExecutionContext) {
     if (!state.context) throw new WorkflowValidationError('plan 节点缺少已加载上下文')
+    const modelProfile = state.modelProfile ?? this.models.resolveModelProfile(run)
     const enabledSnapshot = this.tools.freezeSnapshot()
-    const allowedEntries = enabledSnapshot.entries.filter((pin) => workflow.toolAllowlist.includes(pin.key))
+    const selectedKeys = state.toolSelection ? new Set(state.toolSelection.toolKeys) : null
+    const allowedEntries = enabledSnapshot.entries.filter(
+      (pin) => workflow.toolAllowlist.includes(pin.key) && (!selectedKeys || selectedKeys.has(pin.key)),
+    )
+    const marketScreening = parseMarketScreeningRequest(state.context.userText)
+    const screenStocks = allowedEntries.find((entry) => entry.key === 'screen_stocks')
+    if (marketScreening && screenStocks) {
+      return {
+        ...state,
+        modelProfile,
+        plan: {
+          intent: 'market_buy_signal_ranking',
+          summary: `按${marketScreening.markets.join('、')}全样本买入信号排序`,
+          toolCalls: marketScreening.markets.map((market) => ({
+            id: market === '科创板' ? 'screen_star_market' : 'screen_chinext_market',
+            toolKey: 'screen_stocks' as const,
+            toolVersion: screenStocks.version,
+            input: {
+              preset: 'buy_signal_ranking',
+              market,
+              pageSize: marketScreening.perMarketLimit,
+              minBuySignalCount: 1,
+              sortBy: 'buySignalCount',
+              sortOrder: 'desc',
+            },
+            dependsOn: [],
+            optional: false,
+          })),
+        },
+      }
+    }
     const toolSchemas = this.tools.toModelSchemas({ entries: allowedEntries, signature: enabledSnapshot.signature })
-    const maxOutputTokens = 2_000
+    const maxOutputTokens = this.models.resolveMaxOutputTokens(modelProfile, state.budget, limits)
     const prepared = this.contexts.prepareModelCall({
       context: state.context,
-      budget: this.models.resolveInputTokenBudget(run, state.budget, limits, maxOutputTokens),
+      budget: this.models.resolveInputTokenBudget(modelProfile, state.budget, limits),
       purpose: 'PLAN',
       instruction:
-        'Produce a short visible plan for the latest user message. Do not include hidden reasoning. For a dependent Tool input, bind a prior result with {"$toolResult":{"callId":"search","path":["results",0,"urlToken"]}}; callId must be listed in the current call dependsOn. Bind paths address Tool data directly, not a result wrapper. resolve_security data uses candidates, so its first security code is ["candidates",0,"tsCode"], never ["results",0,"tsCode"]. Search snippets select candidates only and never support factual claims.',
+        'Produce a short visible plan for the latest user message. Do not include hidden reasoning. For a dependent Tool input, bind a prior result with {"$toolResult":{"callId":"search","path":["results",0,"urlToken"]}}; callId must be listed in the current call dependsOn. Bind paths address Tool data directly, not a result wrapper. resolve_security data uses candidates, so its first security code is ["candidates",0,"tsCode"], never ["results",0,"tsCode"]. Search snippets select candidates only and never support factual claims. For 科创板 or 创业板 ranking, call screen_stocks once per requested market using market="科创板" or market="创业板". Never approximate either board with exchange because SSE and SZSE include main-board stocks; do not add an unscoped screen_stocks call.',
       stageData: { availableTools: toolSchemas },
     })
     const request = await this.models.generateStructured<ResearchPlan>({
@@ -37,15 +68,17 @@ export class PlanNode implements WorkflowNodeHandler {
       purpose: 'PLAN',
       messages: prepared.messages,
       contextManifest: prepared.manifest,
-      responseSchema: RESEARCH_PLAN_SCHEMA,
+      responseSchema: workflow.planSchema,
       maxOutputTokens,
       usage: state.budget,
       limits,
       workerId,
       signal,
+      modelProfile,
     })
     return {
       ...state,
+      modelProfile,
       context: prepared.context,
       plan: request.data,
       budget: request.usage,

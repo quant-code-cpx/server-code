@@ -31,8 +31,11 @@ export function createSaveResearchReportToolDefinition(): ToolDefinition {
       costClass: 'LOW',
       allowedDataScopes: ['USER_PRIVATE'],
     },
-    execute: async () => {
-      throw new ToolAdapterError('CONFIRMATION_REQUIRED', '保存研究报告必须由用户在预览界面确认')
+    execute: async (_input, context) => {
+      throw new ToolAdapterError('CONFIRMATION_REQUIRED', '保存研究报告必须由用户在预览界面确认', false, undefined, {
+        action: 'OPEN_REPORT_PREVIEW',
+        runId: context.runId,
+      })
     },
     countRows: () => 1,
   }

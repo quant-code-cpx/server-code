@@ -539,6 +539,7 @@ export class ToolExecutorService {
           message: error.message,
           retryable: error.retryable,
           category: error.code === 'TIMEOUT' ? 'TIMEOUT' : 'TOOL',
+          ...(error.details ? { safeDetails: error.details } : {}),
         },
         attempt,
         willRetry,
@@ -724,7 +725,9 @@ function normalizePreExecutionError(error: unknown, toolCallId: string, command:
   if (error instanceof ToolRegistryError)
     return rawToolError(toolCallId, command.toolKey, command.toolVersion, 'TOOL_NOT_REGISTERED')
   if (error instanceof ToolPolicyDeniedError || error instanceof ToolRunLimitError) {
-    return rawToolError(toolCallId, command.toolKey, command.toolVersion, error.code)
+    const result = rawToolError(toolCallId, command.toolKey, command.toolVersion, error.code)
+    const details = error instanceof ToolPolicyDeniedError ? normalizeSafeDetails(error.details) : undefined
+    return details ? { ...result, details } : result
   }
   return rawToolError(toolCallId, command.toolKey, command.toolVersion, 'INTERNAL_ERROR')
 }

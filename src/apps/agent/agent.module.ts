@@ -13,6 +13,7 @@ import { MarketModule } from 'src/apps/market/market.module'
 import { IndustryModule } from 'src/apps/industry/industry.module'
 import { WatchlistModule } from 'src/apps/watchlist/watchlist.module'
 import { StockToolFacade } from 'src/apps/stock/stock-tool.facade'
+import { StockTechnicalToolFacade } from 'src/apps/stock/stock-technical-tool.facade'
 import { MarketToolFacade } from 'src/apps/market/market-tool.facade'
 import { SectorToolFacade } from 'src/apps/industry/sector-tool.facade'
 import { WatchlistToolFacade } from 'src/apps/watchlist/watchlist-tool.facade'
@@ -21,8 +22,10 @@ import { MoneyflowToolFacade } from 'src/apps/stock/moneyflow-tool.facade'
 import { ValuationToolFacade } from 'src/apps/stock/valuation-tool.facade'
 import { PortfolioModule } from 'src/apps/portfolio/portfolio.module'
 import { PortfolioToolFacade } from 'src/apps/portfolio/portfolio-tool.facade'
+import { PortfolioAnalyticsToolFacade } from 'src/apps/portfolio/portfolio-analytics-tool.facade'
 import { BacktestModule } from 'src/apps/backtest/backtest.module'
 import { BacktestToolFacade } from 'src/apps/backtest/backtest-tool.facade'
+import { BacktestAnalyticsToolFacade } from 'src/apps/backtest/backtest-analytics-tool.facade'
 import { WebFetchService } from 'src/apps/web-search/web-fetch.service'
 import { WebSearchModule } from 'src/apps/web-search/web-search.module'
 import { WebSearchService } from 'src/apps/web-search/web-search.service'
@@ -50,6 +53,7 @@ import { ExecuteToolsNode } from './workflow/nodes/execute-tools.node'
 import { LoadContextNode } from './workflow/nodes/load-context.node'
 import { PersistNode } from './workflow/nodes/persist.node'
 import { PlanNode } from './workflow/nodes/plan.node'
+import { SelectToolsNode } from './workflow/nodes/select-tools.node'
 import { SynthesizeNode } from './workflow/nodes/synthesize.node'
 import { ValidateCitationsNode } from './workflow/nodes/validate-citations.node'
 import { ResearchPlanCompilerService } from './workflow/research-plan-compiler.service'
@@ -58,9 +62,10 @@ import { WorkflowContextService } from './workflow/workflow-context.service'
 import { WorkflowEngineService } from './workflow/workflow-engine.service'
 import { WorkflowFinalizationService } from './workflow/workflow-finalization.service'
 import { WorkflowModelService } from './workflow/workflow-model.service'
+import { ModelContextBudgetService } from './workflow/model-context-budget.service'
 import { AGENT_WORKFLOW_DEFINITIONS, WorkflowRegistryService } from './workflow/workflow-registry.service'
 import { WorkflowToolService } from './workflow/workflow-tool.service'
-import { STOCK_RESEARCH_WORKFLOW_DEFINITIONS } from './workflow/workflows/stock-research.v2'
+import { STOCK_RESEARCH_WORKFLOW_DEFINITIONS } from './workflow/workflows/stock-research.v10'
 import { AgentController } from './api/agent.controller'
 import { AgentStrictBodyGuard } from './api/agent-strict-body.guard'
 import { AgentErrorInterceptor } from './api/agent-error.interceptor'
@@ -79,6 +84,7 @@ import { AgentMemoryController } from './api/agent-memory.controller'
 import { ContextBuilderService } from './memory/context-builder.service'
 import { ContextTokenEstimator } from './memory/context-token-estimator'
 import { ConversationSummaryGeneratorService } from './memory/conversation-summary-generator.service'
+import { ConversationContextCompatibilityService } from './memory/conversation-context-compatibility.service'
 import { ResearchReportModule } from './research/research-report.module'
 import { AgentObservabilityModule } from './observability/agent-observability.module'
 import { AgentMetricsService } from './observability/agent-metrics.service'
@@ -87,6 +93,39 @@ import { AgentEvaluationAdminController } from './api/agent-evaluation-admin.con
 import { ModelProviderAdminController } from './api/model-provider-admin.controller'
 import { RolesGuard } from 'src/lifecycle/guard/roles.guard'
 import { RetrievalModule } from './retrieval/retrieval.module'
+import { TechnicalSignalModule } from 'src/apps/technical-signal/technical-signal.module'
+import { TechnicalSignalToolFacade } from 'src/apps/technical-signal/technical-signal-tool.facade'
+import { DataAvailabilityModule } from 'src/apps/data-availability/data-availability.module'
+import { DataAvailabilityToolFacade } from 'src/apps/data-availability/data-availability-tool.facade'
+import { createTechnicalAnalysisToolDefinitions } from './tools/adapters/technical-analysis-tools'
+import { createDataAvailabilityToolDefinitions } from './tools/adapters/data-availability-tools'
+import { StockDeepResearchModule } from 'src/apps/stock-deep-research/stock-deep-research.module'
+import { StockChipToolFacade } from 'src/apps/stock-deep-research/chip/stock-chip-tool.facade'
+import { StockMarginToolFacade } from 'src/apps/stock-deep-research/margin/stock-margin-tool.facade'
+import { RelativeStrengthToolFacade } from 'src/apps/stock-deep-research/relative-strength/relative-strength-tool.facade'
+import { StockEventToolFacade } from 'src/apps/stock-deep-research/events/stock-event-tool.facade'
+import { StockShareholderToolFacade } from 'src/apps/stock-deep-research/shareholders/stock-shareholder-tool.facade'
+import { createStockDeepResearchToolDefinitions } from './tools/adapters/stock-deep-research-tools'
+import { ToolCapabilityCatalogService } from './tools/tool-capability-catalog.service'
+import { IndexModule } from 'src/apps/index/index.module'
+import { IndexResearchToolFacade } from 'src/apps/index/index-research-tool.facade'
+import { FundModule } from 'src/apps/fund/fund.module'
+import { FundResearchToolFacade } from 'src/apps/fund/fund-research-tool.facade'
+import { IndustryRotationModule } from 'src/apps/industry-rotation/industry-rotation.module'
+import { IndustryRotationToolFacade } from 'src/apps/industry-rotation/industry-rotation-tool.facade'
+import { FactorModule } from 'src/apps/factor/factor.module'
+import { FactorAnalysisToolFacade } from 'src/apps/factor/factor-analysis-tool.facade'
+import { MacroResearchModule } from 'src/apps/macro-research/macro-research.module'
+import { MacroResearchToolFacade } from 'src/apps/macro-research/macro-research-tool.facade'
+import { createMarketMultiAssetToolDefinitions } from './tools/adapters/market-multi-asset-tools'
+import { OptionMarketModule } from 'src/apps/option-market/option-market.module'
+import { OptionMarketToolFacade } from 'src/apps/option-market/option-market-tool.facade'
+import { ConvertibleBondModule } from 'src/apps/convertible-bond/convertible-bond.module'
+import { ConvertibleBondToolFacade } from 'src/apps/convertible-bond/convertible-bond-tool.facade'
+import { EventStudyModule } from 'src/apps/event-study/event-study.module'
+import { EventStudyToolFacade } from 'src/apps/event-study/event-study-tool.facade'
+import { createDerivativeEventToolDefinitions } from './tools/adapters/derivative-event-tools'
+import { createPrivateAnalyticsToolDefinitions } from './tools/adapters/private-analytics-tools'
 
 @Module({
   imports: [
@@ -110,6 +149,17 @@ import { RetrievalModule } from './retrieval/retrieval.module'
     ResearchReportModule,
     AgentObservabilityModule,
     RetrievalModule,
+    TechnicalSignalModule,
+    DataAvailabilityModule,
+    StockDeepResearchModule,
+    IndexModule,
+    FundModule,
+    IndustryRotationModule,
+    FactorModule,
+    MacroResearchModule,
+    OptionMarketModule,
+    ConvertibleBondModule,
+    EventStudyModule,
   ],
   controllers: [
     AgentController,
@@ -125,6 +175,7 @@ import { RetrievalModule } from './retrieval/retrieval.module'
     UserMemoryRepository,
     ConversationSummaryService,
     ConversationSummaryGeneratorService,
+    ConversationContextCompatibilityService,
     UserMemoryService,
     ContextTokenEstimator,
     ContextBuilderService,
@@ -140,6 +191,7 @@ import { RetrievalModule } from './retrieval/retrieval.module'
     AgentEvaluationService,
     ToolSchemaValidator,
     ToolRegistryService,
+    ToolCapabilityCatalogService,
     ToolPolicyService,
     ToolRunLimiterService,
     ToolExecutorService,
@@ -148,10 +200,12 @@ import { RetrievalModule } from './retrieval/retrieval.module'
     ResearchPlanCompilerService,
     WorkflowContextService,
     WorkflowModelService,
+    ModelContextBudgetService,
     WorkflowToolService,
     CitationCoverageService,
     WorkflowFinalizationService,
     LoadContextNode,
+    SelectToolsNode,
     PlanNode,
     AuthorizeToolsNode,
     ExecuteToolsNode,
@@ -177,6 +231,24 @@ import { RetrievalModule } from './retrieval/retrieval.module'
         WebSearchService,
         WebFetchService,
         AgentToolsConfig.KEY,
+        StockTechnicalToolFacade,
+        TechnicalSignalToolFacade,
+        DataAvailabilityToolFacade,
+        StockChipToolFacade,
+        StockMarginToolFacade,
+        RelativeStrengthToolFacade,
+        StockEventToolFacade,
+        StockShareholderToolFacade,
+        IndexResearchToolFacade,
+        FundResearchToolFacade,
+        IndustryRotationToolFacade,
+        FactorAnalysisToolFacade,
+        MacroResearchToolFacade,
+        OptionMarketToolFacade,
+        ConvertibleBondToolFacade,
+        EventStudyToolFacade,
+        BacktestAnalyticsToolFacade,
+        PortfolioAnalyticsToolFacade,
       ],
       useFactory: (
         stock: StockToolFacade,
@@ -191,6 +263,24 @@ import { RetrievalModule } from './retrieval/retrieval.module'
         webSearch: WebSearchService,
         webFetch: WebFetchService,
         config: IAgentToolsConfig,
+        stockTechnical: StockTechnicalToolFacade,
+        technicalSignal: TechnicalSignalToolFacade,
+        dataAvailability: DataAvailabilityToolFacade,
+        chip: StockChipToolFacade,
+        marginDeepResearch: StockMarginToolFacade,
+        relativeStrength: RelativeStrengthToolFacade,
+        events: StockEventToolFacade,
+        shareholders: StockShareholderToolFacade,
+        indexResearch: IndexResearchToolFacade,
+        fundResearch: FundResearchToolFacade,
+        industryRotation: IndustryRotationToolFacade,
+        factorAnalysis: FactorAnalysisToolFacade,
+        macroResearch: MacroResearchToolFacade,
+        optionMarket: OptionMarketToolFacade,
+        convertibleBond: ConvertibleBondToolFacade,
+        eventStudy: EventStudyToolFacade,
+        backtestAnalytics: BacktestAnalyticsToolFacade,
+        portfolioAnalytics: PortfolioAnalyticsToolFacade,
       ) =>
         Object.freeze([
           ...createStockMarketToolDefinitions({ stock, market, sector, watchlist, config }),
@@ -198,6 +288,31 @@ import { RetrievalModule } from './retrieval/retrieval.module'
           ...createQuantToolDefinitions({ portfolio, backtest, valuation, config }),
           ...createWebResearchToolDefinitions({ search: webSearch, fetch: webFetch }),
           createSaveResearchReportToolDefinition(),
+          ...createTechnicalAnalysisToolDefinitions({ stockTechnical, technicalSignal }),
+          ...createDataAvailabilityToolDefinitions(dataAvailability),
+          ...createStockDeepResearchToolDefinitions({
+            chip,
+            margin: marginDeepResearch,
+            relativeStrength,
+            events,
+            shareholders,
+          }),
+          ...createMarketMultiAssetToolDefinitions({
+            index: indexResearch,
+            fund: fundResearch,
+            industry: industryRotation,
+            factor: factorAnalysis,
+            macro: macroResearch,
+          }),
+          ...createDerivativeEventToolDefinitions({
+            option: optionMarket,
+            convertibleBond,
+            eventStudy,
+          }),
+          ...createPrivateAnalyticsToolDefinitions({
+            backtest: backtestAnalytics,
+            portfolio: portfolioAnalytics,
+          }),
         ]),
     },
     { provide: TOOL_EXECUTION_OBSERVER, useExisting: AgentMetricsService },

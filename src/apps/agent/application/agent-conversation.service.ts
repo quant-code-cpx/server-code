@@ -13,6 +13,9 @@ import type {
   UpdateConversationModelDto,
 } from '../api/dto/conversation/conversation-request.dto'
 import { ConversationSummaryService } from '../memory/conversation-summary.service'
+import { ConversationContextCompatibilityService } from '../memory/conversation-context-compatibility.service'
+import type { ModelDescriptor } from '../model-gateway/model-gateway.port'
+import type { WorkflowModelProfile } from '../workflow/workflow.types'
 
 @Injectable()
 export class AgentConversationService {
@@ -23,6 +26,7 @@ export class AgentConversationService {
     private readonly health: ProviderHealthService,
     @Inject(ModelConfig.KEY) private readonly modelConfig: IModelConfig,
     private readonly summaries: ConversationSummaryService,
+    private readonly contextCompatibility: ConversationContextCompatibilityService,
   ) {}
 
   async create(userId: number, dto: CreateConversationDto) {
@@ -55,6 +59,8 @@ export class AgentConversationService {
 
   async updateModel(userId: number, dto: UpdateConversationModelDto) {
     const preferredModel = this.validateModelSelection(dto.modelPolicy, dto.preferredModel)
+    const targetProfile = this.resolveTargetProfile(dto.modelPolicy, preferredModel)
+    const contextPreparation = await this.contextCompatibility.assess(userId, dto.conversationId, targetProfile)
     const conversation = await this.conversations.updateModelPolicy(
       userId,
       dto.conversationId,
@@ -65,6 +71,7 @@ export class AgentConversationService {
       conversationId: conversation.id,
       modelPolicy: conversation.modelPolicy,
       preferredModel: conversation.preferredModel,
+      contextPreparation,
       updatedAt: conversation.updatedAt.toISOString(),
     }
   }
@@ -77,15 +84,24 @@ export class AgentConversationService {
           this.modelConfig.providers.find((item) => item.id === descriptor.provider)
         const health = this.health.snapshot(descriptor)
         const supportsConversationData = descriptor.dataClasses.includes('USER_PRIVATE')
+        const supportsAgentWorkflow = supportsRequiredAgentCapabilities(descriptor)
         const healthy = health.status === 'HEALTHY'
         return {
           model: descriptor.model,
           displayName: provider?.displayName ?? descriptor.provider,
           provider: descriptor.provider,
           capabilities: descriptor.capabilities,
+          contextWindow: descriptor.contextWindow,
+          maxOutputTokens: descriptor.maxOutputTokens,
           costTier: provider?.costTier ?? 'MEDIUM',
-          status: healthy && supportsConversationData ? 'AVAILABLE' : 'UNAVAILABLE',
-          reason: !supportsConversationData ? '模型未允许处理用户私有数据' : healthy ? null : '模型供应商暂时不可用',
+          status: healthy && supportsConversationData && supportsAgentWorkflow ? 'AVAILABLE' : 'UNAVAILABLE',
+          reason: !supportsConversationData
+            ? '模型未允许处理用户私有数据'
+            : !supportsAgentWorkflow
+              ? '模型不支持智能体所需的流式或结构化输出能力'
+              : healthy
+                ? null
+                : '模型供应商暂时不可用',
         }
       }),
     }
@@ -100,10 +116,30 @@ export class AgentConversationService {
     try {
       const descriptor = this.models.get(preferredModel)
       if (!descriptor.dataClasses.includes('USER_PRIVATE')) throw new Error('data class unsupported')
+      if (!supportsRequiredAgentCapabilities(descriptor)) throw new Error('capability unsupported')
+      if (!this.health.isAvailable(descriptor)) throw new Error('model unavailable')
     } catch {
       throw validationError('preferredModel 未注册或不可用')
     }
     return preferredModel
+  }
+
+  private resolveTargetProfile(modelPolicy: AiModelPolicy, preferredModel: string | null): WorkflowModelProfile {
+    if (modelPolicy === AiModelPolicy.MANUAL && preferredModel) {
+      const descriptor = this.models.get(preferredModel)
+      return toModelProfile(descriptor, [descriptor])
+    }
+    const candidates = this.models
+      .list()
+      .filter(
+        (candidate) =>
+          candidate.dataClasses.includes('USER_PRIVATE') &&
+          supportsRequiredAgentCapabilities(candidate) &&
+          this.health.isAvailable(candidate),
+      )
+    const selected = candidates[0]
+    if (!selected) throw validationError('当前没有可用于会话的健康模型')
+    return toModelProfile(selected, candidates)
   }
 
   private mapConversation(conversation: Awaited<ReturnType<AgentConversationRepository['findById']>>) {
@@ -118,6 +154,18 @@ export class AgentConversationService {
       createdAt: conversation.createdAt.toISOString(),
       updatedAt: conversation.updatedAt.toISOString(),
     }
+  }
+}
+
+function supportsRequiredAgentCapabilities(descriptor: ModelDescriptor): boolean {
+  return descriptor.capabilities.includes('STREAMING') && descriptor.capabilities.includes('STRUCTURED_OUTPUT')
+}
+
+function toModelProfile(selected: ModelDescriptor, candidates: readonly ModelDescriptor[]): WorkflowModelProfile {
+  return {
+    selectedProvider: selected.provider,
+    selectedModel: selected.model,
+    candidates: [...candidates],
   }
 }
 

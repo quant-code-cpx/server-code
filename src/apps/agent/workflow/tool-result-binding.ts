@@ -105,7 +105,11 @@ function resolveBinding(binding: ToolResultBinding, resultsByCallId: ReadonlyMap
   return current
 }
 
-function resolveLegacyResultCollectionAlias(current: unknown, segment: string | number, index: number): string | number {
+function resolveLegacyResultCollectionAlias(
+  current: unknown,
+  segment: string | number,
+  index: number,
+): string | number {
   if (
     index === 0 &&
     segment === 'results' &&

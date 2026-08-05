@@ -14,6 +14,7 @@ import { FactorOptimizationService } from './services/factor-optimization.servic
 import { BacktestModule } from '../backtest/backtest.module'
 import { buildProcessRoleConfig } from 'src/config/process-role.config'
 import { NoopScheduleModule } from 'src/shared/scheduler/noop-schedule.module'
+import { FactorAnalysisToolFacade } from './factor-analysis-tool.facade'
 
 const processRole = buildProcessRoleConfig(process.env)
 
@@ -37,7 +38,8 @@ const processRole = buildProcessRoleConfig(process.env)
     FactorBacktestService,
     FactorOrthogonalService,
     FactorOptimizationService,
+    FactorAnalysisToolFacade,
   ],
-  exports: [FactorScreeningService],
+  exports: [FactorScreeningService, FactorAnalysisToolFacade],
 })
 export class FactorModule {}

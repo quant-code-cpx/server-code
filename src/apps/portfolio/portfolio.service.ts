@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common'
+import { BadRequestException, Injectable, NotFoundException, ForbiddenException } from '@nestjs/common'
 import { Decimal } from '@prisma/client/runtime/library'
 import { PrismaService } from 'src/shared/prisma.service'
 import { CacheService } from 'src/shared/cache.service'
@@ -7,6 +7,7 @@ import { CreatePortfolioDto } from './dto/create-portfolio.dto'
 import { UpdatePortfolioDto } from './dto/update-portfolio.dto'
 import { AddHoldingDto } from './dto/add-holding.dto'
 import { UpdateHoldingDto } from './dto/update-holding.dto'
+import { RemoveHoldingDto } from './dto/update-holding.dto'
 import { PortfolioPnlHistoryDto } from './dto/portfolio-pnl.dto'
 import { PortfolioTradeLogService } from './services/portfolio-trade-log.service'
 
@@ -86,104 +87,187 @@ export class PortfolioService {
   // ─── 持仓管理 ─────────────────────────────────────────────────────────────
 
   async addHolding(dto: AddHoldingDto, userId: number) {
-    await this.assertOwner(dto.portfolioId, userId)
-
-    // 查该股基本信息
-    const stockBasic = await this.prisma.stockBasic.findFirst({
-      where: { tsCode: dto.tsCode },
-      select: { name: true },
-    })
-
-    const existing = await this.prisma.portfolioHolding.findUnique({
-      where: { portfolioId_tsCode: { portfolioId: dto.portfolioId, tsCode: dto.tsCode } },
-    })
-
-    let holding: { id: string; tsCode: string; stockName: string; quantity: number; avgCost: Decimal; updatedAt: Date }
-    if (existing) {
-      // 加仓：加权平均成本（使用 Decimal 运算避免 IEEE 754 精度丢失）
-      const newQty = existing.quantity + dto.quantity
-      const newAvgCost = existing.avgCost
-        .mul(existing.quantity)
-        .plus(new Decimal(dto.avgCost).mul(dto.quantity))
-        .div(newQty)
-      holding = await this.prisma.portfolioHolding.update({
-        where: { id: existing.id },
-        data: { quantity: newQty, avgCost: newAvgCost },
+    const holding = await this.prisma.$transaction(async (tx) => {
+      const replay = await tx.portfolioHoldingEvent.findUnique({
+        where: { userId_idempotencyKey: { userId, idempotencyKey: dto.idempotencyKey } },
+        select: { action: true, portfolioId: true, tsCode: true, metadata: true },
       })
-    } else {
-      holding = await this.prisma.portfolioHolding.create({
+      if (replay) return replayHolding(replay, 'ADD', dto.portfolioId, dto.tsCode)
+      const portfolio = await tx.portfolio.findFirst({ where: { id: dto.portfolioId, userId }, select: { id: true } })
+      if (!portfolio) throw new NotFoundException('组合不存在')
+      const [stockBasic, existing] = await Promise.all([
+        tx.stockBasic.findFirst({ where: { tsCode: dto.tsCode }, select: { name: true } }),
+        tx.portfolioHolding.findUnique({
+          where: { portfolioId_tsCode: { portfolioId: dto.portfolioId, tsCode: dto.tsCode } },
+        }),
+      ])
+      const beforeQuantity = existing?.quantity ?? 0
+      const beforeAvgCost = existing?.avgCost ?? null
+      const newQty = beforeQuantity + dto.quantity
+      const newAvgCost = existing
+        ? existing.avgCost.mul(existing.quantity).plus(new Decimal(dto.avgCost).mul(dto.quantity)).div(newQty)
+        : new Decimal(dto.avgCost)
+      const saved = existing
+        ? await tx.portfolioHolding.update({
+            where: { id: existing.id },
+            data: { quantity: newQty, avgCost: newAvgCost },
+          })
+        : await tx.portfolioHolding.create({
+            data: {
+              portfolioId: dto.portfolioId,
+              tsCode: dto.tsCode,
+              stockName: stockBasic?.name ?? dto.tsCode,
+              quantity: dto.quantity,
+              avgCost: newAvgCost,
+            },
+          })
+      const result = serializeHolding(saved)
+      await tx.portfolioHoldingEvent.create({
         data: {
           portfolioId: dto.portfolioId,
+          userId,
+          holdingId: saved.id,
           tsCode: dto.tsCode,
-          stockName: stockBasic?.name ?? dto.tsCode,
-          quantity: dto.quantity,
-          avgCost: new Decimal(dto.avgCost),
+          action: 'ADD',
+          quantityDelta: dto.quantity,
+          price: new Decimal(dto.avgCost),
+          beforeQuantity,
+          afterQuantity: saved.quantity,
+          beforeAvgCost,
+          afterAvgCost: saved.avgCost,
+          effectiveDate: mutationDate(dto.effectiveDate),
+          idempotencyKey: dto.idempotencyKey,
+          source: 'MANUAL',
+          metadata: { result },
         },
       })
-    }
-
-    await this.invalidatePortfolioCache(dto.portfolioId)
-
-    await this.tradeLogService.log({
-      portfolioId: dto.portfolioId,
-      userId,
-      tsCode: dto.tsCode,
-      stockName: holding.stockName,
-      action: 'ADD',
-      quantity: dto.quantity,
-      price: dto.avgCost,
-      reason: 'MANUAL',
+      await this.tradeLogService.log(
+        {
+          portfolioId: dto.portfolioId,
+          userId,
+          tsCode: dto.tsCode,
+          stockName: saved.stockName,
+          action: 'ADD',
+          quantity: dto.quantity,
+          price: dto.avgCost,
+          reason: 'MANUAL',
+          detail: { idempotencyKey: dto.idempotencyKey },
+        },
+        tx,
+      )
+      return saved
     })
 
+    await this.invalidatePortfolioCache(dto.portfolioId)
     return holding
   }
 
   async updateHolding(dto: UpdateHoldingDto, userId: number) {
-    const holding = await this.prisma.portfolioHolding.findUniqueOrThrow({
-      where: { id: dto.holdingId },
-      select: { id: true, portfolioId: true, tsCode: true, stockName: true, quantity: true },
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const replay = await tx.portfolioHoldingEvent.findUnique({
+        where: { userId_idempotencyKey: { userId, idempotencyKey: dto.idempotencyKey } },
+        select: { action: true, holdingId: true, portfolioId: true, tsCode: true, metadata: true },
+      })
+      if (replay) return replayHolding(replay, 'ADJUST', replay.portfolioId, replay.tsCode, dto.holdingId)
+      const holding = await tx.portfolioHolding.findFirst({
+        where: { id: dto.holdingId, portfolio: { userId } },
+      })
+      if (!holding) throw new NotFoundException('持仓不存在')
+      const saved = await tx.portfolioHolding.update({
+        where: { id: dto.holdingId },
+        data: { quantity: dto.quantity, avgCost: new Decimal(dto.avgCost) },
+      })
+      const result = serializeHolding(saved)
+      await tx.portfolioHoldingEvent.create({
+        data: {
+          portfolioId: holding.portfolioId,
+          userId,
+          holdingId: holding.id,
+          tsCode: holding.tsCode,
+          action: 'ADJUST',
+          quantityDelta: dto.quantity - holding.quantity,
+          price: new Decimal(dto.avgCost),
+          beforeQuantity: holding.quantity,
+          afterQuantity: dto.quantity,
+          beforeAvgCost: holding.avgCost,
+          afterAvgCost: new Decimal(dto.avgCost),
+          effectiveDate: mutationDate(dto.effectiveDate),
+          idempotencyKey: dto.idempotencyKey,
+          source: 'MANUAL',
+          metadata: { result },
+        },
+      })
+      await this.tradeLogService.log(
+        {
+          portfolioId: holding.portfolioId,
+          userId,
+          tsCode: holding.tsCode,
+          stockName: holding.stockName,
+          action: 'ADJUST',
+          quantity: Math.abs(dto.quantity - holding.quantity),
+          price: dto.avgCost,
+          reason: 'MANUAL',
+          detail: { idempotencyKey: dto.idempotencyKey },
+        },
+        tx,
+      )
+      return saved
     })
-    await this.assertOwner(holding.portfolioId, userId)
-
-    const updated = await this.prisma.portfolioHolding.update({
-      where: { id: dto.holdingId },
-      data: { quantity: dto.quantity, avgCost: new Decimal(dto.avgCost) },
-    })
-    await this.invalidatePortfolioCache(holding.portfolioId)
-
-    await this.tradeLogService.log({
-      portfolioId: holding.portfolioId,
-      userId,
-      tsCode: holding.tsCode,
-      stockName: holding.stockName,
-      action: 'ADJUST',
-      quantity: dto.quantity,
-      price: dto.avgCost,
-      reason: 'MANUAL',
-    })
-
+    await this.invalidatePortfolioCache(updated.portfolioId)
     return updated
   }
 
-  async removeHolding(holdingId: string, userId: number) {
-    const holding = await this.prisma.portfolioHolding.findUniqueOrThrow({
-      where: { id: holdingId },
-      select: { id: true, portfolioId: true, tsCode: true, stockName: true, quantity: true },
+  async removeHolding(dto: RemoveHoldingDto, userId: number) {
+    const portfolioId = await this.prisma.$transaction(async (tx) => {
+      const replay = await tx.portfolioHoldingEvent.findUnique({
+        where: { userId_idempotencyKey: { userId, idempotencyKey: dto.idempotencyKey } },
+        select: { action: true, holdingId: true, portfolioId: true },
+      })
+      if (replay) {
+        if (replay.action !== 'REMOVE' || replay.holdingId !== dto.holdingId)
+          throw new BadRequestException('幂等键已用于其他请求')
+        return replay.portfolioId
+      }
+      const holding = await tx.portfolioHolding.findFirst({
+        where: { id: dto.holdingId, portfolio: { userId } },
+      })
+      if (!holding) throw new NotFoundException('持仓不存在')
+      await tx.portfolioHolding.delete({ where: { id: dto.holdingId } })
+      await tx.portfolioHoldingEvent.create({
+        data: {
+          portfolioId: holding.portfolioId,
+          userId,
+          holdingId: holding.id,
+          tsCode: holding.tsCode,
+          action: 'REMOVE',
+          quantityDelta: -holding.quantity,
+          price: holding.avgCost,
+          beforeQuantity: holding.quantity,
+          afterQuantity: 0,
+          beforeAvgCost: holding.avgCost,
+          afterAvgCost: null,
+          effectiveDate: mutationDate(dto.effectiveDate),
+          idempotencyKey: dto.idempotencyKey,
+          source: 'MANUAL',
+          metadata: { result: { success: true } },
+        },
+      })
+      await this.tradeLogService.log(
+        {
+          portfolioId: holding.portfolioId,
+          userId,
+          tsCode: holding.tsCode,
+          stockName: holding.stockName,
+          action: 'REMOVE',
+          quantity: holding.quantity,
+          reason: 'MANUAL',
+          detail: { idempotencyKey: dto.idempotencyKey },
+        },
+        tx,
+      )
+      return holding.portfolioId
     })
-    await this.assertOwner(holding.portfolioId, userId)
-    await this.prisma.portfolioHolding.delete({ where: { id: holdingId } })
-    await this.invalidatePortfolioCache(holding.portfolioId)
-
-    await this.tradeLogService.log({
-      portfolioId: holding.portfolioId,
-      userId,
-      tsCode: holding.tsCode,
-      stockName: holding.stockName,
-      action: 'REMOVE',
-      quantity: holding.quantity,
-      reason: 'MANUAL',
-    })
-
+    await this.invalidatePortfolioCache(portfolioId)
     return { success: true }
   }
 
@@ -435,4 +519,88 @@ export class PortfolioService {
       loader,
     })
   }
+}
+
+interface HoldingResultShape {
+  id: string
+  portfolioId: string
+  tsCode: string
+  stockName: string
+  quantity: number
+  avgCost: Decimal
+  createdAt: Date
+  updatedAt: Date
+}
+
+function serializeHolding(holding: HoldingResultShape) {
+  return {
+    id: holding.id,
+    portfolioId: holding.portfolioId,
+    tsCode: holding.tsCode,
+    stockName: holding.stockName,
+    quantity: holding.quantity,
+    avgCost: holding.avgCost.toString(),
+    createdAt: holding.createdAt.toISOString(),
+    updatedAt: holding.updatedAt.toISOString(),
+  }
+}
+
+function replayHolding(
+  replay: { action: string; portfolioId: string; tsCode: string; holdingId?: string | null; metadata: unknown },
+  expectedAction: string,
+  portfolioId: string,
+  tsCode: string,
+  holdingId?: string,
+): HoldingResultShape {
+  if (
+    replay.action !== expectedAction ||
+    replay.portfolioId !== portfolioId ||
+    replay.tsCode !== tsCode ||
+    (holdingId !== undefined && replay.holdingId !== holdingId)
+  ) {
+    throw new BadRequestException('幂等键已用于其他请求')
+  }
+  const result = asRecord(asRecord(replay.metadata).result)
+  if (
+    typeof result.id !== 'string' ||
+    typeof result.portfolioId !== 'string' ||
+    typeof result.tsCode !== 'string' ||
+    typeof result.stockName !== 'string' ||
+    !Number.isInteger(result.quantity) ||
+    typeof result.avgCost !== 'string' ||
+    typeof result.createdAt !== 'string' ||
+    typeof result.updatedAt !== 'string'
+  ) {
+    throw new BadRequestException('幂等请求结果不可恢复')
+  }
+  return {
+    id: result.id,
+    portfolioId: result.portfolioId,
+    tsCode: result.tsCode,
+    stockName: result.stockName,
+    quantity: result.quantity as number,
+    avgCost: new Decimal(result.avgCost),
+    createdAt: new Date(result.createdAt),
+    updatedAt: new Date(result.updatedAt),
+  }
+}
+
+function mutationDate(value?: string): Date {
+  const date =
+    value ??
+    new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Shanghai',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(new Date())
+  const parsed = new Date(`${date}T00:00:00.000Z`)
+  if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== date) {
+    throw new BadRequestException('effectiveDate 非法')
+  }
+  return parsed
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {}
 }

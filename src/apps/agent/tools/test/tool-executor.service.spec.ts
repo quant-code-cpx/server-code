@@ -12,6 +12,7 @@ import type { ToolDefinition } from '../contracts/tool-definition'
 import { ToolAdapterError } from '../contracts/tool-error'
 import type { ToolExecutionObserver } from '../contracts/tool-observer'
 import type { ToolResult } from '../contracts/tool-result'
+import { createSaveResearchReportToolDefinition } from '../adapters/save-research-report.tool'
 import { ToolExecutorService } from '../tool-executor.service'
 import { hashStableJson } from '../tool-json'
 import { ToolPolicyService } from '../tool-policy.service'
@@ -234,6 +235,7 @@ function harness(
     definition?: Partial<ToolDefinition>
     audit?: StatefulAuditFake
     observer?: ToolExecutionObserver
+    events?: { appendEvent: jest.Mock }
   } = {},
 ) {
   const config = { ...baseConfig, ...options.config } as IAgentToolsConfig
@@ -261,6 +263,7 @@ function harness(
     config,
     logger,
     observer,
+    options.events as never,
   )
   return { executor, audit, observer, limiter, logger, definition: tool }
 }
@@ -407,6 +410,52 @@ describe('ToolExecutorService', () => {
     await expect(executor.execute(inputCommand, access)).rejects.toMatchObject({ result: { code: expectedCode } })
     expect(adapter).not.toHaveBeenCalled()
     expect(audit.countStatus(AiToolCallStatus.REJECTED)).toBe(1)
+  })
+
+  it('[CONFIRMATION] 报告保存被策略拦截时公开事件只返回预览 action 和当前 runId', async () => {
+    const adapter = jest.fn()
+    const reportDefinition = createSaveResearchReportToolDefinition()
+    const events = { appendEvent: jest.fn(async () => undefined) }
+    const { executor } = harness(adapter, {
+      config: { enabledTools: ['save_research_report'] },
+      definition: reportDefinition,
+      events,
+    })
+    const reportContext = context({
+      workerId: 'worker-1',
+      workflowAllowedTools: ['save_research_report'],
+      allowedScopes: ['USER_PRIVATE'],
+    })
+
+    await expect(
+      executor.execute(
+        {
+          toolKey: 'save_research_report',
+          toolVersion: 1,
+          logicalNodeKey: 'save-report',
+          input: { runId: 'forged-other-run' },
+        },
+        reportContext,
+      ),
+    ).rejects.toMatchObject({
+      result: {
+        code: 'CONFIRMATION_REQUIRED',
+        details: { action: 'OPEN_REPORT_PREVIEW', runId: 'run_1' },
+      },
+    })
+    expect(adapter).not.toHaveBeenCalled()
+    expect(events.appendEvent).toHaveBeenCalledWith(
+      'run_1',
+      expect.objectContaining({
+        eventType: 'tool.failed',
+        payload: expect.objectContaining({
+          error: expect.objectContaining({
+            safeDetails: { action: 'OPEN_REPORT_PREVIEW', runId: 'run_1' },
+          }),
+        }),
+      }),
+    )
+    expect(JSON.stringify(events.appendEvent.mock.calls)).not.toContain('confirmationToken')
   })
 
   it('audit start 失败 fail-closed，adapter 零调用；success audit 失败不返回成功', async () => {

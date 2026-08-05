@@ -1,0 +1,70 @@
+// 组合点时历史：不可变持仓事件 + 可重建的每日组合/持仓快照。
+
+model PortfolioHoldingEvent {
+  id             String   @id @default(cuid())
+  portfolioId    String   @map("portfolio_id")
+  userId         Int      @map("user_id")
+  holdingId      String?  @map("holding_id")
+  tsCode         String   @map("ts_code") @db.VarChar(16)
+  action         String   @db.VarChar(24)
+  quantityDelta  Int      @map("quantity_delta")
+  price          Decimal? @db.Decimal(20, 4)
+  beforeQuantity Int      @map("before_quantity")
+  afterQuantity  Int      @map("after_quantity")
+  beforeAvgCost  Decimal? @map("before_avg_cost") @db.Decimal(20, 4)
+  afterAvgCost   Decimal? @map("after_avg_cost") @db.Decimal(20, 4)
+  effectiveDate  DateTime @map("effective_date") @db.Date
+  occurredAt     DateTime @default(now()) @map("occurred_at") @db.Timestamptz(3)
+  idempotencyKey String   @map("idempotency_key") @db.VarChar(128)
+  source         String   @db.VarChar(32)
+  metadata       Json?    @db.JsonB
+
+  portfolio Portfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, idempotencyKey])
+  @@index([portfolioId, effectiveDate, occurredAt])
+  @@map("portfolio_holding_events")
+}
+
+model PortfolioDailySnapshot {
+  portfolioId        String    @map("portfolio_id")
+  tradeDate          DateTime  @map("trade_date") @db.Date
+  totalAssets        Decimal   @map("total_assets") @db.Decimal(24, 4)
+  marketValue        Decimal   @map("market_value") @db.Decimal(24, 4)
+  cash               Decimal   @db.Decimal(24, 4)
+  nav                Decimal   @db.Decimal(20, 8)
+  dailyReturn        Float?    @map("daily_return")
+  benchmarkCode      String    @map("benchmark_code") @db.VarChar(16)
+  benchmarkNav       Decimal?  @map("benchmark_nav") @db.Decimal(20, 8)
+  benchmarkReturn    Float?    @map("benchmark_return")
+  sourceEventThrough DateTime? @map("source_event_through") @db.Timestamptz(3)
+  algorithmVersion   String    @map("algorithm_version") @db.VarChar(64)
+  qualityFlags       Json      @default("[]") @map("quality_flags") @db.JsonB
+  computedAt         DateTime  @default(now()) @map("computed_at") @db.Timestamptz(3)
+
+  portfolio Portfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+
+  @@id([portfolioId, tradeDate])
+  @@index([tradeDate])
+  @@map("portfolio_daily_snapshots")
+}
+
+model PortfolioPositionSnapshot {
+  portfolioId      String    @map("portfolio_id")
+  tradeDate        DateTime  @map("trade_date") @db.Date
+  tsCode           String    @map("ts_code") @db.VarChar(16)
+  quantity         Int
+  avgCost          Decimal   @map("avg_cost") @db.Decimal(20, 4)
+  close            Decimal?  @db.Decimal(20, 4)
+  priceDate        DateTime? @map("price_date") @db.Date
+  marketValue      Decimal?  @map("market_value") @db.Decimal(24, 4)
+  weight           Float?
+  algorithmVersion String    @map("algorithm_version") @db.VarChar(64)
+  qualityFlags     Json      @default("[]") @map("quality_flags") @db.JsonB
+
+  portfolio Portfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+
+  @@id([portfolioId, tradeDate, tsCode])
+  @@index([portfolioId, tsCode, tradeDate])
+  @@map("portfolio_position_snapshots")
+}

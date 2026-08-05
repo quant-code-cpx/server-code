@@ -1,4 +1,6 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common'
+import { createHash } from 'node:crypto'
+import type { Prisma } from '@prisma/client'
 import { Decimal } from '@prisma/client/runtime/library'
 import { PrismaService } from 'src/shared/prisma.service'
 import { CacheService } from 'src/shared/cache.service'
@@ -16,6 +18,11 @@ export class BacktestPortfolioBridgeService {
 
   async applyBacktest(dto: ApplyBacktestDto, userId: number): Promise<ApplyBacktestResponseDto> {
     const mode = dto.mode ?? ApplyMode.REPLACE
+    const replay = await this.prisma.portfolioHoldingEvent.findUnique({
+      where: { userId_idempotencyKey: { userId, idempotencyKey: dto.idempotencyKey } },
+      select: { action: true, metadata: true },
+    })
+    if (replay) return replayApplyResult(replay, dto.backtestRunId, mode)
 
     // ─── 1. 校验回测归属与状态 ─────────────────────────────────────────────
     const run = await this.prisma.backtestRun.findUnique({ where: { id: dto.backtestRunId } })
@@ -165,11 +172,26 @@ export class BacktestPortfolioBridgeService {
       }
     }
 
-    // ─── 7. 事务执行调仓 ─────────────────────────────────────────────────────
-    if (mode === ApplyMode.REPLACE) {
-      await this.prisma.$transaction([
-        this.prisma.portfolioHolding.deleteMany({ where: { portfolioId } }),
-        this.prisma.portfolioHolding.createMany({
+    const added = changes.filter((c) => c.action === 'BUY').length
+    const updated = changes.filter((c) => c.action === 'ADJUST').length
+    const removed = changes.filter((c) => c.action === 'SELL').length
+    const unchanged = changes.filter((c) => c.action === 'HOLD').length
+    const totalHoldings = mode === ApplyMode.REPLACE ? snapshots.length : existingHoldings.length + added
+    const result: ApplyBacktestResponseDto = {
+      portfolioId,
+      portfolioName,
+      backtestRunId: dto.backtestRunId,
+      mode,
+      snapshotDate: latestSnapshotRow.tradeDate.toISOString().slice(0, 10),
+      changes,
+      summary: { added, updated, removed, unchanged, totalHoldings },
+    }
+
+    // ─── 7. 同一事务写当前持仓、不可变事件和交易日志 ──────────────────────────
+    await this.prisma.$transaction(async (tx) => {
+      if (mode === ApplyMode.REPLACE) {
+        await tx.portfolioHolding.deleteMany({ where: { portfolioId } })
+        await tx.portfolioHolding.createMany({
           data: snapshots.map((s) => ({
             portfolioId,
             tsCode: s.tsCode,
@@ -177,34 +199,85 @@ export class BacktestPortfolioBridgeService {
             quantity: s.quantity,
             avgCost: new Decimal(Number(s.costPrice ?? 0)),
           })),
-        }),
-      ])
-    } else {
-      await this.prisma.$transaction(
-        snapshots.map((s) => {
-          const existing = existingMap.get(s.tsCode)
+        })
+      } else {
+        for (const snapshot of snapshots) {
+          const existing = existingMap.get(snapshot.tsCode)
           if (existing) {
-            const newQty = existing.quantity + s.quantity
+            const newQty = existing.quantity + snapshot.quantity
             const newAvgCost =
-              (existing.quantity * Number(existing.avgCost) + s.quantity * Number(s.costPrice ?? 0)) / newQty
-            return this.prisma.portfolioHolding.update({
+              (existing.quantity * Number(existing.avgCost) + snapshot.quantity * Number(snapshot.costPrice ?? 0)) /
+              newQty
+            await tx.portfolioHolding.update({
               where: { id: existing.id },
               data: { quantity: newQty, avgCost: new Decimal(newAvgCost) },
             })
           } else {
-            return this.prisma.portfolioHolding.create({
+            await tx.portfolioHolding.create({
               data: {
                 portfolioId,
-                tsCode: s.tsCode,
-                stockName: nameMap.get(s.tsCode) ?? s.tsCode,
-                quantity: s.quantity,
-                avgCost: new Decimal(Number(s.costPrice ?? 0)),
+                tsCode: snapshot.tsCode,
+                stockName: nameMap.get(snapshot.tsCode) ?? snapshot.tsCode,
+                quantity: snapshot.quantity,
+                avgCost: new Decimal(Number(snapshot.costPrice ?? 0)),
               },
             })
           }
-        }),
-      )
-    }
+        }
+      }
+
+      const effectiveDate = currentShanghaiDate()
+      const loggableChanges = changes.filter((change) => change.action !== 'HOLD')
+      for (const [index, change] of loggableChanges.entries()) {
+        await tx.portfolioHoldingEvent.create({
+          data: {
+            portfolioId,
+            userId,
+            tsCode: change.tsCode,
+            action: change.action,
+            quantityDelta: change.deltaQuantity,
+            price: new Decimal(change.targetAvgCost),
+            beforeQuantity: change.previousQuantity,
+            afterQuantity: change.targetQuantity,
+            beforeAvgCost: change.previousQuantity > 0 ? new Decimal(change.previousAvgCost) : null,
+            afterAvgCost: change.targetQuantity > 0 ? new Decimal(change.targetAvgCost) : null,
+            effectiveDate,
+            idempotencyKey: childIdempotencyKey(dto.idempotencyKey, index),
+            source: 'BACKTEST_IMPORT',
+            metadata: { backtestRunId: dto.backtestRunId, mode },
+          },
+        })
+        await this.tradeLogService.log(
+          {
+            portfolioId,
+            userId,
+            tsCode: change.tsCode,
+            stockName: change.stockName,
+            action: change.action,
+            quantity: Math.abs(change.deltaQuantity),
+            price: change.targetAvgCost,
+            reason: 'BACKTEST_IMPORT',
+            detail: { backtestRunId: dto.backtestRunId, mode, idempotencyKey: dto.idempotencyKey },
+          },
+          tx,
+        )
+      }
+      await tx.portfolioHoldingEvent.create({
+        data: {
+          portfolioId,
+          userId,
+          tsCode: '__PORTFOLIO__',
+          action: 'BACKTEST_IMPORT',
+          quantityDelta: 0,
+          beforeQuantity: 0,
+          afterQuantity: 0,
+          effectiveDate,
+          idempotencyKey: dto.idempotencyKey,
+          source: 'BACKTEST_IMPORT',
+          metadata: { backtestRunId: dto.backtestRunId, mode, result } as unknown as Prisma.InputJsonValue,
+        },
+      })
+    })
 
     // ─── 8. 清除组合缓存 ─────────────────────────────────────────────────────
     await this.cacheService.invalidateByPrefixes([
@@ -217,39 +290,39 @@ export class BacktestPortfolioBridgeService {
       `${CACHE_KEY_PREFIX.PORTFOLIO_RISK}:beta:${portfolioId}`,
     ])
 
-    // ─── 9. 写交易日志 ────────────────────────────────────────────────────────
-    const loggableChanges = changes.filter((c) => c.action !== 'HOLD')
-    await Promise.all(
-      loggableChanges.map((c) =>
-        this.tradeLogService.log({
-          portfolioId,
-          userId,
-          tsCode: c.tsCode,
-          stockName: c.stockName,
-          action: c.action,
-          quantity: Math.abs(c.deltaQuantity),
-          price: c.targetAvgCost,
-          reason: 'BACKTEST_IMPORT',
-          detail: { backtestRunId: dto.backtestRunId, mode },
-        }),
-      ),
-    )
-
-    // ─── 10. 统计并返回 ────────────────────────────────────────────────────────
-    const added = changes.filter((c) => c.action === 'BUY').length
-    const updated = changes.filter((c) => c.action === 'ADJUST').length
-    const removed = changes.filter((c) => c.action === 'SELL').length
-    const unchanged = changes.filter((c) => c.action === 'HOLD').length
-    const totalHoldings = mode === ApplyMode.REPLACE ? snapshots.length : existingHoldings.length + added
-
-    return {
-      portfolioId,
-      portfolioName,
-      backtestRunId: dto.backtestRunId,
-      mode,
-      snapshotDate: latestSnapshotRow.tradeDate.toISOString().slice(0, 10),
-      changes,
-      summary: { added, updated, removed, unchanged, totalHoldings },
-    }
+    return result
   }
+}
+
+function currentShanghaiDate(): Date {
+  const value = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date())
+  return new Date(`${value}T00:00:00.000Z`)
+}
+
+function childIdempotencyKey(parent: string, index: number): string {
+  return `evt:${createHash('sha256').update(`${parent}:${index}`).digest('hex')}`
+}
+
+function replayApplyResult(
+  event: { action: string; metadata: unknown },
+  backtestRunId: string,
+  mode: ApplyMode,
+): ApplyBacktestResponseDto {
+  const metadata = asRecord(event.metadata)
+  if (event.action !== 'BACKTEST_IMPORT' || metadata.backtestRunId !== backtestRunId || metadata.mode !== mode) {
+    throw new BadRequestException('幂等键已用于其他请求')
+  }
+  const result = metadata.result
+  if (!result || typeof result !== 'object' || Array.isArray(result))
+    throw new BadRequestException('幂等请求结果不可恢复')
+  return result as unknown as ApplyBacktestResponseDto
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {}
 }

@@ -18,6 +18,7 @@ import {
   type ModelRequest,
   type ModelResult,
   type ModelRouteDecision,
+  type ModelStructuredStreamObserver,
   type ModelUsage,
   type ProviderModelRequest,
 } from './model-gateway.port'
@@ -74,14 +75,18 @@ export class ModelGatewayService implements ModelGatewayPort {
     throw new ModelGatewayError('UNAVAILABLE', false, '没有可用模型供应商')
   }
 
-  async generateStructured<T>(request: ModelRequest, signal?: AbortSignal): Promise<ModelResult<T>> {
+  async generateStructured<T>(
+    request: ModelRequest,
+    signal?: AbortSignal,
+    streamObserver?: ModelStructuredStreamObserver,
+  ): Promise<ModelResult<T>> {
     this.prepareRequest(request)
     this.assertStructuredRequest(request)
     const route = this.router.select(request)
     for (let index = 0; index < route.candidates.length; index += 1) {
       const candidate = route.candidates[index]
       try {
-        return await this.generateStructuredWithDescriptor<T>(request, candidate.descriptor, signal)
+        return await this.generateStructuredWithDescriptor<T>(request, candidate.descriptor, signal, streamObserver)
       } catch (rawError) {
         if (rawError instanceof ModelAbortError) throw rawError
         if (!(rawError instanceof ModelGatewayError)) throw rawError
@@ -94,17 +99,18 @@ export class ModelGatewayService implements ModelGatewayPort {
 
   async generateStructuredForModel<T>(
     request: ModelRequest,
-    model: string,
+    target: ModelDescriptor,
     signal?: AbortSignal,
+    streamObserver?: ModelStructuredStreamObserver,
   ): Promise<ModelResult<T>> {
     this.prepareRequest(request)
     this.assertStructuredRequest(request)
-    const descriptor = this.registry.assertRequestSupported(model, request)
+    const descriptor = this.registry.assertDescriptorSupported(target, request)
     if (!this.health.isAvailable(descriptor)) {
       throw new ModelGatewayError('UNAVAILABLE', true, '模型供应商暂时不可用')
     }
     try {
-      return await this.generateStructuredWithDescriptor<T>(request, descriptor, signal)
+      return await this.generateStructuredWithDescriptor<T>(request, descriptor, signal, streamObserver)
     } catch (rawError) {
       if (rawError instanceof ModelGatewayError) this.health.recordFailure(descriptor, rawError)
       throw rawError
@@ -135,20 +141,28 @@ export class ModelGatewayService implements ModelGatewayPort {
     request: ModelRequest,
     descriptor: ModelDescriptor,
     signal?: AbortSignal,
+    streamObserver?: ModelStructuredStreamObserver,
   ): Promise<ModelResult<T>> {
     const validate = this.compileSchema(request.responseSchema as Record<string, unknown>, 'responseSchema')
     let currentRequest = request
     let lastCompletion: ModelCompletion | null = null
 
     for (let repairAttempt = 0; repairAttempt <= 1; repairAttempt += 1) {
-      const completion = await this.collectCompletionForModel(currentRequest, descriptor, signal)
+      await streamObserver?.({ type: 'ATTEMPT_STARTED', repairAttempt })
+      const completion = await this.collectCompletionForModel(
+        currentRequest,
+        descriptor,
+        signal,
+        repairAttempt,
+        streamObserver,
+      )
       lastCompletion = completion
       const parsed = parseStructuredText(completion.text)
       if (parsed.ok && validate(parsed.value)) {
         this.health.recordSuccess(descriptor)
         return { data: parsed.value as T, completion, repaired: repairAttempt === 1 }
       }
-      if (repairAttempt === 0) currentRequest = createRepairRequest(request, completion.text)
+      if (repairAttempt === 0) currentRequest = createRepairRequest(request, completion)
     }
 
     throw new ModelGatewayError(
@@ -165,6 +179,8 @@ export class ModelGatewayService implements ModelGatewayPort {
     request: ModelRequest,
     descriptor: ModelDescriptor,
     signal?: AbortSignal,
+    repairAttempt = 0,
+    streamObserver?: ModelStructuredStreamObserver,
   ): Promise<ModelCompletion> {
     let text = ''
     const toolCalls = new Map<number, ModelCompletion['toolCalls'][number]>()
@@ -173,6 +189,7 @@ export class ModelGatewayService implements ModelGatewayPort {
     let providerRequestId: string | null = null
     let completed = false
     for await (const chunk of this.streamForModel(request, descriptor, signal ?? new AbortController().signal)) {
+      await streamObserver?.({ type: 'CHUNK', repairAttempt, chunk })
       if (chunk.type === 'OUTPUT_TEXT_DELTA') text += chunk.text
       if (chunk.type === 'TOOL_CALL_COMPLETED') {
         toolCalls.set(chunk.index, {
@@ -479,16 +496,18 @@ function isVisibleOutput(chunk: ModelChunk): boolean {
   return chunk.type === 'OUTPUT_TEXT_DELTA' || chunk.type === 'TOOL_CALL_DELTA' || chunk.type === 'TOOL_CALL_COMPLETED'
 }
 
-function createRepairRequest(request: ModelRequest, invalidOutput: string): ModelRequest {
+function createRepairRequest(request: ModelRequest, completion: ModelCompletion): ModelRequest {
+  const truncated = completion.finishReason?.toLowerCase() === 'length'
   return {
     ...request,
     messages: [
       ...request.messages,
-      { role: 'assistant', content: invalidOutput },
+      ...(truncated ? [] : [{ role: 'assistant' as const, content: completion.text }]),
       {
         role: 'user',
-        content:
-          'Return only one JSON value that strictly matches the supplied JSON Schema. Do not add markdown or commentary.',
+        content: truncated
+          ? 'The previous JSON response was truncated because it exceeded the output limit. Return one much shorter JSON value that strictly matches the supplied JSON Schema. Keep strings concise, use only the minimum necessary array items, and do not repeat evidence. Do not add markdown or commentary outside the JSON value.'
+          : 'Return only one JSON value that strictly matches the supplied JSON Schema. Do not add markdown or commentary.',
       },
     ],
     metadata: { ...request.metadata, repairAttempt: 1 },

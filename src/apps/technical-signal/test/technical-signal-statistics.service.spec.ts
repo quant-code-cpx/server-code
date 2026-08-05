@@ -1,4 +1,3 @@
-import { BadRequestException } from '@nestjs/common'
 import { StockExchange } from '@prisma/client'
 import type { IndicatorPoint } from '../domain'
 import {
@@ -9,6 +8,7 @@ import {
 } from '../dto/technical-signal-request.dto'
 import type { TechnicalSignalTimelineSnapshot } from '../repositories/prisma-technical-signal.repository'
 import { TechnicalSignalDefinitionService } from '../services/technical-signal-definition.service'
+import { TechnicalSignalEvaluationService } from '../services/technical-signal-evaluation.service'
 import { TechnicalSignalStatisticsService } from '../services/technical-signal-statistics.service'
 
 const TS_CODE = '000001.SZ'
@@ -27,7 +27,8 @@ describe('TechnicalSignalStatisticsService', () => {
     // Reflect.construct keeps this fixture compatible while the production
     // constructor gains CacheService; JavaScript safely ignores extra args in
     // the pre-cache implementation.
-    service = Reflect.construct(TechnicalSignalStatisticsService, [repository, definitions, cacheService])
+    const evaluation = Reflect.construct(TechnicalSignalEvaluationService, [repository, definitions])
+    service = Reflect.construct(TechnicalSignalStatisticsService, [repository, definitions, cacheService, evaluation])
   })
 
   it('[BIZ] computes bearish raw/directional return plus raw and directional MFE/MAE', async () => {
@@ -136,6 +137,23 @@ describe('TechnicalSignalStatisticsService', () => {
     })
   })
 
+  it('[BIZ] rejects occurrence detail requests extending beyond the recent five-year window', async () => {
+    const timeline = buildTimeline({
+      dates: ['20260101', '20260102', '20260105', '20260106'],
+      bars: [quote('20260101', 100), quote('20260102', 100), quote('20260105', 96), quote('20260106', 92)],
+    })
+    repository.loadTimeline.mockResolvedValueOnce(timeline)
+
+    await expect(
+      service.listOccurrences({
+        tsCode: TS_CODE,
+        signalKey: SAR_BEARISH,
+        startDate: '20201231',
+        endDate: '20260106',
+      } as TechnicalSignalOccurrenceListRequestDto),
+    ).rejects.toMatchObject({ status: 400, message: expect.stringContaining('CUSTOM 最多 5 年') })
+  })
+
   it('[BIZ] computes HS300 excess return using same entry mode and target date', async () => {
     const timeline = buildTimeline({
       dates: ['20260101', '20260102', '20260105', '20260106'],
@@ -210,7 +228,11 @@ function buildCacheServiceMock() {
 }
 
 function setIndicatorPoints(service: TechnicalSignalStatisticsService, points: readonly IndicatorPoint[]): void {
-  ;(service as unknown as { indicatorEngine: { compute: jest.Mock } }).indicatorEngine = {
+  ;(
+    service as unknown as {
+      evaluation: { indicatorEngine: { compute: jest.Mock } }
+    }
+  ).evaluation.indicatorEngine = {
     compute: jest.fn(() => points),
   }
 }
@@ -229,6 +251,7 @@ function buildTimeline(input: {
       delistDate: null,
     },
     dataAsOf: input.dates[input.dates.length - 1],
+    historyStart: input.dates[0],
     calendarExchange: 'SZSE',
     openDates: input.dates,
     bars: input.bars,

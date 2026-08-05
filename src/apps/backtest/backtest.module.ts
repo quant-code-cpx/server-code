@@ -20,6 +20,10 @@ import { BacktestParamSensitivityService } from './services/backtest-param-sensi
 import { BacktestToolFacade } from './backtest-tool.facade'
 import { PointInTimeUniverseService } from './services/point-in-time-universe.service'
 import { PointInTimeFinancialService } from './services/point-in-time-financial.service'
+import { BacktestAnalyticsRepository } from './backtest-analytics.repository'
+import { BacktestAnalyticsReadAdapter } from './backtest-analytics-read.adapter'
+import { BacktestAnalyticsToolFacade } from './backtest-analytics-tool.facade'
+import { BACKTEST_ANALYTICS_READ_PORT } from './ports/backtest-analytics-read.port'
 
 @Module({
   imports: [BullModule.registerQueue({ name: BACKTESTING_QUEUE }), WebsocketModule],
@@ -42,6 +46,10 @@ import { PointInTimeFinancialService } from './services/point-in-time-financial.
     BacktestToolFacade,
     PointInTimeUniverseService,
     PointInTimeFinancialService,
+    BacktestAnalyticsRepository,
+    BacktestAnalyticsReadAdapter,
+    { provide: BACKTEST_ANALYTICS_READ_PORT, useExisting: BacktestAnalyticsReadAdapter },
+    BacktestAnalyticsToolFacade,
   ],
   exports: [
     BacktestRunService,
@@ -54,6 +62,7 @@ import { PointInTimeFinancialService } from './services/point-in-time-financial.
     BacktestToolFacade,
     PointInTimeUniverseService,
     PointInTimeFinancialService,
+    BacktestAnalyticsToolFacade,
   ],
 })
 export class BacktestModule {}

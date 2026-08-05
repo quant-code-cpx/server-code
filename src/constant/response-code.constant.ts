@@ -86,6 +86,9 @@ export enum ErrorEnum {
   AI_RESEARCH_REPORT_INVALID = '6044:研究报告参数或来源无效',
   AI_RESEARCH_REPORT_CONFIRMATION_INVALID = '6045:报告确认已失效或内容已变化',
   AI_RESEARCH_REPORT_CONFLICT = '6046:研究报告幂等请求或版本冲突',
+  AI_CONTEXT_COMPACTION_FAILED = '6047:会话上下文整理失败，请重试或切换到上下文更大的模型',
+  AI_MODEL_CONTEXT_INCOMPATIBLE = '6048:当前会话无法装入所选模型的上下文窗口',
+  AI_CURRENT_INPUT_TOO_LARGE = '6049:当前输入本身超过所选模型的上下文窗口',
   AI_INTERNAL_ERROR = '6099:Agent 内部错误',
 }
 

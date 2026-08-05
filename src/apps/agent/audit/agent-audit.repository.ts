@@ -415,7 +415,7 @@ export class AgentAuditRepository {
     } catch (error) {
       if (!isUniqueConstraintError(error)) throw error
       const existing = await this.prisma.aiModelCall.findFirst({
-        where: { userId: command.userId, scopeId, provider, model, purpose, attemptCount },
+        where: { userId: command.userId, scopeId, stepId, provider, model, purpose, attemptCount },
       })
       if (
         !existing ||

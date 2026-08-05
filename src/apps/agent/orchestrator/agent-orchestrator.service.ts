@@ -132,6 +132,7 @@ function normalizeError(error: unknown): WorkflowExecutionError {
 
 function publicCategory(error: WorkflowExecutionError) {
   if (error.category === 'MODEL') return 'MODEL'
+  if (error.category === 'BUDGET' && [6018, 6047, 6048, 6049].includes(error.agentCode)) return 'MODEL'
   if (error.category === 'TOOL') return 'TOOL'
   if (error.category === 'TIMEOUT') return 'TIMEOUT'
   if (error.category === 'VALIDATION' || error.category === 'VERSION' || error.category === 'CITATION') {

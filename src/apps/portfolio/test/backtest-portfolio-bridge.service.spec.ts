@@ -43,6 +43,10 @@ function buildPrismaMock() {
     stockBasic: {
       findMany: jest.fn(),
     },
+    portfolioHoldingEvent: {
+      findUnique: jest.fn(),
+      create: jest.fn(),
+    },
     $transaction: jest.fn(),
   }
 }
@@ -90,6 +94,10 @@ function makeHolding(id: string, tsCode: string, quantity: number, avgCost: numb
   return { id, portfolioId: 'p-1', tsCode, quantity, avgCost: new Decimal(avgCost), stockName, createdAt: new Date() }
 }
 
+function applyDto<T extends Record<string, unknown>>(value: T, key = 'apply-backtest-0001') {
+  return { ...value, idempotencyKey: key }
+}
+
 // ── 测试 ─────────────────────────────────────────────────────────────────────
 
 describe('BacktestPortfolioBridgeService', () => {
@@ -99,6 +107,7 @@ describe('BacktestPortfolioBridgeService', () => {
 
   beforeEach(() => {
     prisma = buildPrismaMock()
+    prisma.$transaction.mockImplementation(async (callback) => callback(prisma))
     cache = buildCacheServiceMock()
     svc = buildService(prisma, cache)
   })
@@ -106,7 +115,7 @@ describe('BacktestPortfolioBridgeService', () => {
   // ── 1. 回测不存在 ──────────────────────────────────────────────────────────
   it('回测不存在 → NotFoundException', async () => {
     prisma.backtestRun.findUnique.mockResolvedValue(null)
-    await expect(svc.applyBacktest({ backtestRunId: 'run-x', portfolioId: 'p-1' }, 1)).rejects.toThrow(
+    await expect(svc.applyBacktest(applyDto({ backtestRunId: 'run-x', portfolioId: 'p-1' }), 1)).rejects.toThrow(
       NotFoundException,
     )
   })
@@ -114,7 +123,7 @@ describe('BacktestPortfolioBridgeService', () => {
   // ── 2. 回测非当前用户 ──────────────────────────────────────────────────────
   it('回测非当前用户 → ForbiddenException', async () => {
     prisma.backtestRun.findUnique.mockResolvedValue(makeRun({ userId: 99 }))
-    await expect(svc.applyBacktest({ backtestRunId: 'run-1', portfolioId: 'p-1' }, 1)).rejects.toThrow(
+    await expect(svc.applyBacktest(applyDto({ backtestRunId: 'run-1', portfolioId: 'p-1' }), 1)).rejects.toThrow(
       ForbiddenException,
     )
   })
@@ -122,7 +131,7 @@ describe('BacktestPortfolioBridgeService', () => {
   // ── 3. 回测未完成 ──────────────────────────────────────────────────────────
   it('回测未完成 → BadRequestException', async () => {
     prisma.backtestRun.findUnique.mockResolvedValue(makeRun({ status: 'RUNNING' }))
-    await expect(svc.applyBacktest({ backtestRunId: 'run-1', portfolioId: 'p-1' }, 1)).rejects.toThrow(
+    await expect(svc.applyBacktest(applyDto({ backtestRunId: 'run-1', portfolioId: 'p-1' }), 1)).rejects.toThrow(
       BadRequestException,
     )
   })
@@ -131,7 +140,7 @@ describe('BacktestPortfolioBridgeService', () => {
   it('回测无持仓快照 → BadRequestException', async () => {
     prisma.backtestRun.findUnique.mockResolvedValue(makeRun())
     prisma.backtestPositionSnapshot.findFirst.mockResolvedValue(null)
-    await expect(svc.applyBacktest({ backtestRunId: 'run-1', portfolioId: 'p-1' }, 1)).rejects.toThrow(
+    await expect(svc.applyBacktest(applyDto({ backtestRunId: 'run-1', portfolioId: 'p-1' }), 1)).rejects.toThrow(
       BadRequestException,
     )
   })
@@ -144,9 +153,10 @@ describe('BacktestPortfolioBridgeService', () => {
     prisma.portfolio.findUnique.mockResolvedValue({ id: 'p-1', userId: 1, name: '我的组合' })
     prisma.portfolioHolding.findMany.mockResolvedValue([makeHolding('h-1', '600519.SH', 100, 1800, '贵州茅台')])
     prisma.stockBasic.findMany.mockResolvedValue([{ tsCode: '000001.SZ', name: '平安银行' }])
-    prisma.$transaction.mockResolvedValue([undefined, { count: 1 }])
-
-    const result = await svc.applyBacktest({ backtestRunId: 'run-1', portfolioId: 'p-1', mode: ApplyMode.REPLACE }, 1)
+    const result = await svc.applyBacktest(
+      applyDto({ backtestRunId: 'run-1', portfolioId: 'p-1', mode: ApplyMode.REPLACE }),
+      1,
+    )
 
     expect(prisma.$transaction).toHaveBeenCalledTimes(1)
     expect(result.mode).toBe(ApplyMode.REPLACE)
@@ -172,9 +182,7 @@ describe('BacktestPortfolioBridgeService', () => {
     prisma.portfolio.create.mockResolvedValue({ id: 'p-new', name: '回测导入-价值策略' })
     prisma.portfolioHolding.findMany.mockResolvedValue([])
     prisma.stockBasic.findMany.mockResolvedValue([])
-    prisma.$transaction.mockResolvedValue([undefined, { count: 2 }])
-
-    const result = await svc.applyBacktest({ backtestRunId: 'run-1' }, 1)
+    const result = await svc.applyBacktest(applyDto({ backtestRunId: 'run-1' }), 1)
 
     expect(prisma.portfolio.create).toHaveBeenCalledTimes(1)
     expect(result.portfolioId).toBe('p-new')
@@ -202,9 +210,10 @@ describe('BacktestPortfolioBridgeService', () => {
       { tsCode: '000001.SZ', name: '平安银行' },
       { tsCode: '000002.SZ', name: '万科A' },
     ])
-    prisma.$transaction.mockResolvedValue([undefined, undefined])
-
-    const result = await svc.applyBacktest({ backtestRunId: 'run-1', portfolioId: 'p-1', mode: ApplyMode.MERGE }, 1)
+    const result = await svc.applyBacktest(
+      applyDto({ backtestRunId: 'run-1', portfolioId: 'p-1', mode: ApplyMode.MERGE }),
+      1,
+    )
 
     expect(result.mode).toBe(ApplyMode.MERGE)
     expect(result.summary.added).toBe(1) // 000002 新增
@@ -233,9 +242,7 @@ describe('BacktestPortfolioBridgeService', () => {
     prisma.portfolio.findUnique.mockResolvedValue({ id: 'p-1', userId: 1, name: '组合' })
     prisma.portfolioHolding.findMany.mockResolvedValue([])
     prisma.stockBasic.findMany.mockResolvedValue([]) // 查不到
-    prisma.$transaction.mockResolvedValue([undefined, { count: 1 }])
-
-    const result = await svc.applyBacktest({ backtestRunId: 'run-1', portfolioId: 'p-1' }, 1)
+    const result = await svc.applyBacktest(applyDto({ backtestRunId: 'run-1', portfolioId: 'p-1' }), 1)
 
     const change = result.changes[0]
     expect(change.stockName).toBe('UNKNOWN.HK')
@@ -248,7 +255,7 @@ describe('BacktestPortfolioBridgeService', () => {
     prisma.backtestPositionSnapshot.findMany.mockResolvedValue([makeSnapshot('000001.SZ', 100, 10)])
     prisma.portfolio.findUnique.mockResolvedValue({ id: 'p-other', userId: 99, name: '别人的组合' })
 
-    await expect(svc.applyBacktest({ backtestRunId: 'run-1', portfolioId: 'p-other' }, 1)).rejects.toThrow(
+    await expect(svc.applyBacktest(applyDto({ backtestRunId: 'run-1', portfolioId: 'p-other' }), 1)).rejects.toThrow(
       ForbiddenException,
     )
   })
@@ -266,9 +273,10 @@ describe('BacktestPortfolioBridgeService', () => {
       prisma.portfolio.findUnique.mockResolvedValue({ id: 'p-1', userId: 1, name: '组合' })
       prisma.portfolioHolding.findMany.mockResolvedValue([makeHolding('h-1', '000001.SZ', 50, 10)])
       prisma.stockBasic.findMany.mockResolvedValue([])
-      prisma.$transaction.mockResolvedValue([undefined, { count: 1 }])
-
-      const result = await svc.applyBacktest({ backtestRunId: 'run-1', portfolioId: 'p-1', mode: ApplyMode.REPLACE }, 1)
+      const result = await svc.applyBacktest(
+        applyDto({ backtestRunId: 'run-1', portfolioId: 'p-1', mode: ApplyMode.REPLACE }),
+        1,
+      )
 
       expect(result.summary.totalHoldings).toBe(1)
     })
@@ -282,16 +290,16 @@ describe('BacktestPortfolioBridgeService', () => {
       prisma.portfolioHolding.findMany.mockResolvedValue([makeHolding('h-1', '000001.SZ', 100, 10)])
       prisma.stockBasic.findMany.mockResolvedValue([])
 
-      let capturedOps: unknown = undefined
-      prisma.$transaction.mockImplementation(async (ops: unknown) => {
-        capturedOps = ops
-        return [undefined, { count: 1 }]
+      let capturedTransactionClient: unknown = undefined
+      prisma.$transaction.mockImplementation(async (callback) => {
+        capturedTransactionClient = prisma
+        return callback(prisma)
       })
 
-      await svc.applyBacktest({ backtestRunId: 'run-1', portfolioId: 'p-1', mode: ApplyMode.REPLACE }, 1)
+      await svc.applyBacktest(applyDto({ backtestRunId: 'run-1', portfolioId: 'p-1', mode: ApplyMode.REPLACE }), 1)
 
-      // $transaction 应以数组方式调用（而非回调方式），确保原子批处理
-      expect(Array.isArray(capturedOps)).toBe(true)
+      // 交互式事务保证当前持仓、事件账本和交易日志同步提交。
+      expect(capturedTransactionClient).toBe(prisma)
       expect(prisma.portfolioHolding.deleteMany).toHaveBeenCalledWith(
         expect.objectContaining({ where: { portfolioId: 'p-1' } }),
       )
@@ -309,7 +317,7 @@ describe('BacktestPortfolioBridgeService', () => {
       prisma.$transaction.mockRejectedValue(new Error('数据库约束违反'))
 
       await expect(
-        svc.applyBacktest({ backtestRunId: 'run-1', portfolioId: 'p-1', mode: ApplyMode.REPLACE }, 1),
+        svc.applyBacktest(applyDto({ backtestRunId: 'run-1', portfolioId: 'p-1', mode: ApplyMode.REPLACE }), 1),
       ).rejects.toThrow('数据库约束违反')
     })
   })

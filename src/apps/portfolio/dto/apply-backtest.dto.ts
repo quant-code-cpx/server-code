@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
-import { IsEnum, IsOptional, IsString, MaxLength } from 'class-validator'
+import { IsEnum, IsOptional, IsString, Length, MaxLength } from 'class-validator'
 
 export enum ApplyMode {
   REPLACE = 'REPLACE',
@@ -10,6 +10,11 @@ export class ApplyBacktestDto {
   @ApiProperty({ example: 'clz1a2b3c4d5e6f7g8h9', description: '回测任务 ID' })
   @IsString()
   backtestRunId: string
+
+  @ApiProperty({ description: '用户内幂等键', minLength: 8, maxLength: 128 })
+  @IsString()
+  @Length(8, 128)
+  idempotencyKey: string
 
   @ApiPropertyOptional({
     example: 'clz1a2b3c4d5e6f7g8h9',

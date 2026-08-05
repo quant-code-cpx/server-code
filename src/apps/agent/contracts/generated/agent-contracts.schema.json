@@ -389,6 +389,270 @@
               "maximum": 9007199254740991
             },
             "type": {
+              "const": "context.compaction.started"
+            },
+            "runId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "conversationId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "messageId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "occurredAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "traceId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "payload": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "model",
+                "reason",
+                "estimatedTokens",
+                "targetTokens"
+              ],
+              "properties": {
+                "model": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128
+                },
+                "reason": {
+                  "enum": [
+                    "MODEL_CONTEXT_PRESSURE",
+                    "MODEL_SWITCH"
+                  ]
+                },
+                "estimatedTokens": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                },
+                "targetTokens": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "schemaVersion",
+            "eventId",
+            "sequence",
+            "type",
+            "runId",
+            "conversationId",
+            "occurredAt",
+            "traceId",
+            "payload"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": "1.0"
+            },
+            "eventId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "sequence": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "type": {
+              "const": "context.compaction.completed"
+            },
+            "runId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "conversationId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "messageId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "occurredAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "traceId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "payload": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "model",
+                "summaryVersion",
+                "sourceMessageCount",
+                "sourceTokenCount"
+              ],
+              "properties": {
+                "model": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128
+                },
+                "summaryVersion": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                },
+                "sourceMessageCount": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                },
+                "sourceTokenCount": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "schemaVersion",
+            "eventId",
+            "sequence",
+            "type",
+            "runId",
+            "conversationId",
+            "occurredAt",
+            "traceId",
+            "payload"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": "1.0"
+            },
+            "eventId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "sequence": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "type": {
+              "const": "context.compaction.failed"
+            },
+            "runId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "conversationId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "messageId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "occurredAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "traceId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "payload": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "model",
+                "code",
+                "retryable",
+                "message"
+              ],
+              "properties": {
+                "model": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128
+                },
+                "code": {
+                  "const": 6047
+                },
+                "retryable": {
+                  "type": "boolean"
+                },
+                "message": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 1000
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "schemaVersion",
+            "eventId",
+            "sequence",
+            "type",
+            "runId",
+            "conversationId",
+            "occurredAt",
+            "traceId",
+            "payload"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": "1.0"
+            },
+            "eventId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "sequence": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "type": {
               "const": "tool.started"
             },
             "runId": {
@@ -448,6 +712,24 @@
                     "compute_valuation_percentile",
                     "search_web",
                     "fetch_web_page",
+                    "get_stock_technical_indicators",
+                    "get_stock_technical_signals",
+                    "get_data_availability",
+                    "get_stock_chip_profile",
+                    "get_stock_margin_history",
+                    "get_stock_relative_strength",
+                    "get_stock_events",
+                    "get_stock_shareholder_profile",
+                    "get_index_market_data",
+                    "get_fund_research",
+                    "get_industry_rotation",
+                    "get_factor_analysis",
+                    "get_macro_snapshot",
+                    "get_option_market",
+                    "get_convertible_bond_market",
+                    "run_event_study",
+                    "get_backtest_analytics",
+                    "get_portfolio_analytics",
                     "save_research_report"
                   ]
                 },
@@ -810,6 +1092,206 @@
               "maximum": 9007199254740991
             },
             "type": {
+              "const": "model.trace"
+            },
+            "runId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "conversationId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "messageId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "occurredAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "traceId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "payload": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "modelCallId",
+                    "attempt",
+                    "phase",
+                    "messageCount",
+                    "estimatedInputTokens",
+                    "maxOutputTokens",
+                    "contextWindow"
+                  ],
+                  "properties": {
+                    "modelCallId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    },
+                    "attempt": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 9007199254740991
+                    },
+                    "phase": {
+                      "const": "REQUEST_DISPATCHED"
+                    },
+                    "messageCount": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "estimatedInputTokens": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "maxOutputTokens": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 9007199254740991
+                    },
+                    "contextWindow": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 9007199254740991
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "modelCallId",
+                    "attempt",
+                    "phase",
+                    "chunkType"
+                  ],
+                  "properties": {
+                    "modelCallId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    },
+                    "attempt": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 9007199254740991
+                    },
+                    "phase": {
+                      "const": "FIRST_PROVIDER_CHUNK"
+                    },
+                    "chunkType": {
+                      "enum": [
+                        "REASONING",
+                        "OUTPUT",
+                        "TOOL_CALL",
+                        "USAGE",
+                        "COMPLETED"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "modelCallId",
+                    "attempt",
+                    "phase"
+                  ],
+                  "properties": {
+                    "modelCallId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    },
+                    "attempt": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 9007199254740991
+                    },
+                    "phase": {
+                      "const": "STRUCTURED_REPAIR"
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "modelCallId",
+                    "attempt",
+                    "phase",
+                    "finishReason"
+                  ],
+                  "properties": {
+                    "modelCallId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    },
+                    "attempt": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 9007199254740991
+                    },
+                    "phase": {
+                      "const": "PROVIDER_COMPLETED"
+                    },
+                    "finishReason": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "minLength": 1,
+                      "maxLength": 128
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "schemaVersion",
+            "eventId",
+            "sequence",
+            "type",
+            "runId",
+            "conversationId",
+            "occurredAt",
+            "traceId",
+            "payload"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": "1.0"
+            },
+            "eventId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "sequence": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "type": {
               "const": "model.fallback"
             },
             "runId": {
@@ -871,6 +1353,528 @@
                   "type": "string",
                   "minLength": 1,
                   "maxLength": 128
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "schemaVersion",
+            "eventId",
+            "sequence",
+            "type",
+            "runId",
+            "conversationId",
+            "occurredAt",
+            "traceId",
+            "payload"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": "1.0"
+            },
+            "eventId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "sequence": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "type": {
+              "const": "model.activity"
+            },
+            "runId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "conversationId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "messageId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "occurredAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "traceId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "payload": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "modelCallId",
+                "phase",
+                "processedCharacters"
+              ],
+              "properties": {
+                "modelCallId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128
+                },
+                "phase": {
+                  "const": "REASONING"
+                },
+                "processedCharacters": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "schemaVersion",
+            "eventId",
+            "sequence",
+            "type",
+            "runId",
+            "conversationId",
+            "occurredAt",
+            "traceId",
+            "payload"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": "1.0"
+            },
+            "eventId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "sequence": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "type": {
+              "const": "model.preview.reset"
+            },
+            "runId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "conversationId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "messageId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "occurredAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "traceId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "payload": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "modelCallId",
+                "attempt"
+              ],
+              "properties": {
+                "modelCallId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128
+                },
+                "attempt": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "schemaVersion",
+            "eventId",
+            "sequence",
+            "type",
+            "runId",
+            "conversationId",
+            "occurredAt",
+            "traceId",
+            "payload"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": "1.0"
+            },
+            "eventId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "sequence": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "type": {
+              "const": "model.preview.delta"
+            },
+            "runId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "conversationId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "messageId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "occurredAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "traceId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "payload": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "modelCallId",
+                "attempt",
+                "delta"
+              ],
+              "properties": {
+                "modelCallId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128
+                },
+                "attempt": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                },
+                "delta": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2048
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "schemaVersion",
+            "eventId",
+            "sequence",
+            "type",
+            "runId",
+            "conversationId",
+            "occurredAt",
+            "traceId",
+            "payload"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": "1.0"
+            },
+            "eventId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "sequence": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "type": {
+              "const": "model.completed"
+            },
+            "runId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "conversationId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "messageId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "occurredAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "traceId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "payload": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "modelCallId",
+                "provider",
+                "model",
+                "purpose",
+                "durationMs",
+                "repaired",
+                "finishReason",
+                "usage"
+              ],
+              "properties": {
+                "modelCallId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128
+                },
+                "provider": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128
+                },
+                "model": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256
+                },
+                "purpose": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 500
+                },
+                "durationMs": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "repaired": {
+                  "type": "boolean"
+                },
+                "finishReason": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "minLength": 1,
+                  "maxLength": 128
+                },
+                "usage": {
+                  "type": [
+                    "object",
+                    "null"
+                  ],
+                  "additionalProperties": false,
+                  "required": [
+                    "inputTokens",
+                    "outputTokens"
+                  ],
+                  "properties": {
+                    "inputTokens": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "outputTokens": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "cachedTokens": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "reasoningTokens": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "schemaVersion",
+            "eventId",
+            "sequence",
+            "type",
+            "runId",
+            "conversationId",
+            "occurredAt",
+            "traceId",
+            "payload"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": "1.0"
+            },
+            "eventId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "sequence": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "type": {
+              "const": "model.failed"
+            },
+            "runId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "conversationId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "messageId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "occurredAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "traceId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "payload": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "modelCallId",
+                "provider",
+                "model",
+                "purpose",
+                "durationMs",
+                "error",
+                "willFallback"
+              ],
+              "properties": {
+                "modelCallId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128
+                },
+                "provider": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128
+                },
+                "model": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256
+                },
+                "purpose": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 500
+                },
+                "durationMs": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "error": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "code",
+                    "message",
+                    "retryable",
+                    "category"
+                  ],
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 9999
+                    },
+                    "message": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 1000
+                    },
+                    "retryable": {
+                      "type": "boolean"
+                    },
+                    "category": {
+                      "enum": [
+                        "VALIDATION",
+                        "AUTH",
+                        "MODEL",
+                        "TOOL",
+                        "SEARCH",
+                        "TIMEOUT",
+                        "INTERNAL"
+                      ]
+                    },
+                    "safeDetails": {
+                      "type": "object"
+                    }
+                  }
+                },
+                "willFallback": {
+                  "type": "boolean"
                 }
               }
             }
@@ -2999,6 +4003,24 @@
       "compute_valuation_percentile",
       "search_web",
       "fetch_web_page",
+      "get_stock_technical_indicators",
+      "get_stock_technical_signals",
+      "get_data_availability",
+      "get_stock_chip_profile",
+      "get_stock_margin_history",
+      "get_stock_relative_strength",
+      "get_stock_events",
+      "get_stock_shareholder_profile",
+      "get_index_market_data",
+      "get_fund_research",
+      "get_industry_rotation",
+      "get_factor_analysis",
+      "get_macro_snapshot",
+      "get_option_market",
+      "get_convertible_bond_market",
+      "run_event_study",
+      "get_backtest_analytics",
+      "get_portfolio_analytics",
       "save_research_report"
     ]
   },
@@ -3324,6 +4346,27 @@
       "httpStatus": 409,
       "retryable": false,
       "message": "研究报告幂等请求或版本冲突"
+    },
+    {
+      "code": 6047,
+      "key": "AI_CONTEXT_COMPACTION_FAILED",
+      "httpStatus": 503,
+      "retryable": true,
+      "message": "会话上下文整理失败，请重试或切换到上下文更大的模型"
+    },
+    {
+      "code": 6048,
+      "key": "AI_MODEL_CONTEXT_INCOMPATIBLE",
+      "httpStatus": 422,
+      "retryable": false,
+      "message": "当前会话无法装入所选模型的上下文窗口"
+    },
+    {
+      "code": 6049,
+      "key": "AI_CURRENT_INPUT_TOO_LARGE",
+      "httpStatus": 422,
+      "retryable": false,
+      "message": "当前输入本身超过所选模型的上下文窗口"
     },
     {
       "code": 6099,

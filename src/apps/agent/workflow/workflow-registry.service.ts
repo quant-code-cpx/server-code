@@ -2,7 +2,12 @@ import { Inject, Injectable, type OnModuleInit } from '@nestjs/common'
 import type { AiPromptVersion, AiWorkflowVersion } from '@prisma/client'
 import { hashStableJson, cloneAndFreezeJson } from '../tools/tool-json'
 import { WorkflowVersionError } from './workflow.errors'
-import { STOCK_RESEARCH_NODE_KEYS, type FrozenWorkflowDefinition, type WorkflowDefinition } from './workflow.types'
+import {
+  STOCK_RESEARCH_NODE_KEYS,
+  STOCK_RESEARCH_V6_NODE_KEYS,
+  type FrozenWorkflowDefinition,
+  type WorkflowDefinition,
+} from './workflow.types'
 
 export const AGENT_WORKFLOW_DEFINITIONS = Symbol('AGENT_WORKFLOW_DEFINITIONS')
 
@@ -87,6 +92,7 @@ export function workflowDefinitionPayload(definition: WorkflowDefinition): Recor
     maxParallelTools: definition.maxParallelTools,
     prompt: { key: definition.prompt.key, version: definition.prompt.version },
     nodes: definition.nodes.map((node) => ({ key: node.key, kind: node.kind, label: node.label })),
+    ...(definition.capabilityCatalogVersion ? { capabilityCatalogVersion: definition.capabilityCatalogVersion } : {}),
   }
 }
 
@@ -116,7 +122,8 @@ function assertWorkflowDefinition(definition: WorkflowDefinition): void {
     throw new WorkflowVersionError('Workflow maxSteps 必须覆盖固定节点且与节点数一致')
   }
   const keys = definition.nodes.map((node) => node.key)
-  if (keys.join(',') !== STOCK_RESEARCH_NODE_KEYS.join(',')) {
+  const expected = definition.version >= 6 ? STOCK_RESEARCH_V6_NODE_KEYS : STOCK_RESEARCH_NODE_KEYS
+  if (keys.join(',') !== expected.join(',')) {
     throw new WorkflowVersionError('Workflow 固定节点顺序非法')
   }
   if (!Number.isInteger(definition.maxParallelTools) || definition.maxParallelTools < 1) {

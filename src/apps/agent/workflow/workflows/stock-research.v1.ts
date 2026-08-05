@@ -1,8 +1,8 @@
 import { AiAgentStepKind } from '@prisma/client'
-import { AGENT_MVP_READ_TOOL_KEYS, AGENT_TOOL_KEYS } from '../../contracts'
+import { AGENT_LEGACY_MVP_READ_TOOL_KEYS, AGENT_V5_TOOL_KEYS } from '../../contracts/tool-keys'
 import type { WorkflowDefinition } from '../workflow.types'
 
-export const RESEARCH_PLAN_SCHEMA: Record<string, unknown> = {
+export const RESEARCH_PLAN_SCHEMA_V1: Record<string, unknown> = {
   type: 'object',
   additionalProperties: false,
   required: ['intent', 'summary', 'toolCalls'],
@@ -18,7 +18,7 @@ export const RESEARCH_PLAN_SCHEMA: Record<string, unknown> = {
         required: ['id', 'toolKey', 'toolVersion', 'input', 'dependsOn', 'optional'],
         properties: {
           id: { type: 'string', minLength: 1, maxLength: 64, pattern: '^[A-Za-z][A-Za-z0-9_-]*$' },
-          toolKey: { enum: [...AGENT_TOOL_KEYS] },
+          toolKey: { enum: [...AGENT_LEGACY_MVP_READ_TOOL_KEYS, 'save_research_report'] },
           toolVersion: { const: 1 },
           input: { type: 'object' },
           dependsOn: {
@@ -33,6 +33,34 @@ export const RESEARCH_PLAN_SCHEMA: Record<string, unknown> = {
     },
   },
 }
+
+export const RESEARCH_PLAN_SCHEMA = RESEARCH_PLAN_SCHEMA_V1
+
+export const RESEARCH_PLAN_SCHEMA_V2: Record<string, unknown> = Object.freeze({
+  ...RESEARCH_PLAN_SCHEMA_V1,
+  properties: {
+    ...(RESEARCH_PLAN_SCHEMA_V1.properties as Record<string, unknown>),
+    toolCalls: {
+      ...((RESEARCH_PLAN_SCHEMA_V1.properties as Record<string, Record<string, unknown>>).toolCalls ?? {}),
+      items: {
+        ...(((RESEARCH_PLAN_SCHEMA_V1.properties as Record<string, Record<string, unknown>>).toolCalls?.items as Record<
+          string,
+          unknown
+        >) ?? {}),
+        properties: {
+          ...((
+            ((RESEARCH_PLAN_SCHEMA_V1.properties as Record<string, Record<string, unknown>>).toolCalls?.items as Record<
+              string,
+              Record<string, unknown>
+            >) ?? {}
+          ).properties as Record<string, unknown>),
+          toolVersion: { type: 'integer', minimum: 1 },
+          toolKey: { enum: [...AGENT_V5_TOOL_KEYS] },
+        },
+      },
+    },
+  },
+})
 
 export const FINAL_ANSWER_SCHEMA: Record<string, unknown> = {
   type: 'object',
@@ -89,7 +117,8 @@ export const STOCK_RESEARCH_WORKFLOW_V1: WorkflowDefinition = Object.freeze({
   maxSteps: 8,
   maxParallelTools: 3,
   // Keep published v1 hash stable. New Agent capabilities land in a new workflow version.
-  toolAllowlist: Object.freeze([...AGENT_MVP_READ_TOOL_KEYS.filter((key) => key !== 'screen_stocks')]),
+  toolAllowlist: Object.freeze([...AGENT_LEGACY_MVP_READ_TOOL_KEYS.filter((key) => key !== 'screen_stocks')]),
+  planSchema: RESEARCH_PLAN_SCHEMA_V1,
   inputSchema: Object.freeze({ type: 'object', additionalProperties: true }),
   outputSchema: FINAL_ANSWER_SCHEMA,
   prompt: STOCK_RESEARCH_PROMPT_V1,

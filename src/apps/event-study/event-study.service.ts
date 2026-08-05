@@ -310,14 +310,14 @@ export class EventStudyService {
 
   // ── Private: Event extraction ─────────────────────────────────────────────
 
-  async extractEventSamples(dto: EventStudyAnalyzeDto): Promise<EventRecord[]> {
+  async extractEventSamples(dto: EventStudyAnalyzeDto, requestedLimit = 2000): Promise<EventRecord[]> {
     // 默认最近 5 年——避免 2015 年起全扫导致大表（如 share_float_schedule 1000 万行）超时
     const defaultStart = new Date()
     defaultStart.setFullYear(defaultStart.getFullYear() - 5)
     const startDate = dto.startDate ? parseYMD(dto.startDate) : defaultStart
     const endDate = dto.endDate ? parseYMD(dto.endDate) : new Date()
     const tsCodeFilter = dto.tsCode ? { tsCode: dto.tsCode } : {}
-    const limit = 2000
+    const limit = Math.max(1, Math.min(requestedLimit, 10_000))
 
     switch (dto.eventType) {
       case EventType.FORECAST: {

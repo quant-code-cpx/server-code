@@ -7,6 +7,7 @@ describe('LoadContextNode', () => {
   let order: string[]
   let contexts: { build: jest.Mock }
   let summaries: { maybeCompact: jest.Mock }
+  let models: { resolveModelProfile: jest.Mock; resolveInputTokenBudget: jest.Mock }
   let node: LoadContextNode
 
   beforeEach(() => {
@@ -23,7 +24,11 @@ describe('LoadContextNode', () => {
         return { warnings: ['CONTEXT_WARNING'] }
       }),
     }
-    node = new LoadContextNode(contexts as never, summaries as never)
+    models = {
+      resolveModelProfile: jest.fn().mockReturnValue(modelProfile()),
+      resolveInputTokenBudget: jest.fn().mockReturnValue(20_000),
+    }
+    node = new LoadContextNode(contexts as never, summaries as never, models as never)
   })
 
   it('先滚动摘要再构建 Context，并把摘要模型 usage 计入 workflow', async () => {
@@ -31,8 +36,9 @@ describe('LoadContextNode', () => {
 
     expect(order).toEqual(['compact', 'build'])
     expect(summaries.maybeCompact).toHaveBeenCalledWith(
-      expect.objectContaining({ stepId: 'step_load_context', usage: baseUsage }),
+      expect.objectContaining({ stepId: 'step_load_context', usage: baseUsage, modelProfile: modelProfile() }),
     )
+    expect(contexts.build).toHaveBeenCalledWith(expect.objectContaining({ budget: 20_000 }))
     expect(result.budget).toEqual(compactedUsage)
     expect(result.warnings).toEqual(['CONTEXT_WARNING'])
   })
@@ -79,4 +85,22 @@ function executionContext() {
     workerId: 'worker_1',
     signal: new AbortController().signal,
   } as never
+}
+
+function modelProfile() {
+  return {
+    selectedProvider: 'fake',
+    selectedModel: 'fake-v1',
+    candidates: [
+      {
+        provider: 'fake',
+        model: 'fake-v1',
+        contextWindow: 32_768,
+        maxOutputTokens: 4_096,
+        capabilities: ['STREAMING', 'STRUCTURED_OUTPUT'],
+        reasoningEfforts: [],
+        dataClasses: ['USER_PRIVATE'],
+      },
+    ],
+  }
 }

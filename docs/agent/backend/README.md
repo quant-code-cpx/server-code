@@ -25,6 +25,7 @@
 | [量化计算服务](./quantitative-compute-service.md)              | 确定性计算、回测、异步计算与 Python 边界                             |
 | [联网搜索服务](./web-search-service.md)                        | 搜索、抓取、来源验证、引用和外部内容隔离                             |
 | [会话与记忆](./conversation-and-memory.md)                     | 原始消息、上下文预算、摘要、长期记忆和恢复                           |
+| [模型感知会话上下文压缩运行手册](./模型感知会话上下文压缩-运行手册.md) | 动态模型预算、自动摘要、模型切换、错误提示与发布验证                 |
 | [调度与通知](./scheduler-and-notification.md)                  | 定时/条件任务、唯一执行、渠道投递和去重                              |
 | [API 落地](./api-design.md)                                    | NestJS Controller、DTO、POST-SSE 与现有拦截器适配                    |
 | [数据库接线](./database-design.md)                             | Repository、事务、Outbox、租约与 Prisma 模块接线（由数据库方案维护） |

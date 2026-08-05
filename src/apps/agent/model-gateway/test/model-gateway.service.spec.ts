@@ -258,6 +258,31 @@ describe('Model Gateway provider contract 与 OpenAI-compatible adapter', () => 
     expect(requests[0].url).toBe('/v1/chat/completions')
   })
 
+  it('DeepSeek reasoning_content 只转换为长度活动信号，不进入公开 chunk 文本', async () => {
+    const reasoningCanary = 'PRIVATE_CHAIN_OF_THOUGHT_CANARY'
+    handler = (_request, response) =>
+      sendEvents(response, [
+        {
+          choices: [
+            {
+              index: 0,
+              delta: { reasoning_content: reasoningCanary },
+              finish_reason: null,
+            },
+          ],
+        },
+        {
+          choices: [{ index: 0, delta: { content: '{"score":7}' }, finish_reason: 'stop' }],
+        },
+      ])
+
+    const chunks = await collect(createOpenAiService(baseUrl).stream(baseRequest()))
+
+    expect(chunks).toContainEqual({ type: 'REASONING_ACTIVITY', characters: reasoningCanary.length })
+    expect(chunks).toContainEqual({ type: 'OUTPUT_TEXT_DELTA', text: '{"score":7}' })
+    expect(JSON.stringify(chunks)).not.toContain(reasoningCanary)
+  })
+
   it.each([429, 503])('HTTP %i 在首个输出前有限重试，日志不含 key/prompt/raw body', async (status) => {
     let calls = 0
     handler = (_request, response) => {
@@ -427,6 +452,73 @@ describe('Model Gateway provider contract 与 OpenAI-compatible adapter', () => 
     expect(requests[0].body.response_format).toEqual(expect.objectContaining({ type: 'json_object' }))
   })
 
+  it('[REG] 首次结构化输出因长度截断时，repair 不回灌截断正文并明确要求压缩', async () => {
+    let calls = 0
+    handler = (_request, response) => {
+      calls += 1
+      if (calls === 1) {
+        sendEvents(response, [
+          {
+            id: 'provider-length-1',
+            choices: [
+              {
+                index: 0,
+                delta: { content: '{"score":7,"extra":"TRUNCATED_OUTPUT_CANARY' },
+                finish_reason: 'length',
+              },
+            ],
+          },
+          { choices: [], usage: { prompt_tokens: 5, completion_tokens: 256 } },
+        ])
+        return
+      }
+      sendTextStream(response, '{"score":7}')
+    }
+
+    const result = await createOpenAiService(baseUrl).generateStructured<{ score: number }>(structuredRequest())
+    const repairMessages = requests[1].body.messages as Array<{ role: string; content: string }>
+
+    expect(result.data).toEqual({ score: 7 })
+    expect(repairMessages).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ role: 'assistant', content: expect.stringContaining('TRUNCATED_OUTPUT_CANARY') }),
+      ]),
+    )
+    expect(repairMessages).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ role: 'user', content: expect.stringContaining('truncated') }),
+      ]),
+    )
+  })
+
+  it('结构化流观察器收到每次修复边界与规范化 chunk', async () => {
+    let calls = 0
+    handler = (_request, response) => {
+      calls += 1
+      sendTextStream(response, calls === 1 ? '{"score":"bad"}' : '{"score":7}')
+    }
+    const observations: Array<{ type: string; repairAttempt: number; chunkType?: string }> = []
+
+    await createOpenAiService(baseUrl).generateStructured(structuredRequest(), undefined, async (event) => {
+      observations.push({
+        type: event.type,
+        repairAttempt: event.repairAttempt,
+        ...(event.type === 'CHUNK' ? { chunkType: event.chunk.type } : {}),
+      })
+    })
+
+    expect(observations.filter((event) => event.type === 'ATTEMPT_STARTED')).toEqual([
+      { type: 'ATTEMPT_STARTED', repairAttempt: 0 },
+      { type: 'ATTEMPT_STARTED', repairAttempt: 1 },
+    ])
+    expect(observations).toEqual(
+      expect.arrayContaining([
+        { type: 'CHUNK', repairAttempt: 0, chunkType: 'OUTPUT_TEXT_DELTA' },
+        { type: 'CHUNK', repairAttempt: 1, chunkType: 'OUTPUT_TEXT_DELTA' },
+      ]),
+    )
+  })
+
   it('repair 后仍非法返回 INVALID_OUTPUT；不进行第三次调用', async () => {
     let calls = 0
     handler = (_request, response) => {
@@ -486,6 +578,29 @@ describe('Model Gateway provider contract 与 OpenAI-compatible adapter', () => 
     expect(caught).toMatchObject({ category: 'AUTH', retryable: false, statusCode: 401 })
     expect(JSON.stringify(caught)).not.toContain('test-api-key')
     expect(calls).toBe(1)
+  })
+
+  it('供应商 context_length_exceeded 被识别为明确上下文错误且不泄露响应正文', async () => {
+    handler = (_request, response) => {
+      response.writeHead(400, { 'content-type': 'application/json' })
+      response.end(
+        JSON.stringify({
+          error: {
+            code: 'context_length_exceeded',
+            message: 'Maximum context length exceeded PRIVATE_INPUT_CANARY',
+          },
+        }),
+      )
+    }
+    let caught: unknown
+    try {
+      await collect(createOpenAiService(baseUrl).stream(baseRequest()))
+    } catch (error) {
+      caught = error
+    }
+
+    expect(caught).toMatchObject({ category: 'CONTEXT_LENGTH', retryable: false, statusCode: 400 })
+    expect(JSON.stringify(caught)).not.toContain('PRIVATE_INPUT_CANARY')
   })
 
   function createOpenAiService(base: string, overrides: ModelConfigEnvironment = {}): ModelGatewayService {

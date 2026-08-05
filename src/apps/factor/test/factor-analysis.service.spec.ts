@@ -354,5 +354,27 @@ describe('FactorAnalysisService', () => {
       const result = await service.getCorrelation(baseDto)
       expect(result.matrix[0][0]).toBe(1)
     })
+
+    it('[手算验证] Spearman 并列值使用平均秩，不按输入顺序伪造满相关', async () => {
+      // x 平均秩 [1.5,1.5,3,4]，y 秩 [1,2,3,4]，Pearson(rank) ≈ 0.948683。
+      mockCompute.getRawFactorValuesForDate
+        .mockResolvedValueOnce([
+          { tsCode: 'A', factorValue: 1 },
+          { tsCode: 'B', factorValue: 1 },
+          { tsCode: 'C', factorValue: 2 },
+          { tsCode: 'D', factorValue: 3 },
+        ])
+        .mockResolvedValueOnce([
+          { tsCode: 'A', factorValue: 1 },
+          { tsCode: 'B', factorValue: 2 },
+          { tsCode: 'C', factorValue: 3 },
+          { tsCode: 'D', factorValue: 4 },
+        ])
+
+      const result = await service.getCorrelation(baseDto)
+
+      expect(result.matrix[0][1]).toBeCloseTo(0.949, 3)
+      expect(result.meta.rankTiesMethod).toBe('average')
+    })
   })
 })

@@ -3,6 +3,7 @@ import { AiMemoryCategory } from '@prisma/client'
 import { AgentContextConfig, type IAgentContextConfig } from 'src/config/agent-context.config'
 import { AGENT_CAPABILITIES, type AgentCapability } from '../contracts'
 import { AgentMessageRepository } from '../conversation/agent-message.repository'
+import type { PersistedAiMessage } from '../conversation/agent-conversation.types'
 import type { AgentExecutionRun } from '../execution/agent-run.repository'
 import type { ModelPurpose, NormalizedMessage } from '../model-gateway/model-gateway.port'
 import { hashStableJson, stableJson } from '../tools/tool-json'
@@ -95,21 +96,21 @@ export class ContextBuilderService {
       warnings.add('SUMMARY_FALLBACK')
     }
 
-    let history = await this.messages.listCompletedContextRange(command.run.userId, command.run.conversationId, {
-      afterMessageId: summary?.throughMessageId ?? null,
-      throughMessageId: command.run.triggerMessageId,
-      limit: this.config.recentMessageCount,
-    })
+    let history = await this.loadRecentHistory(
+      command.run,
+      summary?.throughMessageId ?? null,
+      Math.max(1, Math.floor(budget * this.config.compactionTriggerRatio)),
+    )
     if (!history.throughFound) throw new WorkflowValidationError('当前 Run 触发消息不存在或不属于用户会话')
     if (summary && !history.anchorFound) {
       summary = null
       warnings.add('SUMMARY_RANGE_INVALID')
       warnings.add('SUMMARY_FALLBACK')
-      history = await this.messages.listCompletedContextRange(command.run.userId, command.run.conversationId, {
-        afterMessageId: null,
-        throughMessageId: command.run.triggerMessageId,
-        limit: this.config.recentMessageCount,
-      })
+      history = await this.loadRecentHistory(
+        command.run,
+        null,
+        Math.max(1, Math.floor(budget * this.config.compactionTriggerRatio)),
+      )
       if (!history.throughFound) throw new WorkflowValidationError('当前 Run 触发消息不存在或不属于用户会话')
     }
     let recentMessages = history.items.map(mapRecentMessage)
@@ -118,11 +119,11 @@ export class ContextBuilderService {
       summary = null
       warnings.add('SUMMARY_RANGE_INVALID')
       warnings.add('SUMMARY_FALLBACK')
-      history = await this.messages.listCompletedContextRange(command.run.userId, command.run.conversationId, {
-        afterMessageId: null,
-        throughMessageId: command.run.triggerMessageId,
-        limit: this.config.recentMessageCount,
-      })
+      history = await this.loadRecentHistory(
+        command.run,
+        null,
+        Math.max(1, Math.floor(budget * this.config.compactionTriggerRatio)),
+      )
       if (!history.throughFound) throw new WorkflowValidationError('当前 Run 触发消息不存在或不属于用户会话')
       recentMessages = history.items.map(mapRecentMessage)
       currentMessage = recentMessages.find((message) => message.id === command.run.triggerMessageId)
@@ -259,7 +260,7 @@ export class ContextBuilderService {
         working.pageContext = {}
         warnings.add('PAGE_CONTEXT_TRIMMED')
       } else {
-        throw new WorkflowBudgetError('有界上下文裁剪后仍超过 Token 预算', 6018)
+        throw new WorkflowBudgetError('当前问题与必要系统上下文超过目标模型限制，请缩短输入或切换模型', 6049)
       }
       working.warnings = [...warnings]
       rendered = this.render(working, command, facts)
@@ -403,10 +404,57 @@ export class ContextBuilderService {
     }
   }
 
+  private async loadRecentHistory(
+    run: AgentExecutionRun,
+    afterMessageId: string | null,
+    tokenBudget: number,
+  ): Promise<{ anchorFound: boolean; throughFound: boolean; hasMore: boolean; items: PersistedAiMessage[] }> {
+    const newestFirst: PersistedAiMessage[] = []
+    let tokenCount = 0
+    let beforeMessageId: string | null = null
+    let anchorFound = true
+    let throughFound = true
+    let hasMore = false
+
+    while (true) {
+      const page = await this.messages.listCompletedContextRange(run.userId, run.conversationId, {
+        afterMessageId,
+        throughMessageId: run.triggerMessageId,
+        beforeMessageId,
+        limit: this.config.queryPageSize,
+      })
+      anchorFound = anchorFound && page.anchorFound
+      throughFound = throughFound && page.throughFound
+      if (!page.anchorFound || !page.throughFound || page.cursorFound === false) {
+        return { anchorFound, throughFound, hasMore: false, items: [] }
+      }
+
+      for (const message of [...page.items].reverse()) {
+        const messageTokens = this.estimator.estimateMessages([
+          { role: message.role, content: message.contentText ?? stableJson(message.contentBlocks) },
+        ])
+        if (newestFirst.length > 0 && tokenCount + messageTokens > tokenBudget) {
+          hasMore = true
+          return { anchorFound, throughFound, hasMore, items: newestFirst.reverse() }
+        }
+        newestFirst.push(message)
+        tokenCount += messageTokens
+      }
+
+      if (!page.hasMore) break
+      if (!page.nextBeforeMessageId) {
+        hasMore = true
+        break
+      }
+      beforeMessageId = page.nextBeforeMessageId
+    }
+    return { anchorFound, throughFound, hasMore, items: newestFirst.reverse() }
+  }
+
   private resolveBudget(value: number): number {
     if (!Number.isInteger(value)) throw new WorkflowBudgetError('Context Token 预算必须为整数')
     if (value < 1) throw new WorkflowBudgetError('Context Token 预算已耗尽', 6018)
-    return Math.min(value, this.config.maxTokens)
+    return value
   }
 }
 

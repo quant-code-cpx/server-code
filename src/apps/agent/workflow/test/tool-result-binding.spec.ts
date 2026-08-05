@@ -24,9 +24,7 @@ describe('resolveToolInputBindings', () => {
   })
 
   it('未知绑定路径仍报错', () => {
-    const results = new Map<string, ToolResult>([
-      ['resolve', toolResult({ candidates: [{ tsCode: '688525.SH' }] })],
-    ])
+    const results = new Map<string, ToolResult>([['resolve', toolResult({ candidates: [{ tsCode: '688525.SH' }] })]])
 
     expect(() =>
       resolveToolInputBindings(

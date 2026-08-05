@@ -2228,7 +2228,7 @@ export function mapStkFactorRecord(
     low: readNumber(record, 'low'),
     preClose: readNumber(record, 'pre_close'),
     change: readNumber(record, 'change'),
-    pctChg: readNumber(record, 'pct_chg'),
+    pctChg: readNumber(record, 'pct_change') ?? readNumber(record, 'pct_chg'),
     vol: readNumber(record, 'vol'),
     amount: readNumber(record, 'amount'),
     macdDif: readNumber(record, 'macd_dif'),
@@ -2243,12 +2243,12 @@ export function mapStkFactorRecord(
     bollUpper: readNumber(record, 'boll_upper'),
     bollMid: readNumber(record, 'boll_mid'),
     bollLower: readNumber(record, 'boll_lower'),
-    cci14: readNumber(record, 'cci_14'),
-    cci20: readNumber(record, 'cci_20'),
-    tr: readNumber(record, 'tr'),
-    atr14: readNumber(record, 'atr14'),
-    atr20: readNumber(record, 'atr20'),
-    vr26: readNumber(record, 'vr_26'),
+    cci14: null,
+    cci20: null,
+    tr: null,
+    atr14: null,
+    atr20: null,
+    vr26: null,
   }
 }
 

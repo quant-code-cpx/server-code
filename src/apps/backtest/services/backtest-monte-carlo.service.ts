@@ -36,7 +36,7 @@ export class BacktestMonteCarloService {
 
     const options: MonteCarloOptions = {
       numSimulations: dto.numSimulations ?? 1000,
-      confidenceLevels: [0.05, 0.25, 0.5, 0.75, 0.95],
+      confidenceLevels: dto.confidenceLevels ?? [0.05, 0.25, 0.5, 0.75, 0.95],
       seed: dto.seed,
     }
 

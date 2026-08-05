@@ -10,6 +10,10 @@ import { PortfolioTradeLogService } from './services/portfolio-trade-log.service
 import { WebsocketModule } from 'src/websocket/websocket.module'
 import { SignalModule } from 'src/apps/signal/signal.module'
 import { PortfolioToolFacade } from './portfolio-tool.facade'
+import { PortfolioAnalyticsRepository } from './portfolio-analytics.repository'
+import { PortfolioAnalyticsToolFacade } from './portfolio-analytics-tool.facade'
+import { PortfolioSnapshotScheduler } from './portfolio-snapshot.scheduler'
+import { PortfolioSnapshotService } from './portfolio-snapshot.service'
 
 @Module({
   imports: [WebsocketModule, forwardRef(() => SignalModule)],
@@ -23,7 +27,11 @@ import { PortfolioToolFacade } from './portfolio-tool.facade'
     PortfolioPerformanceService,
     PortfolioTradeLogService,
     PortfolioToolFacade,
+    PortfolioAnalyticsRepository,
+    PortfolioAnalyticsToolFacade,
+    PortfolioSnapshotService,
+    PortfolioSnapshotScheduler,
   ],
-  exports: [PortfolioService, PortfolioToolFacade],
+  exports: [PortfolioService, PortfolioToolFacade, PortfolioAnalyticsToolFacade, PortfolioSnapshotService],
 })
 export class PortfolioModule {}

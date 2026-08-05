@@ -1,5 +1,4 @@
 import { ConflictException } from '@nestjs/common'
-import { TushareSyncProgressStatus } from '@prisma/client'
 import { PrismaService } from 'src/shared/prisma.service'
 import {
   LoadTechnicalSignalTimelineInput,
@@ -15,9 +14,6 @@ interface PrismaMock {
   tradeCal: { findFirst: PrismaMethod; findMany: PrismaMethod }
   suspendD: { findFirst: PrismaMethod; findMany: PrismaMethod }
   indexDaily: { findMany: PrismaMethod }
-  tushareSyncProgress: { findUnique: PrismaMethod }
-  tushareSyncRetryQueue: { count: PrismaMethod }
-  tushareSyncLog: { findMany: PrismaMethod }
 }
 
 const versionAt = new Date('2024-01-05T00:00:00.000Z')
@@ -34,7 +30,6 @@ function createPrismaMock(options?: {
   suspendedDates?: string[]
   dailyWatermark?: string
   adjFactorWatermark?: string
-  benchmarkReady?: boolean
 }): PrismaMock {
   const calendarDates = options?.calendarDates ?? ['20240102', '20240103', '20240104']
   const dailyRows =
@@ -97,21 +92,6 @@ function createPrismaMock(options?: {
         })),
       ),
     },
-    tushareSyncProgress: {
-      findUnique: jest.fn().mockResolvedValue({
-        status: options?.benchmarkReady ? TushareSyncProgressStatus.COMPLETED : TushareSyncProgressStatus.RUNNING,
-      }),
-    },
-    tushareSyncRetryQueue: { count: jest.fn().mockResolvedValue(0) },
-    tushareSyncLog: {
-      findMany: jest
-        .fn()
-        .mockResolvedValue(
-          options?.benchmarkReady
-            ? [{ payload: { mode: 'full', rangeStart: '19901219', failedDates: [], coverageMissingDates: [] } }]
-            : [],
-        ),
-    },
   }
 }
 
@@ -138,8 +118,9 @@ async function expectConflict(promise: Promise<unknown>, message: string): Promi
 }
 
 describe('PrismaTechnicalSignalRepository', () => {
-  it('基准全历史任务未完成时拒绝超额收益请求', async () => {
+  it('最近五年沪深300覆盖存在缺口时拒绝超额收益请求', async () => {
     const prisma = createPrismaMock()
+    prisma.indexDaily.findMany.mockResolvedValueOnce([])
     const repository = new PrismaTechnicalSignalRepository(prisma as unknown as PrismaService)
 
     await expectConflict(
@@ -148,11 +129,15 @@ describe('PrismaTechnicalSignalRepository', () => {
     )
 
     expect(prisma.stockBasic.findUnique).toHaveBeenCalled()
-    expect(prisma.tushareSyncProgress.findUnique).toHaveBeenCalled()
+    expect(prisma.indexDaily.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ tradeDate: { gte: utcDate('20190103'), lte: utcDate('20240103') } }),
+      }),
+    )
   })
 
-  it('完整基座、无重试项且覆盖齐全时加载 HS300 基准行情', async () => {
-    const prisma = createPrismaMock({ benchmarkReady: true })
+  it('最近五年沪深300覆盖齐全时加载基准行情', async () => {
+    const prisma = createPrismaMock()
     const repository = new PrismaTechnicalSignalRepository(prisma as unknown as PrismaService)
 
     const result = await repository.loadTimeline(createInput({ includeBenchmark: true, benchmarkTsCode: '000300.SH' }))
@@ -212,6 +197,39 @@ describe('PrismaTechnicalSignalRepository', () => {
     const repository = new PrismaTechnicalSignalRepository(prisma as unknown as PrismaService)
 
     await expectConflict(repository.loadTimeline(createInput()), '20240103 缺日线且无停牌事实')
+  })
+
+  it('近期计算窗口只校验窗口内完整性，不被更早的历史缺口阻断', async () => {
+    const recentRows = ['20240103', '20240104'].map((tradeDate, index) => ({
+      tradeDate: utcDate(tradeDate),
+      open: 10 + index,
+      high: 11 + index,
+      low: 9 + index,
+      close: 10.5 + index,
+      vol: 1000 + index,
+    }))
+    const prisma = createPrismaMock({
+      calendarDates: ['20240102', '20240103', '20240104', '20240105'],
+      dailyRows: recentRows,
+      adjFactorRows: recentRows.map((row) => ({ tradeDate: row.tradeDate, adjFactor: 1 })),
+      dailyWatermark: '20240104',
+      adjFactorWatermark: '20240104',
+    })
+    const repository = new PrismaTechnicalSignalRepository(prisma as unknown as PrismaService)
+
+    const result = await repository.loadTimeline(
+      createInput({ requestedAsOf: '20240104', maxHorizon: 0, historyTradeDays: 2 }),
+    )
+
+    expect(result.historyStart).toBe('20240103')
+    expect(prisma.tradeCal.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ orderBy: { calDate: 'desc' }, take: 2 }),
+    )
+    expect(prisma.daily.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { tsCode: '430047.BJ', tradeDate: { gte: utcDate('20240103'), lte: utcDate('20240104') } },
+      }),
+    )
   })
 
   it('请求日期超过日线与复权因子共同水位时拒绝，避免混入未来数据', async () => {

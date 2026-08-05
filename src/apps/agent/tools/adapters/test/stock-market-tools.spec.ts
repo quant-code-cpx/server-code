@@ -100,8 +100,15 @@ function harness() {
       asOf: null,
       sourceModels: ['StockBasic'],
     }),
-    screenStocks: jest.fn().mockResolvedValue({ page: 1, pageSize: 10, total: 1, items: [{ tsCode: '600000.SH', name: '浦发银行', pctChg: 3.2 }] }),
-    getScreenerPresets: jest.fn().mockReturnValue({ presets: [{ id: 'main_inflow', name: '主力资金流入', description: '', filters: { minMainNetInflow5d: 0 } }] }),
+    screenStocks: jest.fn().mockResolvedValue({
+      page: 1,
+      pageSize: 10,
+      total: 1,
+      items: [{ tsCode: '600000.SH', name: '浦发银行', pctChg: 3.2 }],
+    }),
+    getScreenerPresets: jest.fn().mockReturnValue({
+      presets: [{ id: 'main_inflow', name: '主力资金流入', description: '', filters: { minMainNetInflow5d: 0 } }],
+    }),
   }
   const market = {
     snapshot: jest.fn().mockResolvedValue({
@@ -169,20 +176,33 @@ describe('Batch 007 stock/market Tool adapters', () => {
     const registry = new ToolRegistryService(validator, config as never, definitions)
     registry.onModuleInit()
 
-    expect(definitions.map((definition) => definition.key)).toEqual(enabledTools)
+    expect(definitions.map((definition) => `${definition.key}@${definition.version}`)).toEqual([
+      'resolve_security@1',
+      'get_stock_price_history@1',
+      'get_stock_overview@1',
+      'screen_stocks@1',
+      'screen_stocks@2',
+      'get_market_snapshot@1',
+      'get_sector_membership@1',
+      'get_user_watchlist@1',
+    ])
     expect(
       definitions.every((definition) => definition.policy.sideEffect === 'READ' && definition.policy.idempotent),
     ).toBe(true)
     expect(registry.freezeSnapshot().entries).toHaveLength(7)
     expect(Object.keys(registry.implementationStatus())).toEqual([...AGENT_TOOL_KEYS])
-    for (const key of enabledTools) expect(registry.implementationStatus()[key]).toEqual([1])
+    for (const key of enabledTools) {
+      expect(registry.implementationStatus()[key]).toEqual(key === 'screen_stocks' ? [1, 2] : [1])
+    }
   })
 
   it('screen_stocks 使用真实选股器并返回前十结果', async () => {
     const { definitions, stock } = harness()
     const definition = definitions.find((item) => item.key === 'screen_stocks')!
     const result = await definition.execute({ preset: 'main_inflow', pageSize: 10 }, context())
-    expect(stock.screenStocks).toHaveBeenCalledWith(expect.objectContaining({ minMainNetInflow5d: 0, page: 1, pageSize: 10 }))
+    expect(stock.screenStocks).toHaveBeenCalledWith(
+      expect.objectContaining({ minMainNetInflow5d: 0, page: 1, pageSize: 10 }),
+    )
     expect(result.data).toMatchObject({ total: 1, items: [{ tsCode: '600000.SH' }] })
   })
 
@@ -349,12 +369,12 @@ describe('Batch 007 stock/market Tool adapters', () => {
       ),
     )
 
-    expect(results.flat()).toHaveLength(140)
+    expect(results.flat()).toHaveLength(160)
     expect(results.flat().every((result) => result.ok)).toBe(true)
     expect(stock.resolveSecurity).toHaveBeenCalledTimes(20)
     expect(stock.getPriceHistory).toHaveBeenCalledTimes(20)
     expect(stock.getOverview).toHaveBeenCalledTimes(20)
-    expect(stock.screenStocks).toHaveBeenCalledTimes(20)
+    expect(stock.screenStocks).toHaveBeenCalledTimes(40)
     expect(market.snapshot).toHaveBeenCalledTimes(20)
     expect(sector.membership).toHaveBeenCalledTimes(20)
     expect(watchlist.read.mock.calls.map((call) => call[0])).toEqual(

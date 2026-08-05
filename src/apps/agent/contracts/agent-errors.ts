@@ -119,6 +119,27 @@ export const AGENT_ERROR_DEFINITIONS = [
     retryable: false,
     message: '研究报告幂等请求或版本冲突',
   },
+  {
+    code: 6047,
+    key: 'AI_CONTEXT_COMPACTION_FAILED',
+    httpStatus: 503,
+    retryable: true,
+    message: '会话上下文整理失败，请重试或切换到上下文更大的模型',
+  },
+  {
+    code: 6048,
+    key: 'AI_MODEL_CONTEXT_INCOMPATIBLE',
+    httpStatus: 422,
+    retryable: false,
+    message: '当前会话无法装入所选模型的上下文窗口',
+  },
+  {
+    code: 6049,
+    key: 'AI_CURRENT_INPUT_TOO_LARGE',
+    httpStatus: 422,
+    retryable: false,
+    message: '当前输入本身超过所选模型的上下文窗口',
+  },
   { code: 6099, key: 'AI_INTERNAL_ERROR', httpStatus: 500, retryable: true, message: 'Agent 内部错误' },
 ] as const satisfies readonly AgentErrorDefinition[]
 
@@ -169,6 +190,9 @@ export type AgentErrorKey =
   | 'AI_RESEARCH_REPORT_INVALID'
   | 'AI_RESEARCH_REPORT_CONFIRMATION_INVALID'
   | 'AI_RESEARCH_REPORT_CONFLICT'
+  | 'AI_CONTEXT_COMPACTION_FAILED'
+  | 'AI_MODEL_CONTEXT_INCOMPATIBLE'
+  | 'AI_CURRENT_INPUT_TOO_LARGE'
   | 'AI_INTERNAL_ERROR'
 
 export const AGENT_ERROR_BY_CODE = new Map<number, AgentErrorDefinition>(

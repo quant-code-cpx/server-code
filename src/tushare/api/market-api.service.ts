@@ -74,11 +74,30 @@ export class MarketApiService {
     })
   }
 
+  /** 按核心指数代码和日期区间获取指数日线。五年回补时避免逐交易日请求。 */
+  getIndexDailyByTsCodeAndDateRange(tsCode: string, startDate: string, endDate: string) {
+    return this.client.call({
+      api_name: TushareApiName.INDEX_DAILY,
+      params: { ts_code: tsCode, start_date: startDate, end_date: endDate },
+      fields: [...TUSHARE_INDEX_DAILY_FIELDS],
+    })
+  }
+
   /** 获取所有核心指数在指定交易日的行情（逐只调用后合并） */
   async getCoreIndexDailyByTradeDate(tradeDate: string) {
     const allRows: Record<string, unknown>[] = []
     for (const tsCode of CORE_INDEX_CODES) {
       const rows = await this.getIndexDailyByTsCodeAndDate(tsCode, tradeDate)
+      allRows.push(...rows)
+    }
+    return allRows
+  }
+
+  /** 获取所有核心指数在指定日期区间内的行情。 */
+  async getCoreIndexDailyByDateRange(startDate: string, endDate: string) {
+    const allRows: Record<string, unknown>[] = []
+    for (const tsCode of CORE_INDEX_CODES) {
+      const rows = await this.getIndexDailyByTsCodeAndDateRange(tsCode, startDate, endDate)
       allRows.push(...rows)
     }
     return allRows

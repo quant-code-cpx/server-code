@@ -29,9 +29,13 @@ function stdDev(arr: number[], mu?: number): number {
 function rankArray(arr: number[]): number[] {
   const indexed = arr.map((v, i) => ({ v, i })).sort((a, b) => a.v - b.v)
   const ranks = new Array<number>(arr.length)
-  indexed.forEach(({ i }, rank) => {
-    ranks[i] = rank + 1
-  })
+  for (let start = 0; start < indexed.length; ) {
+    let end = start + 1
+    while (end < indexed.length && indexed[end].v === indexed[start].v) end += 1
+    const averageRank = (start + 1 + end) / 2
+    for (let position = start; position < end; position += 1) ranks[indexed[position].i] = averageRank
+    start = end
+  }
   return ranks
 }
 
@@ -402,8 +406,11 @@ export class FactorAnalysisService {
       const bmSeries: Array<{ tradeDate: string; cumReturn: number }> = [{ tradeDate: rebalanceDates[0], cumReturn: 0 }]
 
       const groupPeriodReturns: number[][] = Array.from({ length: quantiles }, () => [])
+      const groupSampleCounts: number[][] = Array.from({ length: quantiles }, () => [])
+      const groupTurnovers: number[][] = Array.from({ length: quantiles }, () => [])
       const lsPeriodReturns: number[] = []
       const bmPeriodReturns: number[] = []
+      let previousGroups: string[][] | null = null
 
       for (let i = 0; i < rebalanceDates.length - 1; i++) {
         const fromDate = rebalanceDates[i]
@@ -425,13 +432,24 @@ export class FactorAnalysisService {
         const allCodes = valid.map((v) => v.tsCode)
         const returnMap = await this.getAdjReturns(fromDate, toDate, allCodes)
 
-        const groupRets = groups.map((codes) => {
-          const rets = codes.map((c) => returnMap[c] ?? 0)
+        const groupRets = groups.map((codes, groupIndex) => {
+          const rets = codes.flatMap((code) => (returnMap[code] === undefined ? [] : [returnMap[code]]))
+          groupSampleCounts[groupIndex].push(rets.length)
           return rets.length ? mean(rets) : 0
         })
 
-        const bmRet = allCodes.length ? mean(allCodes.map((c) => returnMap[c] ?? 0)) : 0
+        const benchmarkReturns = allCodes.flatMap((code) => (returnMap[code] === undefined ? [] : [returnMap[code]]))
+        const bmRet = benchmarkReturns.length ? mean(benchmarkReturns) : 0
         const lsRet = groupRets[quantiles - 1] - groupRets[0]
+
+        if (previousGroups) {
+          for (let q = 0; q < quantiles; q += 1) {
+            const previous = new Set(previousGroups[q])
+            const retained = groups[q].filter((code) => previous.has(code)).length
+            groupTurnovers[q].push(previous.size ? 1 - retained / previous.size : 0)
+          }
+        }
+        previousGroups = groups
 
         for (let q = 0; q < quantiles; q++) {
           const prev = groupCumSeries[q][groupCumSeries[q].length - 1].cumReturn
@@ -462,6 +480,8 @@ export class FactorAnalysisService {
           annualizedReturn: Math.round(annualisedReturn(totalReturn, totalDays) * 1e6) / 1e6,
           maxDrawdown: Math.round(maxDrawdown(cumValues) * 1e6) / 1e6,
           sharpeRatio: Math.round(sharpe(groupPeriodReturns[q]) * 1e4) / 1e4,
+          averageSampleCount: groupSampleCounts[q].length ? mean(groupSampleCounts[q]) : 0,
+          averageTurnover: groupTurnovers[q].length ? Math.round(mean(groupTurnovers[q]) * 1e4) / 1e4 : null,
           series,
         }
       })
@@ -722,7 +742,7 @@ export class FactorAnalysisService {
           computedAt: new Date().toISOString(),
           matrixMode: 'pairwise' as const,
           minSampleForCorr: 3,
-          rankTiesMethod: 'ordinal',
+          rankTiesMethod: 'average',
         },
       }
     })

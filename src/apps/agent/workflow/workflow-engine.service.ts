@@ -17,6 +17,7 @@ import { AgentRunRepository, type AgentExecutionRun } from '../execution/agent-r
 import { CompleteNode } from './nodes/complete.node'
 import { ExecuteToolsNode } from './nodes/execute-tools.node'
 import { LoadContextNode } from './nodes/load-context.node'
+import { SelectToolsNode } from './nodes/select-tools.node'
 import { PersistNode } from './nodes/persist.node'
 import { PlanNode } from './nodes/plan.node'
 import { AuthorizeToolsNode } from './nodes/authorize-tools.node'
@@ -65,11 +66,23 @@ export class WorkflowEngineService {
     complete: CompleteNode,
     @Optional() private readonly tracing?: AgentTracingService,
     @Optional() private readonly metrics?: AgentMetricsService,
+    @Optional() selectTools?: SelectToolsNode,
   ) {
+    const nodeHandlers: Array<WorkflowNodeHandler | undefined> = [
+      loadContext,
+      selectTools,
+      plan,
+      authorizeTools,
+      executeTools,
+      synthesize,
+      validateCitations,
+      persist,
+      complete,
+    ]
     this.handlers = new Map(
-      [loadContext, plan, authorizeTools, executeTools, synthesize, validateCitations, persist, complete].map(
-        (handler) => [handler.key, handler],
-      ),
+      nodeHandlers
+        .filter((handler): handler is WorkflowNodeHandler => Boolean(handler))
+        .map((handler) => [handler.key, handler]),
     )
   }
 
@@ -257,6 +270,7 @@ export class WorkflowEngineService {
         workflowVersion: command.workflow.version,
         factCount: state.facts.length,
         warningCount: state.warnings.length,
+        toolSelection: state.toolSelection ?? null,
         budget: state.budget,
       },
       completedEventPayload: {
@@ -397,10 +411,12 @@ function restoreCheckpoint(
       workflowHash: workflow.contentHash,
       nextNodeIndex: 0,
       state: {
+        modelProfile: null,
         context: null,
         plan: null,
         compiledPlan: null,
         toolSnapshotSignature: null,
+        toolSelection: null,
         facts: [],
         draft: null,
         finalModelCallId: null,

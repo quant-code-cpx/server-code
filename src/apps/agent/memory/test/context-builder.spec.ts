@@ -13,7 +13,7 @@ import { ContextTokenEstimator } from '../context-token-estimator'
 
 describe('ContextBuilderService', () => {
   const now = new Date('2026-07-21T08:00:00.000Z')
-  const config = { maxTokens: 5_000, recentMessageCount: 20, maxPageContextBytes: 20_000 }
+  const config = buildAgentContextConfig({})
   let messages: { listCompletedContextRange: jest.Mock }
   let summaries: { findCurrent: jest.Mock }
   let memories: { listActive: jest.Mock }
@@ -217,7 +217,7 @@ describe('ContextBuilderService', () => {
     expect(source[0].contentText).toBe(oldContent)
   })
 
-  it('系统规则、Prompt 和当前问题本身仍超预算时返回 AI_CONTEXT_TOO_LARGE', async () => {
+  it('系统规则、Prompt 和当前问题本身仍超预算时返回 AI_CURRENT_INPUT_TOO_LARGE', async () => {
     messages.listCompletedContextRange.mockResolvedValue({
       anchorFound: true,
       throughFound: true,
@@ -228,7 +228,7 @@ describe('ContextBuilderService', () => {
 
     expect(() =>
       builder.prepareModelCall({ context, budget: 40, purpose: 'PLAN', instruction: '生成研究计划' }),
-    ).toThrow(expect.objectContaining({ agentCode: 6018, message: expect.stringContaining('Token') }))
+    ).toThrow(expect.objectContaining({ agentCode: 6049, message: expect.stringContaining('当前问题') }))
   })
 
   it('摘要 hash 损坏时排除摘要、从原始消息回退并记录 warning', async () => {
@@ -408,7 +408,7 @@ describe('ContextBuilderService', () => {
       summaries as never,
       memories as never,
       new ContextTokenEstimator(),
-      { maxTokens: 100_000, recentMessageCount: 200, maxPageContextBytes: 20_000 } as never,
+      { ...buildAgentContextConfig({}), queryPageSize: 200 } as never,
     )
     const perfRun = run()
     perfRun.triggerMessageId = 'perf_message_200'
@@ -445,26 +445,28 @@ describe('ContextTokenEstimator', () => {
   })
 })
 
-describe('AgentContextConfig 摘要阈值', () => {
-  it('默认启用双阈值，并允许 feature flag 关闭', () => {
+describe('AgentContextConfig 模型感知比例', () => {
+  it('默认启用比例预算，并允许 feature flag 关闭', () => {
     expect(buildAgentContextConfig({})).toMatchObject({
       summaryEnabled: true,
-      summaryMinMessageCount: 8,
-      summaryTriggerTokens: 2_048,
-      summaryMaxSourceTokens: 8_192,
-      summaryMaxMessageCount: 500,
-      summaryMaxOutputTokens: 1_024,
+      safetyRatio: 0.08,
+      compactionTriggerRatio: 0.75,
+      compactionTargetRatio: 0.5,
+      outputReserveRatio: 0.15,
+      summaryOutputReserveRatio: 0.05,
+      summaryRunInputRatio: 0.25,
+      queryPageSize: 100,
     })
     expect(buildAgentContextConfig({ AGENT_SUMMARY_ENABLED: 'false' }).summaryEnabled).toBe(false)
   })
 
-  it('最大摘要来源 token/消息数不能小于触发阈值', () => {
+  it('压缩目标比例必须小于触发比例', () => {
     expect(() =>
-      buildAgentContextConfig({ AGENT_SUMMARY_TRIGGER_TOKENS: '2048', AGENT_SUMMARY_MAX_SOURCE_TOKENS: '1024' }),
-    ).toThrow('AGENT_SUMMARY_MAX_SOURCE_TOKENS')
-    expect(() =>
-      buildAgentContextConfig({ AGENT_SUMMARY_MIN_MESSAGE_COUNT: '8', AGENT_SUMMARY_MAX_MESSAGE_COUNT: '7' }),
-    ).toThrow('AGENT_SUMMARY_MAX_MESSAGE_COUNT')
+      buildAgentContextConfig({
+        AGENT_CONTEXT_COMPACTION_TRIGGER_RATIO: '0.6',
+        AGENT_CONTEXT_COMPACTION_TARGET_RATIO: '0.7',
+      }),
+    ).toThrow('AGENT_CONTEXT_COMPACTION_TARGET_RATIO')
   })
 })
 

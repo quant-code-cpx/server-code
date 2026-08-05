@@ -36,7 +36,7 @@ type ModelRequest = {
 
 `NormalizedMessage` 只保留跨供应商可移植内容：role、结构化 content blocks、内部 `toolCallId`、Tool 结果摘要与引用 ID。供应商原生 reasoning state、cache handle 或 response ID 只能放在 `providerExtensions`，不能成为后续 Run 的必要状态。
 
-统一事件至少覆盖 `OUTPUT_TEXT_DELTA`、`TOOL_CALL_DELTA`、`TOOL_CALL_COMPLETED`、`USAGE`、`COMPLETED`、`FAILED`。转成前端事件时必须使用 [SSE 事件](../api/sse-events.md) 的 `model.*` 结构，不能把内部枚举直接暴露给前端。
+统一事件至少覆盖 `REASONING_ACTIVITY`、`OUTPUT_TEXT_DELTA`、`TOOL_CALL_DELTA`、`TOOL_CALL_COMPLETED`、`USAGE`、`COMPLETED`、`FAILED`。其中 `REASONING_ACTIVITY` 只包含本次供应商分片的字符数，不包含推理文字；转成前端事件时必须使用 [SSE 事件](../api/sse-events.md) 的 `model.*` 结构，不能把内部枚举直接暴露给前端。
 
 ModelCall 的 canonical 状态集合为 `PENDING/STREAMING/RETRY_WAIT/SUCCEEDED/FAILED/CANCELLED`。首个可见增量前保持 `PENDING`；产生增量后进入 `STREAMING`；同一 Provider 的可重试等待进入 `RETRY_WAIT`，恢复后回到 `PENDING` 或 `STREAMING`。成功终态使用 `SUCCEEDED`，不与 Run 的 `COMPLETED` 混用。
 
@@ -78,7 +78,7 @@ Anthropic 与 Gemini 必须各自实现 Adapter，不通过“伪 OpenAI”字�
 - 数据库保存规范化消息、Tool call、Tool 结果和引用；不依赖供应商会话对象，所以切换模型不丢历史。
 - 每个内部 `modelCallId`、`toolCallId` 由系统先创建；Adapter 保存 `providerCallId/providerToolCallId -> internalId` 映射。供应商重试不能生成第二个业务 ToolCall。
 - Context Builder 按目标模型窗口重新裁剪，使用原始消息 ID、版本摘要和 Tool 摘要；不把另一模型隐藏推理传给新模型。
-- Provider 在任何可见 `model.delta` 之前失败，可透明降级；已产生可见增量后失败时，先把当前 ModelCall 标为失败，再创建新 ModelCall 并发出明确重试阶段，禁止把两个流伪装成同一次调用。
+- Provider 在任何可见正文之前失败，可透明降级；`REASONING_ACTIVITY` 不属于正文，不阻止安全重试。已产生 `OUTPUT_TEXT_DELTA`/草稿预览后失败时，先把当前 ModelCall 标为失败，再创建新 ModelCall 并发出明确重试阶段，禁止把两个流伪装成同一次调用。
 - 不支持当前 Tool Schema 的模型不进入候选；不得把 Tool 描述改写成自由文本后继续执行。
 - 切换只影响后续 Run；会话 API 的行为以 [REST API](../api/rest-api.md) 为准。
 
@@ -100,7 +100,7 @@ Anthropic 与 Gemini 必须各自实现 Adapter，不通过“伪 OpenAI”字�
 - API Key 只由 Provider Adapter 从 Secret/环境配置取得，不进 Prompt、BullMQ payload、数据库正文或前端。
 - Prompt 发送前按数据等级做字段级裁剪。持仓数量、成本价、投资日志默认属于 `PORTFOLIO_SENSITIVE`；无供应商授权时只传程序生成的聚合风险摘要。
 - 日志只记录 provider、model、purpose、token/cost、latency、状态和内部 ID；默认不记完整 Prompt/response。
-- 不保存模型隐藏推理；只保存用户可见正文和程序生成的 `planSummary`。
+- 不保存模型隐藏推理；OpenAI-compatible Adapter 读取 `reasoning_content` 后只产生字符计数并立即丢弃原文。只保存用户可见正文、明确标注的未校验草稿、程序生成的 `planSummary` 和稀疏活动计数。
 - Provider 原始错误先映射为内部类别，再按 [Agent 错误码](../api/error-codes.md)输出；生产响应不得含原始 body、request headers 或 key。
 
 完整策略见[安全设计](./security.md)。
@@ -167,3 +167,10 @@ src/apps/agent/test/model-gateway/model-cost.spec.ts
 - `ProviderHealthService` 按 `(provider, model)` 累计无可见输出的可重试失败，到阈值后打开 circuit；open window 到期后恢复候选资格。成功会清空该模型失败状态。
 - 网关只在尚未发出可见输出的可重试失败后进行 fallback。每个尝试独立审计为 `AiModelCall`；切换持久化 `model.fallback` SSE 事件。已经输出的流失败会保留失败事实，不拼接第二个 provider 的半流。
 - `POST /api/agent/models/list` 只投影可公开目录字段。会话 `MANUAL` 选择在保存时和实际路由时都重新执行健康与数据等级检查。
+
+## 13. 实时活动与安全草稿投影
+
+- 结构化调用支持内部 stream observer；每次初始生成或 JSON 修复先发出 attempt 边界，再观察规范化 chunk，不把供应商响应对象交给 Workflow。
+- DeepSeek/OpenAI-compatible 的 `reasoning_content` 只映射为 `REASONING_ACTIVITY.characters`。公开层按阈值合并为 `model.activity.processedCharacters`，前端只显示“深度分析中（推理内容已隐藏）”。
+- `SYNTHESIZE` 的 `OUTPUT_TEXT_DELTA` 经增量 JSON string 解码器只提取根级 `markdown`，支持跨分片、escape、Unicode 与代理对；未知结构失败关闭。
+- 草稿通过 `model.preview.reset/delta` 独立投影，最大 8,000 字符，不能进入正式 `AiMessage.content`。引用校验和终态事务保持原流程，最终 `model.delta` 仍是唯一权威正文流。

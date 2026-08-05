@@ -71,6 +71,14 @@ Agent 运行需要以 POST 携带结构化输入、幂等信息与页面上下�
 
 不得把每个 token 写入 `localStorage`，也不得为每个 token 触发 Markdown 全量解析。渲染层应在批次边界更新，并对历史消息做 memo/虚拟化。
 
+模型投影需分层处理：
+
+- `model.trace`、`model.completed` 与 `model.failed` 按 `modelCallId` 聚合为“模型执行轨迹”。显示模型、阶段、耗时、用量、结构化修复和规范化错误；绝不显示 Prompt、原始推理或供应商原文。
+- `model.activity` 只更新运行阶段和安全说明，不渲染 `processedCharacters` 为推理文本，也不尝试反推思维链。
+- `model.preview.reset/delta` 写入运行级 `draftPreview`，以纯文本显示并明确标注“引用校验前”；只接受同一 `modelCallId + attempt` 的追加。
+- `model.delta` 才写入正式 assistant 消息；收到首个最终增量或终态后清除 `draftPreview/modelActivity`。
+- 草稿和活动投影只保存在 reducer 内存，禁止写入 Composer 草稿存储或长期浏览器存储。
+
 ## 8. WebSocket 的边界
 
 Socket.IO 只负责后台运行完成、跨设备失效、报告与通知，不承载当前回答的逐 token 内容。现有工程需同步修复：

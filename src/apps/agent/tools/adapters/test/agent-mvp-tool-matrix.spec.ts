@@ -40,7 +40,7 @@ const config = {
   valuationMinSamples: 60,
 } as IAgentToolsConfig
 
-const successInputs: Readonly<Record<Exclude<AgentToolKey, 'save_research_report'>, unknown>> = {
+const successInputs: Readonly<Record<(typeof AGENT_MVP_READ_TOOL_KEYS)[number], unknown>> = {
   resolve_security: { query: '浦发银行' },
   get_stock_price_history: {
     tsCode: '600000.SH',
@@ -540,8 +540,12 @@ function createToolMocks() {
       asOf: '2024-06-28',
       sourceModels: ['StockBasic'],
     }),
-    screenStocks: jest.fn().mockResolvedValue({ page: 1, pageSize: 10, total: 1, items: [{ tsCode: '600000.SH', name: '浦发银行' }] }),
-    getScreenerPresets: jest.fn().mockReturnValue({ presets: [{ id: 'main_inflow', name: '主力资金流入', description: '', filters: { minMainNetInflow5d: 0 } }] }),
+    screenStocks: jest
+      .fn()
+      .mockResolvedValue({ page: 1, pageSize: 10, total: 1, items: [{ tsCode: '600000.SH', name: '浦发银行' }] }),
+    getScreenerPresets: jest.fn().mockReturnValue({
+      presets: [{ id: 'main_inflow', name: '主力资金流入', description: '', filters: { minMainNetInflow5d: 0 } }],
+    }),
   }
   const market = {
     snapshot: jest.fn().mockResolvedValue({

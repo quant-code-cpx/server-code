@@ -13,6 +13,12 @@ export class AgentModelListItemResponseDto {
   @ApiProperty({ type: String, isArray: true })
   capabilities: string[]
 
+  @ApiProperty()
+  contextWindow: number
+
+  @ApiProperty()
+  maxOutputTokens: number
+
   @ApiProperty({ enum: ['LOW', 'MEDIUM', 'HIGH'] })
   costTier: string
 

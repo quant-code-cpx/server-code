@@ -3,13 +3,14 @@ import { UserStatus } from '@prisma/client'
 import { ROLE_LEVEL } from 'src/constant/user.constant'
 import { AgentToolsConfig, type IAgentToolsConfig } from 'src/config/agent-tools.config'
 import type { ToolDefinition } from './contracts/tool-definition'
-import type { ToolErrorCode } from './contracts/tool-error'
+import type { ToolErrorCode, ToolErrorDetailValue } from './contracts/tool-error'
 import type { ToolExecutionContext } from './tool-access-context'
 
 export class ToolPolicyDeniedError extends Error {
   constructor(
     readonly code: ToolErrorCode,
     message: string,
+    readonly details?: Record<string, ToolErrorDetailValue>,
   ) {
     super(message)
     this.name = ToolPolicyDeniedError.name
@@ -49,7 +50,11 @@ export class ToolPolicyService {
       throw new ToolPolicyDeniedError('TIMEOUT', 'Agent Run deadline 已到期')
     }
     if (definition.policy.requiresConfirmation) {
-      throw new ToolPolicyDeniedError('CONFIRMATION_REQUIRED', 'Tool 需要用户明确确认')
+      throw new ToolPolicyDeniedError(
+        'CONFIRMATION_REQUIRED',
+        'Tool 需要用户明确确认',
+        definition.key === 'save_research_report' ? { action: 'OPEN_REPORT_PREVIEW', runId: context.runId } : undefined,
+      )
     }
   }
 }

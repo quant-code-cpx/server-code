@@ -7,6 +7,7 @@ function prismaMock() {
     stockBasic: { findMany: jest.fn(), findUnique: jest.fn() },
     fundBasic: { findMany: jest.fn() },
     optBasic: { findMany: jest.fn() },
+    cbBasic: { findMany: jest.fn() },
     daily: { findMany: jest.fn(), findFirst: jest.fn() },
     dailyBasic: { findMany: jest.fn(), findFirst: jest.fn() },
     indexMemberAll: { findMany: jest.fn() },
@@ -89,6 +90,31 @@ describe('StockToolFacade', () => {
     expect(option.candidates[0]).toMatchObject({ tsCode: '10000001.SH', securityType: 'OPTION', matchScore: 1 })
     expect(prisma.fundBasic.findMany.mock.calls[0][0].where.AND).toHaveLength(1)
     expect(prisma.optBasic.findMany.mock.calls[0][0].where.AND).toHaveLength(1)
+  })
+
+  it('[SMT-BIZ-001] 可转债解析返回独立证券类型，不与正股混淆', async () => {
+    const prisma = prismaMock()
+    prisma.cbBasic.findMany.mockResolvedValue([
+      {
+        tsCode: '110059.SH',
+        cbCode: '110059',
+        bondShortName: '浦发转债',
+        exchange: 'SSE',
+        listDate: new Date('2019-11-15T00:00:00.000Z'),
+        delistDate: null,
+      },
+    ])
+    const facade = new StockToolFacade(prisma as never)
+
+    const value = await facade.resolveSecurity({ query: '110059.SH', securityTypes: ['CONVERTIBLE_BOND'] })
+
+    expect(value.candidates[0]).toMatchObject({
+      tsCode: '110059.SH',
+      name: '浦发转债',
+      securityType: 'CONVERTIBLE_BOND',
+      matchScore: 1,
+    })
+    expect(value.sourceModels).toEqual(['CbBasic'])
   })
 
   it('[SMT-BIZ-001] 两个近分名称候选标记 ambiguous，不自动选择', async () => {

@@ -112,7 +112,15 @@ describe('TushareAdminController (tushare-api)', () => {
   })
 
   afterAll(async () => app.close())
-  beforeEach(() => jest.clearAllMocks())
+  beforeEach(() => {
+    jest.clearAllMocks()
+    mockJwtGuard.canActivate.mockReset().mockImplementation((context: ExecutionContext) => {
+      const req = context.switchToHttp().getRequest()
+      req.user = superAdminUser
+      return true
+    })
+    mockRolesGuard.canActivate.mockReset().mockReturnValue(true)
+  })
 
   // ═══════════════════════════════════════════════════════════════════════════
   // 1. 同步计划 & 缓存

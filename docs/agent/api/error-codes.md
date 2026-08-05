@@ -50,6 +50,9 @@
 | 6044 | `AI_RESEARCH_REPORT_INVALID` | 400 | 否 | 报告参数、来源 Run、投资日志或内容协议无效 |
 | 6045 | `AI_RESEARCH_REPORT_CONFIRMATION_INVALID` | 409 | 否 | 确认 token 已过期、被篡改或绑定内容已变化 |
 | 6046 | `AI_RESEARCH_REPORT_CONFLICT` | 409 | 否 | 幂等请求复用不同报告内容或版本/删除并发冲突 |
+| 6047 | `AI_CONTEXT_COMPACTION_FAILED` | 503 | 是 | 必须压缩历史，但摘要生成、校验或提交失败 |
+| 6048 | `AI_MODEL_CONTEXT_INCOMPATIBLE` | 422 | 否 | 目标模型窗口无法满足安全输入/输出预算 |
+| 6049 | `AI_CURRENT_INPUT_TOO_LARGE` | 422 | 否 | 当前用户输入本身超过目标模型输入预算 |
 | 6099 | `AI_INTERNAL_ERROR`               |  500 | 是         | 未分类内部错误；只向用户返回 traceId           |
 
 Tool 内部错误使用稳定字符串，完整映射见 [Tool 错误 Schema](../tools/schemas/tool-errors.md)。这些值进入 Tool 审计和受控模型上下文，但 API 出口只映射到上表数字码。

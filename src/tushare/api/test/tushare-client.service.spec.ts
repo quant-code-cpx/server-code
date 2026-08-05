@@ -24,6 +24,7 @@ const MOCK_CONFIG = {
   requestIntervalMs: 0,
   rateLimitRetryDelayMs: 0,
   maxRetries: 2,
+  stkFactorMinIntervalMs: 650,
 }
 
 // ── mock 工厂 ─────────────────────────────────────────────────────────────────
@@ -220,6 +221,23 @@ describe('TushareClient', () => {
 
       expect(fetchSpy).toHaveBeenCalledTimes(2)
       expect(sleepSpy).toHaveBeenCalledWith(120)
+      sleepSpy.mockRestore()
+      nowSpy.mockRestore()
+    })
+  })
+
+  describe('stk_factor 主动频控', () => {
+    it('[BIZ] 同一 stk_factor 通道连续请求的开始间隔不少于配置的 650ms', async () => {
+      fetchSpy.mockResolvedValue(okResponse(['ts_code'], [['600089.SH']]))
+      const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(1_000)
+      const client = createClient()
+      const clientInternals = client as unknown as { sleep: (ms: number) => Promise<void> }
+      const sleepSpy = jest.spyOn(clientInternals, 'sleep').mockImplementation(async () => undefined)
+
+      await Promise.all([client.call({ api_name: 'stk_factor' }), client.call({ api_name: 'stk_factor' })])
+
+      expect(fetchSpy).toHaveBeenCalledTimes(2)
+      expect(sleepSpy).toHaveBeenCalledWith(650)
       sleepSpy.mockRestore()
       nowSpy.mockRestore()
     })

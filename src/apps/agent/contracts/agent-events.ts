@@ -9,11 +9,20 @@ export const AGENT_EVENT_TYPES = [
   'agent.started',
   'agent.planning',
   'agent.progress',
+  'context.compaction.started',
+  'context.compaction.completed',
+  'context.compaction.failed',
   'tool.started',
   'tool.completed',
   'tool.failed',
   'model.started',
+  'model.trace',
   'model.fallback',
+  'model.activity',
+  'model.preview.reset',
+  'model.preview.delta',
+  'model.completed',
+  'model.failed',
   'model.delta',
   'citation.created',
   'report.generated',
@@ -63,6 +72,23 @@ export type AgentProgressEvent = AgentEvent<
   'agent.progress',
   { stepKey: string; label: string; completed: number; total: number | null }
 >
+export type ContextCompactionStartedEvent = AgentEvent<
+  'context.compaction.started',
+  {
+    model: string
+    reason: 'MODEL_CONTEXT_PRESSURE' | 'MODEL_SWITCH'
+    estimatedTokens: number
+    targetTokens: number
+  }
+>
+export type ContextCompactionCompletedEvent = AgentEvent<
+  'context.compaction.completed',
+  { model: string; summaryVersion: number; sourceMessageCount: number; sourceTokenCount: number }
+>
+export type ContextCompactionFailedEvent = AgentEvent<
+  'context.compaction.failed',
+  { model: string; code: number; retryable: boolean; message: string }
+>
 export type ToolStartedEvent = AgentEvent<
   'tool.started',
   { toolCallId: string; toolName: AgentToolKey; inputSummary: string; attempt: number }
@@ -87,9 +113,62 @@ export type ModelStartedEvent = AgentEvent<
   'model.started',
   { modelCallId: string; provider: string; model: string; purpose: string }
 >
+export type ModelTracePayload =
+  | {
+      modelCallId: string
+      attempt: number
+      phase: 'REQUEST_DISPATCHED'
+      messageCount: number
+      estimatedInputTokens: number
+      maxOutputTokens: number
+      contextWindow: number
+    }
+  | {
+      modelCallId: string
+      attempt: number
+      phase: 'FIRST_PROVIDER_CHUNK'
+      chunkType: 'REASONING' | 'OUTPUT' | 'TOOL_CALL' | 'USAGE' | 'COMPLETED'
+    }
+  | { modelCallId: string; attempt: number; phase: 'STRUCTURED_REPAIR' }
+  | { modelCallId: string; attempt: number; phase: 'PROVIDER_COMPLETED'; finishReason: string | null }
+export type ModelTraceEvent = AgentEvent<'model.trace', ModelTracePayload>
 export type ModelFallbackEvent = AgentEvent<
   'model.fallback',
   { fromProvider: string; fromModel: string; toProvider: string; toModel: string; reasonCode: string }
+>
+export type ModelActivityEvent = AgentEvent<
+  'model.activity',
+  { modelCallId: string; phase: 'REASONING'; processedCharacters: number }
+>
+export type ModelPreviewResetEvent = AgentEvent<'model.preview.reset', { modelCallId: string; attempt: number }>
+export type ModelPreviewDeltaEvent = AgentEvent<
+  'model.preview.delta',
+  { modelCallId: string; attempt: number; delta: string }
+>
+export type ModelCompletedEvent = AgentEvent<
+  'model.completed',
+  {
+    modelCallId: string
+    provider: string
+    model: string
+    purpose: string
+    durationMs: number
+    repaired: boolean
+    finishReason: string | null
+    usage: { inputTokens: number; outputTokens: number; cachedTokens?: number; reasoningTokens?: number } | null
+  }
+>
+export type ModelFailedEvent = AgentEvent<
+  'model.failed',
+  {
+    modelCallId: string
+    provider: string
+    model: string
+    purpose: string
+    durationMs: number
+    error: StreamError
+    willFallback: boolean
+  }
 >
 export type ModelDeltaEvent = AgentEvent<'model.delta', { modelCallId: string; blockIndex: number; delta: string }>
 export type CitationCreatedEvent = AgentEvent<'citation.created', { citation: Citation }>
@@ -121,11 +200,20 @@ export type AgentSseEvent =
   | AgentStartedEvent
   | AgentPlanningEvent
   | AgentProgressEvent
+  | ContextCompactionStartedEvent
+  | ContextCompactionCompletedEvent
+  | ContextCompactionFailedEvent
   | ToolStartedEvent
   | ToolCompletedEvent
   | ToolFailedEvent
   | ModelStartedEvent
+  | ModelTraceEvent
   | ModelFallbackEvent
+  | ModelActivityEvent
+  | ModelPreviewResetEvent
+  | ModelPreviewDeltaEvent
+  | ModelCompletedEvent
+  | ModelFailedEvent
   | ModelDeltaEvent
   | CitationCreatedEvent
   | ReportGeneratedEvent
@@ -226,6 +314,39 @@ const payloadSchemas: Record<AgentEventType, JsonSchema> = {
       total: { type: ['integer', 'null'], minimum: 0, maximum: Number.MAX_SAFE_INTEGER },
     },
   },
+  'context.compaction.started': {
+    type: 'object',
+    additionalProperties: false,
+    required: ['model', 'reason', 'estimatedTokens', 'targetTokens'],
+    properties: {
+      model: stringIdSchema,
+      reason: { enum: ['MODEL_CONTEXT_PRESSURE', 'MODEL_SWITCH'] },
+      estimatedTokens: positiveIntegerSchema,
+      targetTokens: positiveIntegerSchema,
+    },
+  },
+  'context.compaction.completed': {
+    type: 'object',
+    additionalProperties: false,
+    required: ['model', 'summaryVersion', 'sourceMessageCount', 'sourceTokenCount'],
+    properties: {
+      model: stringIdSchema,
+      summaryVersion: positiveIntegerSchema,
+      sourceMessageCount: positiveIntegerSchema,
+      sourceTokenCount: positiveIntegerSchema,
+    },
+  },
+  'context.compaction.failed': {
+    type: 'object',
+    additionalProperties: false,
+    required: ['model', 'code', 'retryable', 'message'],
+    properties: {
+      model: stringIdSchema,
+      code: { const: 6047 },
+      retryable: { type: 'boolean' },
+      message: { type: 'string', minLength: 1, maxLength: 1_000 },
+    },
+  },
   'tool.started': {
     type: 'object',
     additionalProperties: false,
@@ -273,6 +394,64 @@ const payloadSchemas: Record<AgentEventType, JsonSchema> = {
       purpose: { type: 'string', minLength: 1, maxLength: 500 },
     },
   },
+  'model.trace': {
+    oneOf: [
+      {
+        type: 'object',
+        additionalProperties: false,
+        required: [
+          'modelCallId',
+          'attempt',
+          'phase',
+          'messageCount',
+          'estimatedInputTokens',
+          'maxOutputTokens',
+          'contextWindow',
+        ],
+        properties: {
+          modelCallId: stringIdSchema,
+          attempt: positiveIntegerSchema,
+          phase: { const: 'REQUEST_DISPATCHED' },
+          messageCount: nonNegativeIntegerSchema,
+          estimatedInputTokens: nonNegativeIntegerSchema,
+          maxOutputTokens: positiveIntegerSchema,
+          contextWindow: positiveIntegerSchema,
+        },
+      },
+      {
+        type: 'object',
+        additionalProperties: false,
+        required: ['modelCallId', 'attempt', 'phase', 'chunkType'],
+        properties: {
+          modelCallId: stringIdSchema,
+          attempt: positiveIntegerSchema,
+          phase: { const: 'FIRST_PROVIDER_CHUNK' },
+          chunkType: { enum: ['REASONING', 'OUTPUT', 'TOOL_CALL', 'USAGE', 'COMPLETED'] },
+        },
+      },
+      {
+        type: 'object',
+        additionalProperties: false,
+        required: ['modelCallId', 'attempt', 'phase'],
+        properties: {
+          modelCallId: stringIdSchema,
+          attempt: positiveIntegerSchema,
+          phase: { const: 'STRUCTURED_REPAIR' },
+        },
+      },
+      {
+        type: 'object',
+        additionalProperties: false,
+        required: ['modelCallId', 'attempt', 'phase', 'finishReason'],
+        properties: {
+          modelCallId: stringIdSchema,
+          attempt: positiveIntegerSchema,
+          phase: { const: 'PROVIDER_COMPLETED' },
+          finishReason: { type: ['string', 'null'], minLength: 1, maxLength: 128 },
+        },
+      },
+    ],
+  },
   'model.fallback': {
     type: 'object',
     additionalProperties: false,
@@ -283,6 +462,74 @@ const payloadSchemas: Record<AgentEventType, JsonSchema> = {
       toProvider: { type: 'string', minLength: 1, maxLength: 128 },
       toModel: { type: 'string', minLength: 1, maxLength: 256 },
       reasonCode: { type: 'string', minLength: 1, maxLength: 128 },
+    },
+  },
+  'model.activity': {
+    type: 'object',
+    additionalProperties: false,
+    required: ['modelCallId', 'phase', 'processedCharacters'],
+    properties: {
+      modelCallId: stringIdSchema,
+      phase: { const: 'REASONING' },
+      processedCharacters: positiveIntegerSchema,
+    },
+  },
+  'model.preview.reset': {
+    type: 'object',
+    additionalProperties: false,
+    required: ['modelCallId', 'attempt'],
+    properties: {
+      modelCallId: stringIdSchema,
+      attempt: positiveIntegerSchema,
+    },
+  },
+  'model.preview.delta': {
+    type: 'object',
+    additionalProperties: false,
+    required: ['modelCallId', 'attempt', 'delta'],
+    properties: {
+      modelCallId: stringIdSchema,
+      attempt: positiveIntegerSchema,
+      delta: { type: 'string', minLength: 1, maxLength: 2_048 },
+    },
+  },
+  'model.completed': {
+    type: 'object',
+    additionalProperties: false,
+    required: ['modelCallId', 'provider', 'model', 'purpose', 'durationMs', 'repaired', 'finishReason', 'usage'],
+    properties: {
+      modelCallId: stringIdSchema,
+      provider: { type: 'string', minLength: 1, maxLength: 128 },
+      model: { type: 'string', minLength: 1, maxLength: 256 },
+      purpose: { type: 'string', minLength: 1, maxLength: 500 },
+      durationMs: nonNegativeIntegerSchema,
+      repaired: { type: 'boolean' },
+      finishReason: { type: ['string', 'null'], minLength: 1, maxLength: 128 },
+      usage: {
+        type: ['object', 'null'],
+        additionalProperties: false,
+        required: ['inputTokens', 'outputTokens'],
+        properties: {
+          inputTokens: nonNegativeIntegerSchema,
+          outputTokens: nonNegativeIntegerSchema,
+          cachedTokens: nonNegativeIntegerSchema,
+          reasoningTokens: nonNegativeIntegerSchema,
+        },
+      },
+    },
+  },
+  'model.failed': {
+    type: 'object',
+    additionalProperties: false,
+    required: ['modelCallId', 'provider', 'model', 'purpose', 'durationMs', 'error', 'willFallback'],
+    properties: {
+      modelCallId: stringIdSchema,
+      provider: { type: 'string', minLength: 1, maxLength: 128 },
+      model: { type: 'string', minLength: 1, maxLength: 256 },
+      purpose: { type: 'string', minLength: 1, maxLength: 500 },
+      durationMs: nonNegativeIntegerSchema,
+      error: streamErrorSchema,
+      willFallback: { type: 'boolean' },
     },
   },
   'model.delta': {
@@ -414,6 +661,36 @@ export const AGENT_EVENT_FIXTURES: AgentSseEvent[] = [
   },
   {
     ...eventBase,
+    type: 'context.compaction.started',
+    payload: {
+      model: 'research-model',
+      reason: 'MODEL_CONTEXT_PRESSURE',
+      estimatedTokens: 12_000,
+      targetTokens: 8_000,
+    },
+  },
+  {
+    ...eventBase,
+    type: 'context.compaction.completed',
+    payload: {
+      model: 'research-model',
+      summaryVersion: 2,
+      sourceMessageCount: 12,
+      sourceTokenCount: 4_000,
+    },
+  },
+  {
+    ...eventBase,
+    type: 'context.compaction.failed',
+    payload: {
+      model: 'research-model',
+      code: 6047,
+      retryable: true,
+      message: '会话整理失败，请重试或切换到上下文更大的模型',
+    },
+  },
+  {
+    ...eventBase,
     type: 'tool.started',
     payload: {
       toolCallId: 'tool_call_fixture',
@@ -452,6 +729,19 @@ export const AGENT_EVENT_FIXTURES: AgentSseEvent[] = [
   },
   {
     ...eventBase,
+    type: 'model.trace',
+    payload: {
+      modelCallId: 'model_call_fixture',
+      attempt: 1,
+      phase: 'REQUEST_DISPATCHED',
+      messageCount: 4,
+      estimatedInputTokens: 1_024,
+      maxOutputTokens: 2_048,
+      contextWindow: 32_768,
+    },
+  },
+  {
+    ...eventBase,
     type: 'model.fallback',
     payload: {
       fromProvider: 'primary',
@@ -459,6 +749,48 @@ export const AGENT_EVENT_FIXTURES: AgentSseEvent[] = [
       toProvider: 'secondary',
       toModel: 'secondary-model',
       reasonCode: 'RATE_LIMIT',
+    },
+  },
+  {
+    ...eventBase,
+    type: 'model.activity',
+    payload: { modelCallId: 'model_call_fixture', phase: 'REASONING', processedCharacters: 2_048 },
+  },
+  {
+    ...eventBase,
+    type: 'model.preview.reset',
+    payload: { modelCallId: 'model_call_fixture', attempt: 1 },
+  },
+  {
+    ...eventBase,
+    type: 'model.preview.delta',
+    payload: { modelCallId: 'model_call_fixture', attempt: 1, delta: '正在形成研究结论' },
+  },
+  {
+    ...eventBase,
+    type: 'model.completed',
+    payload: {
+      modelCallId: 'model_call_fixture',
+      provider: 'openai-compatible',
+      model: 'research-model',
+      purpose: 'SYNTHESIZE',
+      durationMs: 1_024,
+      repaired: false,
+      finishReason: 'stop',
+      usage: { inputTokens: 1_000, outputTokens: 500, reasoningTokens: 120 },
+    },
+  },
+  {
+    ...eventBase,
+    type: 'model.failed',
+    payload: {
+      modelCallId: 'model_call_fixture',
+      provider: 'openai-compatible',
+      model: 'research-model',
+      purpose: 'SYNTHESIZE',
+      durationMs: 1_024,
+      error: fixtureError,
+      willFallback: true,
     },
   },
   {

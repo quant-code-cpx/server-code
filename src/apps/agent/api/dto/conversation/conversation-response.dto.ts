@@ -178,6 +178,32 @@ export class AgentMessageListResponseDto {
   nextBeforeMessageId: string | null
 }
 
+export class ConversationContextPreparationResponseDto {
+  @ApiProperty({ enum: ['READY', 'COMPACTION_REQUIRED', 'INCOMPATIBLE'] })
+  status: 'READY' | 'COMPACTION_REQUIRED' | 'INCOMPATIBLE'
+
+  @ApiProperty()
+  targetModel: string
+
+  @ApiProperty()
+  contextWindow: number
+
+  @ApiProperty()
+  estimatedRecentTokens: number
+
+  @ApiProperty()
+  triggerTokens: number
+
+  @ApiProperty()
+  targetTokens: number
+
+  @ApiProperty()
+  willAutoCompactOnNextRun: boolean
+
+  @ApiProperty()
+  message: string
+}
+
 export class UpdateConversationModelResponseDto {
   @ApiProperty()
   conversationId: string
@@ -187,6 +213,9 @@ export class UpdateConversationModelResponseDto {
 
   @ApiPropertyOptional({ nullable: true })
   preferredModel: string | null
+
+  @ApiProperty({ type: ConversationContextPreparationResponseDto })
+  contextPreparation: ConversationContextPreparationResponseDto
 
   @ApiProperty({ format: 'date-time' })
   updatedAt: string

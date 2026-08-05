@@ -100,11 +100,11 @@ Body：`{ "clientRequestId": "...", "messageId": "msg_01K...", "modelPolicy": "A
 
 ### `POST /api/agent/conversations/model/update`
 
-Body：`{ "conversationId": "cm_01J...", "modelPolicy": "MANUAL", "preferredModel": "deepseek-reasoner" }`。仅影响后续 Run，不改写历史模型记录。
+Body：`{ "conversationId": "cm_01J...", "modelPolicy": "MANUAL", "preferredModel": "deepseek-reasoner" }`。仅影响后续 Run，不改写历史模型记录。保存前按目标模型窗口评估会话，响应包含 `contextPreparation`：`status` 为 `READY/COMPACTION_REQUIRED/INCOMPATIBLE`，并返回目标模型、窗口、估算 token、动态触发/目标 token、是否会在下一轮自动压缩和用户可见说明。
 
 ### `POST /api/agent/models/list`
 
-Body：`{}`。返回当前可见模型目录：`items[]` 包含 `model`、`displayName`、`provider`、`capabilities`、`costTier`（`LOW/MEDIUM/HIGH`）、`status`（`AVAILABLE/UNAVAILABLE`）和可空的通用 `reason`。`UNAVAILABLE` 条目用于前端展示，不能用于手动选择。
+Body：`{}`。返回当前可见模型目录：`items[]` 包含 `model`、`displayName`、`provider`、`capabilities`、`contextWindow`、`maxOutputTokens`、`costTier`（`LOW/MEDIUM/HIGH`）、`status`（`AVAILABLE/UNAVAILABLE`）和可空的通用 `reason`。`UNAVAILABLE` 条目用于前端展示，不能用于手动选择。
 
 目录绝不返回 API key、base URL、供应商原始错误、失败计数、熔断剩余时间或其他内部健康数据。会话设为 `MANUAL` 时服务端仍会重新校验模型注册状态、健康状态和 `USER_PRIVATE` 数据等级资格。
 

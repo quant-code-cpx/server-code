@@ -7,6 +7,8 @@ import { EventSignalScheduler } from './event-signal.scheduler'
 import { EventSignalService } from './event-signal.service'
 import { EventStudyController } from './event-study.controller'
 import { EventStudyService } from './event-study.service'
+import { EventStudyToolFacade } from './event-study-tool.facade'
+import { EventStudyToolRepository } from './event-study-tool.repository'
 import { buildProcessRoleConfig } from 'src/config/process-role.config'
 
 const processRole = buildProcessRoleConfig(process.env)
@@ -27,10 +29,12 @@ const processRole = buildProcessRoleConfig(process.env)
   controllers: [EventStudyController],
   providers: [
     EventStudyService,
+    EventStudyToolRepository,
+    EventStudyToolFacade,
     EventSignalService,
     EventSignalScheduler,
     ...(processRole.queueWorkerEnabled ? [EventSignalScanProcessor] : []),
   ],
-  exports: [EventStudyService, EventSignalService],
+  exports: [EventStudyService, EventSignalService, EventStudyToolFacade],
 })
 export class EventStudyModule {}

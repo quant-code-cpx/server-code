@@ -3,7 +3,7 @@ import { Prisma, StockListStatus } from '@prisma/client'
 import { CORE_INDEX_CODES, CORE_INDEX_NAME_MAP } from 'src/constant/tushare.constant'
 import { MARKET_PRICE_DATA_CONTRACT_VERIFIED } from 'src/tushare/data-contract'
 import { PrismaService } from 'src/shared/prisma.service'
-import { StockScreenerService } from './stock-screener.service'
+import { StockScreenerService, type StockScreenerOptions } from './stock-screener.service'
 import type { StockScreenerQueryDto } from './dto/stock-screener-query.dto'
 
 export const STOCK_PRICE_FIELDS = [
@@ -30,7 +30,7 @@ export const DEFAULT_STOCK_PRICE_FIELDS = [
   'amount',
 ] as const
 
-export type SecurityType = 'STOCK' | 'INDEX' | 'FUND' | 'OPTION'
+export type SecurityType = 'STOCK' | 'INDEX' | 'FUND' | 'OPTION' | 'CONVERTIBLE_BOND'
 export type StockPriceField = (typeof STOCK_PRICE_FIELDS)[number]
 export type StockPriceFrequency = 'DAILY' | 'WEEKLY' | 'MONTHLY'
 export type StockPriceAdjustment = 'NONE' | 'FORWARD' | 'BACKWARD'
@@ -131,9 +131,9 @@ export class StockToolFacade {
     @Optional() private readonly screener?: StockScreenerService,
   ) {}
 
-  screenStocks(query: StockScreenerQueryDto) {
+  screenStocks(query: StockScreenerQueryDto, options?: StockScreenerOptions) {
     if (!this.screener) throw new Error('StockScreenerService 未注入')
-    return this.screener.screener(query)
+    return this.screener.screener(query, options)
   }
 
   getScreenerPresets() {
@@ -146,7 +146,7 @@ export class StockToolFacade {
     const normalized = query.toLocaleLowerCase('zh-CN')
     const types = input.securityTypes?.length
       ? [...new Set(input.securityTypes)]
-      : (['STOCK', 'INDEX', 'FUND', 'OPTION'] as SecurityType[])
+      : (['STOCK', 'INDEX', 'FUND', 'OPTION', 'CONVERTIBLE_BOND'] as SecurityType[])
     const includeDelisted = input.includeDelisted ?? false
     const candidates: Array<{
       tsCode: string
@@ -258,6 +258,47 @@ export class StockToolFacade {
         }
 
         const today = startOfUtcDay(new Date())
+        if (securityType === 'CONVERTIBLE_BOND') {
+          const rows = await this.prisma.cbBasic.findMany({
+            where: {
+              AND: [
+                {
+                  OR: [
+                    { tsCode: { contains: query, mode: 'insensitive' } },
+                    { cbCode: { contains: query, mode: 'insensitive' } },
+                    { bondShortName: { contains: query, mode: 'insensitive' } },
+                    { bondFullName: { contains: query, mode: 'insensitive' } },
+                  ],
+                },
+                ...(includeDelisted ? [] : [{ OR: [{ delistDate: null }, { delistDate: { gte: today } }] }]),
+              ],
+            },
+            select: {
+              tsCode: true,
+              cbCode: true,
+              bondShortName: true,
+              exchange: true,
+              listDate: true,
+              delistDate: true,
+            },
+            orderBy: { tsCode: 'asc' },
+            take: 20,
+          })
+          candidates.push(
+            ...rows.map((row) => ({
+              tsCode: row.tsCode,
+              name: row.bondShortName,
+              securityType,
+              exchange: row.exchange ?? exchangeFromTsCode(row.tsCode),
+              listStatus: row.delistDate && row.delistDate < today ? 'D' : 'L',
+              listDate: toIsoDate(row.listDate),
+              delistDate: toIsoDate(row.delistDate),
+              matchScore: matchScore(normalized, row.tsCode, row.cbCode, row.bondShortName),
+            })),
+          )
+          return
+        }
+
         const rows = await this.prisma.optBasic.findMany({
           where: {
             ...(includeDelisted ? {} : { OR: [{ delistDate: null }, { delistDate: { gte: today } }] }),
@@ -612,6 +653,7 @@ function sourceModelsForSecurityTypes(types: SecurityType[]): string[] {
     INDEX: 'IndexDaily',
     FUND: 'FundBasic',
     OPTION: 'OptBasic',
+    CONVERTIBLE_BOND: 'CbBasic',
   }
   return types.map((type) => map[type])
 }

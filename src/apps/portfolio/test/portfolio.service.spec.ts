@@ -17,11 +17,12 @@ import { PortfolioService } from '../portfolio.service'
 // ── Mock 工厂 ─────────────────────────────────────────────────────────────────
 
 function buildPrismaMock() {
-  return {
+  const prisma = {
     portfolio: {
       create: jest.fn(),
       findMany: jest.fn(),
       findUnique: jest.fn(),
+      findFirst: jest.fn(),
       update: jest.fn(),
       delete: jest.fn(),
     },
@@ -29,6 +30,7 @@ function buildPrismaMock() {
       findMany: jest.fn(),
       findUnique: jest.fn(),
       findUniqueOrThrow: jest.fn(),
+      findFirst: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
       delete: jest.fn(),
@@ -46,8 +48,17 @@ function buildPrismaMock() {
     tradeCal: {
       findFirst: jest.fn(),
     },
+    portfolioHoldingEvent: {
+      findUnique: jest.fn(),
+      create: jest.fn(),
+    },
     $queryRaw: jest.fn(async () => []),
+    $transaction: jest.fn(),
   }
+  prisma.portfolio.findFirst.mockImplementation((args) => prisma.portfolio.findUnique(args))
+  prisma.portfolioHolding.findFirst.mockImplementation((args) => prisma.portfolioHolding.findUniqueOrThrow(args))
+  prisma.$transaction.mockImplementation(async (callback) => callback(prisma))
+  return prisma
 }
 
 function buildCacheMock() {
@@ -179,7 +190,13 @@ describe('PortfolioService', () => {
 
       const svc = createService(prisma)
       const result = await svc.addHolding(
-        { portfolioId: 'portfolio-001', tsCode: '000001.SZ', quantity: 100, avgCost: 10.0 },
+        {
+          portfolioId: 'portfolio-001',
+          tsCode: '000001.SZ',
+          quantity: 100,
+          avgCost: 10.0,
+          idempotencyKey: 'add-first-0001',
+        },
         10,
       )
 
@@ -200,7 +217,16 @@ describe('PortfolioService', () => {
 
       const svc = createService(prisma)
       // 再买 100 股 @12.00 → 加权平均 = (100*10 + 100*12)/200 = 11.00
-      await svc.addHolding({ portfolioId: 'portfolio-001', tsCode: '000001.SZ', quantity: 100, avgCost: 12.0 }, 10)
+      await svc.addHolding(
+        {
+          portfolioId: 'portfolio-001',
+          tsCode: '000001.SZ',
+          quantity: 100,
+          avgCost: 12.0,
+          idempotencyKey: 'add-weighted-0001',
+        },
+        10,
+      )
 
       expect(prisma.portfolioHolding.update).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -221,7 +247,7 @@ describe('PortfolioService', () => {
       prisma.portfolioHolding.delete.mockResolvedValue({})
 
       const svc = createService(prisma, cache)
-      const result = await svc.removeHolding('holding-001', 10)
+      const result = await svc.removeHolding({ holdingId: 'holding-001', idempotencyKey: 'remove-holding-0001' }, 10)
 
       expect(prisma.portfolioHolding.delete).toHaveBeenCalled()
       expect(cache.invalidateByPrefixes).toHaveBeenCalled()
@@ -363,7 +389,16 @@ describe('PortfolioService', () => {
       prisma.portfolioHolding.update.mockResolvedValue(updatedHolding)
 
       const svc = createService(prisma)
-      await svc.addHolding({ portfolioId: 'portfolio-001', tsCode: '000001.SZ', quantity: 200, avgCost: 15.0 }, 10)
+      await svc.addHolding(
+        {
+          portfolioId: 'portfolio-001',
+          tsCode: '000001.SZ',
+          quantity: 200,
+          avgCost: 15.0,
+          idempotencyKey: 'add-precision-0001',
+        },
+        10,
+      )
 
       const updateCall = prisma.portfolioHolding.update.mock.calls[0][0]
       expect(updateCall.data.quantity).toBe(300)
@@ -381,7 +416,16 @@ describe('PortfolioService', () => {
       prisma.portfolioHolding.update.mockResolvedValue(buildHolding({ quantity: 200 }))
 
       const svc = createService(prisma)
-      await svc.addHolding({ portfolioId: 'portfolio-001', tsCode: '000001.SZ', quantity: 100, avgCost: 20.0 }, 10)
+      await svc.addHolding(
+        {
+          portfolioId: 'portfolio-001',
+          tsCode: '000001.SZ',
+          quantity: 100,
+          avgCost: 20.0,
+          idempotencyKey: 'add-exact-0001',
+        },
+        10,
+      )
 
       const updateCall = prisma.portfolioHolding.update.mock.calls[0][0]
       expect(updateCall.data.quantity).toBe(200)
@@ -483,7 +527,16 @@ describe('PortfolioService', () => {
       prisma.portfolioHolding.update.mockResolvedValue(buildHolding({ quantity: 6 }))
 
       const svc = createService(prisma)
-      await svc.addHolding({ portfolioId: 'portfolio-001', tsCode: '000001.SZ', quantity: 3, avgCost: 10 }, 10)
+      await svc.addHolding(
+        {
+          portfolioId: 'portfolio-001',
+          tsCode: '000001.SZ',
+          quantity: 3,
+          avgCost: 10,
+          idempotencyKey: 'add-decimal-0001',
+        },
+        10,
+      )
 
       const updateCall = prisma.portfolioHolding.update.mock.calls[0][0]
 

@@ -1364,7 +1364,7 @@ export const TUSHARE_STK_FACTOR_FIELDS = [
   'low',
   'pre_close',
   'change',
-  'pct_chg',
+  'pct_change',
   'vol',
   'amount',
   'macd_dif',
@@ -1379,12 +1379,6 @@ export const TUSHARE_STK_FACTOR_FIELDS = [
   'boll_upper',
   'boll_mid',
   'boll_lower',
-  'cci_14',
-  'cci_20',
-  'tr',
-  'atr14',
-  'atr20',
-  'vr_26',
 ] as const
 
 /** 每日市场概况（daily_info）字段 */

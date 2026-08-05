@@ -178,7 +178,7 @@ model AiModelCall {
   step          AiAgentStep?    @relation("AiModelCallStep", fields: [stepId, runId], references: [id, runId], onDelete: Restrict)
   promptVersion AiPromptVersion @relation(fields: [promptVersionId], references: [id], onDelete: Restrict)
 
-  @@unique([userId, scopeId, provider, model, purpose, attemptCount], map: "ai_model_calls_scope_model_attempt_key")
+  @@unique([userId, scopeId, stepId, provider, model, purpose, attemptCount], map: "ai_model_calls_scope_step_model_attempt_key")
   @@index([runId, startedAt], map: "ai_model_calls_run_started_idx")
   @@index([userId, scopeId, startedAt], map: "ai_model_calls_user_scope_started_idx")
   @@index([provider, model, startedAt], map: "ai_model_calls_provider_model_started_idx")

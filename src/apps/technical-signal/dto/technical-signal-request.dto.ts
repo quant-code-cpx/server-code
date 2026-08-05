@@ -126,7 +126,7 @@ export class TechnicalSignalStatisticsRequestDto {
   @IsEnum(TechnicalSignalEntryMode)
   entryMode?: TechnicalSignalEntryMode = TechnicalSignalEntryMode.SIGNAL_CLOSE
 
-  @ApiPropertyOptional({ default: false, description: '是否计算沪深 300 超额收益；基准全历史未就绪时返回 409' })
+  @ApiPropertyOptional({ default: false, description: '是否计算沪深 300 超额收益；最近五年基准数据未就绪时返回 409' })
   @IsOptional()
   @IsBoolean()
   includeBenchmark?: boolean = false

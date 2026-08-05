@@ -41,8 +41,14 @@ export class WorkflowToolService {
       const snapshot = this.registry.freezeSnapshot(plan.toolPins)
       for (const pin of snapshot.entries) {
         const definition = this.registry.get(pin.key, pin.version)
-        if (definition.policy.sideEffect !== 'READ' || !definition.policy.idempotent) {
-          throw new WorkflowValidationError(`MVP 工作流仅允许幂等 READ Tool：${pin.key}`)
+        const safeRead = definition.policy.sideEffect === 'READ' && definition.policy.idempotent
+        const reportPreviewProposal =
+          definition.key === 'save_research_report' &&
+          definition.policy.sideEffect === 'WRITE' &&
+          definition.policy.requiresConfirmation &&
+          definition.policy.idempotent
+        if (!safeRead && !reportPreviewProposal) {
+          throw new WorkflowValidationError(`工作流仅允许幂等 READ Tool 或受控报告预览提案：${pin.key}`)
         }
       }
       return {
@@ -122,10 +128,20 @@ export class WorkflowToolService {
           if (error instanceof ToolExecutionError && error.result.code === 'CANCELLED') {
             throw new WorkflowCancelledError()
           }
-          if (!call.optional) throw normalizeToolError(error)
-          return { call, error }
+          if (!call.optional && !isDegradableDataAbsence(error)) throw normalizeToolError(error)
+          return { call, error, required: !call.optional }
         }
       })
+
+      let levelSucceeded = false
+      let requiredDataError: unknown | undefined
+      for (const outcome of outcomes) {
+        if ('result' in outcome) levelSucceeded = true
+        if ('error' in outcome && outcome.required && requiredDataError === undefined) {
+          requiredDataError = outcome.error
+        }
+      }
+      if (!levelSucceeded && requiredDataError !== undefined) throw normalizeToolError(requiredDataError)
 
       for (const outcome of outcomes) {
         if ('result' in outcome) {
@@ -135,7 +151,11 @@ export class WorkflowToolService {
         } else if ('skipped' in outcome) {
           warnings.push(`可选 Tool ${outcome.call.toolKey} 已跳过：${bindingErrorMessage(outcome.skipped)}`)
         } else {
-          warnings.push(`可选 Tool ${outcome.call.toolKey} 失败：${safeErrorMessage(outcome.error)}`)
+          warnings.push(
+            outcome.required
+              ? `Tool ${outcome.call.toolKey} 无可用数据，已使用同层替代事实：${safeErrorMessage(outcome.error)}`
+              : `可选 Tool ${outcome.call.toolKey} 失败：${safeErrorMessage(outcome.error)}`,
+          )
         }
       }
     }
@@ -175,6 +195,10 @@ function normalizeToolError(error: unknown): WorkflowExecutionError {
     )
   }
   return new WorkflowExecutionError('TOOL', 6099, true, 'Tool 执行失败')
+}
+
+function isDegradableDataAbsence(error: unknown): error is ToolExecutionError {
+  return error instanceof ToolExecutionError && error.result.code === 'DATA_NOT_FOUND'
 }
 
 function safeErrorMessage(error: unknown): string {

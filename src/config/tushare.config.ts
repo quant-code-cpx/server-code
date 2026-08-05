@@ -18,6 +18,8 @@ export const TushareConfig = registerAs(TUSHARE_CONFIG_TOKEN, () => ({
   requestIntervalMs: parseInt(process.env.TUSHARE_REQUEST_INTERVAL_MS ?? '', 10) || 350,
   /** 命中频控后的重试等待时间（毫秒） */
   rateLimitRetryDelayMs: parseInt(process.env.TUSHARE_RATE_LIMIT_RETRY_DELAY_MS ?? '', 10) || 65000,
+  /** stk_factor 独立主动限流；5000 积分档 100 次/分钟，默认留出安全余量 */
+  stkFactorMinIntervalMs: parseStkFactorMinIntervalMs(process.env.TUSHARE_STK_FACTOR_MIN_INTERVAL_MS),
   /** 单次请求命中频控后的最大重试次数 */
   maxRetries: parseInt(process.env.TUSHARE_MAX_RETRIES ?? '', 10) || 3,
   /** 是否启用启动检测与定时同步 */
@@ -44,3 +46,22 @@ export const TushareConfig = registerAs(TUSHARE_CONFIG_TOKEN, () => ({
 }))
 
 export type ITushareConfig = ConfigType<typeof TushareConfig>
+
+function parseBoundedInteger(
+  raw: string | undefined,
+  name: string,
+  fallback: number,
+  minimum: number,
+  maximum: number,
+): number {
+  if (raw === undefined || raw.trim() === '') return fallback
+  const value = Number(raw)
+  if (!Number.isInteger(value) || value < minimum || value > maximum) {
+    throw new Error(`[Tushare] ${name} 必须是 ${minimum}-${maximum} 的整数`)
+  }
+  return value
+}
+
+export function parseStkFactorMinIntervalMs(raw: string | undefined): number {
+  return parseBoundedInteger(raw, 'TUSHARE_STK_FACTOR_MIN_INTERVAL_MS', 650, 120, 60_000)
+}

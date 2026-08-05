@@ -268,6 +268,10 @@ export class FactorDataSyncService {
     fetchAndMap: (tradeDate: string) => Promise<unknown[]>
     resolveDates: (startDate: string) => Promise<string[]>
     onProgress?: (completed: number, total: number, currentKey?: string) => void
+    checkpoint?: boolean
+    failFast?: boolean
+    enqueueFailures?: boolean
+    validateMapped?: (rows: unknown[], tradeDate: string) => void
   }): Promise<void> {
     const {
       task,
@@ -279,6 +283,10 @@ export class FactorDataSyncService {
       fetchAndMap,
       resolveDates,
       onProgress,
+      checkpoint = false,
+      failFast = false,
+      enqueueFailures = false,
+      validateMapped,
     } = opts
 
     if (!fullSync && (await this.helper.isTaskSyncedForTradeDate(task, targetTradeDate))) {
@@ -287,8 +295,13 @@ export class FactorDataSyncService {
     }
 
     const startedAt = new Date()
+    const resumeKey = fullSync && checkpoint ? await this.helper.getResumeKey(task) : null
     const latestDate = fullSync ? null : await this.helper.getLatestDateString(modelName)
-    const startDate = latestDate ? this.helper.addDays(latestDate, 1) : this.helper.syncStartDate
+    const startDate = resumeKey
+      ? this.helper.addDays(resumeKey, 1)
+      : latestDate
+        ? this.helper.addDays(latestDate, 1)
+        : this.helper.syncStartDate
 
     if (this.helper.compareDateString(startDate, targetTradeDate) > 0) {
       this.logger.log(`[${label}] 已是最新（本地最新: ${latestDate}），无需同步`)
@@ -298,8 +311,11 @@ export class FactorDataSyncService {
     const tradeDates = await resolveDates(startDate)
     if (!tradeDates.length) {
       this.logger.log(`[${label}] ${startDate} ~ ${targetTradeDate} 间无交易日，跳过`)
+      if (fullSync && checkpoint) await this.helper.markCompleted(task)
       return
     }
+
+    if (fullSync && checkpoint) await this.helper.markRunning(task, tradeDates.length)
 
     this.logger.log(
       `[${label}] 开始同步 ${tradeDates.length} 个交易日: ${tradeDates[0]} → ${tradeDates[tradeDates.length - 1]}`,
@@ -312,6 +328,7 @@ export class FactorDataSyncService {
     for (const [i, td] of tradeDates.entries()) {
       try {
         const mapped = await fetchAndMap(td)
+        validateMapped?.(mapped, td)
         const tradeDateValue = tradeDateType === 'date' ? this.helper.toDate(td) : td
         const [, result] = await this.helper.prisma.$transaction([
           model.deleteMany({ where: { tradeDate: tradeDateValue } }),
@@ -322,6 +339,7 @@ export class FactorDataSyncService {
           this.logger.log(`[${label}] 进度 ${i + 1}/${tradeDates.length}，当前 ${td}，累计 ${totalRows} 条`)
         }
         onProgress?.(i + 1, tradeDates.length, td)
+        if (fullSync && checkpoint) await this.helper.updateProgress(task, td, i + 1, tradeDates.length)
       } catch (error) {
         const msg =
           error instanceof Error
@@ -332,13 +350,29 @@ export class FactorDataSyncService {
             : String(error)
         this.logger.error(`[${label}] ${td} 同步失败: ${msg}`)
         failed.push({ date: td, error: msg })
+        if (enqueueFailures) await this.helper.enqueueRetry(task, td, msg)
+        if (failFast) {
+          await this.helper.writeSyncLog(
+            task,
+            {
+              status: TushareSyncExecutionStatus.FAILED,
+              message: `${label}同步在 ${td} 失败并停止，安全断点未越过失败日期`,
+              tradeDate: this.helper.toDate(td),
+              payload: { rowCount: totalRows, failedDates: failed },
+            },
+            startedAt,
+          )
+          throw error
+        }
       }
     }
+
+    if (fullSync && checkpoint && failed.length === 0) await this.helper.markCompleted(task)
 
     await this.helper.writeSyncLog(
       task,
       {
-        status: TushareSyncExecutionStatus.SUCCESS,
+        status: failed.length === 0 ? TushareSyncExecutionStatus.SUCCESS : TushareSyncExecutionStatus.FAILED,
         message: `${label}同步完成，${totalRows} 条，${failed.length} 个日期曾失败`,
         tradeDate: this.helper.toDate(tradeDates[tradeDates.length - 1]),
         payload: {
@@ -366,21 +400,28 @@ export class FactorDataSyncService {
     onProgress?: (completed: number, total: number, currentKey?: string) => void,
   ): Promise<void> {
     const collector = new ValidationCollector(TushareSyncTaskName.STK_FACTOR)
-    await this.syncByTradeDateString({
-      task: TushareSyncTaskName.STK_FACTOR,
-      label: '技术因子',
-      modelName: 'stkFactor',
-      targetTradeDate,
-      fullSync: mode === 'full',
-      tradeDateType: 'date',
-      fetchAndMap: async (td) => {
-        const rows = await this.api.getStkFactorByTradeDate(td)
-        return rows.map((r) => mapStkFactorRecord(r, collector)).filter((r): r is NonNullable<typeof r> => Boolean(r))
-      },
-      resolveDates: (start) => this.helper.getOpenTradeDatesBetween(start, targetTradeDate),
-      onProgress,
-    })
-    await this.helper.flushValidationLogs(collector)
+    try {
+      await this.syncByTradeDateString({
+        task: TushareSyncTaskName.STK_FACTOR,
+        label: '技术因子',
+        modelName: 'stkFactor',
+        targetTradeDate,
+        fullSync: mode === 'full',
+        tradeDateType: 'date',
+        fetchAndMap: async (td) => {
+          const rows = await this.api.getStkFactorByTradeDate(td)
+          return rows.map((r) => mapStkFactorRecord(r, collector)).filter((r): r is NonNullable<typeof r> => Boolean(r))
+        },
+        resolveDates: (start) => this.helper.getOpenTradeDatesBetween(start, targetTradeDate),
+        onProgress,
+        checkpoint: mode === 'full',
+        failFast: true,
+        enqueueFailures: true,
+        validateMapped: (rows, tradeDate) => validateStkFactorCoreCoverage(rows, tradeDate, collector),
+      })
+    } finally {
+      await this.helper.flushValidationLogs(collector)
+    }
   }
 
   // ─── 沪深股通持股明细 ────────────────────────────────────────────────────────
@@ -523,5 +564,37 @@ export class FactorDataSyncService {
       },
       startedAt,
     )
+  }
+}
+
+const STK_FACTOR_CORE_GROUPS = Object.freeze({
+  MACD: ['macdDif', 'macdDea', 'macd'],
+  KDJ: ['kdjK', 'kdjD', 'kdjJ'],
+  RSI: ['rsi6', 'rsi12', 'rsi24'],
+  BOLL: ['bollUpper', 'bollMid', 'bollLower'],
+})
+
+function validateStkFactorCoreCoverage(rows: unknown[], tradeDate: string, collector: ValidationCollector): void {
+  if (rows.length === 0) throw new Error(`STK_FACTOR_DATA_QUALITY_FAILED: ${tradeDate} 返回 0 行`)
+  const failures: string[] = []
+  for (const [group, fields] of Object.entries(STK_FACTOR_CORE_GROUPS)) {
+    const validRows = rows.filter((row) => {
+      const record = row as Record<string, unknown>
+      return fields.some((field) => typeof record[field] === 'number' && Number.isFinite(record[field]))
+    }).length
+    const ratio = validRows / rows.length
+    if (ratio < 0.9) {
+      collector.add({
+        tradeDate,
+        ruleName: `stk_factor_${group.toLowerCase()}_coverage`,
+        severity: ratio < 0.5 ? 'error' : 'warn',
+        message: `${group} 非空覆盖率 ${(ratio * 100).toFixed(2)}%`,
+        rawData: { totalRows: rows.length, validRows, ratio },
+      })
+    }
+    if (ratio < 0.5) failures.push(`${group}=${(ratio * 100).toFixed(2)}%`)
+  }
+  if (failures.length) {
+    throw new Error(`STK_FACTOR_DATA_QUALITY_FAILED: ${tradeDate} 核心指标覆盖率过低（${failures.join(', ')}）`)
   }
 }

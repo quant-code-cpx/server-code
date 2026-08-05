@@ -45,7 +45,12 @@ import type {
   WorkflowCheckpoint,
 } from '../workflow.types'
 import { STOCK_RESEARCH_WORKFLOW_V1 } from '../workflows/stock-research.v1'
-import { STOCK_RESEARCH_WORKFLOW_DEFINITIONS, STOCK_RESEARCH_WORKFLOW_V2 } from '../workflows/stock-research.v2'
+import {
+  STOCK_RESEARCH_WORKFLOW_CURRENT,
+  STOCK_RESEARCH_WORKFLOW_DEFINITIONS,
+  STOCK_RESEARCH_WORKFLOW_V2,
+  STOCK_RESEARCH_WORKFLOW_V5,
+} from '../workflows/stock-research.v2'
 
 const config = buildAgentExecutionConfig({})
 const logger = { log: jest.fn(), warn: jest.fn(), error: jest.fn() } as unknown as LoggerService
@@ -83,6 +88,41 @@ describe('Stock research workflow v1', () => {
     expect(v2.contentHash).toBe('40bb600a69c34204d72dab4fb7cc2e444c12f66bbdad45f4d790ea85ca4319b8')
     expect(v2.promptContentHash).toBe(v1.promptContentHash)
     expect(() => registry.register(STOCK_RESEARCH_WORKFLOW_V2)).toThrow('Workflow Registry 已冻结')
+  })
+
+  it('[BIZ] Workflow v5 冻结第一批 Tool 路由，并允许 screen_stocks@2', () => {
+    const registry = new WorkflowRegistryService(STOCK_RESEARCH_WORKFLOW_DEFINITIONS)
+    registry.onModuleInit()
+    const v5 = registry.resolve('stock_research', 5)
+    const compiler = new ResearchPlanCompilerService()
+
+    expect(STOCK_RESEARCH_WORKFLOW_CURRENT).toBe(STOCK_RESEARCH_WORKFLOW_V5)
+    expect(v5.toolAllowlist).toEqual(
+      expect.arrayContaining([
+        'get_stock_technical_indicators',
+        'get_stock_technical_signals',
+        'get_data_availability',
+        'screen_stocks',
+      ]),
+    )
+    expect(v5.prompt.template).toContain('Never call screen_stocks for an exact single-stock standard-signal question')
+    const compiled = compiler.compile(
+      plan([{ ...toolCall('screen', 'screen_stocks'), toolVersion: 2 }]),
+      v5,
+      ['INTERNAL_DATA'],
+      1,
+    )
+    expect(compiled.toolPins).toEqual([{ key: 'screen_stocks', version: 2 }])
+  })
+
+  it('[COMPAT] Workflow v1-v4 的计划 schema 仍冻结 toolVersion=1', () => {
+    const registry = new WorkflowRegistryService(STOCK_RESEARCH_WORKFLOW_DEFINITIONS)
+    registry.onModuleInit()
+    const v4 = registry.resolve('stock_research', 4)
+    expect(v4.planSchema).toEqual(STOCK_RESEARCH_WORKFLOW_V1.planSchema)
+    const planProperties = v4.planSchema.properties as Record<string, Record<string, unknown>>
+    const toolCallItems = planProperties.toolCalls.items as Record<string, Record<string, unknown>>
+    expect(toolCallItems.properties.toolVersion).toEqual({ const: 1 })
   })
 
   it('只接受白名单、已授权 capability、无环且不超预算的 Tool 计划', () => {
@@ -227,6 +267,10 @@ describe('Stock research workflow v1', () => {
       outputTokens: 10,
       totalTokens: 30,
     })
+    expect(harness.modelOutputTokenLimits).toEqual([
+      { purpose: 'PLAN', maxOutputTokens: 384_000 },
+      { purpose: 'SYNTHESIZE', maxOutputTokens: 384_000 },
+    ])
   })
 
   it('普通问答可零 Tool 完成；多只读 Tool 同层并行且可选失败降级为 warning', async () => {
@@ -315,6 +359,80 @@ describe('Stock research workflow v1', () => {
     expect(result.facts).toHaveLength(1)
     expect(result.warnings).toEqual(['可选 Tool search_web 失败：搜索暂不可用'])
     expect(result.usage.toolCalls).toBe(2)
+  })
+
+  it('同层已有行情事实时，required Tool 的 DATA_NOT_FOUND 降级为 warning；无替代事实时仍失败', async () => {
+    const budgets = new WorkflowBudgetService(config)
+    const workflow = createRegistry().resolve('stock_research', 1)
+    const compiler = new ResearchPlanCompilerService()
+    const registry = {
+      freezeSnapshot: jest.fn((pins: any) => ({ entries: pins, signature: 'data_fallback_snapshot' })),
+      get: jest.fn((key: string, version: number) => ({
+        key,
+        version,
+        policy: { sideEffect: 'READ', idempotent: true },
+      })),
+    }
+    const executor = {
+      execute: jest.fn(async (command: any) => {
+        if (command.toolKey === 'get_stock_price_history') {
+          throw new ToolExecutionError({
+            ok: false,
+            toolCallId: 'tool_call_today',
+            toolKey: 'get_stock_price_history',
+            toolVersion: 1,
+            code: 'DATA_NOT_FOUND',
+            message: '请求区间无行情数据',
+            retryable: false,
+          })
+        }
+        return {
+          ok: true,
+          toolCallId: 'tool_call_overview',
+          toolKey: 'get_stock_overview',
+          toolVersion: 1,
+          data: { name: '佰维存储', quoteDate: '2026-08-04' },
+          provenance: {
+            sourceType: 'DATABASE',
+            sourceServices: ['stock'],
+            sourceModels: ['daily'],
+            asOf: { tradeDate: '2026-08-04', retrievedAt: '2026-08-05T13:00:00.000Z' },
+            timezone: 'Asia/Shanghai',
+          },
+          citationSourceIds: [],
+          warnings: [],
+          truncated: false,
+        }
+      }),
+    }
+    const service = new WorkflowToolService(registry as never, executor as never, budgets)
+    const execute = (calls: ResearchPlan['toolCalls']) => {
+      const compiled = compiler.compile(
+        calls.length ? plan(calls) : plan([]),
+        workflow,
+        ['INTERNAL_DATA'],
+        calls.length,
+      )
+      return service.execute({
+        run: makeRun(workflow),
+        stepId: 'step_execute_tools',
+        authorized: service.authorize(compiled),
+        context: loadedContext(),
+        usage: budgets.initialUsage(budgets.resolveLimits(workflow, {})),
+        limits: budgets.resolveLimits(workflow, { maxParallelTools: 2, maxToolCalls: calls.length }),
+      })
+    }
+
+    await expect(
+      execute([toolCall('today', 'get_stock_price_history'), toolCall('overview', 'get_stock_overview')]),
+    ).resolves.toMatchObject({
+      facts: [expect.objectContaining({ toolKey: 'get_stock_overview' })],
+      warnings: ['Tool get_stock_price_history 无可用数据，已使用同层替代事实：请求区间无行情数据'],
+    })
+    await expect(execute([toolCall('today_only', 'get_stock_price_history')])).rejects.toMatchObject({
+      category: 'TOOL',
+      agentCode: 6013,
+    })
   })
 
   it('同会话追问加载最近 10 条有界历史，不改写上一轮消息', async () => {
@@ -483,6 +601,11 @@ describe('Stock research workflow v1', () => {
       repaired.engine.execute({ run: repaired.run, workflow: repaired.workflow, workerId: 'worker_1' }),
     ).resolves.toMatchObject({ status: 'COMPLETED' })
     expect(repaired.modelPurposes).toEqual(['PLAN', 'SYNTHESIZE', 'VERIFY'])
+    expect(repaired.modelOutputTokenLimits).toEqual([
+      { purpose: 'PLAN', maxOutputTokens: 384_000 },
+      { purpose: 'SYNTHESIZE', maxOutputTokens: 384_000 },
+      { purpose: 'VERIFY', maxOutputTokens: 384_000 },
+    ])
 
     const invalid = createHarness({
       plan: plan([toolCall('overview', 'get_stock_overview')]),
@@ -629,6 +752,7 @@ function createHarness(options: {
   const run = options.run ?? makeRun(workflow)
   const steps = new Map<string, any>()
   const modelPurposes: string[] = []
+  const modelOutputTokenLimits: Array<{ purpose: string; maxOutputTokens: number }> = []
   let completionCommand: any = null
   let toolExecutions = 0
 
@@ -678,11 +802,14 @@ function createHarness(options: {
 
   const budgets = new WorkflowBudgetService(config)
   const model = {
+    resolveModelProfile: jest.fn(() => modelProfile()),
+    resolveMaxOutputTokens: jest.fn(() => 384_000),
     resolveInputTokenBudget: jest.fn(
       (_run: unknown, usage: any, limits: any) => limits.maxInputTokens - usage.inputTokens,
     ),
     generateStructured: jest.fn(async (command: any) => {
       modelPurposes.push(command.purpose)
+      modelOutputTokenLimits.push({ purpose: command.purpose, maxOutputTokens: command.maxOutputTokens })
       const data =
         command.purpose === 'PLAN'
           ? options.plan
@@ -752,7 +879,7 @@ function createHarness(options: {
     budgets,
     config,
     logger,
-    new LoadContextNode(contextService as never, summaryGenerator as never),
+    new LoadContextNode(contextService as never, summaryGenerator as never, model as never),
     new PlanNode(model as never, registry as never, contextService as never),
     new AuthorizeToolsNode(new ResearchPlanCompilerService(), toolService as never, budgets),
     new ExecuteToolsNode(toolService as never),
@@ -768,12 +895,31 @@ function createHarness(options: {
     workflow,
     steps,
     modelPurposes,
+    modelOutputTokenLimits,
     get completionCommand() {
       return completionCommand
     },
     get toolExecutions() {
       return toolExecutions
     },
+  }
+}
+
+function modelProfile() {
+  return {
+    selectedProvider: 'fake',
+    selectedModel: 'fake-model',
+    candidates: [
+      {
+        provider: 'fake',
+        model: 'fake-model',
+        contextWindow: 1_000_000,
+        maxOutputTokens: 384_000,
+        capabilities: ['STREAMING', 'STRUCTURED_OUTPUT'],
+        reasoningEfforts: [],
+        dataClasses: ['USER_PRIVATE'],
+      },
+    ],
   }
 }
 

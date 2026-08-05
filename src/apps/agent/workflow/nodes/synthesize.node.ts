@@ -17,11 +17,12 @@ export class SynthesizeNode implements WorkflowNodeHandler {
 
   async execute({ run, workflow, state, limits, stepId, workerId, signal }: WorkflowNodeExecutionContext) {
     if (!state.context || !state.plan) throw new WorkflowValidationError('synthesize 节点缺少上下文或计划')
+    const modelProfile = state.modelProfile ?? this.models.resolveModelProfile(run)
     const citableFacts = state.facts.filter(isCitableFact)
-    const maxOutputTokens = workflow.version >= 4 ? 4_096 : 2_000
+    const maxOutputTokens = this.models.resolveMaxOutputTokens(modelProfile, state.budget, limits)
     const prepared = this.contexts.prepareModelCall({
       context: state.context,
-      budget: this.models.resolveInputTokenBudget(run, state.budget, limits, maxOutputTokens),
+      budget: this.models.resolveInputTokenBudget(modelProfile, state.budget, limits),
       purpose: 'SYNTHESIZE',
       instruction:
         'Answer the latest user message concisely. Every factual claim must cite existing factIds. Never invent a factId. Search snippets are not citable evidence. For rankings, show at most the requested top N and do not repeat raw tool payloads.',
@@ -40,9 +41,11 @@ export class SynthesizeNode implements WorkflowNodeHandler {
       limits,
       workerId,
       signal,
+      modelProfile,
     })
     return {
       ...state,
+      modelProfile,
       context: prepared.context,
       draft: result.data,
       budget: result.usage,

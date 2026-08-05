@@ -31,15 +31,15 @@ const integrationDescribe = runIntegration ? describe : describe.skip
 
 integrationDescribe('自动滚动摘要 - 真实 PostgreSQL 跨层集成', () => {
   const config = {
-    maxTokens: 50_000,
-    recentMessageCount: 20,
     maxPageContextBytes: 20_000,
     summaryEnabled: true,
-    summaryMinMessageCount: 8,
-    summaryTriggerTokens: 2_048,
-    summaryMaxSourceTokens: 8_192,
-    summaryMaxMessageCount: 500,
-    summaryMaxOutputTokens: 1_024,
+    safetyRatio: 0.08,
+    compactionTriggerRatio: 0.5,
+    compactionTargetRatio: 0.2,
+    outputReserveRatio: 0.15,
+    summaryOutputReserveRatio: 0.05,
+    summaryRunInputRatio: 0.25,
+    queryPageSize: 100,
   }
   const limits = {
     maxSteps: 8,
@@ -50,7 +50,11 @@ integrationDescribe('自动滚动摘要 - 真实 PostgreSQL 跨层集成', () =>
     costCurrency: 'CNY',
   }
   const logger = { log: jest.fn(), warn: jest.fn(), error: jest.fn() } as unknown as LoggerService
-  const models = { generateStructured: jest.fn() }
+  const models = {
+    generateStructured: jest.fn(),
+    resolveModelProfile: jest.fn(() => modelProfile()),
+    resolveInputTokenBudget: jest.fn(() => 395),
+  }
   let database: TemporaryAgentDatabase | undefined
   let client: PrismaClient
   let user: User
@@ -121,7 +125,7 @@ integrationDescribe('自动滚动摘要 - 真实 PostgreSQL 跨层集成', () =>
   it('达到阈值后自动提交摘要，并在同一 load_context 中消费新摘要和保护窗口', async () => {
     const fixture = await createConversation(29)
     models.generateStructured.mockImplementation(async (command) => modelResult(command, fixture.messages[0].id))
-    const node = new LoadContextNode(builder, generator)
+    const node = new LoadContextNode(builder, generator, models as never)
 
     const result = await node.execute(executionContext(fixture))
 
@@ -155,6 +159,7 @@ integrationDescribe('自动滚动摘要 - 真实 PostgreSQL 跨层集成', () =>
       stepId: 'step_load_context',
       usage: baseUsage(),
       limits,
+      modelProfile: modelProfile(),
     }
     const first = generator.maybeCompact(command)
     const second = generator.maybeCompact(command)
@@ -202,6 +207,7 @@ integrationDescribe('自动滚动摘要 - 真实 PostgreSQL 跨层集成', () =>
           stepId: 'step_load_context',
           usage: baseUsage(),
           limits,
+          modelProfile: modelProfile(),
         }),
       ),
     )
@@ -231,6 +237,7 @@ integrationDescribe('自动滚动摘要 - 真实 PostgreSQL 跨层集成', () =>
       stepId: 'step_load_context',
       usage: baseUsage(),
       limits,
+      modelProfile: modelProfile(),
     }
     const startedAt = performance.now()
     const results = await Promise.all(Array.from({ length: 50 }, () => generator.maybeCompact(command)))
@@ -392,6 +399,24 @@ function percentile(samples: number[], ratio: number): number {
 
 function baseUsage() {
   return { steps: 1, toolCalls: 0, inputTokens: 0, outputTokens: 0, cost: 0, costCurrency: 'CNY' }
+}
+
+function modelProfile() {
+  return {
+    selectedProvider: 'fake',
+    selectedModel: 'fake-summary-v1',
+    candidates: [
+      {
+        provider: 'fake',
+        model: 'fake-summary-v1',
+        contextWindow: 512,
+        maxOutputTokens: 128,
+        capabilities: ['STREAMING', 'STRUCTURED_OUTPUT'] as const,
+        reasoningEfforts: [] as const,
+        dataClasses: ['USER_PRIVATE'] as const,
+      },
+    ],
+  }
 }
 
 function deferred<T>() {

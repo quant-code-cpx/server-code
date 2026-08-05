@@ -214,6 +214,19 @@ export type AgentEventPayloadMap = {
   'agent.started': { workflowKey: string; workflowVersion: number; modelPolicy: ModelPolicy }
   'agent.planning': { intent: string; capabilities: AgentCapability[]; planSummary: string }
   'agent.progress': { stepKey: string; label: string; completed: number; total: number | null }
+  'context.compaction.started': {
+    model: string
+    reason: 'MODEL_CONTEXT_PRESSURE' | 'MODEL_SWITCH'
+    estimatedTokens: number
+    targetTokens: number
+  }
+  'context.compaction.completed': {
+    model: string
+    summaryVersion: number
+    sourceMessageCount: number
+    sourceTokenCount: number
+  }
+  'context.compaction.failed': { model: string; code: 6047; retryable: boolean; message: string }
   'tool.started': { toolCallId: string; toolName: AgentToolKey; inputSummary: string; attempt: number }
   'tool.completed': {
     toolCallId: string
@@ -226,7 +239,47 @@ export type AgentEventPayloadMap = {
   }
   'tool.failed': { toolCallId: string; error: StreamError; attempt: number; willRetry: boolean }
   'model.started': { modelCallId: string; provider: string; model: string; purpose: string }
+  'model.trace':
+    | {
+        modelCallId: string
+        attempt: number
+        phase: 'REQUEST_DISPATCHED'
+        messageCount: number
+        estimatedInputTokens: number
+        maxOutputTokens: number
+        contextWindow: number
+      }
+    | {
+        modelCallId: string
+        attempt: number
+        phase: 'FIRST_PROVIDER_CHUNK'
+        chunkType: 'REASONING' | 'OUTPUT' | 'TOOL_CALL' | 'USAGE' | 'COMPLETED'
+      }
+    | { modelCallId: string; attempt: number; phase: 'STRUCTURED_REPAIR' }
+    | { modelCallId: string; attempt: number; phase: 'PROVIDER_COMPLETED'; finishReason: string | null }
   'model.fallback': { fromProvider: string; fromModel: string; toProvider: string; toModel: string; reasonCode: string }
+  'model.activity': { modelCallId: string; phase: 'REASONING'; processedCharacters: number }
+  'model.preview.reset': { modelCallId: string; attempt: number }
+  'model.preview.delta': { modelCallId: string; attempt: number; delta: string }
+  'model.completed': {
+    modelCallId: string
+    provider: string
+    model: string
+    purpose: string
+    durationMs: number
+    repaired: boolean
+    finishReason: string | null
+    usage: { inputTokens: number; outputTokens: number; cachedTokens?: number; reasoningTokens?: number } | null
+  }
+  'model.failed': {
+    modelCallId: string
+    provider: string
+    model: string
+    purpose: string
+    durationMs: number
+    error: StreamError
+    willFallback: boolean
+  }
   'model.delta': { modelCallId: string; blockIndex: number; delta: string }
   'citation.created': { citation: Citation }
   'report.generated': { reportId: string; title: string; format: 'MARKDOWN' | 'PDF' }

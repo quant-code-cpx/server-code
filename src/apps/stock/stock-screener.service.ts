@@ -227,6 +227,11 @@ interface ScreenerFilterContext {
   whereClause: Prisma.Sql
 }
 
+export interface StockScreenerOptions {
+  includeHeuristicDetails?: boolean
+  forceHeuristicRanking?: boolean
+}
+
 @Injectable()
 export class StockScreenerService {
   constructor(
@@ -234,12 +239,14 @@ export class StockScreenerService {
     private readonly cacheService: CacheService,
   ) {}
 
-  async screener(query: StockScreenerQueryDto) {
+  async screener(query: StockScreenerQueryDto, options: StockScreenerOptions = {}) {
     const page = query.page ?? 1
     const pageSize = query.pageSize ?? 20
     const offset = (page - 1) * pageSize
-    const sortBy = query.sortBy ?? ScreenerSortBy.TOTAL_MV
-    const sortOrder = query.sortOrder ?? 'desc'
+    const sortBy = options.forceHeuristicRanking
+      ? ScreenerSortBy.BUY_SIGNAL_COUNT
+      : (query.sortBy ?? ScreenerSortBy.TOTAL_MV)
+    const sortOrder = options.forceHeuristicRanking ? 'desc' : (query.sortOrder ?? 'desc')
 
     const {
       valuationConditions,
@@ -251,7 +258,7 @@ export class StockScreenerService {
       needsConceptJoin,
       needsNorthboundJoin,
       whereClause,
-    } = this.buildScreenerFilterContext(query, sortBy)
+    } = this.buildScreenerFilterContext(query, sortBy, undefined, options.includeHeuristicDetails ?? false)
     const sortCol = Prisma.raw(SCREENER_SORT_MAP[sortBy])
     const sortDir = Prisma.raw(sortOrder === 'asc' ? 'ASC NULLS LAST' : 'DESC NULLS LAST')
 
@@ -403,11 +410,47 @@ export class StockScreenerService {
       mainNetInflow20d: number | null
       buySignalCount: number | null
       buySignals: string[] | null
+      macdDif: number | null
+      macdDea: number | null
+      previousMacdDif: number | null
+      previousMacdDea: number | null
+      kdjK: number | null
+      kdjD: number | null
+      previousKdjK: number | null
+      previousKdjD: number | null
+      bollMid: number | null
+      bollLower: number | null
+      rsi6: number | null
     }
 
     const buySignalSelect = needsBuySignalScore
       ? Prisma.sql`${BUY_SIGNAL_COUNT_SQL} AS "buySignalCount", ${BUY_SIGNALS_SQL} AS "buySignals"`
       : Prisma.sql`NULL::integer AS "buySignalCount", NULL::text[] AS "buySignals"`
+    const heuristicEvidenceSelect = needsBuySignalScore
+      ? Prisma.sql`
+          stf.macd_dif AS "macdDif",
+          stf.macd_dea AS "macdDea",
+          stf.prev_macd_dif AS "previousMacdDif",
+          stf.prev_macd_dea AS "previousMacdDea",
+          stf.kdj_k AS "kdjK",
+          stf.kdj_d AS "kdjD",
+          stf.prev_kdj_k AS "previousKdjK",
+          stf.prev_kdj_d AS "previousKdjD",
+          stf.boll_mid AS "bollMid",
+          stf.boll_lower AS "bollLower",
+          stf.rsi_6 AS "rsi6"`
+      : Prisma.sql`
+          NULL::numeric AS "macdDif",
+          NULL::numeric AS "macdDea",
+          NULL::numeric AS "previousMacdDif",
+          NULL::numeric AS "previousMacdDea",
+          NULL::numeric AS "kdjK",
+          NULL::numeric AS "kdjD",
+          NULL::numeric AS "previousKdjK",
+          NULL::numeric AS "previousKdjD",
+          NULL::numeric AS "bollMid",
+          NULL::numeric AS "bollLower",
+          NULL::numeric AS "rsi6"`
     const secondarySort =
       sortBy === ScreenerSortBy.BUY_SIGNAL_COUNT
         ? Prisma.sql`, d.pct_chg DESC NULLS LAST, sb.ts_code ASC`
@@ -455,7 +498,8 @@ export class StockScreenerService {
           fi.end_date           AS "latestFinDate",
           mf_agg.main_net_5d    AS "mainNetInflow5d",
           mf_agg.main_net_20d   AS "mainNetInflow20d",
-          ${buySignalSelect}
+          ${buySignalSelect},
+          ${heuristicEvidenceSelect}
         FROM stock_basic_profiles sb
         ${valuationJoin}
         ${marketJoin}
@@ -507,7 +551,10 @@ export class StockScreenerService {
       pageSize,
       total: Number(countResult[0]?.count ?? 0),
       items: items.map((r) => ({
-        ...r,
+        tsCode: r.tsCode,
+        name: r.name,
+        industry: r.industry,
+        market: r.market,
         listDate: formatDate(r.listDate),
         latestFinDate: formatDate(r.latestFinDate),
         peTtm: r.peTtm !== null ? Number(r.peTtm) : null,
@@ -534,6 +581,13 @@ export class StockScreenerService {
         buySignalCount: r.buySignalCount !== null ? Number(r.buySignalCount) : null,
         buySignals: Array.isArray(r.buySignals) ? r.buySignals : null,
         concepts: conceptMap.get(r.tsCode) ?? null,
+        ...(options.includeHeuristicDetails
+          ? {
+              heuristicCatalogVersion: 'stock-screener-heuristics.v1' as const,
+              screeningHeuristicCount: r.buySignalCount !== null ? Number(r.buySignalCount) : 0,
+              screeningHeuristics: buildScreeningHeuristics(r),
+            }
+          : {}),
       })),
     }
   }
@@ -705,6 +759,7 @@ export class StockScreenerService {
     query: ScreenerFiltersDto,
     sortBy?: ScreenerSortBy,
     tradeDate?: string,
+    includeBuySignalScore = false,
   ): ScreenerFilterContext {
     // 普通接口延续“当前上市”语义；订阅/回放传入 tradeDate 时，改用上市、退市日期
     // 还原该日可交易 universe，避免今天的 list_status 影响历史评估。
@@ -723,6 +778,7 @@ export class StockScreenerService {
     const technicalConditions: Prisma.Sql[] = []
 
     if (query.exchange) stockConditions.push(Prisma.sql`sb.exchange = ${query.exchange}::"StockExchange"`)
+    if (query.tsCodes?.length) stockConditions.push(Prisma.sql`sb.ts_code = ANY(${query.tsCodes})`)
     if (query.market) stockConditions.push(Prisma.sql`sb.market = ${query.market}`)
     // 多行业/多地域优先于单选
     if (query.industries?.length) {
@@ -803,7 +859,8 @@ export class StockScreenerService {
       moneyflowConditions.push(Prisma.sql`mf_agg.main_net_20d >= ${query.minMainNetInflow20d}`)
     }
 
-    const needsBuySignalScore = query.minBuySignalCount !== undefined || sortBy === ScreenerSortBy.BUY_SIGNAL_COUNT
+    const needsBuySignalScore =
+      includeBuySignalScore || query.minBuySignalCount !== undefined || sortBy === ScreenerSortBy.BUY_SIGNAL_COUNT
     if (query.minBuySignalCount !== undefined) {
       technicalConditions.push(Prisma.sql`${BUY_SIGNAL_COUNT_SQL} >= ${query.minBuySignalCount}`)
     }
@@ -1093,4 +1150,85 @@ export class StockScreenerService {
   private isStrategyNameConflict(error: unknown) {
     return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002'
   }
+}
+
+function buildScreeningHeuristics(row: {
+  close: number | null
+  macdDif: number | null
+  macdDea: number | null
+  previousMacdDif: number | null
+  previousMacdDea: number | null
+  kdjK: number | null
+  kdjD: number | null
+  previousKdjK: number | null
+  previousKdjD: number | null
+  bollMid: number | null
+  bollLower: number | null
+  rsi6: number | null
+}) {
+  const macdGolden =
+    finite(row.macdDif) &&
+    finite(row.macdDea) &&
+    finite(row.previousMacdDif) &&
+    finite(row.previousMacdDea) &&
+    row.macdDif > row.macdDea &&
+    row.previousMacdDif <= row.previousMacdDea
+  const kdjGolden =
+    finite(row.kdjK) &&
+    finite(row.kdjD) &&
+    finite(row.previousKdjK) &&
+    finite(row.previousKdjD) &&
+    row.kdjK > row.kdjD &&
+    row.previousKdjK <= row.previousKdjD
+  return [
+    {
+      key: 'MACD_GOLDEN_CROSS',
+      displayName: 'MACD DIF 上穿 DEA',
+      matched: macdGolden,
+      evidence: {
+        macdDif: numeric(row.macdDif),
+        macdDea: numeric(row.macdDea),
+        previousMacdDif: numeric(row.previousMacdDif),
+        previousMacdDea: numeric(row.previousMacdDea),
+      },
+    },
+    {
+      key: 'KDJ_GOLDEN_CROSS',
+      displayName: 'KDJ K 上穿 D',
+      matched: kdjGolden,
+      evidence: {
+        kdjK: numeric(row.kdjK),
+        kdjD: numeric(row.kdjD),
+        previousKdjK: numeric(row.previousKdjK),
+        previousKdjD: numeric(row.previousKdjD),
+      },
+    },
+    {
+      key: 'MACD_POSITIVE_AND_CLOSE_ABOVE_BOLL_MID',
+      displayName: 'MACD DIF 为正且收盘价高于 BOLL 中轨',
+      matched:
+        finite(row.close) && finite(row.bollMid) && finite(row.macdDif) && row.close > row.bollMid && row.macdDif > 0,
+      evidence: { close: numeric(row.close), bollMid: numeric(row.bollMid), macdDif: numeric(row.macdDif) },
+    },
+    {
+      key: 'CLOSE_BELOW_BOLL_LOWER',
+      displayName: '收盘价低于 BOLL 下轨',
+      matched: finite(row.close) && finite(row.bollLower) && row.close < row.bollLower,
+      evidence: { close: numeric(row.close), bollLower: numeric(row.bollLower) },
+    },
+    {
+      key: 'RSI6_BELOW_20',
+      displayName: 'RSI6 低于 20',
+      matched: finite(row.rsi6) && row.rsi6 < 20,
+      evidence: { rsi6: numeric(row.rsi6) },
+    },
+  ]
+}
+
+function finite(value: number | null): value is number {
+  return value !== null && Number.isFinite(Number(value))
+}
+
+function numeric(value: number | null): number | null {
+  return finite(value) ? Number(value) : null
 }

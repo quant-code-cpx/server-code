@@ -13,7 +13,7 @@ import { PortfolioTradeLogService } from './services/portfolio-trade-log.service
 import { CreatePortfolioDto } from './dto/create-portfolio.dto'
 import { UpdatePortfolioDto } from './dto/update-portfolio.dto'
 import { AddHoldingDto } from './dto/add-holding.dto'
-import { UpdateHoldingDto } from './dto/update-holding.dto'
+import { RemoveHoldingDto, UpdateHoldingDto } from './dto/update-holding.dto'
 import { PortfolioPnlHistoryDto } from './dto/portfolio-pnl.dto'
 import { CreateRiskRuleDto, UpdateRiskRuleDto } from './dto/risk-rule.dto'
 import { ApplyBacktestDto, ApplyBacktestResponseDto } from './dto/apply-backtest.dto'
@@ -113,8 +113,8 @@ export class PortfolioController {
   @Post('holding/remove')
   @ApiOperation({ summary: '删除持仓' })
   @ApiSuccessResponse(SuccessDto)
-  removeHolding(@CurrentUser() user: TokenPayload, @Body() body: { holdingId: string }) {
-    return this.portfolioService.removeHolding(body.holdingId, user.id)
+  removeHolding(@CurrentUser() user: TokenPayload, @Body() dto: RemoveHoldingDto) {
+    return this.portfolioService.removeHolding(dto, user.id)
   }
 
   // ─── 盈亏分析 ─────────────────────────────────────────────────────────────

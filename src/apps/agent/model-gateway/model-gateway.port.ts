@@ -90,11 +90,18 @@ export interface ModelToolCallCompleted {
 }
 
 export type ModelChunk =
+  | { type: 'REASONING_ACTIVITY'; characters: number }
   | { type: 'OUTPUT_TEXT_DELTA'; text: string }
   | ModelToolCallDelta
   | ModelToolCallCompleted
   | { type: 'USAGE'; usage: ModelUsage }
   | { type: 'COMPLETED'; finishReason: string | null; providerRequestId?: string | null }
+
+export type ModelStructuredStreamEvent =
+  | { type: 'ATTEMPT_STARTED'; repairAttempt: number }
+  | { type: 'CHUNK'; repairAttempt: number; chunk: ModelChunk }
+
+export type ModelStructuredStreamObserver = (event: ModelStructuredStreamEvent) => void | Promise<void>
 
 export interface ModelCompletion {
   provider: string
@@ -142,13 +149,29 @@ export interface ModelProvider {
 
 export interface ModelGatewayPort {
   stream(request: ModelRequest, signal?: AbortSignal): AsyncIterable<ModelChunk>
-  generateStructured<T>(request: ModelRequest, signal?: AbortSignal): Promise<ModelResult<T>>
-  generateStructuredForModel<T>(request: ModelRequest, model: string, signal?: AbortSignal): Promise<ModelResult<T>>
+  generateStructured<T>(
+    request: ModelRequest,
+    signal?: AbortSignal,
+    streamObserver?: ModelStructuredStreamObserver,
+  ): Promise<ModelResult<T>>
+  generateStructuredForModel<T>(
+    request: ModelRequest,
+    descriptor: ModelDescriptor,
+    signal?: AbortSignal,
+    streamObserver?: ModelStructuredStreamObserver,
+  ): Promise<ModelResult<T>>
   select(request: ModelRequest): ModelRouteDecision
   getCapabilities(modelRef?: string | null): ModelDescriptor
 }
 
-export type ModelGatewayErrorCategory = 'AUTH' | 'RATE_LIMIT' | 'TIMEOUT' | 'UNAVAILABLE' | 'CONTENT' | 'INVALID_OUTPUT'
+export type ModelGatewayErrorCategory =
+  | 'AUTH'
+  | 'RATE_LIMIT'
+  | 'TIMEOUT'
+  | 'UNAVAILABLE'
+  | 'CONTENT'
+  | 'CONTEXT_LENGTH'
+  | 'INVALID_OUTPUT'
 
 export class ModelGatewayError extends Error {
   constructor(

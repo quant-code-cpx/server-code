@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
-import { IsNumber, IsOptional, Max, Min } from 'class-validator'
+import { ArrayMaxSize, ArrayMinSize, IsArray, IsNumber, IsOptional, Max, Min } from 'class-validator'
 import { Type } from 'class-transformer'
 
 export class RunMonteCarloDto {
@@ -16,6 +16,14 @@ export class RunMonteCarloDto {
   @IsNumber()
   @Type(() => Number)
   seed?: number
+
+  @ApiPropertyOptional({ type: [Number], description: '分位水平（0.01~0.99）' })
+  @IsOptional()
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(5)
+  @IsNumber({}, { each: true })
+  confidenceLevels?: number[]
 }
 
 export class MonteCarloFinalNavDistributionDto {

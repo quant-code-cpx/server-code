@@ -189,11 +189,12 @@ src/apps/agent/memory/conversation-summary.prompt.ts
 src/apps/agent/workflow/nodes/load-context.node.ts
 ```
 
-- `ContextBuilderService` 按固定 segment 顺序和目标模型窗口构建上下文；摘要 hash/range 异常时回退原始消息。
-- `ConversationSummaryGeneratorService` 在 `load_context` 前按消息数与 token 双阈值选择旧消息；保护当前问题和最近窗口，单批有界。
+- `ContextBuilderService` 按固定 segment 顺序和 Run 实际冻结模型的动态预算构建上下文；摘要 hash/range 异常时回退原始消息。
+- `ConversationSummaryGeneratorService` 在 `load_context` 前按模型窗口比例与 Run 剩余预算选择旧消息；不使用固定消息条数或固定 token 触发线。
 - 摘要调用固定 `purpose=SUMMARIZE` 和专用发布态 Prompt；结构、来源、实体/数字/日期/引号校验通过后才提交。
-- CAS 冲突重读后最多重算一次；模型或校验失败只追加脱敏 warning，用户取消仍终止 Workflow。
+- CAS 冲突重读后最多重算一次；必须压缩但模型或校验失败时发出脱敏失败事件并以 `6047` 终止，禁止静默丢弃历史；用户取消仍终止 Workflow。
 - `AGENT_SUMMARY_ENABLED=false` 可只停止自动摘要；原始消息、已有摘要和记忆数据不删除。
+- 完整预算公式、模型切换和运维步骤见[模型感知会话上下文压缩运行手册](./模型感知会话上下文压缩-运行手册.md)。
 
 ## 12. 测试与验收
 

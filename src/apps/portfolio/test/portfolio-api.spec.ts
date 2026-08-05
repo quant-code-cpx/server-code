@@ -273,7 +273,7 @@ describe('Portfolio API 测试', () => {
     it('P-BIZ-006: 添加持仓', async () => {
       const res = await req
         .post('/portfolio/holding/add')
-        .send({ portfolioId: 'port-1', tsCode: '000001.SZ', quantity: 1000, avgCost: 12.5 })
+        .send({ portfolioId: 'port-1', tsCode: '000001.SZ', quantity: 1000, avgCost: 12.5, idempotencyKey: 'api-add-0001' })
         .expect(201)
       expect(res.body.data.id).toBe('hold-1')
       expect(res.body.data.tsCode).toBe('000001.SZ')
@@ -282,7 +282,7 @@ describe('Portfolio API 测试', () => {
     it('P-BIZ-007: 更新持仓', async () => {
       await req
         .post('/portfolio/holding/update')
-        .send({ holdingId: 'hold-1', quantity: 2000, avgCost: 13.0 })
+        .send({ holdingId: 'hold-1', quantity: 2000, avgCost: 13.0, idempotencyKey: 'api-update-0001' })
         .expect(201)
       expect(mockPortfolioService.updateHolding).toHaveBeenCalledWith(expect.objectContaining({ holdingId: 'hold-1', quantity: 2000 }), 1)
     })
@@ -290,7 +290,7 @@ describe('Portfolio API 测试', () => {
     it('P-BIZ-008: 删除持仓', async () => {
       const res = await req
         .post('/portfolio/holding/remove')
-        .send({ holdingId: 'hold-1' })
+        .send({ holdingId: 'hold-1', idempotencyKey: 'api-remove-0001' })
         .expect(201)
       expect(res.body.data.success).toBe(true)
     })
@@ -298,56 +298,56 @@ describe('Portfolio API 测试', () => {
     it('P-EDGE-005: 股票代码格式正确', async () => {
       await req
         .post('/portfolio/holding/add')
-        .send({ portfolioId: 'port-1', tsCode: '000001.SZ', quantity: 100, avgCost: 10 })
+        .send({ portfolioId: 'port-1', tsCode: '000001.SZ', quantity: 100, avgCost: 10, idempotencyKey: 'api-edge-0001' })
         .expect(201)
     })
 
     it('P-EDGE-006: 股票代码格式错误应 400', async () => {
       await req
         .post('/portfolio/holding/add')
-        .send({ portfolioId: 'port-1', tsCode: '000001', quantity: 100, avgCost: 10 })
+        .send({ portfolioId: 'port-1', tsCode: '000001', quantity: 100, avgCost: 10, idempotencyKey: 'api-edge-0002' })
         .expect(400)
     })
 
     it('P-EDGE-007: 持仓数量=0 应 400', async () => {
       await req
         .post('/portfolio/holding/add')
-        .send({ portfolioId: 'port-1', tsCode: '000001.SZ', quantity: 0, avgCost: 10 })
+        .send({ portfolioId: 'port-1', tsCode: '000001.SZ', quantity: 0, avgCost: 10, idempotencyKey: 'api-edge-0003' })
         .expect(400)
     })
 
     it('P-EDGE-008: 持仓数量=1（最小）', async () => {
       await req
         .post('/portfolio/holding/add')
-        .send({ portfolioId: 'port-1', tsCode: '000001.SZ', quantity: 1, avgCost: 10 })
+        .send({ portfolioId: 'port-1', tsCode: '000001.SZ', quantity: 1, avgCost: 10, idempotencyKey: 'api-edge-0004' })
         .expect(201)
     })
 
     it('P-EDGE-009: 成本价=0', async () => {
       await req
         .post('/portfolio/holding/add')
-        .send({ portfolioId: 'port-1', tsCode: '000001.SZ', quantity: 100, avgCost: 0 })
+        .send({ portfolioId: 'port-1', tsCode: '000001.SZ', quantity: 100, avgCost: 0, idempotencyKey: 'api-edge-0005' })
         .expect(201)
     })
 
     it('P-EDGE-010: 成本价负数应 400', async () => {
       await req
         .post('/portfolio/holding/add')
-        .send({ portfolioId: 'port-1', tsCode: '000001.SZ', quantity: 100, avgCost: -1 })
+        .send({ portfolioId: 'port-1', tsCode: '000001.SZ', quantity: 100, avgCost: -1, idempotencyKey: 'api-edge-0006' })
         .expect(400)
     })
 
     it('P-ERR-006: add 缺 tsCode 应 400', async () => {
       await req
         .post('/portfolio/holding/add')
-        .send({ portfolioId: 'port-1', quantity: 100, avgCost: 10 })
+        .send({ portfolioId: 'port-1', quantity: 100, avgCost: 10, idempotencyKey: 'api-error-0001' })
         .expect(400)
     })
 
     it('P-ERR-007: add 缺 quantity 应 400', async () => {
       await req
         .post('/portfolio/holding/add')
-        .send({ portfolioId: 'port-1', tsCode: '000001.SZ', avgCost: 10 })
+        .send({ portfolioId: 'port-1', tsCode: '000001.SZ', avgCost: 10, idempotencyKey: 'api-error-0002' })
         .expect(400)
     })
 
@@ -355,7 +355,7 @@ describe('Portfolio API 测试', () => {
       mockPortfolioService.updateHolding.mockRejectedValue(new Error('持仓不存在'))
       await req
         .post('/portfolio/holding/update')
-        .send({ holdingId: '999999', quantity: 100, avgCost: 10 })
+        .send({ holdingId: '999999', quantity: 100, avgCost: 10, idempotencyKey: 'api-error-0003' })
         .expect(500)
     })
   })
@@ -572,7 +572,7 @@ describe('Portfolio API 测试', () => {
     it('P-BIZ-023: REPLACE 模式导入', async () => {
       const res = await req
         .post('/portfolio/apply-backtest')
-        .send({ backtestRunId: 'bt-1', mode: 'REPLACE' })
+        .send({ backtestRunId: 'bt-1', mode: 'REPLACE', idempotencyKey: 'api-backtest-0001' })
         .expect(201)
       expect(res.body.data.mode).toBe('REPLACE')
       expect(res.body.data.summary.added).toBe(3)
@@ -581,7 +581,7 @@ describe('Portfolio API 测试', () => {
     it('P-BIZ-024: MERGE 模式导入', async () => {
       await req
         .post('/portfolio/apply-backtest')
-        .send({ backtestRunId: 'bt-1', mode: 'MERGE' })
+        .send({ backtestRunId: 'bt-1', mode: 'MERGE', idempotencyKey: 'api-backtest-0002' })
         .expect(201)
       expect(mockBridgeService.applyBacktest).toHaveBeenCalledWith(expect.objectContaining({ mode: 'MERGE' }), 1)
     })
@@ -589,21 +589,21 @@ describe('Portfolio API 测试', () => {
     it('P-BIZ-025: 自动创建新组合', async () => {
       await req
         .post('/portfolio/apply-backtest')
-        .send({ backtestRunId: 'bt-1' })
+        .send({ backtestRunId: 'bt-1', idempotencyKey: 'api-backtest-0003' })
         .expect(201)
     })
 
     it('P-ERR-014: 无效 mode 应 400', async () => {
       await req
         .post('/portfolio/apply-backtest')
-        .send({ backtestRunId: 'bt-1', mode: 'INVALID' })
+        .send({ backtestRunId: 'bt-1', mode: 'INVALID', idempotencyKey: 'api-backtest-0004' })
         .expect(400)
     })
 
     it('P-ERR-015: 缺 backtestRunId 应 400', async () => {
       await req
         .post('/portfolio/apply-backtest')
-        .send({ mode: 'REPLACE' })
+        .send({ mode: 'REPLACE', idempotencyKey: 'api-backtest-0005' })
         .expect(400)
     })
   })

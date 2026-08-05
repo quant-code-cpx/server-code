@@ -15,6 +15,7 @@ import { AgentConversationService } from '../agent-conversation.service'
 import { AgentInteractionRepository } from '../agent-interaction.repository'
 import { AgentRunService } from '../agent-run.service'
 import { ConversationSummaryService } from '../../memory/conversation-summary.service'
+import { ConversationContextCompatibilityService } from '../../memory/conversation-context-compatibility.service'
 
 const now = new Date('2026-07-20T01:00:00.000Z')
 
@@ -23,6 +24,7 @@ describe('AgentConversationService', () => {
   let repository: Record<string, jest.Mock>
   let models: Record<string, jest.Mock>
   let summaries: Record<string, jest.Mock>
+  let contextCompatibility: Record<string, jest.Mock>
 
   beforeEach(async () => {
     repository = {
@@ -33,7 +35,32 @@ describe('AgentConversationService', () => {
         .fn()
         .mockResolvedValue(conversation({ modelPolicy: AiModelPolicy.MANUAL, preferredModel: 'model-v1' })),
     }
-    models = { get: jest.fn().mockReturnValue({ model: 'model-v1', dataClasses: ['USER_PRIVATE'] }) }
+    models = {
+      get: jest.fn().mockReturnValue({
+        model: 'model-v1',
+        dataClasses: ['USER_PRIVATE'],
+        capabilities: ['STREAMING', 'STRUCTURED_OUTPUT'],
+      }),
+      list: jest.fn().mockReturnValue([
+        {
+          model: 'model-v1',
+          dataClasses: ['USER_PRIVATE'],
+          capabilities: ['STREAMING', 'STRUCTURED_OUTPUT'],
+        },
+      ]),
+    }
+    contextCompatibility = {
+      assess: jest.fn().mockResolvedValue({
+        status: 'READY',
+        targetModel: 'model-v1',
+        contextWindow: 32_768,
+        estimatedRecentTokens: 100,
+        triggerTokens: 20_000,
+        targetTokens: 14_000,
+        willAutoCompactOnNextRun: false,
+        message: '新模型可直接用于下一轮对话',
+      }),
+    }
     summaries = {
       currentMetadata: jest.fn().mockResolvedValue({
         summaryId: 'summary_1',
@@ -59,6 +86,7 @@ describe('AgentConversationService', () => {
         },
         { provide: ModelConfig.KEY, useValue: { providers: [] } },
         { provide: ConversationSummaryService, useValue: summaries },
+        { provide: ConversationContextCompatibilityService, useValue: contextCompatibility },
       ],
     }).compile()
     service = moduleRef.get(AgentConversationService)
@@ -123,6 +151,14 @@ describe('AgentConversationService', () => {
         preferredModel: 'model-v1',
       }),
     ).resolves.toMatchObject({ modelPolicy: 'MANUAL', preferredModel: 'model-v1' })
+    expect(contextCompatibility.assess).toHaveBeenCalledWith(
+      1,
+      'cm_1',
+      expect.objectContaining({
+        selectedModel: 'model-v1',
+        candidates: [expect.objectContaining({ model: 'model-v1' })],
+      }),
+    )
   })
 })
 

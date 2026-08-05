@@ -26,22 +26,41 @@ const testUser = { id: 1, account: 'test', nickname: 'Test', role: UserRole.USER
 
 function createMockLoggerService(): LoggerService {
   return {
-    log: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn(), verbose: jest.fn(), devLog: jest.fn(),
+    log: jest.fn(),
+    warn: jest.fn(),
+    error: jest.fn(),
+    debug: jest.fn(),
+    verbose: jest.fn(),
+    devLog: jest.fn(),
   } as unknown as LoggerService
 }
 
 const mockPortfolioService = {
-  create: jest.fn(), list: jest.fn(), detail: jest.fn(), update: jest.fn(), delete: jest.fn(),
-  addHolding: jest.fn(), updateHolding: jest.fn(), removeHolding: jest.fn(),
-  getPnlToday: jest.fn(), getPnlHistory: jest.fn(),
+  create: jest.fn(),
+  list: jest.fn(),
+  detail: jest.fn(),
+  update: jest.fn(),
+  delete: jest.fn(),
+  addHolding: jest.fn(),
+  updateHolding: jest.fn(),
+  removeHolding: jest.fn(),
+  getPnlToday: jest.fn(),
+  getPnlHistory: jest.fn(),
 }
 const mockRiskService = {
-  getIndustryDistribution: jest.fn(), getPositionConcentration: jest.fn(),
-  getMarketCapDistribution: jest.fn(), getBetaAnalysis: jest.fn(), getRiskSnapshot: jest.fn(),
+  getIndustryDistribution: jest.fn(),
+  getPositionConcentration: jest.fn(),
+  getMarketCapDistribution: jest.fn(),
+  getBetaAnalysis: jest.fn(),
+  getRiskSnapshot: jest.fn(),
 }
 const mockRiskCheckService = {
-  listRules: jest.fn(), upsertRule: jest.fn(), updateRule: jest.fn(), deleteRule: jest.fn(),
-  runCheck: jest.fn(), listViolations: jest.fn(),
+  listRules: jest.fn(),
+  upsertRule: jest.fn(),
+  updateRule: jest.fn(),
+  deleteRule: jest.fn(),
+  runCheck: jest.fn(),
+  listViolations: jest.fn(),
 }
 const mockBridgeService = { applyBacktest: jest.fn() }
 const mockRebalancePlanService = { rebalancePlan: jest.fn() }
@@ -74,8 +93,12 @@ describe('PortfolioController', () => {
       }),
     }
     const module: TestingModule = await Test.createTestingModule({
-      controllers: [PortfolioController], providers: allProviders,
-    }).overrideGuard(JwtAuthGuard).useValue(mockJwtGuard).compile()
+      controllers: [PortfolioController],
+      providers: allProviders,
+    })
+      .overrideGuard(JwtAuthGuard)
+      .useValue(mockJwtGuard)
+      .compile()
     app = module.createNestApplication()
     app.useGlobalInterceptors(new TransformInterceptor())
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }))
@@ -106,19 +129,34 @@ describe('PortfolioController', () => {
     await request(app.getHttpServer()).post('/portfolio/create').send({ name: 'x', initialCash: -100 }).expect(400)
   })
   it('[VAL] POST /portfolio/holding/add tsCode invalid → 400', async () => {
-    await request(app.getHttpServer()).post('/portfolio/holding/add').send({ portfolioId: 'p-1', tsCode: 'invalid', quantity: 100, avgCost: 10 }).expect(400)
+    await request(app.getHttpServer())
+      .post('/portfolio/holding/add')
+      .send({ portfolioId: 'p-1', tsCode: 'invalid', quantity: 100, avgCost: 10 })
+      .expect(400)
   })
   it('[VAL] POST /portfolio/holding/add quantity=0 → 400', async () => {
-    await request(app.getHttpServer()).post('/portfolio/holding/add').send({ portfolioId: 'p-1', tsCode: '000001.SZ', quantity: 0, avgCost: 10 }).expect(400)
+    await request(app.getHttpServer())
+      .post('/portfolio/holding/add')
+      .send({ portfolioId: 'p-1', tsCode: '000001.SZ', quantity: 0, avgCost: 10 })
+      .expect(400)
   })
   it('[VAL] POST /portfolio/holding/add avgCost=-1 → 400', async () => {
-    await request(app.getHttpServer()).post('/portfolio/holding/add').send({ portfolioId: 'p-1', tsCode: '000001.SZ', quantity: 100, avgCost: -1 }).expect(400)
+    await request(app.getHttpServer())
+      .post('/portfolio/holding/add')
+      .send({ portfolioId: 'p-1', tsCode: '000001.SZ', quantity: 100, avgCost: -1 })
+      .expect(400)
   })
   it('[VAL] POST /portfolio/rule/upsert threshold=0 → 400', async () => {
-    await request(app.getHttpServer()).post('/portfolio/rule/upsert').send({ portfolioId: 'p-1', ruleType: 'POSITION_CONCENTRATION', threshold: 0, isEnabled: true }).expect(400)
+    await request(app.getHttpServer())
+      .post('/portfolio/rule/upsert')
+      .send({ portfolioId: 'p-1', ruleType: 'POSITION_CONCENTRATION', threshold: 0, isEnabled: true })
+      .expect(400)
   })
   it('[VAL] POST /portfolio/rule/upsert threshold=2.0 → 400', async () => {
-    await request(app.getHttpServer()).post('/portfolio/rule/upsert').send({ portfolioId: 'p-1', ruleType: 'POSITION_CONCENTRATION', threshold: 2.0, isEnabled: true }).expect(400)
+    await request(app.getHttpServer())
+      .post('/portfolio/rule/upsert')
+      .send({ portfolioId: 'p-1', ruleType: 'POSITION_CONCENTRATION', threshold: 2.0, isEnabled: true })
+      .expect(400)
   })
 
   // ── 原有 ERR ─────────────────────────────────────────────────────────
@@ -139,11 +177,23 @@ describe('PortfolioController', () => {
     })
     it('/portfolio/holding/update → 201', async () => {
       mockPortfolioService.updateHolding.mockResolvedValueOnce({ holdingId: 'h-1' })
-      await request(app.getHttpServer()).post('/portfolio/holding/update').send({ portfolioId: 'p-1', holdingId: 'h-1', quantity: 200, avgCost: 12 }).expect(201)
+      await request(app.getHttpServer())
+        .post('/portfolio/holding/update')
+        .send({
+          portfolioId: 'p-1',
+          holdingId: 'h-1',
+          quantity: 200,
+          avgCost: 12,
+          idempotencyKey: 'controller-update-0001',
+        })
+        .expect(201)
     })
     it('/portfolio/holding/remove → 201', async () => {
       mockPortfolioService.removeHolding.mockResolvedValueOnce({ success: true })
-      await request(app.getHttpServer()).post('/portfolio/holding/remove').send({ holdingId: 'h-1' }).expect(201)
+      await request(app.getHttpServer())
+        .post('/portfolio/holding/remove')
+        .send({ holdingId: 'h-1', idempotencyKey: 'controller-remove-0001' })
+        .expect(201)
     })
     it('/portfolio/pnl/today → 201', async () => {
       mockPortfolioService.getPnlToday.mockResolvedValueOnce({ pnl: 1000 })
@@ -151,7 +201,10 @@ describe('PortfolioController', () => {
     })
     it('/portfolio/pnl/history → 201', async () => {
       mockPortfolioService.getPnlHistory.mockResolvedValueOnce([])
-      await request(app.getHttpServer()).post('/portfolio/pnl/history').send({ portfolioId: 'p-1', startDate: '20230101', endDate: '20231231' }).expect(201)
+      await request(app.getHttpServer())
+        .post('/portfolio/pnl/history')
+        .send({ portfolioId: 'p-1', startDate: '20230101', endDate: '20231231' })
+        .expect(201)
     })
     it('/portfolio/risk/industry → 201', async () => {
       mockRiskService.getIndustryDistribution.mockResolvedValueOnce([])
@@ -187,7 +240,10 @@ describe('PortfolioController', () => {
     })
     it('/portfolio/rule/update → 201', async () => {
       mockRiskCheckService.updateRule.mockResolvedValueOnce({})
-      await request(app.getHttpServer()).post('/portfolio/rule/update').send({ portfolioId: 'p-1', ruleId: 'r-1', threshold: 0.3, isEnabled: true }).expect(201)
+      await request(app.getHttpServer())
+        .post('/portfolio/rule/update')
+        .send({ portfolioId: 'p-1', ruleId: 'r-1', threshold: 0.3, isEnabled: true })
+        .expect(201)
     })
     it('/portfolio/rule/delete → 201', async () => {
       mockRiskCheckService.deleteRule.mockResolvedValueOnce({ success: true })
@@ -195,19 +251,31 @@ describe('PortfolioController', () => {
     })
     it('/portfolio/apply-backtest → 201', async () => {
       mockBridgeService.applyBacktest.mockResolvedValueOnce({ portfolioId: 'p-1' })
-      await request(app.getHttpServer()).post('/portfolio/apply-backtest').send({ backtestRunId: 'r-1', mode: 'REPLACE' }).expect(201)
+      await request(app.getHttpServer())
+        .post('/portfolio/apply-backtest')
+        .send({ backtestRunId: 'r-1', mode: 'REPLACE', idempotencyKey: 'controller-backtest-0001' })
+        .expect(201)
     })
     it('/portfolio/rebalance-plan → 201', async () => {
       mockRebalancePlanService.rebalancePlan.mockResolvedValueOnce({ actions: [] })
-      await request(app.getHttpServer()).post('/portfolio/rebalance-plan').send({ portfolioId: 'p-1', targets: [{ tsCode: '000001.SZ', targetWeight: 0.5 }] }).expect(201)
+      await request(app.getHttpServer())
+        .post('/portfolio/rebalance-plan')
+        .send({ portfolioId: 'p-1', targets: [{ tsCode: '000001.SZ', targetWeight: 0.5 }] })
+        .expect(201)
     })
     it('/portfolio/performance → 201', async () => {
       mockPerformanceService.getPerformance.mockResolvedValueOnce({})
-      await request(app.getHttpServer()).post('/portfolio/performance').send({ portfolioId: 'p-1', startDate: '20230101', endDate: '20231231' }).expect(201)
+      await request(app.getHttpServer())
+        .post('/portfolio/performance')
+        .send({ portfolioId: 'p-1', startDate: '20230101', endDate: '20231231' })
+        .expect(201)
     })
     it('/portfolio/drift-detection → 201', async () => {
       mockDriftDetectionService.detect.mockResolvedValueOnce({})
-      await request(app.getHttpServer()).post('/portfolio/drift-detection').send({ portfolioId: 'p-1', strategyId: 's-1' }).expect(201)
+      await request(app.getHttpServer())
+        .post('/portfolio/drift-detection')
+        .send({ portfolioId: 'p-1', strategyId: 's-1' })
+        .expect(201)
     })
     it('/portfolio/trade-log → 201', async () => {
       mockTradeLogService.query.mockResolvedValueOnce({ items: [], total: 0 })
@@ -222,19 +290,30 @@ describe('PortfolioController', () => {
   // ── 新增 DTO 校验 ────────────────────────────────────────────────────
   describe('[DTO 校验] 补充', () => {
     it('holding/add 缺 portfolioId → 400', async () => {
-      await request(app.getHttpServer()).post('/portfolio/holding/add').send({ tsCode: '000001.SZ', quantity: 100, avgCost: 10 }).expect(400)
+      await request(app.getHttpServer())
+        .post('/portfolio/holding/add')
+        .send({ tsCode: '000001.SZ', quantity: 100, avgCost: 10 })
+        .expect(400)
     })
     it('holding/add 缺 quantity → 400', async () => {
-      await request(app.getHttpServer()).post('/portfolio/holding/add').send({ portfolioId: 'p-1', tsCode: '000001.SZ', avgCost: 10 }).expect(400)
+      await request(app.getHttpServer())
+        .post('/portfolio/holding/add')
+        .send({ portfolioId: 'p-1', tsCode: '000001.SZ', avgCost: 10 })
+        .expect(400)
     })
     it('rule/upsert 缺 ruleType → 400', async () => {
-      await request(app.getHttpServer()).post('/portfolio/rule/upsert').send({ portfolioId: 'p-1', threshold: 0.5, isEnabled: true }).expect(400)
+      await request(app.getHttpServer())
+        .post('/portfolio/rule/upsert')
+        .send({ portfolioId: 'p-1', threshold: 0.5, isEnabled: true })
+        .expect(400)
     })
   })
 
   // ── AUTH ─────────────────────────────────────────────────────────────
   it('[AUTH] 未登录访问 /portfolio/create → 401', async () => {
-    mockJwtGuard.canActivate.mockImplementationOnce(() => { throw new UnauthorizedException() })
+    mockJwtGuard.canActivate.mockImplementationOnce(() => {
+      throw new UnauthorizedException()
+    })
     await request(app.getHttpServer()).post('/portfolio/create').send({ name: 'x', initialCash: 100000 }).expect(401)
   })
 })

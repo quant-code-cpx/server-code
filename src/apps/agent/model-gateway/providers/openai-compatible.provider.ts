@@ -19,6 +19,7 @@ interface OpenAiStreamChunk {
     index?: number
     delta?: {
       content?: string | null
+      reasoning_content?: string | null
       refusal?: string | null
       tool_calls?: Array<{
         index?: number
@@ -106,7 +107,7 @@ export class OpenAiCompatibleProvider implements ModelProvider {
       throw new ModelGatewayError('UNAVAILABLE', true, '模型供应商网络不可用')
     }
 
-    if (!response.ok) throw mapHttpError(response)
+    if (!response.ok) throw await mapHttpError(response)
     if (!response.body) throw new ModelGatewayError('UNAVAILABLE', true, '模型供应商未返回响应流')
 
     const toolCalls = new Map<number, ToolCallAccumulator>()
@@ -127,6 +128,9 @@ export class OpenAiCompatibleProvider implements ModelProvider {
         if ((choice.index ?? 0) !== 0) continue
         const delta = choice.delta ?? {}
         if (delta.refusal) throw new ModelGatewayError('CONTENT', false, '模型拒绝处理当前内容')
+        if (typeof delta.reasoning_content === 'string' && delta.reasoning_content.length > 0) {
+          yield { type: 'REASONING_ACTIVITY', characters: delta.reasoning_content.length }
+        }
         if (typeof delta.content === 'string' && delta.content.length > 0) {
           yield { type: 'OUTPUT_TEXT_DELTA', text: delta.content }
         }
@@ -359,7 +363,7 @@ function optionalNonNegativeInteger(value: number | undefined, name: string): nu
   return requireNonNegativeInteger(value, name)
 }
 
-function mapHttpError(response: Response): ModelGatewayError {
+async function mapHttpError(response: Response): Promise<ModelGatewayError> {
   const retryAfterMs = parseRetryAfter(response.headers.get('retry-after'))
   if (response.status === 401 || response.status === 403) {
     return new ModelGatewayError('AUTH', false, '模型供应商鉴权失败', response.status)
@@ -374,9 +378,36 @@ function mapHttpError(response: Response): ModelGatewayError {
     return new ModelGatewayError('UNAVAILABLE', true, '模型供应商暂不可用', response.status, retryAfterMs)
   }
   if (response.status === 400 || response.status === 409 || response.status === 422) {
+    const detail = await readBoundedErrorDetail(response)
+    if (isContextLengthError(detail)) {
+      return new ModelGatewayError('CONTEXT_LENGTH', false, '请求超过目标模型的上下文窗口', response.status)
+    }
     return new ModelGatewayError('CONTENT', false, '模型供应商拒绝请求内容', response.status)
   }
   return new ModelGatewayError('UNAVAILABLE', false, '模型供应商请求失败', response.status)
+}
+
+async function readBoundedErrorDetail(response: Response): Promise<string> {
+  try {
+    return (await response.text()).slice(0, 8_192).toLowerCase()
+  } catch {
+    return ''
+  }
+}
+
+function isContextLengthError(value: string): boolean {
+  if (!value) return false
+  return [
+    'context_length_exceeded',
+    'maximum context length',
+    'max context length',
+    'context window',
+    'token limit exceeded',
+    'prompt is too long',
+    'input is too long',
+    '请求的长度超过',
+    '上下文长度',
+  ].some((pattern) => value.includes(pattern))
 }
 
 function parseRetryAfter(value: string | null): number | undefined {

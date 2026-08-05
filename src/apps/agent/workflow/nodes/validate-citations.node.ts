@@ -16,6 +16,7 @@ export class ValidateCitationsNode implements WorkflowNodeHandler {
 
   async execute({ run, workflow, state, limits, stepId, workerId, signal }: WorkflowNodeExecutionContext) {
     if (!state.draft) throw new WorkflowValidationError('validate_citations 节点缺少回答草稿')
+    const modelProfile = state.modelProfile ?? this.models.resolveModelProfile(run)
     const initial = this.coverage.validate(state.draft, state.facts)
     if (initial.valid) return state
     if (state.citationRepairAttempts >= 1) throw new WorkflowCitationError(initial.issues.join('；'))
@@ -39,16 +40,18 @@ export class ValidateCitationsNode implements WorkflowNodeHandler {
         ),
       ],
       responseSchema: workflow.outputSchema,
-      maxOutputTokens: workflow.version >= 4 ? 4_096 : 2_000,
+      maxOutputTokens: this.models.resolveMaxOutputTokens(modelProfile, state.budget, limits),
       usage: state.budget,
       limits,
       workerId,
       signal,
+      modelProfile,
     })
     const checked = this.coverage.validate(repaired.data, state.facts)
     if (!checked.valid) throw new WorkflowCitationError(checked.issues.join('；'))
     return {
       ...state,
+      modelProfile,
       draft: repaired.data,
       budget: repaired.usage,
       finalModelCallId: repaired.modelCallId,

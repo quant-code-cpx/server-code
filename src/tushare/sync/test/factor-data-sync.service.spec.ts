@@ -31,6 +31,10 @@ function buildMockHelper() {
       stkSurv: {
         createMany: jest.fn(async () => ({ count: 0 })),
       },
+      stkFactor: {
+        deleteMany: jest.fn(async () => ({ count: 0 })),
+        createMany: jest.fn(async ({ data }: { data: unknown[] }) => ({ count: data.length })),
+      },
     },
     getCurrentShanghaiDateString: jest.fn(() => '20260422'),
     compareDateString: jest.fn((a: string, b: string) => (a > b ? 1 : a < b ? -1 : 0)),
@@ -49,6 +53,11 @@ function buildMockHelper() {
     ),
     writeSyncLog: jest.fn(async () => undefined),
     flushValidationLogs: jest.fn(async () => 0),
+    getResumeKey: jest.fn(async () => null as string | null),
+    markRunning: jest.fn(async () => undefined),
+    updateProgress: jest.fn(async () => undefined),
+    markCompleted: jest.fn(async () => undefined),
+    enqueueRetry: jest.fn(async () => undefined),
   }
 }
 
@@ -211,4 +220,97 @@ describe('FactorDataSyncService', () => {
       expect(api.getStkSurvByDateRange).toHaveBeenCalledWith('20100101', '20101231')
     })
   })
+
+  describe('syncStkFactor()', () => {
+    it('[BIZ] full 模式逐日成功推进安全断点，全部完成后标记 completed', async () => {
+      const api = buildMockApi()
+      api.getStkFactorByTradeDate.mockResolvedValue([stkFactorRecord()])
+      const helper = buildMockHelper()
+      helper.getOpenTradeDatesBetween.mockResolvedValue(['20260803', '20260804'])
+      const service = createService(api, helper)
+
+      await service.syncStkFactor('20260804', 'full')
+
+      expect(helper.markRunning).toHaveBeenCalledWith(TushareSyncTaskName.STK_FACTOR, 2)
+      expect(helper.updateProgress.mock.calls).toEqual([
+        [TushareSyncTaskName.STK_FACTOR, '20260803', 1, 2],
+        [TushareSyncTaskName.STK_FACTOR, '20260804', 2, 2],
+      ])
+      expect(helper.markCompleted).toHaveBeenCalledWith(TushareSyncTaskName.STK_FACTOR)
+    })
+
+    it('[BIZ] 发现 RUNNING 断点后从下一开放交易日继续，不重拉成功分片', async () => {
+      const api = buildMockApi()
+      api.getStkFactorByTradeDate.mockResolvedValue([stkFactorRecord()])
+      const helper = buildMockHelper()
+      helper.getResumeKey.mockResolvedValue('20260803')
+      helper.getOpenTradeDatesBetween.mockResolvedValue(['20260804'])
+      const service = createService(api, helper)
+
+      await service.syncStkFactor('20260804', 'full')
+
+      expect(helper.getOpenTradeDatesBetween).toHaveBeenCalledWith('20260804', '20260804')
+      expect(api.getStkFactorByTradeDate).toHaveBeenCalledTimes(1)
+      expect(api.getStkFactorByTradeDate).toHaveBeenCalledWith('20260804')
+    })
+
+    it('[ERR] 中间日期失败后立即停止，不越过失败日期推进断点，也不写假 SUCCESS', async () => {
+      const api = buildMockApi()
+      api.getStkFactorByTradeDate
+        .mockResolvedValueOnce([stkFactorRecord()])
+        .mockRejectedValueOnce(new Error('upstream failed'))
+        .mockResolvedValueOnce([stkFactorRecord()])
+      const helper = buildMockHelper()
+      helper.getOpenTradeDatesBetween.mockResolvedValue(['20260801', '20260802', '20260803'])
+      const service = createService(api, helper)
+
+      await expect(service.syncStkFactor('20260803', 'full')).rejects.toThrow('upstream failed')
+
+      expect(api.getStkFactorByTradeDate).toHaveBeenCalledTimes(2)
+      expect(helper.updateProgress).toHaveBeenCalledTimes(1)
+      expect(helper.updateProgress).toHaveBeenCalledWith(TushareSyncTaskName.STK_FACTOR, '20260801', 1, 3)
+      expect(helper.enqueueRetry).toHaveBeenCalledWith(TushareSyncTaskName.STK_FACTOR, '20260802', 'upstream failed')
+      expect(helper.markCompleted).not.toHaveBeenCalled()
+      expect(helper.writeSyncLog).toHaveBeenCalledWith(
+        TushareSyncTaskName.STK_FACTOR,
+        expect.objectContaining({ status: 'FAILED' }),
+        expect.any(Date),
+      )
+    })
+
+    it('[ERR] 核心技术指标组覆盖率低于 50% 时失败即停，不写入伪 0', async () => {
+      const api = buildMockApi()
+      api.getStkFactorByTradeDate.mockResolvedValue([
+        { ...stkFactorRecord(), macd_dif: null, macd_dea: null, macd: null },
+      ])
+      const helper = buildMockHelper()
+      helper.getOpenTradeDatesBetween.mockResolvedValue(['20260804'])
+      const service = createService(api, helper)
+
+      await expect(service.syncStkFactor('20260804', 'incremental')).rejects.toThrow('STK_FACTOR_DATA_QUALITY_FAILED')
+      expect(helper.prisma.stkFactor.createMany).not.toHaveBeenCalled()
+      expect(helper.enqueueRetry).toHaveBeenCalled()
+    })
+  })
 })
+
+function stkFactorRecord() {
+  return {
+    ts_code: '600089.SH',
+    trade_date: '20260804',
+    close: 12,
+    pct_change: 1,
+    macd_dif: 1,
+    macd_dea: 0,
+    macd: 1,
+    kdj_k: 60,
+    kdj_d: 50,
+    kdj_j: 80,
+    rsi_6: 40,
+    rsi_12: 45,
+    rsi_24: 50,
+    boll_upper: 14,
+    boll_mid: 12,
+    boll_lower: 10,
+  }
+}

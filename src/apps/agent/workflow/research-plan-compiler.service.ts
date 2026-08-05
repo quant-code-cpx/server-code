@@ -29,18 +29,35 @@ export class ResearchPlanCompilerService {
     workflow: FrozenWorkflowDefinition,
     allowedCapabilities: readonly AgentCapability[],
     maxToolCalls: number,
+    selectedToolKeys?: readonly AgentToolKey[],
   ): CompiledResearchPlan {
     assertPlanEnvelope(plan)
     if (plan.toolCalls.length > maxToolCalls) throw new WorkflowBudgetError('研究计划 Tool 数量超过预算')
+    if (plan.toolCalls.filter((call) => call.toolKey === 'get_factor_analysis').length > 3) {
+      throw new WorkflowBudgetError('单次研究计划最多调用 get_factor_analysis 3 次')
+    }
+    if (plan.toolCalls.filter((call) => call.toolKey === 'run_event_study').length > 2) {
+      throw new WorkflowBudgetError('单次研究计划最多调用 run_event_study 2 次')
+    }
+    if (plan.toolCalls.filter((call) => call.toolKey === 'get_backtest_analytics').length > 2) {
+      throw new WorkflowBudgetError('单次研究计划最多调用 get_backtest_analytics 2 次')
+    }
     const workflowTools = new Set(workflow.toolAllowlist)
     const capabilities = new Set(allowedCapabilities)
+    const selectedTools = selectedToolKeys ? new Set(selectedToolKeys) : null
     const callsById = new Map<string, ResearchPlanToolCall>()
 
     for (const call of plan.toolCalls) {
       assertToolCall(call)
+      if (call.toolKey === 'save_research_report' && !call.optional) {
+        throw new WorkflowValidationError('save_research_report 必须是 optional 预览提案')
+      }
       if (callsById.has(call.id)) throw new WorkflowValidationError(`研究计划 Tool id 重复：${call.id}`)
       if (!workflowTools.has(call.toolKey))
         throw new WorkflowValidationError(`研究计划 Tool 不在工作流白名单：${call.toolKey}`)
+      if (selectedTools && !selectedTools.has(call.toolKey)) {
+        throw new WorkflowValidationError(`研究计划 Tool 未通过能力预选：${call.toolKey}`)
+      }
       if (!capabilities.has(TOOL_CAPABILITY[call.toolKey])) {
         throw new WorkflowValidationError(`研究计划 Tool capability 未授权：${call.toolKey}`)
       }
@@ -105,7 +122,9 @@ function assertToolCall(call: ResearchPlanToolCall): void {
     throw new WorkflowValidationError('研究计划 Tool id 非法')
   }
   if (!isAgentToolKey(call.toolKey)) throw new WorkflowValidationError(`研究计划包含未知 Tool：${String(call.toolKey)}`)
-  if (call.toolVersion !== 1) throw new WorkflowValidationError('MVP Tool version 必须为 1')
+  if (!Number.isInteger(call.toolVersion) || call.toolVersion < 1) {
+    throw new WorkflowValidationError('Tool version 必须为正整数')
+  }
   if (!call.input || typeof call.input !== 'object' || Array.isArray(call.input)) {
     throw new WorkflowValidationError('研究计划 Tool input 必须为 object')
   }

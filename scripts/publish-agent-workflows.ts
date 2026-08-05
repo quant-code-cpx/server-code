@@ -3,10 +3,7 @@ import { resolve } from 'node:path'
 import { AiVersionStatus, Prisma, PrismaClient, UserRole } from '@prisma/client'
 import { WorkflowRegistryService } from 'src/apps/agent/workflow/workflow-registry.service'
 import { CONVERSATION_SUMMARY_PROMPT_V1 } from 'src/apps/agent/memory/conversation-summary.prompt'
-import {
-  STOCK_RESEARCH_WORKFLOW_CURRENT,
-  STOCK_RESEARCH_WORKFLOW_DEFINITIONS,
-} from 'src/apps/agent/workflow/workflows/stock-research.v2'
+import { STOCK_RESEARCH_WORKFLOW_DEFINITIONS } from 'src/apps/agent/workflow/workflows/stock-research.v10'
 
 loadDatabaseUrl()
 const prisma = new PrismaClient()
@@ -41,11 +38,9 @@ async function main(): Promise<void> {
   process.stdout.write(
     `Agent workflows published: ${result.workflows
       .map((workflow) => `${workflow.workflowKey}@${workflow.version}`)
-      .join(
-        ', ',
-      )}, prompts ${result.prompts
-        .map((prompt) => `${prompt.promptKey}@${prompt.version}`)
-        .join(', ')}, ${result.summaryPrompt.promptKey}@${result.summaryPrompt.version}\n`,
+      .join(', ')}, prompts ${result.prompts
+      .map((prompt) => `${prompt.promptKey}@${prompt.version}`)
+      .join(', ')}, ${result.summaryPrompt.promptKey}@${result.summaryPrompt.version}\n`,
   )
 }
 

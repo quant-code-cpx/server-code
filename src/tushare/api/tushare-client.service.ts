@@ -43,6 +43,7 @@ export class TushareClient {
   private readonly timeout: number
   private readonly rateLimitRetryDelayMs: number
   private readonly maxRetries: number
+  private readonly rateLimitIntervals: ReadonlyMap<string, number>
   /** 全局最大并发请求数（跨所有 API） */
   private readonly globalMaxConcurrency = 5
 
@@ -74,6 +75,10 @@ export class TushareClient {
     this.timeout = cfg.timeout
     this.rateLimitRetryDelayMs = cfg.rateLimitRetryDelayMs
     this.maxRetries = cfg.maxRetries
+    this.rateLimitIntervals = new Map([
+      ...TushareClient.DOCUMENTED_RATE_LIMIT_MS,
+      ['stk_factor', cfg.stkFactorMinIntervalMs],
+    ])
   }
 
   /** 向 Tushare Pro 发起请求并返回解析后的记录数组 */
@@ -164,7 +169,7 @@ export class TushareClient {
   }
 
   private async waitForRequestSlot(channel: ApiChannel, apiName: string) {
-    const intervalMs = TushareClient.DOCUMENTED_RATE_LIMIT_MS.get(apiName) ?? 0
+    const intervalMs = this.rateLimitIntervals.get(apiName) ?? 0
     if (intervalMs > 0) {
       const now = Date.now()
       const waitMs = Math.max(0, intervalMs - (now - channel.lastRequestAt))

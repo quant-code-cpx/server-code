@@ -10,9 +10,6 @@ import {
   calculateDirectionalReturnStatistics,
   calculateStudentTMeanConfidenceInterval,
   calculateWilsonSuccessConfidenceInterval,
-  createQfqBars,
-  detectTechnicalSignalOccurrences,
-  TechnicalIndicatorEngine,
   TECHNICAL_INDICATOR_ALGORITHM_VERSION,
   type TechnicalSignalDefinition,
   type TechnicalSignalDirection,
@@ -37,9 +34,10 @@ import {
   type TechnicalSignalTimelineSnapshot,
 } from '../repositories/prisma-technical-signal.repository'
 import { TechnicalSignalDefinitionService } from './technical-signal-definition.service'
+import { TechnicalSignalEvaluationService } from './technical-signal-evaluation.service'
 
 const DEFAULT_HORIZONS = [1, 3, 5, 10, 20]
-const MAX_CUSTOM_YEARS = Number(process.env.TECHNICAL_SIGNAL_STATISTICS_MAX_CUSTOM_YEARS) || 10
+const MAX_CUSTOM_YEARS = 5
 const STATISTICS_ALGORITHM_VERSION = 'signal-statistics.v1'
 const RETURN_POLICY_VERSION = 'adjusted-return.v1'
 const CONFIDENCE_INTERVAL_VERSION = 'student-t-wilson.v1'
@@ -119,12 +117,11 @@ interface OccurrenceWindow {
  */
 @Injectable()
 export class TechnicalSignalStatisticsService {
-  private readonly indicatorEngine = new TechnicalIndicatorEngine()
-
   constructor(
     private readonly repository: PrismaTechnicalSignalRepository,
     private readonly definitions: TechnicalSignalDefinitionService,
     private readonly cacheService: CacheService,
+    private readonly evaluation: TechnicalSignalEvaluationService,
   ) {}
 
   async query(dto: TechnicalSignalStatisticsRequestDto): Promise<TechnicalSignalStatisticsResponseDto> {
@@ -230,10 +227,13 @@ export class TechnicalSignalStatisticsService {
       benchmarkTsCode,
     }
     const timeline = await this.loadTimeline(query)
-    const prepared = this.prepare(query, timeline, { startDate: dto.startDate, endDate: dto.endDate })
-    if (dto.endDate > prepared.timeline.dataAsOf) {
+    if (dto.endDate > timeline.dataAsOf) {
       throw new BadRequestException('TECHNICAL_SIGNAL_REQUEST_INVALID: endDate 不得晚于 dataAsOf')
     }
+    if (dto.startDate < subtractCalendarYears(timeline.dataAsOf, MAX_CUSTOM_YEARS)) {
+      throw new BadRequestException(`TECHNICAL_SIGNAL_REQUEST_INVALID: CUSTOM 最多 ${MAX_CUSTOM_YEARS} 年`)
+    }
+    const prepared = this.prepare(query, timeline, { startDate: dto.startDate, endDate: dto.endDate })
 
     const allowedStatuses = qualityStatuses ? new Set(qualityStatuses) : null
     const matched = prepared.occurrences
@@ -272,8 +272,13 @@ export class TechnicalSignalStatisticsService {
     timeline: TechnicalSignalTimelineSnapshot,
     occurrenceWindow: OccurrenceWindow = {},
   ): PreparedEvaluation {
-    const qfqBars = createQfqBars(timeline.bars)
-    const points = this.indicatorEngine.compute(qfqBars)
+    const evaluated = this.evaluation.evaluateTimeline({
+      timeline,
+      definitions: query.definitions,
+      windowStartDate: occurrenceWindow.startDate,
+      windowEndDate: occurrenceWindow.endDate,
+    })
+    const points = evaluated.points
     const context: EvaluationContext = {
       calendarIndexByDate: new Map(timeline.openDates.map((date, index) => [date, index])),
       barsByDate: new Map(timeline.bars.map((bar) => [bar.tradeDate, bar])),
@@ -281,12 +286,7 @@ export class TechnicalSignalStatisticsService {
         timeline.benchmark?.bars.map((bar) => [bar.tradeDate, bar] as const) ?? [],
       ),
     }
-    const allOccurrences = detectTechnicalSignalOccurrences(points, {
-      definitions: query.definitions,
-      ...(occurrenceWindow.startDate ? { windowStartDate: occurrenceWindow.startDate } : {}),
-      ...(occurrenceWindow.endDate ? { windowEndDate: occurrenceWindow.endDate } : {}),
-    })
-    const occurrences = allOccurrences.map((occurrence) => ({
+    const occurrences = evaluated.occurrences.map((occurrence) => ({
       ...occurrence,
       signalId: stableSignalId(query.tsCode, occurrence),
       outcomes: query.horizons.map((horizon) =>

@@ -1,5 +1,6 @@
 import type { AiAgentStepKind, UserRole, UserStatus } from '@prisma/client'
 import type { AgentCapability, AgentToolKey, MessageBlock } from '../contracts'
+import type { ModelDescriptor } from '../model-gateway/model-gateway.port'
 import type { ToolRegistryPin } from '../tools/contracts/tool-definition'
 
 export const STOCK_RESEARCH_NODE_KEYS = [
@@ -13,7 +14,21 @@ export const STOCK_RESEARCH_NODE_KEYS = [
   'complete',
 ] as const
 
-export type StockResearchNodeKey = (typeof STOCK_RESEARCH_NODE_KEYS)[number]
+export const STOCK_RESEARCH_V6_NODE_KEYS = [
+  'load_context',
+  'select_tools',
+  'plan',
+  'authorize_tools',
+  'execute_tools',
+  'synthesize',
+  'validate_citations',
+  'persist',
+  'complete',
+] as const
+
+export type StockResearchNodeKey =
+  | (typeof STOCK_RESEARCH_NODE_KEYS)[number]
+  | (typeof STOCK_RESEARCH_V6_NODE_KEYS)[number]
 
 export interface WorkflowNodeDefinition {
   key: StockResearchNodeKey
@@ -36,10 +51,12 @@ export interface WorkflowDefinition {
   maxSteps: number
   maxParallelTools: number
   toolAllowlist: readonly AgentToolKey[]
+  planSchema: Record<string, unknown>
   inputSchema: Record<string, unknown>
   outputSchema: Record<string, unknown>
   prompt: WorkflowPromptDefinition
   nodes: readonly WorkflowNodeDefinition[]
+  capabilityCatalogVersion?: number
 }
 
 export interface FrozenWorkflowDefinition extends WorkflowDefinition {
@@ -246,11 +263,19 @@ export interface WorkflowBudgetUsage {
   costCurrency: string
 }
 
+export interface WorkflowModelProfile {
+  selectedProvider: string
+  selectedModel: string
+  candidates: ModelDescriptor[]
+}
+
 export interface WorkflowExecutionState {
+  modelProfile?: WorkflowModelProfile | null
   context: LoadedWorkflowContext | null
   plan: ResearchPlan | null
   compiledPlan: CompiledResearchPlan | null
   toolSnapshotSignature: string | null
+  toolSelection?: ToolSelectionAudit | null
   facts: FactPacket[]
   draft: FinalAnswerDraft | null
   finalModelCallId: string | null
@@ -259,6 +284,17 @@ export interface WorkflowExecutionState {
   warnings: string[]
   citationRepairAttempts: number
   budget: WorkflowBudgetUsage
+}
+
+export interface ToolSelectionAudit {
+  catalogVersion: number
+  catalogHash: string
+  selectionPromptVersion: 1 | 2 | 3 | 4
+  packs: string[]
+  toolKeys: AgentToolKey[]
+  reason: string
+  fallback: boolean
+  modelName: string | null
 }
 
 export interface WorkflowCheckpoint {

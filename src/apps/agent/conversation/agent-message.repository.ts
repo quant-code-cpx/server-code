@@ -29,14 +29,25 @@ import {
 export interface ListCompletedContextMessagesQuery {
   afterMessageId: string | null
   throughMessageId: string
+  beforeMessageId?: string | null
   limit: number
 }
 
 export interface CompletedContextMessagePage {
   anchorFound: boolean
   throughFound: boolean
+  cursorFound: boolean
   hasMore: boolean
+  nextBeforeMessageId: string | null
   items: PersistedAiMessage[]
+}
+
+export interface ListCompletedSummarySourcePageQuery {
+  afterMessageId: string | null
+  throughMessageId: string
+  protectedFromMessageId: string
+  cursorAfterMessageId?: string | null
+  limit: number
 }
 
 export interface ListCompletedSummaryCandidatesQuery {
@@ -59,6 +70,22 @@ export class AgentMessageRepository {
     private readonly prisma: PrismaService,
     private readonly logger: LoggerService,
   ) {}
+
+  async findLatestCompletedUserMessage(userId: number, conversationId: string): Promise<PersistedAiMessage | null> {
+    const startedAt = Date.now()
+    await this.assertConversationReadable(userId, conversationId)
+    const message = await this.prisma.aiMessage.findFirst({
+      where: {
+        userId,
+        conversationId,
+        role: AiMessageRole.USER,
+        status: AiMessageStatus.COMPLETED,
+      },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    })
+    this.logOperation('findLatestCompletedUserMessage', startedAt, message ? 1 : 0)
+    return message ? this.decodeMessage(message) : null
+  }
 
   async appendMessage(
     userId: number,
@@ -149,10 +176,12 @@ export class AgentMessageRepository {
     conversationId: string,
     query: ListCompletedContextMessagesQuery,
   ): Promise<CompletedContextMessagePage> {
-    validatePageLimit(query.limit, 100)
+    validatePageLimit(query.limit, 1_000)
     const startedAt = Date.now()
     await this.assertConversationReadable(userId, conversationId)
-    const anchorIds = [...new Set([query.throughMessageId, query.afterMessageId].filter(Boolean) as string[])]
+    const anchorIds = [
+      ...new Set([query.throughMessageId, query.afterMessageId, query.beforeMessageId].filter(Boolean) as string[]),
+    ]
     const anchors = await this.prisma.aiMessage.findMany({
       where: {
         id: { in: anchorIds },
@@ -165,11 +194,13 @@ export class AgentMessageRepository {
     const positions = new Map(anchors.map((message) => [message.id, message] as const))
     const through = positions.get(query.throughMessageId)
     const after = query.afterMessageId ? positions.get(query.afterMessageId) : null
+    const before = query.beforeMessageId ? positions.get(query.beforeMessageId) : null
     const anchorFound = query.afterMessageId == null || Boolean(after)
+    const cursorFound = query.beforeMessageId == null || Boolean(before)
     const throughFound = Boolean(through)
-    if (!anchorFound || !through) {
+    if (!anchorFound || !cursorFound || !through) {
       this.logOperation('listCompletedContextRange', startedAt, 0)
-      return { anchorFound, throughFound, hasMore: false, items: [] }
+      return { anchorFound, throughFound, cursorFound, hasMore: false, nextBeforeMessageId: null, items: [] }
     }
 
     const rows = await this.prisma.aiMessage.findMany({
@@ -187,18 +218,92 @@ export class AgentMessageRepository {
                 },
               ]
             : []),
+          ...(before ? [positionBefore(before)] : []),
         ],
       },
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       take: query.limit + 1,
     })
     const hasMore = rows.length > query.limit
-    const items = rows
-      .slice(0, query.limit)
-      .reverse()
-      .map((message) => this.decodeMessage(message))
+    const pageRows = rows.slice(0, query.limit)
+    const nextBeforeMessageId = hasMore ? (pageRows.at(-1)?.id ?? null) : null
+    const items = [...pageRows].reverse().map((message) => this.decodeMessage(message))
     this.logOperation('listCompletedContextRange', startedAt, items.length)
-    return { anchorFound, throughFound, hasMore, items }
+    return {
+      anchorFound,
+      throughFound,
+      cursorFound,
+      hasMore,
+      nextBeforeMessageId,
+      items,
+    }
+  }
+
+  async listCompletedSummarySourcePage(
+    userId: number,
+    conversationId: string,
+    query: ListCompletedSummarySourcePageQuery,
+  ): Promise<CompletedContextMessagePage> {
+    validatePageLimit(query.limit, 1_000)
+    const startedAt = Date.now()
+    await this.assertConversationReadable(userId, conversationId)
+    const anchorIds = [
+      ...new Set(
+        [query.throughMessageId, query.afterMessageId, query.protectedFromMessageId, query.cursorAfterMessageId].filter(
+          Boolean,
+        ) as string[],
+      ),
+    ]
+    const anchors = await this.prisma.aiMessage.findMany({
+      where: {
+        id: { in: anchorIds },
+        userId,
+        conversationId,
+        status: AiMessageStatus.COMPLETED,
+      },
+      select: { id: true, createdAt: true, role: true, version: true },
+    })
+    const positions = new Map(anchors.map((message) => [message.id, message] as const))
+    const through = positions.get(query.throughMessageId)
+    const after = query.afterMessageId ? positions.get(query.afterMessageId) : null
+    const protectedFrom = positions.get(query.protectedFromMessageId)
+    const cursor = query.cursorAfterMessageId ? positions.get(query.cursorAfterMessageId) : null
+    const anchorFound = (query.afterMessageId == null || Boolean(after)) && Boolean(protectedFrom)
+    const cursorFound = query.cursorAfterMessageId == null || Boolean(cursor)
+    const throughFound = through?.role === AiMessageRole.USER
+    if (!anchorFound || !cursorFound || !throughFound || !through || !protectedFrom) {
+      this.logOperation('listCompletedSummarySourcePage', startedAt, 0)
+      return { anchorFound, throughFound, cursorFound, hasMore: false, nextBeforeMessageId: null, items: [] }
+    }
+
+    const lowerBound = cursor ?? after
+    const rows = await this.prisma.aiMessage.findMany({
+      where: {
+        userId,
+        conversationId,
+        status: AiMessageStatus.COMPLETED,
+        OR: [{ role: AiMessageRole.USER }, { role: AiMessageRole.ASSISTANT, version: 1 }],
+        AND: [
+          ...(lowerBound ? [positionAfter(lowerBound)] : []),
+          positionBefore(protectedFrom),
+          positionAtOrBefore(through),
+        ],
+      },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      take: query.limit + 1,
+    })
+    const hasMore = rows.length > query.limit
+    const pageRows = rows.slice(0, query.limit)
+    const items = pageRows.map((message) => this.decodeMessage(message))
+    this.logOperation('listCompletedSummarySourcePage', startedAt, items.length)
+    return {
+      anchorFound: true,
+      throughFound: true,
+      cursorFound: true,
+      hasMore,
+      nextBeforeMessageId: hasMore ? (pageRows.at(-1)?.id ?? null) : null,
+      items,
+    }
   }
 
   async listCompletedSummaryCandidates(

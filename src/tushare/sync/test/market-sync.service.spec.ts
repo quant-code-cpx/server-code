@@ -58,6 +58,7 @@ function buildMockApi() {
     getDailyBasicByTradeDate: jest.fn(async () => []),
     getAdjFactorByTradeDate: jest.fn(async () => []),
     getCoreIndexDailyByTradeDate: jest.fn(async () => []),
+    getCoreIndexDailyByDateRange: jest.fn(async () => []),
     getMarginDetailByTradeDate: jest.fn(async () => []),
     getIndexDailyBasicByTradeDate: jest.fn(async () => []),
     getCbDailyByTradeDate: jest.fn(async () => []),
@@ -345,22 +346,23 @@ describe('MarketSyncService', () => {
   // ── syncIndexDaily() ──────────────────────────────────────────────────────
 
   describe('syncIndexDaily()', () => {
-    it('[BIZ] full 模式从 19901219 开始，并写入可续传断点', async () => {
+    it('[BIZ] full 模式从最近五年起点开始，并写入可续传断点', async () => {
       const helper = buildMockHelper()
-      helper.getOpenTradeDatesBetween.mockResolvedValue(['19901219', '19901220'])
+      helper.getOpenTradeDatesBetween.mockResolvedValue(['20190228', '20190301'])
       const api = buildMockApi()
-      api.getCoreIndexDailyByTradeDate.mockResolvedValue([indexDailyApiRow('19901219')])
+      api.getCoreIndexDailyByDateRange.mockResolvedValue([indexDailyApiRow('20190228')])
 
-      await createService(api, helper).syncIndexDaily('19901220', 'full')
+      await createService(api, helper).syncIndexDaily('20240229', 'full')
 
-      expect(helper.getOpenTradeDatesBetween).toHaveBeenCalledWith('19901219', '19901220')
-      expect(helper.updateProgress).toHaveBeenCalledWith(TushareSyncTaskName.INDEX_DAILY, '19901220', 2, 2)
+      expect(helper.getOpenTradeDatesBetween).toHaveBeenCalledWith('20190228', '20240229')
+      expect(api.getCoreIndexDailyByDateRange).toHaveBeenCalledWith('20190228', '20240229')
+      expect(helper.updateProgress).toHaveBeenCalledWith(TushareSyncTaskName.INDEX_DAILY, '20190301', 2, 2)
       expect(helper.markCompleted).toHaveBeenCalledWith(TushareSyncTaskName.INDEX_DAILY)
       expect(helper.writeSyncLog).toHaveBeenCalledWith(
         TushareSyncTaskName.INDEX_DAILY,
         expect.objectContaining({
           status: 'SUCCESS',
-          payload: expect.objectContaining({ mode: 'full', rangeStart: '19901219', failedDates: [] }),
+          payload: expect.objectContaining({ mode: 'full', rangeStart: '20190228', failedDates: [] }),
         }),
         expect.any(Date),
       )
@@ -394,13 +396,13 @@ describe('MarketSyncService', () => {
       expect(helper.getOpenTradeDatesBetween).toHaveBeenCalledWith('20050105', '20050105')
     })
 
-    it('[BIZ] 首次和原地重试都失败时，断点不越过缺口且任务保持未完成', async () => {
+    it('[BIZ] 增量同步首次和原地重试都失败时，断点不越过缺口且任务保持未完成', async () => {
       const helper = buildMockHelper()
       helper.getOpenTradeDatesBetween.mockResolvedValue(['19901219', '19901220'])
       const api = buildMockApi()
       api.getCoreIndexDailyByTradeDate.mockRejectedValue(new Error('网络超时'))
 
-      await createService(api, helper).syncIndexDaily('19901220', 'full')
+      await createService(api, helper).syncIndexDaily('19901220', 'incremental')
 
       expect(api.getCoreIndexDailyByTradeDate).toHaveBeenCalledTimes(4)
       expect(helper.enqueueRetry).toHaveBeenCalledTimes(2)

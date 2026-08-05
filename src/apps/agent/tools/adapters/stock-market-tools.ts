@@ -26,6 +26,7 @@ import {
 } from 'src/apps/watchlist/watchlist-tool.facade'
 import type { IAgentToolsConfig } from 'src/config/agent-tools.config'
 import { MARKET_PRICE_DATA_CONTRACT_VERSION } from 'src/tushare/data-contract'
+import { adapterToolResult } from './tool-adapter-support'
 
 export interface StockMarketToolDependencies {
   stock: StockToolFacade
@@ -61,10 +62,54 @@ export function createStockMarketToolDefinitions(dependencies: StockMarketToolDe
     stockPriceHistoryDefinition(dependencies.stock, dependencies.config),
     stockOverviewDefinition(dependencies.stock),
     stockScreenerDefinition(dependencies.stock),
+    stockScreenerV2Definition(dependencies.stock),
     marketSnapshotDefinition(dependencies.market),
     sectorMembershipDefinition(dependencies.sector),
     userWatchlistDefinition(dependencies.watchlist),
   ])
+}
+
+function stockScreenerV2Definition(stock: StockToolFacade): ToolDefinition {
+  return {
+    key: 'screen_stocks',
+    version: 2,
+    description:
+      '按固定、可审计的五项筛选启发式对全市场或最多 20 只指定 A 股筛选排序。返回每项启发式的命中布尔值与原始证据；它不等于标准技术信号，指定股票的标准事件应使用 get_stock_technical_signals。',
+    inputSchema: stockScreenerInputSchemaV2(),
+    outputSchema: stockScreenerOutputSchemaV2(),
+    policy: { ...PUBLIC_POLICY, timeoutMs: 30_000, maxRows: 50, costClass: 'HIGH' },
+    execute: async (input, context) =>
+      executeSafely(async () => {
+        const raw = input as Record<string, unknown>
+        const preset = typeof raw.preset === 'string' && raw.preset !== 'none' ? raw.preset : null
+        let presetFilters: Record<string, unknown> = {}
+        if (preset) {
+          const selected = stock.getScreenerPresets().presets.find((item) => item.id === preset)
+          if (!selected) throw invalidArgument(`未知选股预设：${preset}`)
+          presetFilters = { ...selected.filters }
+        }
+        const filters = { ...raw }
+        delete filters.preset
+        const query = {
+          ...presetFilters,
+          ...filters,
+          page: Number(raw.page ?? 1),
+          pageSize: Math.min(Number(raw.pageSize ?? 20), 50),
+        } as unknown as StockScreenerQueryDto
+        const value = await stock.screenStocks(query, {
+          includeHeuristicDetails: true,
+          forceHeuristicRanking: true,
+        })
+        return adapterToolResult(context, input, 'screen_stocks', value, {
+          version: 2,
+          sourceType: 'DATABASE',
+          sourceServices: ['StockScreenerService', 'PostgreSQL'],
+          sourceModels: ['StockBasic', 'Daily', 'DailyBasic', 'FinancialIndicatorSnapshot', 'Moneyflow', 'StkFactor'],
+          dataVersion: 'stock-screener-heuristics.v1',
+        })
+      }),
+    countRows: (data) => (data as { items: unknown[] }).items.length,
+  }
 }
 
 function stockScreenerDefinition(stock: StockToolFacade): ToolDefinition {
@@ -87,7 +132,8 @@ function stockScreenerDefinition(stock: StockToolFacade): ToolDefinition {
           if (!selected) throw invalidArgument(`未知选股预设：${preset}`)
           presetFilters = { ...selected.filters }
         }
-        const { preset: _ignored, ...filters } = raw
+        const filters = { ...raw }
+        delete filters.preset
         const query = {
           ...presetFilters,
           ...filters,
@@ -97,7 +143,14 @@ function stockScreenerDefinition(stock: StockToolFacade): ToolDefinition {
         const value = await stock.screenStocks(query)
         return toolResult(context, input, 'screen_stocks', value, {
           sourceServices: ['StockScreenerService', 'PostgreSQL'],
-          sourceModels: ['StockBasic', 'Daily', 'DailyBasic', 'FinancialIndicatorSnapshot', 'Moneyflow', 'StockTechnicalFactor'],
+          sourceModels: [
+            'StockBasic',
+            'Daily',
+            'DailyBasic',
+            'FinancialIndicatorSnapshot',
+            'Moneyflow',
+            'StockTechnicalFactor',
+          ],
           dataVersion: 'stock-screener-v1',
         })
       }),
@@ -107,12 +160,45 @@ function stockScreenerDefinition(stock: StockToolFacade): ToolDefinition {
 
 function stockScreenerInputSchema(): JsonSchema {
   const numberFields = [
-    'minPeTtm', 'maxPeTtm', 'minPb', 'maxPb', 'minDvTtm', 'minTotalMv', 'maxTotalMv', 'minPctChg', 'maxPctChg',
-    'minTurnoverRate', 'maxTurnoverRate', 'minRevenueYoy', 'maxRevenueYoy', 'minNetprofitYoy', 'maxNetprofitYoy',
-    'minRoe', 'maxRoe', 'minMainNetInflow5d', 'minMainNetInflow20d', 'minRsi6', 'maxRsi6',
+    'minPeTtm',
+    'maxPeTtm',
+    'minPb',
+    'maxPb',
+    'minDvTtm',
+    'minTotalMv',
+    'maxTotalMv',
+    'minPctChg',
+    'maxPctChg',
+    'minTurnoverRate',
+    'maxTurnoverRate',
+    'minRevenueYoy',
+    'maxRevenueYoy',
+    'minNetprofitYoy',
+    'maxNetprofitYoy',
+    'minRoe',
+    'maxRoe',
+    'minMainNetInflow5d',
+    'minMainNetInflow20d',
+    'minRsi6',
+    'maxRsi6',
   ]
   const properties: Record<string, JsonSchema> = {
-    preset: { enum: ['none', 'buy_signal_ranking', 'value', 'growth', 'quality', 'dividend', 'small_growth', 'main_inflow', 'northbound', 'tech_breakout', 'oversold_rebound', 'low_ps_growth'] },
+    preset: {
+      enum: [
+        'none',
+        'buy_signal_ranking',
+        'value',
+        'growth',
+        'quality',
+        'dividend',
+        'small_growth',
+        'main_inflow',
+        'northbound',
+        'tech_breakout',
+        'oversold_rebound',
+        'low_ps_growth',
+      ],
+    },
     pageSize: { type: 'integer', minimum: 1, maximum: 10, default: 10 },
     exchange: { enum: ['SSE', 'SZSE', 'BSE'] },
     market: { type: 'string', minLength: 1, maxLength: 32 },
@@ -143,27 +229,178 @@ function stockScreenerInputSchema(): JsonSchema {
     maTrend: { enum: ['bullish', 'bearish'] },
     northboundOnly: { type: 'boolean' },
     minBuySignalCount: { type: 'integer', minimum: 1, maximum: 5 },
-    sortBy: { enum: ['totalMv', 'circMv', 'peTtm', 'pb', 'psTtm', 'dvTtm', 'pctChg', 'turnoverRate', 'amount', 'close', 'roe', 'revenueYoy', 'netprofitYoy', 'grossMargin', 'netMargin', 'debtToAssets', 'mainNetInflow5d', 'buySignalCount', 'listDate'] },
+    sortBy: {
+      enum: [
+        'totalMv',
+        'circMv',
+        'peTtm',
+        'pb',
+        'psTtm',
+        'dvTtm',
+        'pctChg',
+        'turnoverRate',
+        'amount',
+        'close',
+        'roe',
+        'revenueYoy',
+        'netprofitYoy',
+        'grossMargin',
+        'netMargin',
+        'debtToAssets',
+        'mainNetInflow5d',
+        'buySignalCount',
+        'listDate',
+      ],
+    },
     sortOrder: { enum: ['asc', 'desc'] },
   }
   for (const field of numberFields) properties[field] = { type: 'number' }
   return { type: 'object', additionalProperties: false, properties }
 }
 
+function stockScreenerInputSchemaV2(): JsonSchema {
+  const base = stockScreenerInputSchema()
+  return {
+    ...base,
+    properties: {
+      ...(base.properties as Record<string, JsonSchema>),
+      tsCodes: {
+        type: 'array',
+        minItems: 1,
+        maxItems: 20,
+        uniqueItems: true,
+        items: { type: 'string', pattern: '^\\d{6}\\.(SH|SZ|BJ)$' },
+      },
+      page: { type: 'integer', minimum: 1, maximum: 1_000, default: 1 },
+      pageSize: { type: 'integer', minimum: 1, maximum: 50, default: 20 },
+    },
+  }
+}
+
 function stockScreenerOutputSchema(): JsonSchema {
   const nullableNumber = { type: ['number', 'null'] } as JsonSchema
   const itemProperties: Record<string, JsonSchema> = {
-    tsCode: { type: 'string' }, name: { type: ['string', 'null'] }, industry: { type: ['string', 'null'] }, market: { type: ['string', 'null'] },
-    close: nullableNumber, pctChg: nullableNumber, amount: nullableNumber, turnoverRate: nullableNumber, peTtm: nullableNumber, pb: nullableNumber,
-    psTtm: nullableNumber, dvTtm: nullableNumber, totalMv: nullableNumber, circMv: nullableNumber, revenueYoy: nullableNumber,
-    netprofitYoy: nullableNumber, roe: nullableNumber, grossMargin: nullableNumber, netMargin: nullableNumber, debtToAssets: nullableNumber,
-    currentRatio: nullableNumber, quickRatio: nullableNumber, ocfToNetprofit: nullableNumber, mainNetInflow5d: nullableNumber, mainNetInflow20d: nullableNumber,
-    buySignalCount: { type: ['integer', 'null'], minimum: 0, maximum: 5 }, buySignals: { type: ['array', 'null'], items: { enum: ['MACD_GOLDEN_CROSS', 'KDJ_GOLDEN_CROSS', 'MA_BULLISH', 'BOLL_OVERSOLD', 'RSI_OVERSOLD'] } },
-    listDate: { type: ['string', 'null'], format: 'date' }, latestFinDate: { type: ['string', 'null'], format: 'date' }, concepts: { type: ['array', 'null'], items: { type: 'string' } },
+    tsCode: { type: 'string' },
+    name: { type: ['string', 'null'] },
+    industry: { type: ['string', 'null'] },
+    market: { type: ['string', 'null'] },
+    close: nullableNumber,
+    pctChg: nullableNumber,
+    amount: nullableNumber,
+    turnoverRate: nullableNumber,
+    peTtm: nullableNumber,
+    pb: nullableNumber,
+    psTtm: nullableNumber,
+    dvTtm: nullableNumber,
+    totalMv: nullableNumber,
+    circMv: nullableNumber,
+    revenueYoy: nullableNumber,
+    netprofitYoy: nullableNumber,
+    roe: nullableNumber,
+    grossMargin: nullableNumber,
+    netMargin: nullableNumber,
+    debtToAssets: nullableNumber,
+    currentRatio: nullableNumber,
+    quickRatio: nullableNumber,
+    ocfToNetprofit: nullableNumber,
+    mainNetInflow5d: nullableNumber,
+    mainNetInflow20d: nullableNumber,
+    buySignalCount: { type: ['integer', 'null'], minimum: 0, maximum: 5 },
+    buySignals: {
+      type: ['array', 'null'],
+      items: { enum: ['MACD_GOLDEN_CROSS', 'KDJ_GOLDEN_CROSS', 'MA_BULLISH', 'BOLL_OVERSOLD', 'RSI_OVERSOLD'] },
+    },
+    listDate: { type: ['string', 'null'], format: 'date' },
+    latestFinDate: { type: ['string', 'null'], format: 'date' },
+    concepts: { type: ['array', 'null'], items: { type: 'string' } },
   }
   return {
-    type: 'object', additionalProperties: false, required: ['page', 'pageSize', 'total', 'items'],
-    properties: { page: { type: 'integer' }, pageSize: { type: 'integer' }, total: { type: 'integer' }, items: { type: 'array', maxItems: 10, items: { type: 'object', additionalProperties: false, required: ['tsCode'], properties: itemProperties } } },
+    type: 'object',
+    additionalProperties: false,
+    required: ['page', 'pageSize', 'total', 'items'],
+    properties: {
+      page: { type: 'integer' },
+      pageSize: { type: 'integer' },
+      total: { type: 'integer' },
+      items: {
+        type: 'array',
+        maxItems: 10,
+        items: { type: 'object', additionalProperties: false, required: ['tsCode'], properties: itemProperties },
+      },
+    },
+  }
+}
+
+function stockScreenerOutputSchemaV2(): JsonSchema {
+  const base = stockScreenerOutputSchema()
+  const baseProperties = base.properties as Record<string, JsonSchema>
+  const baseItems = baseProperties.items as Record<string, unknown>
+  const baseItem = baseItems.items as Record<string, unknown>
+  const baseItemProperties = baseItem.properties as Record<string, JsonSchema>
+  const nullableNumber: JsonSchema = { type: ['number', 'null'] }
+  const evidenceProperties = Object.fromEntries(
+    [
+      'close',
+      'macdDif',
+      'macdDea',
+      'previousMacdDif',
+      'previousMacdDea',
+      'kdjK',
+      'kdjD',
+      'previousKdjK',
+      'previousKdjD',
+      'bollMid',
+      'bollLower',
+      'rsi6',
+    ].map((key) => [key, nullableNumber]),
+  )
+  return {
+    ...base,
+    properties: {
+      ...baseProperties,
+      items: {
+        ...baseItems,
+        maxItems: 50,
+        items: {
+          ...baseItem,
+          required: [
+            ...((baseItem.required as string[]) ?? []),
+            'heuristicCatalogVersion',
+            'screeningHeuristicCount',
+            'screeningHeuristics',
+          ],
+          properties: {
+            ...baseItemProperties,
+            heuristicCatalogVersion: { const: 'stock-screener-heuristics.v1' },
+            screeningHeuristicCount: { type: 'integer', minimum: 0, maximum: 5 },
+            screeningHeuristics: {
+              type: 'array',
+              minItems: 5,
+              maxItems: 5,
+              items: {
+                type: 'object',
+                additionalProperties: false,
+                required: ['key', 'displayName', 'matched', 'evidence'],
+                properties: {
+                  key: {
+                    enum: [
+                      'MACD_GOLDEN_CROSS',
+                      'KDJ_GOLDEN_CROSS',
+                      'MACD_POSITIVE_AND_CLOSE_ABOVE_BOLL_MID',
+                      'CLOSE_BELOW_BOLL_LOWER',
+                      'RSI6_BELOW_20',
+                    ],
+                  },
+                  displayName: { type: 'string' },
+                  matched: { type: 'boolean' },
+                  evidence: { type: 'object', additionalProperties: false, properties: evidenceProperties },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
   }
 }
 
@@ -171,7 +408,7 @@ function resolveSecurityDefinition(stock: StockToolFacade): ToolDefinition {
   return {
     key: 'resolve_security',
     version: 1,
-    description: '按代码、名称或简称解析股票、指数、基金和期权，返回有界候选并标记歧义。',
+    description: '按代码、名称或简称解析股票、指数、基金、期权和可转债，返回有界候选并标记歧义。',
     inputSchema: {
       type: 'object',
       additionalProperties: false,
@@ -180,9 +417,9 @@ function resolveSecurityDefinition(stock: StockToolFacade): ToolDefinition {
         query: { type: 'string', minLength: 1, maxLength: 64 },
         securityTypes: {
           type: 'array',
-          maxItems: 4,
+          maxItems: 5,
           uniqueItems: true,
-          items: { enum: ['STOCK', 'INDEX', 'FUND', 'OPTION'] },
+          items: { enum: ['STOCK', 'INDEX', 'FUND', 'OPTION', 'CONVERTIBLE_BOND'] },
         },
         includeDelisted: { type: 'boolean', default: false },
       },
@@ -200,7 +437,7 @@ function resolveSecurityDefinition(stock: StockToolFacade): ToolDefinition {
             {
               tsCode: { type: 'string' },
               name: nullableString(),
-              securityType: { enum: ['STOCK', 'INDEX', 'FUND', 'OPTION'] },
+              securityType: { enum: ['STOCK', 'INDEX', 'FUND', 'OPTION', 'CONVERTIBLE_BOND'] },
               exchange: nullableString(),
               listStatus: nullableString(),
               listDate: nullableDate(),

@@ -1,13 +1,15 @@
-import { Inject, Injectable } from '@nestjs/common'
+import { Inject, Injectable, Optional } from '@nestjs/common'
 import { Prisma } from '@prisma/client'
 import { AgentContextConfig, type IAgentContextConfig } from 'src/config/agent-context.config'
 import { AgentMessageRepository } from '../conversation/agent-message.repository'
 import type { PersistedAiMessage } from '../conversation/agent-conversation.types'
 import type { AgentExecutionRun } from '../execution/agent-run.repository'
+import { AgentEventRepository } from '../execution/agent-event.repository'
 import { stableJson } from '../tools/tool-json'
-import { WorkflowCancelledError } from '../workflow/workflow.errors'
-import type { WorkflowBudgetLimits, WorkflowBudgetUsage } from '../workflow/workflow.types'
+import { WorkflowCancelledError, WorkflowExecutionError } from '../workflow/workflow.errors'
+import type { WorkflowBudgetLimits, WorkflowBudgetUsage, WorkflowModelProfile } from '../workflow/workflow.types'
 import { modelMessage, WorkflowModelService } from '../workflow/workflow-model.service'
+import { ModelContextBudgetService, type ModelContextBudgetPlan } from '../workflow/model-context-budget.service'
 import {
   CONVERSATION_SUMMARY_OUTPUT_SCHEMA,
   CONVERSATION_SUMMARY_PROMPT_V1,
@@ -21,11 +23,13 @@ import { AgentSummaryValidationError, AgentSummaryVersionConflictError } from '.
 
 export interface MaybeCompactConversationCommand {
   run: AgentExecutionRun
+  modelProfile: WorkflowModelProfile
   stepId: string
   usage: WorkflowBudgetUsage
   limits: WorkflowBudgetLimits
   workerId?: string
   signal?: AbortSignal
+  reason?: 'MODEL_CONTEXT_PRESSURE' | 'MODEL_SWITCH'
 }
 
 export type MaybeCompactConversationResult =
@@ -51,6 +55,14 @@ interface SummarySource {
   tokenCount: number
 }
 
+interface CompactionScan {
+  anchorFound: boolean
+  throughFound: boolean
+  estimatedTokens: number
+  protectedFromMessageId: string | null
+  required: boolean
+}
+
 @Injectable()
 export class ConversationSummaryGeneratorService {
   constructor(
@@ -60,6 +72,8 @@ export class ConversationSummaryGeneratorService {
     private readonly models: WorkflowModelService,
     private readonly estimator: ContextTokenEstimator,
     @Inject(AgentContextConfig.KEY) private readonly config: IAgentContextConfig,
+    @Optional() private readonly contextBudgets?: ModelContextBudgetService,
+    @Optional() private readonly events?: AgentEventRepository,
   ) {}
 
   async maybeCompact(command: MaybeCompactConversationCommand): Promise<MaybeCompactConversationResult> {
@@ -82,25 +96,12 @@ export class ConversationSummaryGeneratorService {
           return { status: 'SKIPPED', reason: 'RANGE_ALREADY_COMPACTED', usage: currentUsage }
         }
 
-        const page = await this.messages.listCompletedSummaryCandidates(
-          command.run.userId,
-          command.run.conversationId,
-          {
-            afterMessageId: currentSummary?.throughMessageId ?? null,
-            throughMessageId: command.run.triggerMessageId,
-            protectedRecentCount: this.config.recentMessageCount,
-            maxCandidates: this.config.summaryMaxMessageCount,
-          },
-        )
-        if (!page.anchorFound || !page.throughFound) {
-          return { status: 'WARNING', warning: 'SUMMARY_RANGE_INVALID', usage: currentUsage }
+        const plan = this.resolveBudgetPlan(command, currentUsage)
+        const scan = await this.scanForCompaction(command, currentSummary, plan)
+        if (!scan.anchorFound || !scan.throughFound) {
+          await this.failRequiredCompaction(command, '会话历史范围无效，无法为目标模型整理上下文')
         }
-
-        const source = this.limitSource(page.items)
-        if (
-          source.messages.length < this.config.summaryMinMessageCount ||
-          source.tokenCount < this.config.summaryTriggerTokens
-        ) {
+        if (!scan.required || !scan.protectedFromMessageId) {
           return {
             status: 'SKIPPED',
             reason: attempt > 1 ? 'RANGE_ALREADY_COMPACTED' : 'BELOW_THRESHOLD',
@@ -113,7 +114,24 @@ export class ConversationSummaryGeneratorService {
           CONVERSATION_SUMMARY_PROMPT_V1.version,
           CONVERSATION_SUMMARY_PROMPT_V1.contentHash,
         )
-        if (!prompt) return { status: 'WARNING', warning: 'SUMMARY_PROMPT_UNAVAILABLE', usage: currentUsage }
+        if (!prompt) await this.failRequiredCompaction(command, '会话整理 Prompt 不可用，请稍后重试')
+
+        const source = await this.loadSource(
+          command,
+          currentSummary,
+          scan.protectedFromMessageId,
+          plan,
+          prompt.template,
+        )
+        if (source.messages.length === 0) {
+          await this.failRequiredCompaction(command, '当前输入无法压缩到目标模型的上下文范围')
+        }
+        await this.appendCompactionEvent(command, 'context.compaction.started', {
+          model: command.modelProfile.selectedModel,
+          reason: command.reason ?? 'MODEL_CONTEXT_PRESSURE',
+          estimatedTokens: scan.estimatedTokens,
+          targetTokens: plan.compactionTargetTokens,
+        })
 
         let generated
         try {
@@ -128,15 +146,16 @@ export class ConversationSummaryGeneratorService {
             responseSchema: CONVERSATION_SUMMARY_OUTPUT_SCHEMA,
             promptVersionId: prompt.id,
             attemptCount: attempt,
-            maxOutputTokens: this.config.summaryMaxOutputTokens,
+            maxOutputTokens: plan.summaryOutputTokens,
             usage: currentUsage,
             limits: command.limits,
             workerId: command.workerId,
             signal: command.signal,
+            modelProfile: command.modelProfile,
           })
         } catch (error) {
           if (error instanceof WorkflowCancelledError) throw error
-          return { status: 'WARNING', warning: 'SUMMARY_GENERATION_FAILED', usage: currentUsage }
+          await this.failRequiredCompaction(command, '会话整理失败，请重试或切换到上下文更大的模型')
         }
         currentUsage = generated.usage
 
@@ -145,7 +164,7 @@ export class ConversationSummaryGeneratorService {
           output = validateSummaryOutput(generated.data, currentSummary, source.messages)
         } catch (error) {
           if (!(error instanceof AgentSummaryValidationError)) throw error
-          return { status: 'WARNING', warning: 'SUMMARY_OUTPUT_INVALID', usage: currentUsage }
+          await this.failRequiredCompaction(command, '会话整理结果校验失败，请重试')
         }
 
         attemptedThroughMessageId = source.messages.at(-1)!.id
@@ -161,33 +180,145 @@ export class ConversationSummaryGeneratorService {
             modelName: generated.modelName,
             sourceTokenCount: (currentSummary?.sourceTokenCount ?? 0) + source.tokenCount,
           })
+          await this.appendCompactionEvent(command, 'context.compaction.completed', {
+            model: command.modelProfile.selectedModel,
+            summaryVersion: created.version,
+            sourceMessageCount: source.messages.length,
+            sourceTokenCount: source.tokenCount,
+          })
           return { status: 'CREATED', summaryId: created.id, summaryVersion: created.version, usage: currentUsage }
         } catch (error) {
           if (error instanceof AgentSummaryVersionConflictError) {
             if (attempt === 1) continue
-            return { status: 'WARNING', warning: 'SUMMARY_VERSION_CONFLICT', usage: currentUsage }
+            await this.failRequiredCompaction(command, '会话正在被其他请求整理，请稍后重试')
           }
-          return { status: 'WARNING', warning: 'SUMMARY_GENERATION_FAILED', usage: currentUsage }
+          await this.failRequiredCompaction(command, '会话整理结果保存失败，请稍后重试')
         }
       }
     } catch (error) {
-      if (error instanceof WorkflowCancelledError) throw error
-      return { status: 'WARNING', warning: 'SUMMARY_GENERATION_FAILED', usage: currentUsage }
+      if (error instanceof WorkflowCancelledError || error instanceof WorkflowExecutionError) throw error
+      await this.failRequiredCompaction(command, '会话整理失败，请重试或切换到上下文更大的模型')
     }
 
     return { status: 'WARNING', warning: 'SUMMARY_VERSION_CONFLICT', usage: currentUsage }
   }
 
-  private limitSource(messages: PersistedAiMessage[]): SummarySource {
+  private resolveBudgetPlan(
+    command: MaybeCompactConversationCommand,
+    usage: WorkflowBudgetUsage,
+  ): ModelContextBudgetPlan {
+    const planner = this.contextBudgets ?? new ModelContextBudgetService(this.config)
+    return planner.resolve(command.modelProfile, usage, command.limits)
+  }
+
+  private async scanForCompaction(
+    command: MaybeCompactConversationCommand,
+    currentSummary: PersistedConversationSummary | null,
+    plan: ModelContextBudgetPlan,
+  ): Promise<CompactionScan> {
+    let beforeMessageId: string | null = null
+    let estimatedTokens = 0
+    let protectedTokens = 0
+    let protectedFromMessageId: string | null = null
+    let hasOlderThanProtected = false
+
+    while (true) {
+      const page = await this.messages.listCompletedContextRange(command.run.userId, command.run.conversationId, {
+        afterMessageId: currentSummary?.throughMessageId ?? null,
+        throughMessageId: command.run.triggerMessageId,
+        beforeMessageId,
+        limit: this.config.queryPageSize,
+      })
+      if (!page.anchorFound || !page.throughFound || page.cursorFound === false) {
+        return {
+          anchorFound: page.anchorFound,
+          throughFound: page.throughFound,
+          estimatedTokens,
+          protectedFromMessageId,
+          required: false,
+        }
+      }
+      for (const message of [...page.items].reverse()) {
+        const messageTokens = this.estimateMessage(message)
+        estimatedTokens += messageTokens
+        if (protectedFromMessageId == null || protectedTokens + messageTokens <= plan.compactionTargetTokens) {
+          protectedTokens += messageTokens
+          protectedFromMessageId = message.id
+        } else {
+          hasOlderThanProtected = true
+        }
+        if (estimatedTokens > plan.compactionTriggerTokens && hasOlderThanProtected) {
+          return { anchorFound: true, throughFound: true, estimatedTokens, protectedFromMessageId, required: true }
+        }
+      }
+      if (!page.hasMore || !page.nextBeforeMessageId) break
+      beforeMessageId = page.nextBeforeMessageId
+    }
+    return { anchorFound: true, throughFound: true, estimatedTokens, protectedFromMessageId, required: false }
+  }
+
+  private async loadSource(
+    command: MaybeCompactConversationCommand,
+    currentSummary: PersistedConversationSummary | null,
+    protectedFromMessageId: string,
+    plan: ModelContextBudgetPlan,
+    promptTemplate: string,
+  ): Promise<SummarySource> {
     const selected: PersistedAiMessage[] = []
     let tokenCount = 0
-    for (const message of messages) {
-      const nextTokens = this.estimator.estimateMessages([{ role: message.role, content: messageContent(message) }])
-      if (tokenCount + nextTokens > this.config.summaryMaxSourceTokens) break
-      selected.push(message)
-      tokenCount += nextTokens
+    let cursorAfterMessageId: string | null = null
+    while (true) {
+      const page = await this.messages.listCompletedSummarySourcePage(command.run.userId, command.run.conversationId, {
+        afterMessageId: currentSummary?.throughMessageId ?? null,
+        throughMessageId: command.run.triggerMessageId,
+        protectedFromMessageId,
+        cursorAfterMessageId,
+        limit: this.config.queryPageSize,
+      })
+      if (!page.anchorFound || !page.throughFound || page.cursorFound === false) return { messages: [], tokenCount: 0 }
+      for (const message of page.items) {
+        const tentative = [...selected, message]
+        const inputTokens = this.estimator.estimateMessages([
+          modelMessage('system', promptTemplate),
+          modelMessage('user', renderSummaryInput(currentSummary, tentative)),
+        ])
+        if (inputTokens > plan.summaryInputBudget) return { messages: selected, tokenCount }
+        selected.push(message)
+        tokenCount += this.estimateMessage(message)
+      }
+      if (!page.hasMore || !page.nextBeforeMessageId) break
+      cursorAfterMessageId = page.nextBeforeMessageId
     }
     return { messages: selected, tokenCount }
+  }
+
+  private estimateMessage(message: PersistedAiMessage): number {
+    return this.estimator.estimateMessages([{ role: message.role, content: messageContent(message) }])
+  }
+
+  private async failRequiredCompaction(command: MaybeCompactConversationCommand, message: string): Promise<never> {
+    await this.appendCompactionEvent(command, 'context.compaction.failed', {
+      model: command.modelProfile.selectedModel,
+      code: 6047,
+      retryable: true,
+      message,
+    })
+    throw new WorkflowExecutionError('MODEL', 6047, true, message)
+  }
+
+  private async appendCompactionEvent(
+    command: MaybeCompactConversationCommand,
+    eventType: 'context.compaction.started' | 'context.compaction.completed' | 'context.compaction.failed',
+    payload: Record<string, unknown>,
+  ): Promise<void> {
+    if (!command.workerId || !this.events) return
+    await this.events.appendEvent(command.run.id, {
+      workerId: command.workerId,
+      eventType,
+      stepId: command.stepId,
+      traceId: command.run.traceId,
+      payload,
+    })
   }
 }
 

@@ -6,6 +6,7 @@ import type { AgentExecutionRun } from '../../execution/agent-run.repository'
 import { WorkflowCancelledError } from '../../workflow/workflow.errors'
 import type { WorkflowBudgetLimits, WorkflowBudgetUsage } from '../../workflow/workflow.types'
 import { WorkflowModelService } from '../../workflow/workflow-model.service'
+import { ModelContextBudgetService } from '../../workflow/model-context-budget.service'
 import { ConversationSummaryGeneratorService } from '../conversation-summary-generator.service'
 import { ConversationSummaryRepository } from '../conversation-summary.repository'
 import { ConversationSummaryService } from '../conversation-summary.service'
@@ -14,15 +15,15 @@ import { AgentSummaryVersionConflictError } from '../memory-repository.errors'
 
 describe('ConversationSummaryGeneratorService', () => {
   const config = {
-    maxTokens: 16_384,
-    recentMessageCount: 20,
     maxPageContextBytes: 20_000,
     summaryEnabled: true,
-    summaryMinMessageCount: 8,
-    summaryTriggerTokens: 2_048,
-    summaryMaxSourceTokens: 8_192,
-    summaryMaxMessageCount: 500,
-    summaryMaxOutputTokens: 1_024,
+    safetyRatio: 0.08,
+    compactionTriggerRatio: 0.5,
+    compactionTargetRatio: 0.2,
+    outputReserveRatio: 0.15,
+    summaryOutputReserveRatio: 0.05,
+    summaryRunInputRatio: 0.25,
+    queryPageSize: 500,
   }
   const prompt = {
     id: 'summary_prompt_1',
@@ -37,7 +38,11 @@ describe('ConversationSummaryGeneratorService', () => {
     findPublishedPrompt: jest.Mock
   }
   let commits: { commit: jest.Mock }
-  let messages: { listCompletedSummaryCandidates: jest.Mock }
+  let messages: {
+    listCompletedSummaryCandidates: jest.Mock
+    listCompletedContextRange: jest.Mock
+    listCompletedSummarySourcePage: jest.Mock
+  }
   let models: { generateStructured: jest.Mock }
   let service: ConversationSummaryGeneratorService
 
@@ -49,6 +54,7 @@ describe('ConversationSummaryGeneratorService', () => {
     commits = {
       commit: jest.fn().mockResolvedValue({ id: 'summary_1', version: 1 }),
     }
+    let cachedPage: { anchorFound: boolean; throughFound: boolean; hasMore: boolean; items: PersistedAiMessage[] }
     messages = {
       listCompletedSummaryCandidates: jest.fn().mockResolvedValue({
         anchorFound: true,
@@ -56,6 +62,25 @@ describe('ConversationSummaryGeneratorService', () => {
         hasMore: false,
         items: sourceMessages(8, 252),
       }),
+      listCompletedContextRange: jest.fn(async () => {
+        cachedPage = await messages.listCompletedSummaryCandidates()
+        return {
+          anchorFound: cachedPage.anchorFound,
+          throughFound: cachedPage.throughFound,
+          cursorFound: true,
+          hasMore: false,
+          nextBeforeMessageId: null,
+          items: [...cachedPage.items, triggerMessage()],
+        }
+      }),
+      listCompletedSummarySourcePage: jest.fn(async () => ({
+        anchorFound: cachedPage.anchorFound,
+        throughFound: cachedPage.throughFound,
+        cursorFound: true,
+        hasMore: false,
+        nextBeforeMessageId: null,
+        items: cachedPage.items,
+      })),
     }
     models = {
       generateStructured: jest.fn().mockResolvedValue({
@@ -95,12 +120,12 @@ describe('ConversationSummaryGeneratorService', () => {
     expect(models.generateStructured).not.toHaveBeenCalled()
   })
 
-  it('RS-EDGE-001：消息数或 token 未同时达到阈值时不调用模型', async () => {
+  it('RS-EDGE-001：按目标模型比例计算后仍低于触发线时不调用模型', async () => {
     messages.listCompletedSummaryCandidates.mockResolvedValue({
       anchorFound: true,
       throughFound: true,
       hasMore: false,
-      items: sourceMessages(7, 400),
+      items: sourceMessages(2, 100),
     })
 
     const result = await service.maybeCompact(command())
@@ -134,7 +159,7 @@ describe('ConversationSummaryGeneratorService', () => {
         purpose: 'SUMMARIZE',
         promptVersionId: prompt.id,
         attemptCount: 1,
-        maxOutputTokens: 1_024,
+        maxOutputTokens: expect.any(Number),
       }),
     )
     const serializedMessages = JSON.stringify(models.generateStructured.mock.calls[0][0].messages)
@@ -150,6 +175,28 @@ describe('ConversationSummaryGeneratorService', () => {
         sourceTokenCount: 2_048,
       }),
     )
+  })
+
+  it('压缩开始和完成均写入可公开 SSE 事件，不输出消息正文', async () => {
+    const events = { appendEvent: jest.fn().mockResolvedValue(undefined) }
+    service = new ConversationSummaryGeneratorService(
+      messages as never,
+      summaries as unknown as ConversationSummaryRepository,
+      commits as unknown as ConversationSummaryService,
+      models as unknown as WorkflowModelService,
+      new ContextTokenEstimator(),
+      config as never,
+      new ModelContextBudgetService(config as never),
+      events as never,
+    )
+
+    await service.maybeCompact({ ...command(), workerId: 'worker_1' })
+
+    expect(events.appendEvent.mock.calls.map((call) => call[1].eventType)).toEqual([
+      'context.compaction.started',
+      'context.compaction.completed',
+    ])
+    expect(JSON.stringify(events.appendEvent.mock.calls)).not.toContain('CURRENT_TRIGGER_CANARY')
   })
 
   it('RS-BIZ-002：增量输入只带当前摘要一次，并保留旧事实来源', async () => {
@@ -212,13 +259,7 @@ describe('ConversationSummaryGeneratorService', () => {
       repaired: false,
     })
 
-    const result = await service.maybeCompact(command())
-
-    expect(result).toEqual({
-      status: 'WARNING',
-      warning: 'SUMMARY_OUTPUT_INVALID',
-      usage: usage({ inputTokens: 2_100, outputTokens: 30 }),
-    })
+    await expect(service.maybeCompact(command())).rejects.toMatchObject({ agentCode: 6047, retryable: true })
     expect(commits.commit).not.toHaveBeenCalled()
   })
 
@@ -257,10 +298,7 @@ describe('ConversationSummaryGeneratorService', () => {
       repaired: false,
     })
 
-    await expect(service.maybeCompact(command())).resolves.toMatchObject({
-      status: 'WARNING',
-      warning: 'SUMMARY_OUTPUT_INVALID',
-    })
+    await expect(service.maybeCompact(command())).rejects.toMatchObject({ agentCode: 6047 })
     expect(commits.commit).not.toHaveBeenCalled()
   })
 
@@ -292,21 +330,19 @@ describe('ConversationSummaryGeneratorService', () => {
   it('RS-ERR-001：专用发布态 Prompt 缺失时不调用模型并安全降级', async () => {
     summaries.findPublishedPrompt.mockResolvedValue(null)
 
-    await expect(service.maybeCompact(command())).resolves.toEqual({
-      status: 'WARNING',
-      warning: 'SUMMARY_PROMPT_UNAVAILABLE',
-      usage: usage(),
+    await expect(service.maybeCompact(command())).rejects.toMatchObject({
+      agentCode: 6047,
+      message: '会话整理 Prompt 不可用，请稍后重试',
     })
     expect(models.generateStructured).not.toHaveBeenCalled()
   })
 
-  it('RS-ERR-002：模型失败不提交摘要，返回脱敏 warning', async () => {
+  it('RS-ERR-002：模型失败不提交摘要，返回脱敏且可见的压缩错误', async () => {
     models.generateStructured.mockRejectedValue(new Error('SECRET_PROVIDER_BODY'))
 
-    const result = await service.maybeCompact(command())
-
-    expect(result).toEqual({ status: 'WARNING', warning: 'SUMMARY_GENERATION_FAILED', usage: usage() })
-    expect(JSON.stringify(result)).not.toContain('SECRET_PROVIDER_BODY')
+    const pending = service.maybeCompact(command())
+    await expect(pending).rejects.toMatchObject({ agentCode: 6047, retryable: true })
+    await expect(pending).rejects.not.toThrow('SECRET_PROVIDER_BODY')
     expect(commits.commit).not.toHaveBeenCalled()
   })
 
@@ -359,13 +395,7 @@ describe('ConversationSummaryGeneratorService', () => {
         repaired: false,
       })
 
-    const result = await service.maybeCompact(command())
-
-    expect(result).toEqual({
-      status: 'WARNING',
-      warning: 'SUMMARY_VERSION_CONFLICT',
-      usage: usage({ inputTokens: 4_300, outputTokens: 250 }),
-    })
+    await expect(service.maybeCompact(command())).rejects.toMatchObject({ agentCode: 6047, retryable: true })
     expect(models.generateStructured).toHaveBeenCalledTimes(2)
     expect(models.generateStructured.mock.calls[1][0]).toMatchObject({ attemptCount: 2 })
   })
@@ -423,6 +453,36 @@ function command() {
     stepId: 'step_load_context',
     usage: usage(),
     limits: limits(),
+    modelProfile: modelProfile(),
+  }
+}
+
+function triggerMessage(): PersistedAiMessage {
+  return {
+    id: 'trigger_current',
+    role: AiMessageRole.USER,
+    version: 1,
+    contentText: '当'.repeat(1_700),
+    contentBlocks: [],
+    createdAt: new Date(Date.UTC(2026, 6, 21, 9, 0, 0)),
+  } as unknown as PersistedAiMessage
+}
+
+function modelProfile() {
+  return {
+    selectedProvider: 'fake',
+    selectedModel: 'fake-summary-v1',
+    candidates: [
+      {
+        provider: 'fake',
+        model: 'fake-summary-v1',
+        contextWindow: 8_192,
+        maxOutputTokens: 2_048,
+        capabilities: ['STREAMING', 'STRUCTURED_OUTPUT'] as const,
+        reasoningEfforts: [] as const,
+        dataClasses: ['USER_PRIVATE'] as const,
+      },
+    ],
   }
 }
 

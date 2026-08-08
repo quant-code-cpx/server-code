@@ -59,7 +59,7 @@ function buildMockHelper(prismaMock = buildPrismaMock()) {
 
 function buildMockApi() {
   return {
-    getStockBasic: jest.fn(async () => []),
+    getStockBasic: jest.fn(async () => [{ ts_code: '000001.SZ', name: '平安银行' }]),
     getTradeCalendar: jest.fn(async () => []),
     getStockCompany: jest.fn(async () => []),
     getIndexClassify: jest.fn(async () => []),
@@ -148,6 +148,22 @@ describe('BasicSyncService', () => {
 
       expect(api.getStockBasic).toHaveBeenCalled()
       expect(helper.upsertRowsByUnique).toHaveBeenCalledWith('stockBasic', 'tsCode', expect.any(Array))
+      expect(helper.replaceAllRows).not.toHaveBeenCalled()
+    })
+
+    it('所有状态均未返回可用股票时拒绝把空快照记为成功', async () => {
+      const api = buildMockApi()
+      api.getStockBasic.mockResolvedValue([])
+      const helper = buildMockHelper()
+      const service = createService(api, helper)
+
+      await expect(service.syncStockBasic('full')).rejects.toThrow(
+        '[股票列表] 所有上市状态均未返回可用记录，拒绝将空快照标记为同步成功',
+      )
+
+      expect(helper.upsertRowsByUnique).not.toHaveBeenCalled()
+      expect(helper.replaceAllRows).not.toHaveBeenCalled()
+      expect(helper.writeSyncLog).not.toHaveBeenCalled()
     })
 
     it('full 模式应忽略 isTaskSyncedToday，直接调用 API', async () => {

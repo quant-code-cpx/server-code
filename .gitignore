@@ -48,6 +48,7 @@ dockerfiles/redis/redis.acl
 
 # Temporary helper scripts and probe outputs
 .tmp/
+/tmp/
 
 # Report file output
 /storage/

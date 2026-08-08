@@ -25,7 +25,8 @@ import { ValidationCollector } from './quality/validation-collector'
  * BasicSyncService — 基础数据同步
  *
  * 包含：股票列表、交易日历、上市公司信息
- * 全部为全量刷新（delete + insert）
+ * 除股票列表外均为全量刷新（delete + insert）。股票列表是被业务表引用的主数据，
+ * 以全量上游快照逐条 upsert，避免删除后重插破坏外键引用。
  */
 @Injectable()
 export class BasicSyncService {
@@ -191,8 +192,14 @@ export class BasicSyncService {
       .filter((item): item is NonNullable<typeof item> => Boolean(item))
       .forEach((item) => deduped.set(item.tsCode, item))
 
+    const records = Array.from(deduped.values())
+    if (records.length === 0) {
+      throw new Error('[股票列表] 所有上市状态均未返回可用记录，拒绝将空快照标记为同步成功')
+    }
+
     // stock_basic 是新闻证券关联等业务表的被引用主数据，不能再先删后插。
-    const count = await this.helper.upsertRowsByUnique('stockBasic', 'tsCode', Array.from(deduped.values()))
+    // TUSHARE_STOCK_LIST_STATUSES 已覆盖上市、退市与暂停上市状态，因此这里仍同步全量上游快照。
+    const count = await this.helper.upsertRowsByUnique('stockBasic', 'tsCode', records)
 
     this.logger.log(`[股票列表] 同步完成，共 ${count} 条`)
     await this.helper.writeSyncLog(

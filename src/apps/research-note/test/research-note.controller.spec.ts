@@ -160,6 +160,16 @@ describe('ResearchNoteController (integration)', () => {
   it('[VAL] POST /research-note/create 缺 content → 400', () =>
     request(app.getHttpServer()).post('/research-note/create').send({ title: '标题' }).expect(400))
 
+  it('[VAL] POST /research-note/list-trash pageSize 超过 100 → 400', async () => {
+    await request(app.getHttpServer()).post('/research-note/list-trash').send({ pageSize: 101 }).expect(400)
+    expect(mockService.listTrash).not.toHaveBeenCalled()
+  })
+
+  it('[VAL] POST /research-note/search 缺 keyword → 400', async () => {
+    await request(app.getHttpServer()).post('/research-note/search').send({}).expect(400)
+    expect(mockService.search).not.toHaveBeenCalled()
+  })
+
   it('[ERR] POST /research-note/detail NotFoundException → 404', async () => {
     mockService.findOne.mockRejectedValueOnce(new NotFoundException('note not found'))
     await request(app.getHttpServer()).post('/research-note/detail').send({ id: 999 }).expect(404)

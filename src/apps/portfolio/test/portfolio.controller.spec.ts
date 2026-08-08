@@ -289,6 +289,14 @@ describe('PortfolioController', () => {
 
   // ── 新增 DTO 校验 ────────────────────────────────────────────────────
   describe('[DTO 校验] 补充', () => {
+    it('risk/violations limit 超过 100 → 400', async () => {
+      await request(app.getHttpServer())
+        .post('/portfolio/risk/violations')
+        .send({ portfolioId: 'p-1', limit: 101 })
+        .expect(400)
+      expect(mockRiskCheckService.listViolations).not.toHaveBeenCalled()
+    })
+
     it('holding/add 缺 portfolioId → 400', async () => {
       await request(app.getHttpServer())
         .post('/portfolio/holding/add')

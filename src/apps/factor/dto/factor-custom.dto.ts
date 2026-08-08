@@ -76,6 +76,22 @@ export class UpdateCustomFactorDto {
   isEnabled?: boolean
 }
 
+export class FactorNameRequestDto {
+  @ApiProperty({ description: '因子英文标识' })
+  @IsString()
+  @Length(2, 50)
+  @Matches(/^[a-z][a-z0-9_]*$/, { message: '因子名只能包含小写字母、数字和下划线，且以字母开头' })
+  name: string
+}
+
+export class UpdateCustomFactorRequestDto extends UpdateCustomFactorDto {
+  @ApiProperty({ description: '因子英文标识' })
+  @IsString()
+  @Length(2, 50)
+  @Matches(/^[a-z][a-z0-9_]*$/, { message: '因子名只能包含小写字母、数字和下划线，且以字母开头' })
+  name: string
+}
+
 export class TestCustomFactorDto {
   @ApiProperty({
     description: '因子表达式（最大 500 字符）',

@@ -4,7 +4,12 @@ import { JwtAuthGuard } from 'src/lifecycle/guard/jwt-auth.guard'
 import { CurrentUser } from 'src/common/decorators/current-user.decorator'
 import { TokenPayload } from 'src/shared/token.interface'
 import { StrategyDraftService } from './strategy-draft.service'
-import { CreateStrategyDraftDto, SubmitDraftDto, UpdateStrategyDraftDto } from './dto/strategy-draft.dto'
+import {
+  CreateStrategyDraftDto,
+  StrategyDraftIdRequestDto,
+  SubmitDraftDto,
+  UpdateStrategyDraftDto,
+} from './dto/strategy-draft.dto'
 import { ApiSuccessResponse, ApiSuccessRawResponse } from 'src/common/decorators/api-success-response.decorator'
 import {
   DraftMessageResponseDto,
@@ -28,8 +33,8 @@ export class StrategyDraftController {
   @Post('detail')
   @ApiOperation({ summary: '获取单个草稿详情' })
   @ApiSuccessResponse(StrategyDraftDto)
-  getDraft(@CurrentUser() user: TokenPayload, @Body() { id }: { id: number }) {
-    return this.draftService.getDraft(user.id, id)
+  getDraft(@CurrentUser() user: TokenPayload, @Body() dto: StrategyDraftIdRequestDto) {
+    return this.draftService.getDraft(user.id, dto.id)
   }
 
   @Post('create')
@@ -49,8 +54,8 @@ export class StrategyDraftController {
   @Post('delete')
   @ApiOperation({ summary: '删除草稿' })
   @ApiSuccessResponse(DraftMessageResponseDto)
-  deleteDraft(@CurrentUser() user: TokenPayload, @Body() { id }: { id: number }) {
-    return this.draftService.deleteDraft(user.id, id)
+  deleteDraft(@CurrentUser() user: TokenPayload, @Body() dto: StrategyDraftIdRequestDto) {
+    return this.draftService.deleteDraft(user.id, dto.id)
   }
 
   @Post('submit')

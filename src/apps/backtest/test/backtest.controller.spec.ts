@@ -203,6 +203,16 @@ describe('BacktestController', () => {
       .expect(400)
   })
 
+  it('[SEC] ID 型请求缺 runId → 400，不调用 service', async () => {
+    await request(app.getHttpServer()).post('/backtests/runs/trades').send({ page: 1 }).expect(400)
+    expect(mockRunService.getTrades).not.toHaveBeenCalled()
+  })
+
+  it('[SEC] Walk-Forward 分页超上限 → 400，不触发大查询', async () => {
+    await request(app.getHttpServer()).post('/backtests/walk-forward/runs/list').send({ pageSize: 101 }).expect(400)
+    expect(mockWalkForwardService.listWalkForwardRuns).not.toHaveBeenCalled()
+  })
+
   it("[VAL] POST /backtests/runs strategyType='INVALID' → 400", async () => {
     await request(app.getHttpServer())
       .post('/backtests/runs')

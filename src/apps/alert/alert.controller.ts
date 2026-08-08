@@ -17,12 +17,14 @@ import {
   CreatePriceAlertRuleDto,
   ListPriceAlertHistoryDto,
   ListPriceAlertRulesDto,
+  PriceAlertRuleIdRequestDto,
   UpdatePriceAlertRuleDto,
 } from './dto/price-alert-rule.dto'
 import {
   MarketAnomalyDetailQueryDto,
   MarketAnomalyListResponseDto,
   MarketAnomalyQueryDto,
+  MarketAnomalySummaryQueryDto,
 } from './dto/market-anomaly.dto'
 
 @ApiBearerAuth()
@@ -93,7 +95,7 @@ export class AlertController {
   @ApiOperation({ summary: '删除价格预警规则（软删除）' })
   @ApiSuccessRawResponse({ type: 'object' })
   @Post('price-rules/delete')
-  deleteRule(@CurrentUser() user: TokenPayload, @Body() dto: { id: number }) {
+  deleteRule(@CurrentUser() user: TokenPayload, @Body() dto: PriceAlertRuleIdRequestDto) {
     return this.priceAlertService.deleteRule(user.id, dto.id)
   }
 
@@ -117,8 +119,8 @@ export class AlertController {
   @ApiOperation({ summary: '异动监控统计聚合（各类型数量、最近扫描时间）' })
   @ApiSuccessRawResponse({ type: 'object' })
   @Post('anomalies/summary')
-  getAnomalySummary(@CurrentUser() user: TokenPayload, @Body() body: { tradeDate?: string }) {
-    return this.marketAnomalyService.getSummary(body.tradeDate, user.id)
+  getAnomalySummary(@CurrentUser() user: TokenPayload, @Body() dto: MarketAnomalySummaryQueryDto) {
+    return this.marketAnomalyService.getSummary(dto.tradeDate, user.id)
   }
 
   @ApiOperation({ summary: '单条异动详情（含股票名称、结构化 detail）' })

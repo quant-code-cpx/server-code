@@ -129,6 +129,35 @@ describe('LoggingInterceptor', () => {
       expect((logged.user as Record<string, unknown>).name).toBe('admin')
     })
 
+    it('[SEC] camelCase token 字段递归脱敏', async () => {
+      const logger = makeLogger()
+      const interceptor = new LoggingInterceptor(logger, true)
+      const ctx = makeContext({
+        body: {
+          accessToken: 'access-secret',
+          nested: { refreshToken: 'refresh-secret', idToken: 'id-secret' },
+        },
+      })
+
+      await firstValueFrom(interceptor.intercept(ctx, makeCallHandler({})))
+
+      const logged = (logger.log.mock.calls[0][0] as Record<string, unknown>).body as Record<string, unknown>
+      expect(logged.accessToken).toBe('***')
+      expect((logged.nested as Record<string, unknown>).refreshToken).toBe('***')
+      expect((logged.nested as Record<string, unknown>).idToken).toBe('***')
+    })
+
+    it('[SEC] auth 路由永不记录请求体', async () => {
+      const logger = makeLogger()
+      const interceptor = new LoggingInterceptor(logger, true)
+      const ctx = makeContext({ url: '/api/auth/refresh', body: { refreshToken: 'refresh-secret' } })
+
+      await firstValueFrom(interceptor.intercept(ctx, makeCallHandler({})))
+
+      const logged = logger.log.mock.calls[0][0] as Record<string, unknown>
+      expect(logged.body).toBeUndefined()
+    })
+
     it('[EDGE] body 为空对象 → 不写入 body 字段', async () => {
       const logger = makeLogger()
       const interceptor = new LoggingInterceptor(logger, true)

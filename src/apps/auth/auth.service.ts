@@ -100,6 +100,7 @@ export class AuthService {
       account: user.account,
       nickname: user.nickname,
       role: user.role,
+      authVersion: user.authVersion,
     })
   }
 
@@ -153,16 +154,20 @@ export class AuthService {
       throw new BusinessException(ErrorEnum.INVALID_REFRESH_TOKEN)
     })
 
+    // 从数据库获取最新用户信息，并拒绝密码、状态或角色变更前签发的 Refresh Token。
+    // 该版本存于 PostgreSQL，Redis 重启不会让旧 Token 恢复有效。
+    const user = await this.prisma.user.findUnique({ where: { id: payload.id } })
+    if (!user || user.status !== UserStatus.ACTIVE) {
+      throw new BusinessException(ErrorEnum.USER_DISABLED)
+    }
+    if (!Number.isSafeInteger(payload.authVersion) || payload.authVersion !== user.authVersion) {
+      throw new BusinessException(ErrorEnum.INVALID_REFRESH_TOKEN)
+    }
+
     // 原子消费 Redis 中的 Refresh Token，避免并发标签各自完成一次轮换
     const validity = await this.tokenService.consumeRefreshToken(payload.id, payload.jti)
     if (validity === 'invalid') {
       throw new BusinessException(ErrorEnum.INVALID_REFRESH_TOKEN)
-    }
-
-    // 从数据库获取最新用户信息（角色可能已更新）
-    const user = await this.prisma.user.findUnique({ where: { id: payload.id } })
-    if (!user || user.status !== UserStatus.ACTIVE) {
-      throw new BusinessException(ErrorEnum.USER_DISABLED)
     }
 
     // 宽限期内的重复请求（如 React StrictMode 双 useEffect）：只发新 AT，不轮换 RT，Cookie 保持不变
@@ -172,6 +177,7 @@ export class AuthService {
         account: user.account,
         nickname: user.nickname,
         role: user.role,
+        authVersion: user.authVersion,
       })
       return { accessToken, refreshToken: null, refreshTokenTTL: 0 }
     }
@@ -182,6 +188,7 @@ export class AuthService {
       account: user.account,
       nickname: user.nickname,
       role: user.role,
+      authVersion: user.authVersion,
     })
   }
 

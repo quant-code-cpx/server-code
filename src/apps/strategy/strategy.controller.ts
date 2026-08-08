@@ -11,6 +11,12 @@ import { QueryStrategyDto } from './dto/query-strategy.dto'
 import { RunStrategyDto } from './dto/run-strategy.dto'
 import { StrategyListResponseDto, StrategyResponseDto } from './dto/strategy-response.dto'
 import { CompareVersionsDto, ListVersionsDto } from './dto/strategy-version.dto'
+import {
+  CloneStrategyDto,
+  DeleteStrategyDto,
+  StrategyIdDto,
+  StrategyPerformanceQueryDto,
+} from './dto/strategy-action.dto'
 
 @ApiTags('Strategy - 策略管理')
 @UseGuards(JwtAuthGuard)
@@ -35,8 +41,8 @@ export class StrategyController {
   @Post('detail')
   @ApiOperation({ summary: '查询策略详情' })
   @ApiSuccessResponse(StrategyResponseDto)
-  detail(@CurrentUser() user: TokenPayload, @Body() { id }: { id: string }) {
-    return this.strategyService.detail(user.id, id)
+  detail(@CurrentUser() user: TokenPayload, @Body() dto: StrategyIdDto) {
+    return this.strategyService.detail(user.id, dto.id)
   }
 
   @Post('update')
@@ -49,15 +55,15 @@ export class StrategyController {
   @Post('delete')
   @ApiOperation({ summary: '删除策略（有关联数据时需传 force=true 强制删除）' })
   @ApiSuccessRawResponse({ type: 'null', nullable: true })
-  delete(@CurrentUser() user: TokenPayload, @Body() { id, force }: { id: string; force?: boolean }) {
-    return this.strategyService.delete(user.id, id, force)
+  delete(@CurrentUser() user: TokenPayload, @Body() dto: DeleteStrategyDto) {
+    return this.strategyService.delete(user.id, dto.id, dto.force)
   }
 
   @Post('clone')
   @ApiOperation({ summary: '克隆策略（复制为新策略，支持克隆公开策略）' })
   @ApiSuccessResponse(StrategyResponseDto)
-  clone(@CurrentUser() user: TokenPayload, @Body() { id, name }: { id: string; name?: string }) {
-    return this.strategyService.clone(user.id, id, name)
+  clone(@CurrentUser() user: TokenPayload, @Body() dto: CloneStrategyDto) {
+    return this.strategyService.clone(user.id, dto.id, dto.name)
   }
 
   @Post('run')
@@ -98,7 +104,7 @@ export class StrategyController {
   @Post('performance')
   @ApiOperation({ summary: '查询策略历史回测业绩（支持按策略 ID 过滤）' })
   @ApiSuccessRawResponse({ type: 'object' })
-  performance(@CurrentUser() user: TokenPayload, @Body() dto: { strategyId?: string; limit?: number }) {
+  performance(@CurrentUser() user: TokenPayload, @Body() dto: StrategyPerformanceQueryDto) {
     return this.strategyService.performance(user.id, dto)
   }
 }

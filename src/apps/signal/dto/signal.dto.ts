@@ -1,5 +1,19 @@
 import { Type } from 'class-transformer'
-import { IsArray, IsIn, IsInt, IsNumber, IsOptional, IsString, IsPositive, Matches, Max, Min } from 'class-validator'
+import {
+  ArrayMaxSize,
+  ArrayUnique,
+  IsArray,
+  IsIn,
+  IsInt,
+  IsNumber,
+  IsOptional,
+  IsPositive,
+  IsString,
+  Matches,
+  Max,
+  MaxLength,
+  Min,
+} from 'class-validator'
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
 
 // ── Activate ──────────────────────────────────────────────────────────────────
@@ -123,6 +137,28 @@ export class SignalHistoryQueryDto {
   @Min(1)
   @Max(100)
   pageSize?: number
+}
+
+export class CompareSignalHistoriesRequestDto {
+  @ApiProperty({ type: [String], description: '待对比策略 ID，最多 20 个' })
+  @IsArray()
+  @ArrayUnique()
+  @ArrayMaxSize(20)
+  @IsString({ each: true })
+  @MaxLength(128, { each: true })
+  strategyIds: string[]
+
+  @ApiPropertyOptional({ description: '起始日期（YYYYMMDD）' })
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d{8}$/)
+  startDate?: string
+
+  @ApiPropertyOptional({ description: '结束日期（YYYYMMDD）' })
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d{8}$/)
+  endDate?: string
 }
 
 // ── Response ──────────────────────────────────────────────────────────────────

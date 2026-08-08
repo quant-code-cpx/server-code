@@ -7,6 +7,7 @@ import configs from './config'
 import { SharedModule } from './shared/shared.module'
 import { RequestContextModule } from './shared/context/request-context.module'
 import { HealthModule } from './shared/health/health.module'
+import { WorkerReadinessModule } from './shared/health/worker-readiness.module'
 import { AuthModule } from './apps/auth/auth.module'
 import { UserModule } from './apps/user/user.module'
 import { StockModule } from './apps/stock/stock.module'
@@ -78,6 +79,7 @@ const httpThrottle = buildHttpThrottleConfig(process.env)
 
     // ── 健康检查（Liveness / Readiness 探针） ──
     HealthModule,
+    WorkerReadinessModule,
 
     // Only scheduler/all discovers and registers @Cron metadata. Feature modules
     // supply a no-op SchedulerRegistry to non-scheduler processes when needed.

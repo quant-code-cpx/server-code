@@ -906,6 +906,11 @@ describe('FactorController', () => {
       await request(app.getHttpServer()).post('/factor/backtest/attribution').send({ id: 'bt-123' }).expect(201)
     })
 
+    it('fac-val-041: POST /factor/backtest/attribution 缺 id → 400', async () => {
+      await request(app.getHttpServer()).post('/factor/backtest/attribution').send({}).expect(400)
+      expect(mockFactorService.attribution).not.toHaveBeenCalled()
+    })
+
     it('fac-biz-042: POST /factor/backtest/save-as-strategy → 201', async () => {
       mockFactorService.saveAsStrategy.mockResolvedValueOnce({ strategyId: 'st-456' })
       await request(app.getHttpServer())

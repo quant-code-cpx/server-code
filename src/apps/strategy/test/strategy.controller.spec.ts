@@ -146,6 +146,11 @@ describe('StrategyController', () => {
       .expect(400)
   })
 
+  it('[SEC] POST /strategies/detail 缺策略 ID → 400，不调用 service', async () => {
+    await request(app.getHttpServer()).post('/strategies/detail').send({}).expect(400)
+    expect(mockStrategyService.detail).not.toHaveBeenCalled()
+  })
+
   // ── [ERR] 异常透传 ─────────────────────────────────────────────────────────
 
   it('[ERR] POST /strategies/detail → service 抛 NotFoundException → 404', async () => {

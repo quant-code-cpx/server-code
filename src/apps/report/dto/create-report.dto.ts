@@ -135,3 +135,9 @@ export class QueryReportsDto {
   @Max(100)
   pageSize?: number = 20
 }
+
+export class ReportIdRequestDto {
+  @ApiProperty({ description: '报告 ID' })
+  @IsString()
+  reportId: string
+}

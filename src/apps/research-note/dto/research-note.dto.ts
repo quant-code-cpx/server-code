@@ -213,3 +213,53 @@ export class ResearchNoteQueryDto {
   @Matches(/^\d{8}$/)
   until?: string
 }
+
+export class ResearchNoteIdRequestDto {
+  @ApiProperty({ description: '研究笔记 ID' })
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  id: number
+}
+
+export class ResearchNoteStockRequestDto {
+  @ApiProperty({ description: '股票代码', example: '600519.SH' })
+  @IsString()
+  @Matches(/^\d{6}\.(SH|SZ|BJ)$/)
+  tsCode: string
+}
+
+export class UpdateResearchNoteRequestDto extends UpdateResearchNoteDto {
+  @ApiProperty({ description: '研究笔记 ID' })
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  id: number
+}
+
+export class ResearchNotePaginationDto {
+  @ApiPropertyOptional({ default: 1, minimum: 1 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  page?: number = 1
+
+  @ApiPropertyOptional({ default: 20, minimum: 1, maximum: 100 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  pageSize?: number = 20
+}
+
+export class ResearchNoteTrashQueryDto extends ResearchNotePaginationDto {}
+
+export class ResearchNoteSearchRequestDto extends ResearchNotePaginationDto {
+  @ApiProperty({ description: '全文搜索关键词', maxLength: 200 })
+  @IsString()
+  @MinLength(1)
+  @MaxLength(200)
+  keyword: string
+}

@@ -350,3 +350,25 @@ describe('SyncHelperService — upsertRowsByUnique', () => {
     expect(prisma.$transaction).toHaveBeenCalledTimes(2)
   })
 })
+
+describe('SyncHelperService — replaceAllRows', () => {
+  it('上游意外返回空数组时拒绝清空已有全量快照', async () => {
+    const snapshot = {
+      deleteMany: jest.fn(async () => ({ count: 1 })),
+      createMany: jest.fn(async () => ({ count: 1 })),
+    }
+    const prisma = {
+      snapshot,
+      $transaction: jest.fn((operations: Promise<unknown>[]) => Promise.all(operations)),
+    }
+    const configService = {
+      get: jest.fn(() => ({ syncStartDate: '20100101', syncTimeZone: 'Asia/Shanghai' })),
+    }
+    // @ts-expect-error: 局部 mock，只验证快照保护契约
+    const service = new SyncHelperService(prisma, configService, {})
+
+    await expect(service.replaceAllRows('snapshot', [])).rejects.toThrow('[snapshot] 拒绝用空结果覆盖全量快照')
+    expect(snapshot.deleteMany).not.toHaveBeenCalled()
+    expect(prisma.$transaction).not.toHaveBeenCalled()
+  })
+})

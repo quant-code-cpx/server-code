@@ -153,17 +153,14 @@ describe('HttpMetricsInterceptor', () => {
       expect(metrics.requestCounter.inc).not.toHaveBeenCalled()
     })
 
-    it('[BUG P5-B9] /metrics-export 被 startsWith("/metrics") 前缀误排除（不记录指标）', async () => {
-      // 当前行为：/metrics-export 被排除，不记录指标
-      // 正确行为：应该记录指标（仅排除 /metrics 精确路径）
+    it('[BIZ] /metrics-export 不是健康端点，仍记录指标', async () => {
       const { interceptor, metrics } = makeInterceptor()
       const ctx = makeContext({ url: '/metrics-export' })
 
       await firstValueFrom(interceptor.intercept(ctx, makeCallHandler({})))
 
-      // 记录当前（有缺陷的）行为：/metrics-export 被意外排除
-      expect(metrics.durationHistogram.startTimer).not.toHaveBeenCalled()
-      // 修复后应改为: expect(metrics.durationHistogram.startTimer).toHaveBeenCalled()
+      expect(metrics.durationHistogram.startTimer).toHaveBeenCalled()
+      expect(metrics.requestCounter.inc).toHaveBeenCalled()
     })
   })
 

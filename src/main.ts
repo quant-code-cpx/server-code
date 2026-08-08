@@ -21,12 +21,13 @@ import {
   assertProcessEntrypoint,
   type IProcessRoleConfig,
 } from './config/process-role.config'
+import { serializeBigIntForJson } from './common/utils/json-bigint.util'
 
 async function bootstrap() {
-  // BigInt 无法被 JSON.stringify 原生序列化，统一转为 Number
+  // BigInt 无法被 JSON.stringify 原生序列化。仅安全整数转 Number，避免静默精度丢失。
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ;(BigInt.prototype as any).toJSON = function () {
-    return Number(this)
+    return serializeBigIntForJson(this as bigint)
   }
 
   const app = await NestFactory.create<NestExpressApplication>(AppModule, { bufferLogs: true })
@@ -39,6 +40,10 @@ async function bootstrap() {
   const { port, isDev, globalPrefix, logHttpRequests, logHttpBody } = configService.get<IAppConfig>(APP_CONFIG_TOKEN, {
     infer: true,
   })
+  // Production Compose only exposes API through one Nginx edge hop. Trust that
+  // hop so req.ip based throttling sees client IP; Nginx overwrites client-supplied
+  // X-Forwarded-For before proxying, preventing header spoofing.
+  if (process.env.NODE_ENV === 'production') app.set('trust proxy', 1)
   const redisConfig = configService.get<IRedisConfig>(REDIS_CONFIG_TOKEN)
   if (!redisConfig) throw new Error('[Redis] 配置缺失')
 

@@ -24,6 +24,11 @@ import { DriftDetectionDto, DriftDetectionResponseDto } from 'src/apps/signal/dt
 import { DriftDetectionService } from 'src/apps/signal/drift-detection.service'
 import { TradeLogQueryDto, TradeLogSummaryDto } from './dto/trade-log.dto'
 import {
+  PortfolioIdRequestDto,
+  PortfolioRiskRuleIdRequestDto,
+  PortfolioViolationQueryDto,
+} from './dto/portfolio-request.dto'
+import {
   BetaAnalysisDto,
   HoldingItemDto,
   IndustryDistributionDto,
@@ -76,8 +81,8 @@ export class PortfolioController {
   @Post('detail')
   @ApiOperation({ summary: '获取组合详情（含持仓估值）' })
   @ApiSuccessResponse(PortfolioDetailDto)
-  detail(@CurrentUser() user: TokenPayload, @Body() body: { portfolioId: string }) {
-    return this.portfolioService.detail(body.portfolioId, user.id)
+  detail(@CurrentUser() user: TokenPayload, @Body() dto: PortfolioIdRequestDto) {
+    return this.portfolioService.detail(dto.portfolioId, user.id)
   }
 
   @Post('update')
@@ -90,8 +95,8 @@ export class PortfolioController {
   @Post('delete')
   @ApiOperation({ summary: '删除组合' })
   @ApiSuccessResponse(SuccessDto)
-  delete(@CurrentUser() user: TokenPayload, @Body() body: { portfolioId: string }) {
-    return this.portfolioService.delete(body.portfolioId, user.id)
+  delete(@CurrentUser() user: TokenPayload, @Body() dto: PortfolioIdRequestDto) {
+    return this.portfolioService.delete(dto.portfolioId, user.id)
   }
 
   // ─── 持仓管理 ─────────────────────────────────────────────────────────────
@@ -122,8 +127,8 @@ export class PortfolioController {
   @Post('pnl/today')
   @ApiOperation({ summary: '当日浮动盈亏' })
   @ApiSuccessResponse(PnlTodayDto)
-  getPnlToday(@CurrentUser() user: TokenPayload, @Body() body: { portfolioId: string }) {
-    return this.portfolioService.getPnlToday(body.portfolioId, user.id)
+  getPnlToday(@CurrentUser() user: TokenPayload, @Body() dto: PortfolioIdRequestDto) {
+    return this.portfolioService.getPnlToday(dto.portfolioId, user.id)
   }
 
   @Post('pnl/history')
@@ -138,35 +143,35 @@ export class PortfolioController {
   @Post('risk/industry')
   @ApiOperation({ summary: '行业分布分析' })
   @ApiSuccessResponse(IndustryDistributionDto)
-  getIndustryDistribution(@CurrentUser() user: TokenPayload, @Body() body: { portfolioId: string }) {
-    return this.riskService.getIndustryDistribution(body.portfolioId, user.id)
+  getIndustryDistribution(@CurrentUser() user: TokenPayload, @Body() dto: PortfolioIdRequestDto) {
+    return this.riskService.getIndustryDistribution(dto.portfolioId, user.id)
   }
 
   @Post('risk/position')
   @ApiOperation({ summary: '仓位集中度分析' })
   @ApiSuccessResponse(PositionConcentrationDto)
-  getPositionConcentration(@CurrentUser() user: TokenPayload, @Body() body: { portfolioId: string }) {
-    return this.riskService.getPositionConcentration(body.portfolioId, user.id)
+  getPositionConcentration(@CurrentUser() user: TokenPayload, @Body() dto: PortfolioIdRequestDto) {
+    return this.riskService.getPositionConcentration(dto.portfolioId, user.id)
   }
 
   @Post('risk/market-cap')
   @ApiOperation({ summary: '市值分布分析' })
   @ApiSuccessResponse(MarketCapDistributionDto)
-  getMarketCapDistribution(@CurrentUser() user: TokenPayload, @Body() body: { portfolioId: string }) {
-    return this.riskService.getMarketCapDistribution(body.portfolioId, user.id)
+  getMarketCapDistribution(@CurrentUser() user: TokenPayload, @Body() dto: PortfolioIdRequestDto) {
+    return this.riskService.getMarketCapDistribution(dto.portfolioId, user.id)
   }
 
   @Post('risk/beta')
   @ApiOperation({ summary: 'Beta 系数分析' })
   @ApiSuccessResponse(BetaAnalysisDto)
-  getBetaAnalysis(@CurrentUser() user: TokenPayload, @Body() body: { portfolioId: string }) {
-    return this.riskService.getBetaAnalysis(body.portfolioId, user.id)
+  getBetaAnalysis(@CurrentUser() user: TokenPayload, @Body() dto: PortfolioIdRequestDto) {
+    return this.riskService.getBetaAnalysis(dto.portfolioId, user.id)
   }
 
   @Post('risk/snapshot')
   @ApiOperation({ summary: '风险快照（一次返回行业/持仓/市值/Beta，单维度失败不影响其他）' })
-  getRiskSnapshot(@CurrentUser() user: TokenPayload, @Body() body: { portfolioId: string }) {
-    return this.riskService.getRiskSnapshot(body.portfolioId, user.id)
+  getRiskSnapshot(@CurrentUser() user: TokenPayload, @Body() dto: PortfolioIdRequestDto) {
+    return this.riskService.getRiskSnapshot(dto.portfolioId, user.id)
   }
 
   // ─── 风控规则管理 ─────────────────────────────────────────────────────────
@@ -174,8 +179,8 @@ export class PortfolioController {
   @Post('rule/list')
   @ApiOperation({ summary: '获取风控规则列表' })
   @ApiSuccessResponse(RiskRuleDto, { isArray: true })
-  listRules(@CurrentUser() user: TokenPayload, @Body() body: { portfolioId: string }) {
-    return this.riskCheckService.listRules(body.portfolioId, user.id)
+  listRules(@CurrentUser() user: TokenPayload, @Body() dto: PortfolioIdRequestDto) {
+    return this.riskCheckService.listRules(dto.portfolioId, user.id)
   }
 
   @Post('rule/upsert')
@@ -195,8 +200,8 @@ export class PortfolioController {
   @Post('rule/delete')
   @ApiOperation({ summary: '删除风控规则' })
   @ApiSuccessResponse(SuccessDto)
-  deleteRule(@CurrentUser() user: TokenPayload, @Body() body: { ruleId: string }) {
-    return this.riskCheckService.deleteRule(body.ruleId, user.id)
+  deleteRule(@CurrentUser() user: TokenPayload, @Body() dto: PortfolioRiskRuleIdRequestDto) {
+    return this.riskCheckService.deleteRule(dto.ruleId, user.id)
   }
 
   // ─── 风险检测 ─────────────────────────────────────────────────────────────
@@ -204,15 +209,15 @@ export class PortfolioController {
   @Post('risk/check')
   @ApiOperation({ summary: '执行风控规则检测' })
   @ApiSuccessResponse(RiskCheckResultDto)
-  runCheck(@CurrentUser() user: TokenPayload, @Body() body: { portfolioId: string }) {
-    return this.riskCheckService.runCheck(body.portfolioId, user.id)
+  runCheck(@CurrentUser() user: TokenPayload, @Body() dto: PortfolioIdRequestDto) {
+    return this.riskCheckService.runCheck(dto.portfolioId, user.id)
   }
 
   @Post('risk/violations')
   @ApiOperation({ summary: '查询历史违规记录' })
   @ApiSuccessResponse(ViolationRecordDto, { isArray: true })
-  listViolations(@CurrentUser() user: TokenPayload, @Body() body: { portfolioId: string; limit?: number }) {
-    return this.riskCheckService.listViolations(body.portfolioId, user.id, body.limit)
+  listViolations(@CurrentUser() user: TokenPayload, @Body() dto: PortfolioViolationQueryDto) {
+    return this.riskCheckService.listViolations(dto.portfolioId, user.id, dto.limit)
   }
 
   // ─── 回测导入 ──────────────────────────────────────────────────────────────

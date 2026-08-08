@@ -13,7 +13,11 @@ import { StockDetailShareCapitalDto } from './dto/stock-detail-share-capital.dto
 import { StockDetailFinancingDto } from './dto/stock-detail-financing.dto'
 import { StockDetailFinancialStatementsDto } from './dto/stock-detail-financial-statements.dto'
 import { StockScreenerQueryDto } from './dto/stock-screener-query.dto'
-import { CreateScreenerStrategyDto, UpdateScreenerStrategyDto } from './dto/stock-screener-strategy.dto'
+import {
+  CreateScreenerStrategyDto,
+  ScreenerStrategyIdRequestDto,
+  UpdateScreenerStrategyRequestDto,
+} from './dto/stock-screener-strategy.dto'
 import { StockConceptsDto } from './dto/stock-concepts.dto'
 import {
   StockTechnicalIndicatorsDto,
@@ -269,10 +273,7 @@ export class StockController {
   @ApiBearerAuth()
   @ApiOperation({ summary: '选股器 - 更新自定义策略' })
   @ApiSuccessResponse(ScreenerStrategyDataDto)
-  updateScreenerStrategy(
-    @CurrentUser() currentUser: TokenPayload,
-    @Body() dto: UpdateScreenerStrategyDto & { id: number },
-  ) {
+  updateScreenerStrategy(@CurrentUser() currentUser: TokenPayload, @Body() dto: UpdateScreenerStrategyRequestDto) {
     return this.stockService.updateStrategy(currentUser.id, dto.id, dto)
   }
 
@@ -280,8 +281,8 @@ export class StockController {
   @ApiBearerAuth()
   @ApiOperation({ summary: '选股器 - 删除自定义策略' })
   @ApiSuccessResponse(ScreenerStrategyDeleteDataDto)
-  deleteScreenerStrategy(@CurrentUser() currentUser: TokenPayload, @Body() { id }: { id: number }) {
-    return this.stockService.deleteStrategy(currentUser.id, id)
+  deleteScreenerStrategy(@CurrentUser() currentUser: TokenPayload, @Body() dto: ScreenerStrategyIdRequestDto) {
+    return this.stockService.deleteStrategy(currentUser.id, dto.id)
   }
 
   @Post('industries')

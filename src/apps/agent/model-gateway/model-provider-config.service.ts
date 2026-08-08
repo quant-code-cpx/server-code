@@ -409,9 +409,7 @@ export class ModelProviderConfigService {
         'utf8',
       )
     } catch {
-      throw new Error(
-        '[AgentModel] provider apiKey 无法解密，请检查 AGENT_MODEL_DB_ENCRYPTION_KEY 或 ACCESS_TOKEN_SECRET',
-      )
+      throw new Error('[AgentModel] provider apiKey 无法解密，请检查 AGENT_MODEL_DB_ENCRYPTION_KEY')
     }
   }
 }
@@ -518,8 +516,10 @@ function isSafeBaseUrl(value: string): boolean {
 }
 
 function encryptionKey(): Buffer {
-  const raw = process.env.AGENT_MODEL_DB_ENCRYPTION_KEY?.trim() || process.env.ACCESS_TOKEN_SECRET?.trim()
-  if (!raw) throw new Error('[AgentModel] 缺少 AGENT_MODEL_DB_ENCRYPTION_KEY 或 ACCESS_TOKEN_SECRET')
+  const raw = process.env.AGENT_MODEL_DB_ENCRYPTION_KEY?.trim()
+  if (!raw || raw.length < 32) {
+    throw new Error('[AgentModel] AGENT_MODEL_DB_ENCRYPTION_KEY 必须为至少 32 字符的独立随机密钥')
+  }
   return createHash('sha256').update(raw, 'utf8').digest()
 }
 

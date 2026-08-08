@@ -25,6 +25,7 @@ model User {
   id                       Int                      @id @default(autoincrement())
   account                  String                   @unique @db.VarChar(64) // 登录账号（唯一）
   password                 String                   @db.VarChar(255) // 密码（bcrypt 加密存储）
+  authVersion              Int                      @default(0) // 密码、状态或角色变更时递增，立即废止旧 Token
   nickname                 String                   @db.VarChar(64) // 昵称
   role                     UserRole                 @default(USER) // 用户角色
   status                   UserStatus               @default(ACTIVE) // 账号状态

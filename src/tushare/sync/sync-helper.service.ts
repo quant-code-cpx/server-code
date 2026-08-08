@@ -195,12 +195,11 @@ export class SyncHelperService {
     return null
   }
 
-  /** 全量替换：先删后插 */
+  /** 全量替换：先删后插。空结果视为上游/映射异常，拒绝覆盖已有快照。 */
   async replaceAllRows(modelName: string, data: unknown[]): Promise<number> {
     const model = (this.prisma as unknown as Record<string, AnyModelDelegate>)[modelName]
     if (!data.length) {
-      await model.deleteMany()
-      return 0
+      throw new Error(`[${modelName}] 拒绝用空结果覆盖全量快照`)
     }
     const [, result] = await this.prisma.$transaction([model.deleteMany(), model.createMany({ data })])
     return result.count as number

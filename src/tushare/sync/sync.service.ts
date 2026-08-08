@@ -72,6 +72,14 @@ export class TushareSyncService implements OnApplicationBootstrap {
   private readonly syncConcurrency: number
   private readonly bootstrapOnStart: boolean
   private running = false
+  /**
+   * 同一进程内所有同步入口共用一条 FIFO 队列。
+   *
+   * Cron 同秒触发多个 plan 时，不能让后到任务因为上一轮 `running` 而静默丢失；
+   * 非手动入口排队执行，手动入口仍保持明确的冲突反馈。
+   */
+  private runQueue: Promise<void> = Promise.resolve()
+  private queuedRunCount = 0
   /** 上次 catch-up 检查实际执行的时间戳（0 = 从未执行） */
   private lastCatchupAtMs = 0
 
@@ -356,7 +364,7 @@ export class TushareSyncService implements OnApplicationBootstrap {
   triggerManualSyncAsync(input: { tasks?: TushareSyncTaskName[]; mode: TushareSyncMode }): void {
     const requestedPlans = this.buildManualPlans(input)
 
-    if (this.running) {
+    if (this.hasPendingSyncRun()) {
       throw new ConflictException('上一轮同步仍在执行，请稍后再试')
     }
 
@@ -440,9 +448,10 @@ export class TushareSyncService implements OnApplicationBootstrap {
     })
   }
 
-  private async runPlans({ trigger, mode, plans }: RunPlansOptions): Promise<RunPlansResult> {
+  private runPlans(options: RunPlansOptions): Promise<RunPlansResult> {
+    const { trigger, mode, plans } = options
     if (plans.length === 0) {
-      return {
+      return Promise.resolve({
         trigger,
         mode,
         executedTasks: [],
@@ -450,27 +459,63 @@ export class TushareSyncService implements OnApplicationBootstrap {
         failedTasks: [],
         targetTradeDate: null,
         elapsedSeconds: 0,
-      }
+      })
     }
 
-    if (this.running) {
+    if (trigger === 'manual' && this.hasPendingSyncRun()) {
       const taskNames = plans.map((p) => p.task).join(', ')
-      const message = `上一轮同步仍在执行，跳过本次 ${trigger} 触发（${taskNames}）`
-      if (trigger === 'manual') {
-        throw new ConflictException(message)
-      }
-      this.logger.warn(message)
-      return {
-        trigger,
-        mode,
-        executedTasks: [],
-        skippedTasks: plans.map((plan) => plan.task),
-        failedTasks: [],
-        targetTradeDate: null,
-        elapsedSeconds: 0,
-      }
+      throw new ConflictException(`上一轮同步仍在执行，无法执行手动同步（${taskNames}）`)
     }
 
+    this.queuedRunCount++
+    const queuedRun = this.runQueue.then(() => this.runPlansWithLease(options))
+    // 不让一个失败的同步轮次阻塞后续定时任务。
+    this.runQueue = queuedRun.then(
+      () => undefined,
+      () => undefined,
+    )
+    return queuedRun.finally(() => {
+      this.queuedRunCount--
+    })
+  }
+
+  private hasPendingSyncRun(): boolean {
+    return this.running || this.queuedRunCount > 0
+  }
+
+  /**
+   * API / scheduler 可能分属不同进程；本地 FIFO 之外，再以 Redis 租约保证同一时刻只执行一轮。
+   * 拿不到租约的非手动任务会显式记录为 skipped，之后由 catch-up 按 freshness 补跑，不能伪装成成功。
+   */
+  private async runPlansWithLease(options: RunPlansOptions): Promise<RunPlansResult> {
+    let result: RunPlansResult | undefined
+    const leaseResult = await this.cronLock.runWithLease('tushare:sync:round', async () => {
+      result = await this.executePlans(options)
+    })
+
+    if (leaseResult === 'executed' && result) {
+      return result
+    }
+
+    const taskNames = options.plans.map((plan) => plan.task).join(', ')
+    const message = `另一同步进程持有全局租约，未执行本次 ${options.trigger} 触发（${taskNames}）`
+    if (options.trigger === 'manual') {
+      throw new ConflictException(message)
+    }
+
+    this.logger.warn(`${message}；将在后续 catch-up 中按新鲜度补跑`)
+    return {
+      trigger: options.trigger,
+      mode: options.mode,
+      executedTasks: [],
+      skippedTasks: options.plans.map((plan) => plan.task),
+      failedTasks: [],
+      targetTradeDate: null,
+      elapsedSeconds: 0,
+    }
+  }
+
+  private async executePlans({ trigger, mode, plans }: RunPlansOptions): Promise<RunPlansResult> {
     this.running = true
     const startedAt = Date.now()
     const executedTasks: TushareSyncTaskName[] = []

@@ -18,7 +18,14 @@ import { EventStudyResultDto } from './dto/event-study-response.dto'
 import { UpdateSignalRuleDto } from './dto/update-signal-rule.dto'
 import { EventSignalService } from './event-signal.service'
 import { EventStudyService } from './event-study.service'
-import { EventType } from './event-type.registry'
+import {
+  EventCalendarRequestDto,
+  EventSignalQueryRequestDto,
+  EventSignalRuleIdRequestDto,
+  EventSignalRuleListRequestDto,
+  EventSignalRulePreviewRequestDto,
+  EventTypeRequestDto,
+} from './dto/event-study-request.dto'
 
 @ApiTags('Event Study - 事件驱动研究')
 @ApiBearerAuth()
@@ -41,7 +48,7 @@ export class EventStudyController {
   @Post('event-schemas/get')
   @ApiOperation({ summary: '获取指定事件类型的字段 schema（用于动态规则配置）' })
   @ApiSuccessRawResponse({ type: 'object' })
-  getEventSchema(@Body() dto: { eventType: EventType }) {
+  getEventSchema(@Body() dto: EventTypeRequestDto) {
     return this.eventStudyService.getEventSchema(dto.eventType)
   }
 
@@ -55,16 +62,7 @@ export class EventStudyController {
   @Post('events/calendar')
   @ApiOperation({ summary: '查询事件日历热力图（按 date+eventType 分组聚合）' })
   @ApiSuccessRawResponse({ type: 'object' })
-  eventsCalendar(
-    @Body()
-    dto: {
-      eventType?: EventType
-      eventTypes?: EventType[]
-      startDate: string
-      endDate: string
-      tsCode?: string
-    },
-  ) {
+  eventsCalendar(@Body() dto: EventCalendarRequestDto) {
     return this.eventStudyService.eventsCalendar(dto)
   }
 
@@ -87,7 +85,7 @@ export class EventStudyController {
   @Post('signal-rules/list')
   @ApiOperation({ summary: '查询我的信号规则列表' })
   @ApiSuccessRawResponse({ type: 'object' })
-  listRules(@CurrentUser() user: TokenPayload, @Body() dto: { page?: number; pageSize?: number }) {
+  listRules(@CurrentUser() user: TokenPayload, @Body() dto: EventSignalRuleListRequestDto) {
     return this.eventSignalService.listRules(user.id, dto.page, dto.pageSize)
   }
 
@@ -101,25 +99,14 @@ export class EventStudyController {
   @Post('signal-rules/delete')
   @ApiOperation({ summary: '删除事件信号规则（软删除）' })
   @ApiSuccessRawResponse({ type: 'object' })
-  deleteRule(@CurrentUser() user: TokenPayload, @Body() dto: { id: number }) {
+  deleteRule(@CurrentUser() user: TokenPayload, @Body() dto: EventSignalRuleIdRequestDto) {
     return this.eventSignalService.deleteRule(user.id, dto.id)
   }
 
   @Post('signal-rules/preview')
   @ApiOperation({ summary: '预览事件信号规则命中样本与分布' })
   @ApiSuccessRawResponse({ type: 'object' })
-  previewRule(
-    @CurrentUser() user: TokenPayload,
-    @Body()
-    dto: {
-      ruleId?: number
-      eventType?: EventType
-      conditions?: Record<string, unknown>
-      startDate?: string
-      endDate?: string
-      pageSize?: number
-    },
-  ) {
+  previewRule(@CurrentUser() user: TokenPayload, @Body() dto: EventSignalRulePreviewRequestDto) {
     return this.eventSignalService.previewRule(user.id, dto)
   }
 
@@ -166,7 +153,7 @@ export class EventStudyController {
   @Post('signals')
   @ApiOperation({ summary: '查询已触发的事件信号历史' })
   @ApiSuccessRawResponse({ type: 'object' })
-  querySignals(@CurrentUser() user: TokenPayload, @Body() dto: { page?: number; pageSize?: number; tsCode?: string }) {
+  querySignals(@CurrentUser() user: TokenPayload, @Body() dto: EventSignalQueryRequestDto) {
     return this.eventSignalService.querySignals(user.id, dto)
   }
 }

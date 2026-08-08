@@ -10,6 +10,7 @@ import {
   CreateStockReportDto,
   CreateStrategyResearchReportDto,
   QueryReportsDto,
+  ReportIdRequestDto,
 } from './dto/create-report.dto'
 import { ReportService } from './report.service'
 
@@ -51,14 +52,14 @@ export class ReportController {
 
   @Post('detail')
   @ApiOperation({ summary: '获取报告详情' })
-  getReportDetail(@CurrentUser() user: TokenPayload, @Body() body: { reportId: string }) {
-    return this.reportService.getReportDetail(body.reportId, user.id)
+  getReportDetail(@CurrentUser() user: TokenPayload, @Body() dto: ReportIdRequestDto) {
+    return this.reportService.getReportDetail(dto.reportId, user.id)
   }
 
   @Post('delete')
   @ApiOperation({ summary: '删除报告' })
-  deleteReport(@CurrentUser() user: TokenPayload, @Body() body: { reportId: string }) {
-    return this.reportService.deleteReport(body.reportId, user.id)
+  deleteReport(@CurrentUser() user: TokenPayload, @Body() dto: ReportIdRequestDto) {
+    return this.reportService.deleteReport(dto.reportId, user.id)
   }
 
   @Post('schedules/list')

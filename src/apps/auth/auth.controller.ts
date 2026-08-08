@@ -12,6 +12,11 @@ import { ApiSuccessResponse, ApiSuccessRawResponse } from 'src/common/decorators
 import { CaptchaResponseDto } from './dto/captcha-response.dto'
 import { AccessTokenResponseDto } from './dto/auth-response.dto'
 
+export function refreshTokenCookiePath(globalPrefix = process.env.GLOBAL_PREFIX || 'api'): string {
+  const normalizedPrefix = globalPrefix.trim().replace(/^\/+|\/+$/g, '')
+  return normalizedPrefix ? `/${normalizedPrefix}/auth` : '/auth'
+}
+
 @ApiTags('Auth - 认证')
 @Controller('auth')
 export class AuthController {
@@ -100,7 +105,7 @@ export class AuthController {
     const accessToken = authorization?.replace(/^Bearer\s+/i, '') ?? ''
     const refreshToken = req.cookies?.[REFRESH_TOKEN_COOKIE] as string | undefined
     await this.authService.logout(accessToken, refreshToken)
-    res.clearCookie(REFRESH_TOKEN_COOKIE, { path: '/api/auth' })
+    res.clearCookie(REFRESH_TOKEN_COOKIE, { path: refreshTokenCookiePath() })
   }
 
   // ── 工具方法 ──────────────────────────────────────────────────────────────
@@ -111,7 +116,7 @@ export class AuthController {
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'strict',
       maxAge: ttlSeconds * 1000,
-      path: '/api/auth',
+      path: refreshTokenCookiePath(),
     })
   }
 }

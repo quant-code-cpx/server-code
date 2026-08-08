@@ -57,7 +57,8 @@ services:
       - ${DATA_REDIS_DIR:?DATA_REDIS_DIR is required}:/data
       - ${DATA_REDIS_LOGS_DIR:?DATA_REDIS_LOGS_DIR is required}:/var/log/redis
     ports:
-      - '6379:6379'
+      # 仅本机调试可访问；容器间仍通过 quant-net 的 redis:6379 通信。
+      - '127.0.0.1:6379:6379'
     networks:
       - quant-net
     healthcheck:
@@ -107,6 +108,8 @@ services:
       REDIS_PORT: 6379
       REDIS_USERNAME: default
       REDIS_PASSWORD: ${REDIS_PASSWORD}
+      # 开发镜像未安装 Chromium；必须显式部署隔离 report worker 后才允许开启 PDF。
+      REPORT_PDF_ENABLED: 'false'
       NEWS_AKSHARE_BRIDGE_BASE_URL: http://news-source-bridge:8080
       NEWS_AKSHARE_BRIDGE_ALLOWED_HOST: news-source-bridge
     volumes:
@@ -448,6 +451,7 @@ services:
       REDIS_PORT: 6379
       REDIS_USERNAME: default
       REDIS_PASSWORD: ${REDIS_PASSWORD}
+      REPORT_PDF_ENABLED: 'false'
       NEWS_AKSHARE_BRIDGE_BASE_URL: http://news-source-bridge:8080
       NEWS_AKSHARE_BRIDGE_ALLOWED_HOST: news-source-bridge
       TUSHARE_SYNC_ENABLED: 'false'
@@ -462,6 +466,17 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    # Heartbeat requires worker event loop plus PostgreSQL and Redis; PID alone is insufficient.
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'node -e "const fs=require(''fs''),p=require(''path'').join(process.env.APP_TMP_DIR||''/app/tmp'',''worker-readiness-''+process.env.PROCESS_ROLE+''.json'');process.exit(fs.existsSync(p)&&Date.now()-fs.statSync(p).mtimeMs<90000?0:1)"',
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
     restart: unless-stopped
 
   # ── 通用 BullMQ Worker（默认启用；消费回测、事件研究和条件订阅任务）────────
@@ -479,6 +494,7 @@ services:
       REDIS_PORT: 6379
       REDIS_USERNAME: default
       REDIS_PASSWORD: ${REDIS_PASSWORD}
+      REPORT_PDF_ENABLED: 'false'
       TUSHARE_SYNC_ENABLED: 'false'
       NEWS_AKSHARE_BRIDGE_BASE_URL: http://news-source-bridge:8080
       NEWS_AKSHARE_BRIDGE_ALLOWED_HOST: news-source-bridge
@@ -495,13 +511,17 @@ services:
         condition: service_healthy
       news-source-bridge:
         condition: service_healthy
-    # Worker 无 HTTP listener；探测主进程存活，避免把端口探针误判为失败。
+    # Heartbeat requires worker event loop plus PostgreSQL and Redis; PID alone is insufficient.
     healthcheck:
-      test: ['CMD-SHELL', 'node -e "process.kill(1, 0)"']
+      test:
+        [
+          'CMD-SHELL',
+          'node -e "const fs=require(''fs''),p=require(''path'').join(process.env.APP_TMP_DIR||''/app/tmp'',''worker-readiness-''+process.env.PROCESS_ROLE+''.json'');process.exit(fs.existsSync(p)&&Date.now()-fs.statSync(p).mtimeMs<90000?0:1)"',
+        ]
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 20s
+      start_period: 30s
     restart: unless-stopped
 
   # ── Scheduler（默认启用，负责所有定时任务）────────────────────────────────────
@@ -519,6 +539,7 @@ services:
       REDIS_PORT: 6379
       REDIS_USERNAME: default
       REDIS_PASSWORD: ${REDIS_PASSWORD}
+      REPORT_PDF_ENABLED: 'false'
       NEWS_AKSHARE_BRIDGE_BASE_URL: http://news-source-bridge:8080
       NEWS_AKSHARE_BRIDGE_ALLOWED_HOST: news-source-bridge
     command: sh -c "pnpm exec prisma generate && pnpm exec prisma migrate deploy && pnpm start:scheduler:dev"
@@ -532,6 +553,16 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'node -e "const fs=require(''fs''),p=require(''path'').join(process.env.APP_TMP_DIR||''/app/tmp'',''worker-readiness-''+process.env.PROCESS_ROLE+''.json'');process.exit(fs.existsSync(p)&&Date.now()-fs.statSync(p).mtimeMs<90000?0:1)"',
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
     restart: unless-stopped
 
   # ── Prometheus（可观测性，仅 monitoring 配置启用）─────────────────────────

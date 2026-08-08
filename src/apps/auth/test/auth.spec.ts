@@ -131,6 +131,7 @@ describe('AuthService — 登录核心流程', () => {
     nickname: 'Test',
     role: 'USER' as const,
     status: UserStatus.ACTIVE,
+    authVersion: 0,
   }
 
   const VALID_TOKENS = {
@@ -153,7 +154,7 @@ describe('AuthService — 登录核心流程', () => {
 
     mockTokenService = {
       generateTokens: jest.fn().mockResolvedValue(VALID_TOKENS),
-      verifyRefreshToken: jest.fn().mockResolvedValue({ id: 1, jti: 'jti-1', account: 'testuser' }),
+      verifyRefreshToken: jest.fn().mockResolvedValue({ id: 1, jti: 'jti-1', account: 'testuser', authVersion: 0 }),
       consumeRefreshToken: jest.fn().mockResolvedValue('valid'),
       generateAccessToken: jest.fn().mockResolvedValue('new-access-token'),
       blacklistAccessToken: jest.fn().mockResolvedValue(undefined),
@@ -178,7 +179,7 @@ describe('AuthService — 登录核心流程', () => {
     // Reset mock returns
     mockPrisma.user.findUnique.mockResolvedValue(TEST_USER)
     mockTokenService.generateTokens.mockResolvedValue(VALID_TOKENS)
-    mockTokenService.verifyRefreshToken.mockResolvedValue({ id: 1, jti: 'jti-1', account: 'testuser' })
+    mockTokenService.verifyRefreshToken.mockResolvedValue({ id: 1, jti: 'jti-1', account: 'testuser', authVersion: 0 })
   })
 
   afterAll(() => {

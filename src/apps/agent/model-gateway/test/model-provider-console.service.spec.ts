@@ -5,18 +5,18 @@ const now = new Date('2026-08-06T00:00:00.000Z')
 
 describe('ModelProviderConsoleService 管理台业务约束', () => {
   const originalNodeEnv = process.env.NODE_ENV
-  const originalSecret = process.env.ACCESS_TOKEN_SECRET
+  const originalEncryptionKey = process.env.AGENT_MODEL_DB_ENCRYPTION_KEY
 
   beforeAll(() => {
     process.env.NODE_ENV = 'test'
-    process.env.ACCESS_TOKEN_SECRET = 'agent-model-console-test-secret-32-bytes'
+    process.env.AGENT_MODEL_DB_ENCRYPTION_KEY = 'agent-model-console-test-secret-32-bytes'
   })
 
   afterAll(() => {
     if (originalNodeEnv === undefined) delete process.env.NODE_ENV
     else process.env.NODE_ENV = originalNodeEnv
-    if (originalSecret === undefined) delete process.env.ACCESS_TOKEN_SECRET
-    else process.env.ACCESS_TOKEN_SECRET = originalSecret
+    if (originalEncryptionKey === undefined) delete process.env.AGENT_MODEL_DB_ENCRYPTION_KEY
+    else process.env.AGENT_MODEL_DB_ENCRYPTION_KEY = originalEncryptionKey
   })
 
   it('连接必须先保存草稿，探测通过后才允许启用，并使用 CAS 更新', async () => {

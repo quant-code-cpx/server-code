@@ -82,6 +82,14 @@ export class MarketAnomalyDetailQueryDto {
   anomalyId: number
 }
 
+export class MarketAnomalySummaryQueryDto {
+  @ApiPropertyOptional({ description: '交易日，格式 YYYYMMDD；不传则取最新' })
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d{8}$/, { message: 'tradeDate 格式应为 YYYYMMDD' })
+  tradeDate?: string
+}
+
 /** 异动监控 detail 字段（各类型共用，不适用的字段为 null） */
 export class MarketAnomalyDetailDto {
   /** 扫描时交易日字符串，格式 YYYYMMDD */

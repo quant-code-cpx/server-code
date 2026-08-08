@@ -61,10 +61,13 @@ RUN apt-get update \
 
 WORKDIR /app
 
+COPY dockerfiles/app/migrate-entrypoint.sh /usr/local/bin/migrate-entrypoint.sh
+RUN chmod 0555 /usr/local/bin/migrate-entrypoint.sh
+
 USER appuser
 
 # 迁移镜像不可依赖 Corepack 运行时下载 pnpm：appuser 与只读根文件系统下都会失败。
-CMD ["node", "node_modules/prisma/build/index.js", "migrate", "deploy"]
+CMD ["/usr/local/bin/migrate-entrypoint.sh"]
 
 # 运行时镜像只需要生产依赖；迁移 stage 保留 build 期 Prisma CLI/engine。
 FROM builder AS prod-deps

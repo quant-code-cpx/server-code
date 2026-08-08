@@ -3,6 +3,16 @@ import { ModelProviderConfigService } from '../model-provider-config.service'
 
 describe('ModelProviderConfigService', () => {
   const modelConfig = buildModelConfig({ AGENT_MODEL_CONFIG_SOURCE: 'database' }, 'test')
+  const originalEncryptionKey = process.env.AGENT_MODEL_DB_ENCRYPTION_KEY
+
+  beforeAll(() => {
+    process.env.AGENT_MODEL_DB_ENCRYPTION_KEY = 'agent-model-config-test-secret-32-bytes'
+  })
+
+  afterAll(() => {
+    if (originalEncryptionKey === undefined) delete process.env.AGENT_MODEL_DB_ENCRYPTION_KEY
+    else process.env.AGENT_MODEL_DB_ENCRYPTION_KEY = originalEncryptionKey
+  })
 
   it('数据库为空时不写入占位供应商，只返回真实启用 provider', async () => {
     const prisma = {

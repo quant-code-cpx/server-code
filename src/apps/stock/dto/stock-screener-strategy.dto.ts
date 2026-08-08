@@ -1,6 +1,17 @@
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger'
 import { Transform, Type } from 'class-transformer'
-import { IsEnum, IsIn, IsObject, IsOptional, IsString, MaxLength, MinLength, ValidateNested } from 'class-validator'
+import {
+  IsEnum,
+  IsIn,
+  IsInt,
+  IsObject,
+  IsOptional,
+  IsString,
+  MaxLength,
+  Min,
+  MinLength,
+  ValidateNested,
+} from 'class-validator'
 import { ScreenerFiltersDto, ScreenerSortBy, type ScreenerSortOrder } from './stock-screener-query.dto'
 
 const trimString = ({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() : value)
@@ -38,3 +49,19 @@ export class CreateScreenerStrategyDto {
 }
 
 export class UpdateScreenerStrategyDto extends PartialType(CreateScreenerStrategyDto) {}
+
+export class ScreenerStrategyIdRequestDto {
+  @ApiProperty({ description: '选股器策略 ID' })
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  id: number
+}
+
+export class UpdateScreenerStrategyRequestDto extends UpdateScreenerStrategyDto {
+  @ApiProperty({ description: '选股器策略 ID' })
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  id: number
+}

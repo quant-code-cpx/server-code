@@ -10,7 +10,7 @@ import {
 } from '@nestjs/websockets'
 import { Logger, Optional } from '@nestjs/common'
 import { WsException } from '@nestjs/websockets'
-import { UserRole } from '@prisma/client'
+import { UserRole, UserStatus } from '@prisma/client'
 import { Server, Socket } from 'socket.io'
 import { PrismaService } from 'src/shared/prisma.service'
 import { TokenService } from 'src/shared/token.service'
@@ -25,6 +25,7 @@ const MAX_BACKTEST_JOB_ID_LENGTH = 128
 interface SocketIdentity {
   userId: number
   role: UserRole
+  authVersion: number
   authenticatedAt: number
   tokenExpiresAt: number
   expiresTimer?: NodeJS.Timeout
@@ -124,15 +125,23 @@ export class EventsGateway implements OnGatewayInit, OnGatewayConnection, OnGate
         !Number.isSafeInteger(payload.id) ||
         payload.id <= 0 ||
         !payload.jti ||
+        !Number.isSafeInteger(payload.authVersion) ||
+        payload.authVersion < 0 ||
         !Number.isFinite(payload.exp) ||
         !Object.values(UserRole).includes(payload.role)
       ) {
         return null
       }
       if (await this.tokenService.isAccessTokenBlacklisted(payload.jti)) return null
+      const user = await this.prisma.user.findUnique({
+        where: { id: payload.id },
+        select: { role: true, status: true, authVersion: true },
+      })
+      if (!user || user.status !== UserStatus.ACTIVE || user.authVersion !== payload.authVersion) return null
       return {
         userId: payload.id,
-        role: payload.role,
+        role: user.role,
+        authVersion: user.authVersion,
         authenticatedAt: Date.now(),
         tokenExpiresAt: payload.exp * 1000,
       }
@@ -306,6 +315,13 @@ export class EventsGateway implements OnGatewayInit, OnGatewayConnection, OnGate
     if (!this.server) return 0
     const sockets = await this.server.fetchSockets()
     return sockets.length
+  }
+
+  /** 密码、状态或角色变更后主动切断该用户在所有节点上的 Socket.IO 会话。 */
+  disconnectUserSessions(userId: number): void {
+    if (!this.server) return
+    this.server.in(`user:${userId}`).disconnectSockets(true)
+    this.logger.log(`Disconnected WebSocket sessions for user:${userId}`)
   }
 
   private emitToRoom(room: string, event: string, data: unknown): void {

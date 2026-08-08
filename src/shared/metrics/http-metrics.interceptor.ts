@@ -8,6 +8,11 @@ import { HTTP_REQUEST_DURATION, HTTP_REQUEST_TOTAL, HTTP_REQUEST_ERRORS } from '
 /** 健康检查等不需要计量的路径 */
 const EXCLUDED_PATHS = ['/metrics', '/health', '/ready', '/api/health', '/api/ready']
 
+function isExcludedPath(url: string): boolean {
+  const pathname = url.split('?', 1)[0]
+  return EXCLUDED_PATHS.includes(pathname)
+}
+
 @Injectable()
 export class HttpMetricsInterceptor implements NestInterceptor {
   constructor(
@@ -20,7 +25,7 @@ export class HttpMetricsInterceptor implements NestInterceptor {
     const request = context.switchToHttp().getRequest()
     const { method, url } = request
 
-    if (EXCLUDED_PATHS.some((p) => url.startsWith(p))) {
+    if (isExcludedPath(url)) {
       return next.handle()
     }
 

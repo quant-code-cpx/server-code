@@ -105,6 +105,10 @@ function createService(registry: Partial<TushareSyncRegistryService>, mocks = bu
     {
       isSchedulerProcess: jest.fn(() => true),
       runIfScheduler: jest.fn(async (_key: string, task: () => Promise<void>) => task()),
+      runWithLease: jest.fn(async (_key: string, task: () => Promise<void>) => {
+        await task()
+        return 'executed'
+      }),
     } as never,
     noopHistogram,
     noopCounter,
@@ -297,6 +301,46 @@ describe('TushareSyncService', () => {
       expect(() => service.triggerManualSyncAsync({ tasks: [TushareSyncTaskName.DAILY], mode: 'incremental' })).toThrow(
         ConflictException,
       )
+    })
+  })
+
+  describe('scheduled runs', () => {
+    it('同秒到达的计划应 FIFO 排队，不能因本地 running 被静默跳过', async () => {
+      let releaseFirst!: () => void
+      let markFirstStarted!: () => void
+      const firstStarted = new Promise<void>((resolve) => {
+        markFirstStarted = resolve
+      })
+      const allowFirstToFinish = new Promise<void>((resolve) => {
+        releaseFirst = resolve
+      })
+      const firstExecute = jest.fn(async () => {
+        markFirstStarted()
+        await allowFirstToFinish
+      })
+      const secondExecute = jest.fn(async () => undefined)
+      const firstPlan = createPlan({ task: TushareSyncTaskName.DAILY, execute: firstExecute })
+      const secondPlan = createPlan({ task: TushareSyncTaskName.DAILY_BASIC, order: 20, execute: secondExecute })
+      const service = createService({ getPlans: jest.fn(() => [firstPlan, secondPlan]) })
+      const runPlans = service as unknown as {
+        runPlans: (options: { trigger: 'schedule'; mode: 'incremental'; plans: TushareSyncPlan[] }) => Promise<{
+          executedTasks: TushareSyncTaskName[]
+        }>
+      }
+
+      const firstRun = runPlans.runPlans({ trigger: 'schedule', mode: 'incremental', plans: [firstPlan] })
+      await firstStarted
+      const secondRun = runPlans.runPlans({ trigger: 'schedule', mode: 'incremental', plans: [secondPlan] })
+
+      await Promise.resolve()
+      expect(secondExecute).not.toHaveBeenCalled()
+
+      releaseFirst()
+      const [firstResult, secondResult] = await Promise.all([firstRun, secondRun])
+
+      expect(firstResult.executedTasks).toEqual([TushareSyncTaskName.DAILY])
+      expect(secondResult.executedTasks).toEqual([TushareSyncTaskName.DAILY_BASIC])
+      expect(secondExecute).toHaveBeenCalledTimes(1)
     })
   })
 

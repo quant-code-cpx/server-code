@@ -7,6 +7,7 @@ import { TokenPayload } from 'src/shared/token.interface'
 import { SignalService } from './signal.service'
 import {
   ActivateSignalDto,
+  CompareSignalHistoriesRequestDto,
   DeactivateSignalDto,
   LatestSignalQueryDto,
   LatestSignalResponseDto,
@@ -60,10 +61,7 @@ export class SignalController {
   @Post('history/compare')
   @ApiOperation({ summary: '多策略信号历史对比（并列显示各策略汇总统计）' })
   @ApiSuccessRawResponse({ type: 'array' })
-  compareHistories(
-    @CurrentUser() user: TokenPayload,
-    @Body() dto: { strategyIds: string[]; startDate?: string; endDate?: string },
-  ) {
+  compareHistories(@CurrentUser() user: TokenPayload, @Body() dto: CompareSignalHistoriesRequestDto) {
     return this.signalService.compareHistories(user.id, dto)
   }
 }

@@ -76,6 +76,11 @@ describe('EventStudyController', () => {
     await req.post('/event-study/signal-rules').send({}).expect(400)
   })
 
+  it('[VAL] POST /event-study/signal-rules/list pageSize 超过 100 → 400', async () => {
+    await req.post('/event-study/signal-rules/list').send({ pageSize: 101 }).expect(400)
+    expect(mockEventSignalService.listRules).not.toHaveBeenCalled()
+  })
+
   it('[ERR] POST /event-study/signal-rules/update → service 抛 NotFoundException → 404', async () => {
     mockEventSignalService.updateRule.mockRejectedValueOnce(new NotFoundException('规则不存在'))
     const res = await req.post('/event-study/signal-rules/update').send({ id: 999, name: 'Test' }).expect(404)

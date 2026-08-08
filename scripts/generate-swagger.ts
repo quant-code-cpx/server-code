@@ -7,6 +7,8 @@ import { AppModule } from '../src/app.module'
 
 async function main() {
   const app = await NestFactory.create(AppModule, { logger: ['error', 'warn'] })
+  const globalPrefix = process.env.GLOBAL_PREFIX || 'api'
+  app.setGlobalPrefix(globalPrefix, { exclude: ['/metrics', '/health', '/ready'] })
 
   const swaggerConfig = new DocumentBuilder()
     .setTitle('Quant Server API')

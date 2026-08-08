@@ -29,6 +29,7 @@ const mockSignalService = {
   listActivations: jest.fn(),
   getLatestSignals: jest.fn(),
   getSignalHistory: jest.fn(),
+  compareHistories: jest.fn(),
 }
 
 // ── [BIZ] 正常业务路径 ─────────────────────────────────────────────────────────
@@ -80,6 +81,12 @@ describe('SignalController', () => {
 
   it('[VAL] POST /signal/strategies/activate 缺 strategyId → 400', async () => {
     await request(app.getHttpServer()).post('/signal/strategies/activate').send({}).expect(400)
+  })
+
+  it('[VAL] POST /signal/history/compare strategyIds 超过 20 → 400', async () => {
+    const strategyIds = Array.from({ length: 21 }, (_, index) => `strategy-${index}`)
+    await request(app.getHttpServer()).post('/signal/history/compare').send({ strategyIds }).expect(400)
+    expect(mockSignalService.compareHistories).not.toHaveBeenCalled()
   })
 
   // ── [ERR] 异常透传 ──────────────────────────────────────────────────────────

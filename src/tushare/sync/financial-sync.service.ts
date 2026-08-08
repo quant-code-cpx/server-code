@@ -373,8 +373,7 @@ export class FinancialSyncService {
       return
     }
 
-    await this.helper.prisma.income.deleteMany({})
-    this.logger.log(`[利润表] 已清空旧数据，开始按股票重建最近 ${years} 年（${stocks.length} 只股票）`)
+    this.logger.log(`[利润表] 开始按股票分区重建最近 ${years} 年（${stocks.length} 只股票）`)
 
     let totalRows = 0
     const failedStocks: string[] = []
@@ -392,8 +391,7 @@ export class FinancialSyncService {
           })
 
         if (mapped.length > 0) {
-          const result = await this.helper.prisma.income.createMany({ data: mapped, skipDuplicates: true })
-          totalRows += result.count
+          totalRows += await this.replaceFinancialStockRows('income', tsCode, mapped, periods)
         }
 
         if (i === 0 || (i + 1) % 200 === 0 || i === stocks.length - 1) {
@@ -405,6 +403,7 @@ export class FinancialSyncService {
       }
     }
 
+    const remainingFailedStocks: string[] = []
     if (failedStocks.length > 0) {
       this.logger.warn(`[利润表] ${failedStocks.length} 只股票失败，开始兜底重试...`)
       for (const tsCode of failedStocks) {
@@ -418,25 +417,25 @@ export class FinancialSyncService {
               return endDateKey ? periodSet.has(endDateKey) : false
             })
           if (mapped.length > 0) {
-            totalRows += (await this.helper.prisma.income.createMany({ data: mapped, skipDuplicates: true })).count
+            totalRows += await this.replaceFinancialStockRows('income', tsCode, mapped, periods)
           }
           this.logger.log(`[利润表] ${tsCode} 重试成功`)
         } catch (error) {
           this.logger.error(`[利润表] ${tsCode} 重试仍失败: ${(error as Error).message}`)
+          remainingFailedStocks.push(tsCode)
         }
       }
     }
 
     await this.helper.flushValidationLogs(collector)
-    await this.helper.writeSyncLog(
-      TushareSyncTaskName.INCOME,
-      {
-        status: TushareSyncExecutionStatus.SUCCESS,
-        message: `利润表重建完成，最近 ${years} 年，共 ${totalRows} 条`,
-        payload: { years, stockCount: stocks.length, periodCount: periods.length, rowCount: totalRows },
-      },
+    await this.writeFinancialRebuildLog({
+      task: TushareSyncTaskName.INCOME,
+      label: '利润表',
       startedAt,
-    )
+      summary: `最近 ${years} 年，共 ${totalRows} 条`,
+      payload: { years, stockCount: stocks.length, periodCount: periods.length, rowCount: totalRows },
+      failedStocks: remainingFailedStocks,
+    })
   }
 
   // ─── 资产负债表 ────────────────────────────────────────────────────────────
@@ -497,8 +496,9 @@ export class FinancialSyncService {
       return
     }
 
-    await this.helper.prisma.balanceSheet.deleteMany({})
-    this.logger.log(`[资产负债表] balancesheet_vip 不可用，降级按股票重建最近 ${years} 年（${stocks.length} 只股票）`)
+    this.logger.log(
+      `[资产负债表] balancesheet_vip 不可用，降级按股票分区重建最近 ${years} 年（${stocks.length} 只股票）`,
+    )
 
     let totalRows = 0
     const failedStocks: string[] = []
@@ -516,11 +516,7 @@ export class FinancialSyncService {
           })
 
         if (mapped.length > 0) {
-          const result = await this.helper.prisma.balanceSheet.createMany({
-            data: mapped,
-            skipDuplicates: true,
-          })
-          totalRows += result.count
+          totalRows += await this.replaceFinancialStockRows('balanceSheet', tsCode, mapped, periods)
         }
 
         if (i === 0 || (i + 1) % 200 === 0 || i === stocks.length - 1) {
@@ -532,6 +528,7 @@ export class FinancialSyncService {
       }
     }
 
+    const remainingFailedStocks: string[] = []
     if (failedStocks.length > 0) {
       this.logger.warn(`[资产负债表] ${failedStocks.length} 只股票失败，开始兜底重试...`)
       for (const tsCode of failedStocks) {
@@ -545,26 +542,25 @@ export class FinancialSyncService {
               return endDateKey ? periodSet.has(endDateKey) : false
             })
           if (mapped.length > 0) {
-            totalRows += (await this.helper.prisma.balanceSheet.createMany({ data: mapped, skipDuplicates: true }))
-              .count
+            totalRows += await this.replaceFinancialStockRows('balanceSheet', tsCode, mapped, periods)
           }
           this.logger.log(`[资产负债表] ${tsCode} 重试成功`)
         } catch (error) {
           this.logger.error(`[资产负债表] ${tsCode} 重试仍失败: ${(error as Error).message}`)
+          remainingFailedStocks.push(tsCode)
         }
       }
     }
 
     await this.helper.flushValidationLogs(collector)
-    await this.helper.writeSyncLog(
-      TushareSyncTaskName.BALANCE_SHEET,
-      {
-        status: TushareSyncExecutionStatus.SUCCESS,
-        message: `资产负债表重建完成，最近 ${years} 年，共 ${totalRows} 条`,
-        payload: { years, stockCount: stocks.length, periodCount: periods.length, rowCount: totalRows },
-      },
+    await this.writeFinancialRebuildLog({
+      task: TushareSyncTaskName.BALANCE_SHEET,
+      label: '资产负债表',
       startedAt,
-    )
+      summary: `最近 ${years} 年，共 ${totalRows} 条`,
+      payload: { years, stockCount: stocks.length, periodCount: periods.length, rowCount: totalRows },
+      failedStocks: remainingFailedStocks,
+    })
   }
 
   private async rebuildBalanceSheetRecentYearsByVip(
@@ -573,27 +569,27 @@ export class FinancialSyncService {
     years: number,
   ): Promise<number | null> {
     let totalRows = 0
-    let tableCleared = false
 
     for (const [i, period] of periods.entries()) {
       const rows = await this.tryGetBalanceSheetRowsByPeriod(period)
       if (rows === null) {
-        if (tableCleared) {
-          await this.helper.prisma.balanceSheet.deleteMany({})
-        }
         return null
       }
 
-      if (!tableCleared) {
-        await this.helper.prisma.balanceSheet.deleteMany({})
+      if (i === 0) {
         this.logger.log(
-          `[资产负债表] balancesheet_vip 可用，已清空旧数据，开始按报告期重建最近 ${years} 年（${periods.length} 个报告期）`,
+          `[资产负债表] balancesheet_vip 可用，开始按报告期分区重建最近 ${years} 年（${periods.length} 个报告期）`,
         )
-        tableCleared = true
       }
 
       const mapped = this.mapBalanceSheetRows(rows, collector, new Set([period]))
-      totalRows += await this.createBalanceSheetRows(mapped)
+      if (mapped.length > 0) {
+        totalRows += await this.replaceFinancialPartitionRows(
+          this.helper.prisma.balanceSheet as unknown as AnyModelDelegate,
+          { endDate: this.helper.toDate(period) },
+          mapped,
+        )
+      }
 
       if (i === 0 || (i + 1) % 10 === 0 || i === periods.length - 1) {
         this.logger.log(`[资产负债表] VIP 进度 ${i + 1}/${periods.length}，报告期 ${period}，累计 ${totalRows} 条`)
@@ -859,8 +855,7 @@ export class FinancialSyncService {
       return
     }
 
-    await this.helper.prisma.cashflow.deleteMany({})
-    this.logger.log(`[现金流量表] 已清空旧数据，开始按股票重建最近 ${years} 年（${stocks.length} 只股票）`)
+    this.logger.log(`[现金流量表] 开始按股票分区重建最近 ${years} 年（${stocks.length} 只股票）`)
 
     let totalRows = 0
     const failedStocks: string[] = []
@@ -878,8 +873,7 @@ export class FinancialSyncService {
           })
 
         if (mapped.length > 0) {
-          const result = await this.helper.prisma.cashflow.createMany({ data: mapped, skipDuplicates: true })
-          totalRows += result.count
+          totalRows += await this.replaceFinancialStockRows('cashflow', tsCode, mapped, periods)
         }
 
         if (i === 0 || (i + 1) % 200 === 0 || i === stocks.length - 1) {
@@ -891,6 +885,7 @@ export class FinancialSyncService {
       }
     }
 
+    const remainingFailedStocks: string[] = []
     if (failedStocks.length > 0) {
       this.logger.warn(`[现金流量表] ${failedStocks.length} 只股票失败，开始兜底重试...`)
       for (const tsCode of failedStocks) {
@@ -904,25 +899,25 @@ export class FinancialSyncService {
               return endDateKey ? periodSet.has(endDateKey) : false
             })
           if (mapped.length > 0) {
-            totalRows += (await this.helper.prisma.cashflow.createMany({ data: mapped, skipDuplicates: true })).count
+            totalRows += await this.replaceFinancialStockRows('cashflow', tsCode, mapped, periods)
           }
           this.logger.log(`[现金流量表] ${tsCode} 重试成功`)
         } catch (error) {
           this.logger.error(`[现金流量表] ${tsCode} 重试仍失败: ${(error as Error).message}`)
+          remainingFailedStocks.push(tsCode)
         }
       }
     }
 
     await this.helper.flushValidationLogs(collector)
-    await this.helper.writeSyncLog(
-      TushareSyncTaskName.CASHFLOW,
-      {
-        status: TushareSyncExecutionStatus.SUCCESS,
-        message: `现金流量表重建完成，最近 ${years} 年，共 ${totalRows} 条`,
-        payload: { years, stockCount: stocks.length, periodCount: periods.length, rowCount: totalRows },
-      },
+    await this.writeFinancialRebuildLog({
+      task: TushareSyncTaskName.CASHFLOW,
+      label: '现金流量表',
       startedAt,
-    )
+      summary: `最近 ${years} 年，共 ${totalRows} 条`,
+      payload: { years, stockCount: stocks.length, periodCount: periods.length, rowCount: totalRows },
+      failedStocks: remainingFailedStocks,
+    })
   }
 
   // ─── 指定财务数据集重建（最近 N 年） ─────────────────────────────────────
@@ -938,8 +933,7 @@ export class FinancialSyncService {
       return
     }
 
-    await this.helper.prisma.express.deleteMany({})
-    this.logger.log(`[业绩快报] 已清空旧数据，开始按股票重建最近 ${years} 年`)
+    this.logger.log(`[业绩快报] 开始按股票分区重建最近 ${years} 年`)
     const collector = new ValidationCollector(TushareSyncTaskName.EXPRESS)
 
     let totalRows = 0
@@ -957,7 +951,7 @@ export class FinancialSyncService {
           })
 
         if (mapped.length > 0) {
-          totalRows += (await this.helper.prisma.express.createMany({ data: mapped, skipDuplicates: true })).count
+          totalRows += await this.replaceFinancialStockRows('express', tsCode, mapped, periods)
         }
 
         if (i === 0 || (i + 1) % 200 === 0 || i === stocks.length - 1) {
@@ -969,6 +963,7 @@ export class FinancialSyncService {
       }
     }
 
+    const remainingFailedStocks: string[] = []
     if (failedStocks.length > 0) {
       this.logger.warn(`[业绩快报] ${failedStocks.length} 只股票失败，开始兜底重试...`)
       for (const tsCode of failedStocks) {
@@ -982,25 +977,25 @@ export class FinancialSyncService {
               return endDateKey ? periodSet.has(endDateKey) : false
             })
           if (mapped.length > 0) {
-            totalRows += (await this.helper.prisma.express.createMany({ data: mapped, skipDuplicates: true })).count
+            totalRows += await this.replaceFinancialStockRows('express', tsCode, mapped, periods)
           }
           this.logger.log(`[业绩快报] ${tsCode} 重试成功`)
         } catch (error) {
           this.logger.error(`[业绩快报] ${tsCode} 重试仍失败: ${(error as Error).message}`)
+          remainingFailedStocks.push(tsCode)
         }
       }
     }
 
     await this.helper.flushValidationLogs(collector)
-    await this.helper.writeSyncLog(
-      TushareSyncTaskName.EXPRESS,
-      {
-        status: TushareSyncExecutionStatus.SUCCESS,
-        message: `业绩快报重建完成，最近 ${years} 年，共 ${totalRows} 条`,
-        payload: { years, stockCount: stocks.length, periodCount: periods.length, rowCount: totalRows },
-      },
+    await this.writeFinancialRebuildLog({
+      task: TushareSyncTaskName.EXPRESS,
+      label: '业绩快报',
       startedAt,
-    )
+      summary: `最近 ${years} 年，共 ${totalRows} 条`,
+      payload: { years, stockCount: stocks.length, periodCount: periods.length, rowCount: totalRows },
+      failedStocks: remainingFailedStocks,
+    })
   }
 
   async rebuildFinaIndicatorRecentYears(years = 15): Promise<void> {
@@ -1014,8 +1009,7 @@ export class FinancialSyncService {
       return
     }
 
-    await this.helper.prisma.finaIndicator.deleteMany({})
-    this.logger.log(`[财务指标] 已清空旧数据，开始按股票重建最近 ${years} 年（${stocks.length} 只股票）`)
+    this.logger.log(`[财务指标] 开始按股票分区重建最近 ${years} 年（${stocks.length} 只股票）`)
     const collector = new ValidationCollector(TushareSyncTaskName.FINA_INDICATOR)
 
     let totalRows = 0
@@ -1035,7 +1029,7 @@ export class FinancialSyncService {
           })
 
         if (mapped.length > 0) {
-          totalRows += (await this.helper.prisma.finaIndicator.createMany({ data: mapped, skipDuplicates: true })).count
+          totalRows += await this.replaceFinancialStockRows('finaIndicator', tsCode, mapped, periods)
         }
 
         if (i === 0 || (i + 1) % 200 === 0 || i === stocks.length - 1) {
@@ -1047,6 +1041,7 @@ export class FinancialSyncService {
       }
     }
 
+    const remainingFailedStocks: string[] = []
     if (failedStocks.length > 0) {
       this.logger.warn(`[财务指标] ${failedStocks.length} 只股票失败，开始兜底重试...`)
       for (const tsCode of failedStocks) {
@@ -1061,27 +1056,26 @@ export class FinancialSyncService {
             })
 
           if (mapped.length > 0) {
-            totalRows += (await this.helper.prisma.finaIndicator.createMany({ data: mapped, skipDuplicates: true }))
-              .count
+            totalRows += await this.replaceFinancialStockRows('finaIndicator', tsCode, mapped, periods)
           }
 
           this.logger.log(`[财务指标] ${tsCode} 重试成功`)
         } catch (error) {
           this.logger.error(`[财务指标] ${tsCode} 重试仍失败: ${(error as Error).message}`)
+          remainingFailedStocks.push(tsCode)
         }
       }
     }
 
     await this.helper.flushValidationLogs(collector)
-    await this.helper.writeSyncLog(
-      TushareSyncTaskName.FINA_INDICATOR,
-      {
-        status: TushareSyncExecutionStatus.SUCCESS,
-        message: `财务指标重建完成，最近 ${years} 年，共 ${totalRows} 条`,
-        payload: { years, stockCount: stocks.length, periodCount: periods.length, rowCount: totalRows },
-      },
+    await this.writeFinancialRebuildLog({
+      task: TushareSyncTaskName.FINA_INDICATOR,
+      label: '财务指标',
       startedAt,
-    )
+      summary: `最近 ${years} 年，共 ${totalRows} 条`,
+      payload: { years, stockCount: stocks.length, periodCount: periods.length, rowCount: totalRows },
+      failedStocks: remainingFailedStocks,
+    })
   }
 
   async rebuildTop10HoldersRecentYears(years = 15): Promise<void> {
@@ -1747,9 +1741,7 @@ export class FinancialSyncService {
       return
     }
 
-    const model = (this.helper.prisma as unknown as Record<string, AnyModelDelegate>)[modelName]
-    await model.deleteMany({})
-    this.logger.log(`[${label}] 已清空旧数据，开始按股票重建最近 ${years} 年`)
+    this.logger.log(`[${label}] 开始按股票分区重建最近 ${years} 年`)
 
     let totalRows = 0
     const failedStocks: string[] = []
@@ -1769,7 +1761,7 @@ export class FinancialSyncService {
           })
 
         if (mapped.length > 0) {
-          totalRows += (await model.createMany({ data: mapped, skipDuplicates: true })).count
+          totalRows += await this.replaceFinancialStockRows(modelName, tsCode, mapped, periods)
         }
 
         if (i === 0 || (i + 1) % 200 === 0 || i === stocks.length - 1) {
@@ -1781,6 +1773,7 @@ export class FinancialSyncService {
       }
     }
 
+    const remainingFailedStocks: string[] = []
     if (failedStocks.length > 0) {
       this.logger.warn(`[${label}] ${failedStocks.length} 只股票失败，开始兜底重试...`)
       for (const tsCode of failedStocks) {
@@ -1794,25 +1787,93 @@ export class FinancialSyncService {
               return endDateKey ? periodSet.has(endDateKey) : false
             })
           if (mapped.length > 0) {
-            totalRows += (await model.createMany({ data: mapped, skipDuplicates: true })).count
+            totalRows += await this.replaceFinancialStockRows(modelName, tsCode, mapped, periods)
           }
           this.logger.log(`[${label}] ${tsCode} 重试成功`)
         } catch (error) {
           this.logger.error(`[${label}] ${tsCode} 重试仍失败: ${(error as Error).message}`)
+          remainingFailedStocks.push(tsCode)
         }
       }
     }
 
     await this.helper.flushValidationLogs(collector)
-    await this.helper.writeSyncLog(
+    await this.writeFinancialRebuildLog({
       task,
-      {
-        status: TushareSyncExecutionStatus.SUCCESS,
-        message: `${label}重建完成，最近 ${years} 年，共 ${totalRows} 条`,
-        payload: { years, stockCount: stocks.length, periodCount: periods.length, rowCount: totalRows },
-      },
+      label,
       startedAt,
+      summary: `最近 ${years} 年，共 ${totalRows} 条`,
+      payload: { years, stockCount: stocks.length, periodCount: periods.length, rowCount: totalRows },
+      failedStocks: remainingFailedStocks,
+    })
+  }
+
+  /**
+   * 以股票（必要时再以报告期）为分区替换数据。
+   *
+   * 不在全量重建开始时清表：单个股票的 delete/create 在一个事务内完成，
+   * 上游或落库失败时旧分区保持可用，后续重试不会扩大数据缺口。
+   */
+  private async replaceFinancialPartitionRows(
+    model: AnyModelDelegate,
+    where: Record<string, unknown>,
+    rows: unknown[],
+    chunkSize = this.balanceSheetCreateManyChunkSize,
+  ): Promise<number> {
+    if (!rows.length) return 0
+
+    const operations: Prisma.PrismaPromise<{ count: number }>[] = [model.deleteMany({ where })]
+    for (let offset = 0; offset < rows.length; offset += chunkSize) {
+      operations.push(model.createMany({ data: rows.slice(offset, offset + chunkSize), skipDuplicates: true }))
+    }
+
+    const results = await this.helper.prisma.$transaction(operations)
+    return results.slice(1).reduce((total, result) => total + result.count, 0)
+  }
+
+  private replaceFinancialStockRows(
+    modelName: string,
+    tsCode: string,
+    rows: unknown[],
+    periods?: string[],
+  ): Promise<number> {
+    const model = (this.helper.prisma as unknown as Record<string, AnyModelDelegate>)[modelName]
+    const where: Record<string, unknown> = { tsCode }
+    if (periods?.length) {
+      where.endDate = { in: periods.map((period) => this.helper.toDate(period)) }
+    }
+    return this.replaceFinancialPartitionRows(model, where, rows)
+  }
+
+  private async writeFinancialRebuildLog(input: {
+    task: TushareSyncTaskName
+    label: string
+    startedAt: Date
+    summary: string
+    payload: Record<string, unknown>
+    failedStocks: string[]
+  }): Promise<void> {
+    const failedStocks = Array.from(new Set(input.failedStocks))
+    const completed = failedStocks.length === 0
+    await this.helper.writeSyncLog(
+      input.task,
+      {
+        status: completed ? TushareSyncExecutionStatus.SUCCESS : TushareSyncExecutionStatus.FAILED,
+        message: completed
+          ? `${input.label}重建完成，${input.summary}`
+          : `${input.label}重建未完成，${failedStocks.length} 只股票失败，${input.summary}`,
+        payload: {
+          ...input.payload,
+          failedStockCount: failedStocks.length,
+          failedStocks: failedStocks.slice(0, 100),
+        },
+      },
+      input.startedAt,
     )
+
+    if (!completed) {
+      throw new Error(`[${input.label}] 重建未完成，仍有 ${failedStocks.length} 只股票失败`)
+    }
   }
 
   private normalizeDateKey(value: string | Date | null | undefined): string | null {
@@ -2084,8 +2145,7 @@ export class FinancialSyncService {
       return
     }
 
-    await this.helper.prisma.finaAudit.deleteMany({})
-    this.logger.log(`[财务审计意见] 已清空旧数据，开始按股票全量重建（${stocks.length} 只股票）`)
+    this.logger.log(`[财务审计意见] 开始按股票分区全量重建（${stocks.length} 只股票）`)
 
     let totalRows = 0
     const failed: string[] = []
@@ -2099,11 +2159,7 @@ export class FinancialSyncService {
           .filter((r): r is NonNullable<typeof r> => Boolean(r))
 
         if (mapped.length > 0) {
-          const count = await this.helper.prisma.finaAudit.createMany({
-            data: mapped,
-            skipDuplicates: true,
-          })
-          totalRows += count.count
+          totalRows += await this.replaceFinancialStockRows('finaAudit', tsCode, mapped)
         }
 
         if (i === 0 || (i + 1) % 200 === 0 || i === stocks.length - 1) {
@@ -2116,20 +2172,14 @@ export class FinancialSyncService {
     }
 
     await this.helper.flushValidationLogs(collector)
-    await this.helper.writeSyncLog(
-      TushareSyncTaskName.FINA_AUDIT,
-      {
-        status: TushareSyncExecutionStatus.SUCCESS,
-        message: `财务审计意见同步完成，${stocks.length} 只股票，共 ${totalRows} 条`,
-        payload: {
-          mode,
-          stockCount: stocks.length,
-          rowCount: totalRows,
-          ...(failed.length > 0 && { failedStocks: failed }),
-        },
-      },
+    await this.writeFinancialRebuildLog({
+      task: TushareSyncTaskName.FINA_AUDIT,
+      label: '财务审计意见',
       startedAt,
-    )
+      summary: `${stocks.length} 只股票，共 ${totalRows} 条`,
+      payload: { mode, stockCount: stocks.length, rowCount: totalRows },
+      failedStocks: failed,
+    })
   }
 
   // ─── 财报披露计划 ──────────────────────────────────────────────────────────
@@ -2214,8 +2264,7 @@ export class FinancialSyncService {
       return
     }
 
-    await this.helper.prisma.finaMainbz.deleteMany({})
-    this.logger.log(`[主营业务构成] 已清空旧数据，开始按股票全量重建（${stocks.length} 只股票）`)
+    this.logger.log(`[主营业务构成] 开始按股票分区全量重建（${stocks.length} 只股票）`)
 
     let totalRows = 0
     const failed: string[] = []
@@ -2229,11 +2278,7 @@ export class FinancialSyncService {
           .filter((r): r is NonNullable<typeof r> => Boolean(r))
 
         if (mapped.length > 0) {
-          const count = await this.helper.prisma.finaMainbz.createMany({
-            data: mapped,
-            skipDuplicates: true,
-          })
-          totalRows += count.count
+          totalRows += await this.replaceFinancialStockRows('finaMainbz', tsCode, mapped)
         }
 
         if (i === 0 || (i + 1) % 200 === 0 || i === stocks.length - 1) {
@@ -2246,20 +2291,14 @@ export class FinancialSyncService {
     }
 
     await this.helper.flushValidationLogs(collector)
-    await this.helper.writeSyncLog(
-      TushareSyncTaskName.FINA_MAINBZ,
-      {
-        status: TushareSyncExecutionStatus.SUCCESS,
-        message: `主营业务构成同步完成，${stocks.length} 只股票，共 ${totalRows} 条`,
-        payload: {
-          mode,
-          stockCount: stocks.length,
-          rowCount: totalRows,
-          ...(failed.length > 0 && { failedStocks: failed }),
-        },
-      },
+    await this.writeFinancialRebuildLog({
+      task: TushareSyncTaskName.FINA_MAINBZ,
+      label: '主营业务构成',
       startedAt,
-    )
+      summary: `${stocks.length} 只股票，共 ${totalRows} 条`,
+      payload: { mode, stockCount: stocks.length, rowCount: totalRows },
+      failedStocks: failed,
+    })
   }
 
   // ─── 股票回购 ──────────────────────────────────────────────────────────────

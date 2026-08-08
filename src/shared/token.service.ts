@@ -57,7 +57,10 @@ export class TokenService {
    * 适用于内部剛新推送下签发新 Token 的场景。
    */
   async generateAccessToken(payload: Omit<TokenPayload, 'jti'>): Promise<string> {
-    return this.jwtService.signAsync({ ...payload, jti: nanoid() }, this.accessTokenOptions)
+    return this.jwtService.signAsync(
+      { ...payload, authVersion: this.normalizeAuthVersion(payload.authVersion), jti: nanoid() },
+      this.accessTokenOptions,
+    )
   }
 
   /**
@@ -68,7 +71,11 @@ export class TokenService {
     payload: Omit<TokenPayload, 'jti'>,
   ): Promise<{ accessToken: string; refreshToken: string; refreshTokenTTL: number }> {
     const jti = nanoid()
-    const tokenPayload: TokenPayload = { ...payload, jti }
+    const tokenPayload: TokenPayload = {
+      ...payload,
+      authVersion: this.normalizeAuthVersion(payload.authVersion),
+      jti,
+    }
 
     const [accessToken, refreshToken] = await Promise.all([
       this.jwtService.signAsync(tokenPayload, this.accessTokenOptions),
@@ -134,5 +141,9 @@ export class TokenService {
   async isAccessTokenBlacklisted(jti: string): Promise<boolean> {
     const val = await this.redis.get(REDIS_KEY.TOKEN_BLACKLIST(jti))
     return val === '1'
+  }
+
+  private normalizeAuthVersion(value: number | undefined): number {
+    return Number.isSafeInteger(value) && value >= 0 ? value : 0
   }
 }

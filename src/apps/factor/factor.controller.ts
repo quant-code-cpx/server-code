@@ -25,8 +25,13 @@ import {
 } from './dto/factor-analysis.dto'
 import { FactorScreeningDto } from './dto/factor-screening.dto'
 import { FactorBackfillDto, FactorCustomPrecomputeDto, FactorPrecomputeTriggerDto } from './dto/factor-precompute.dto'
-import { CreateCustomFactorDto, TestCustomFactorDto, UpdateCustomFactorDto } from './dto/factor-custom.dto'
-import { FactorBacktestSubmitDto, FactorAttributionDto } from './dto/factor-backtest.dto'
+import {
+  CreateCustomFactorDto,
+  FactorNameRequestDto,
+  TestCustomFactorDto,
+  UpdateCustomFactorRequestDto,
+} from './dto/factor-custom.dto'
+import { FactorAttributionRequestDto, FactorBacktestSubmitDto } from './dto/factor-backtest.dto'
 import { SaveAsStrategyDto } from './dto/save-as-strategy.dto'
 import { FactorOrthogonalizeDto, FamaMacBethDto } from './dto/factor-orthogonal.dto'
 import { FactorOptimizationDto } from './dto/factor-optimization.dto'
@@ -125,15 +130,15 @@ export class FactorController {
   @Post('custom/update')
   @ApiOperation({ summary: '更新自定义因子' })
   @ApiSuccessRawResponse({ type: 'object' })
-  updateCustomFactor(@Body() dto: UpdateCustomFactorDto & { name: string }) {
+  updateCustomFactor(@Body() dto: UpdateCustomFactorRequestDto) {
     return this.factorService.updateCustomFactor(dto.name, dto)
   }
 
   @Post('custom/delete')
   @ApiOperation({ summary: '删除自定义因子（同时清除预计算快照）' })
   @ApiSuccessRawResponse({ type: 'null', nullable: true })
-  deleteCustomFactor(@Body() { name }: { name: string }) {
-    return this.factorService.deleteCustomFactor(name)
+  deleteCustomFactor(@Body() dto: FactorNameRequestDto) {
+    return this.factorService.deleteCustomFactor(dto.name)
   }
 
   @Post('custom/precompute')
@@ -229,9 +234,8 @@ export class FactorController {
   @Post('backtest/attribution')
   @ApiOperation({ summary: '因子归因分析（分析回测收益中各因子的贡献）' })
   @ApiSuccessRawResponse({ type: 'object' })
-  attribution(@Body() dto: FactorAttributionDto & { id: string }) {
-    dto.backtestId = dto.id
-    return this.factorService.attribution(dto)
+  attribution(@Body() dto: FactorAttributionRequestDto) {
+    return this.factorService.attribution({ backtestId: dto.id, factorNames: dto.factorNames })
   }
 
   // ─── 保存策略模板 ─────────────────────────────────────────────────────────

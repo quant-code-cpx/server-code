@@ -119,3 +119,18 @@ export class FactorAttributionDto {
   @IsString({ each: true })
   factorNames?: string[]
 }
+
+export class FactorAttributionRequestDto {
+  @ApiProperty({ description: '回测任务 ID' })
+  @IsString()
+  id: string
+
+  @ApiPropertyOptional({
+    type: [String],
+    description: '分析哪些因子的贡献（默认使用回测时的条件因子）',
+  })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  factorNames?: string[]
+}

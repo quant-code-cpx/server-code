@@ -8,12 +8,14 @@ import { AgentQueueModule } from './queue/agent/agent-queue.module'
 import { MetricsModule } from './shared/metrics/metrics.module'
 import { SharedModule } from './shared/shared.module'
 import { IRedisConfig, REDIS_CONFIG_TOKEN } from './config/redis.config'
+import { WorkerReadinessModule } from './shared/health/worker-readiness.module'
 
 @Module({
   imports: [
     ConfigModule.forRoot({ envFilePath: ['.env'], isGlobal: true, load: [...Object.values(configs)] }),
     ScheduleModule.forRoot(),
     SharedModule,
+    WorkerReadinessModule,
     MetricsModule,
     BullModule.forRootAsync({
       inject: [ConfigService],

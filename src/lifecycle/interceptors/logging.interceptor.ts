@@ -12,24 +12,40 @@ const EXCLUDED_PATHS = [
   ...(process.env.LOG_EXCLUDED_PATHS?.split(',').map((s) => s.trim()) ?? []),
 ]
 
-const SENSITIVE_FIELDS = [
+const SENSITIVE_FIELDS = new Set([
   'password',
-  'newPassword',
-  'oldPassword',
+  'newpassword',
+  'oldpassword',
   'token',
   'secret',
-  'captchaCode',
-  'apiKey',
-  'encryptedApiKey',
+  'captchacode',
+  'apikey',
+  'encryptedapikey',
   'authorization',
-]
+])
+
+function isSensitiveField(key: string): boolean {
+  const normalized = key.replace(/[-_]/g, '').toLowerCase()
+  return (
+    SENSITIVE_FIELDS.has(normalized) ||
+    normalized.endsWith('token') ||
+    normalized.endsWith('secret') ||
+    normalized.endsWith('password') ||
+    normalized.endsWith('apikey')
+  )
+}
+
+function isAuthenticationPath(url: string): boolean {
+  const pathname = url.split('?', 1)[0]
+  return /(?:^|\/)auth(?:\/|$)/.test(pathname)
+}
 
 function sanitizeBody(body: unknown): unknown {
   if (!body || typeof body !== 'object') return body
   if (Array.isArray(body)) return body.map(sanitizeBody)
   const sanitized = { ...(body as Record<string, unknown>) }
   for (const [key, value] of Object.entries(sanitized)) {
-    if (SENSITIVE_FIELDS.includes(key)) {
+    if (isSensitiveField(key)) {
       sanitized[key] = '***'
     } else if (value && typeof value === 'object') {
       sanitized[key] = sanitizeBody(value)
@@ -120,7 +136,7 @@ export class LoggingInterceptor implements NestInterceptor {
             userId: ctx?.userId,
           }
 
-          if (this.logHttpBody && request.body && Object.keys(request.body).length > 0) {
+          if (this.logHttpBody && !isAuthenticationPath(url) && request.body && Object.keys(request.body).length > 0) {
             logData.body = sanitizeBody(request.body)
           }
 

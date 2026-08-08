@@ -47,6 +47,9 @@ services:
 
   migration:
     image: ${MIGRATION_IMAGE_REF:?MIGRATION_IMAGE_REF must be set to an immutable digest}
+    # Use the same protected environment file as the application so the
+    # pre-start model-key migration receives its current/temporary legacy key.
+    env_file: ${APP_ENV_FILE:-.env}
     environment:
       NODE_ENV: production
       DATABASE_URL: ${MIGRATION_DATABASE_URL:?MIGRATION_DATABASE_URL is required}
@@ -146,14 +149,17 @@ services:
         condition: service_completed_successfully
       redis:
         condition: service_healthy
-    # Worker roles do not expose HTTP. Override the API image healthcheck so
-    # Compose reports a live process rather than probing an absent port 3000.
+    # Fresh heartbeat proves event-loop work plus PostgreSQL and Redis readiness.
     healthcheck:
-      test: ['CMD-SHELL', 'node -e "process.kill(1, 0)"']
+      test:
+        [
+          'CMD-SHELL',
+          'node -e "const fs=require(''fs''),p=require(''path'').join(process.env.APP_TMP_DIR||''/app/tmp'',''worker-readiness-''+process.env.PROCESS_ROLE+''.json'');process.exit(fs.existsSync(p)&&Date.now()-fs.statSync(p).mtimeMs<90000?0:1)"',
+        ]
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 20s
+      start_period: 30s
     restart: unless-stopped
 
   worker:
@@ -170,6 +176,7 @@ services:
       REDIS_SOCKET_USERNAME: ${REDIS_SOCKET_USERNAME:?REDIS_SOCKET_USERNAME is required}
       REDIS_SOCKET_PASSWORD: ${REDIS_SOCKET_PASSWORD:?REDIS_SOCKET_PASSWORD is required}
       LOG_OUTPUT: stdout
+      APP_TMP_DIR: /app/tmp
       TUSHARE_SYNC_ENABLED: 'false'
     command: ['node', 'dist/worker.main']
     read_only: true
@@ -184,13 +191,17 @@ services:
         condition: service_completed_successfully
       redis:
         condition: service_healthy
-    # This process consumes queues only; HTTP health belongs to the API role.
+    # Fresh heartbeat proves event-loop work plus PostgreSQL and Redis readiness.
     healthcheck:
-      test: ['CMD-SHELL', 'node -e "process.kill(1, 0)"']
+      test:
+        [
+          'CMD-SHELL',
+          'node -e "const fs=require(''fs''),p=require(''path'').join(process.env.APP_TMP_DIR||''/app/tmp'',''worker-readiness-''+process.env.PROCESS_ROLE+''.json'');process.exit(fs.existsSync(p)&&Date.now()-fs.statSync(p).mtimeMs<90000?0:1)"',
+        ]
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 20s
+      start_period: 30s
     restart: unless-stopped
 
   scheduler:
@@ -207,6 +218,7 @@ services:
       REDIS_SOCKET_USERNAME: ${REDIS_SOCKET_USERNAME:?REDIS_SOCKET_USERNAME is required}
       REDIS_SOCKET_PASSWORD: ${REDIS_SOCKET_PASSWORD:?REDIS_SOCKET_PASSWORD is required}
       LOG_OUTPUT: stdout
+      APP_TMP_DIR: /app/tmp
       TUSHARE_SYNC_ENABLED: ${TUSHARE_SYNC_ENABLED:?TUSHARE_SYNC_ENABLED is required}
     command: ['node', 'dist/scheduler.main']
     read_only: true
@@ -221,13 +233,17 @@ services:
         condition: service_completed_successfully
       redis:
         condition: service_healthy
-    # Scheduler has no listener. Its PID 1 exits when its Nest child fails.
+    # Fresh heartbeat proves event-loop work plus PostgreSQL and Redis readiness.
     healthcheck:
-      test: ['CMD-SHELL', 'node -e "process.kill(1, 0)"']
+      test:
+        [
+          'CMD-SHELL',
+          'node -e "const fs=require(''fs''),p=require(''path'').join(process.env.APP_TMP_DIR||''/app/tmp'',''worker-readiness-''+process.env.PROCESS_ROLE+''.json'');process.exit(fs.existsSync(p)&&Date.now()-fs.statSync(p).mtimeMs<90000?0:1)"',
+        ]
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 20s
+      start_period: 30s
     restart: unless-stopped
 
   edge:

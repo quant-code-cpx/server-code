@@ -4,7 +4,15 @@ import { JwtAuthGuard } from 'src/lifecycle/guard/jwt-auth.guard'
 import { CurrentUser } from 'src/common/decorators/current-user.decorator'
 import { TokenPayload } from 'src/shared/token.interface'
 import { ResearchNoteService } from './research-note.service'
-import { CreateResearchNoteDto, ResearchNoteQueryDto, UpdateResearchNoteDto } from './dto/research-note.dto'
+import {
+  CreateResearchNoteDto,
+  ResearchNoteIdRequestDto,
+  ResearchNoteQueryDto,
+  ResearchNoteSearchRequestDto,
+  ResearchNoteStockRequestDto,
+  ResearchNoteTrashQueryDto,
+  UpdateResearchNoteRequestDto,
+} from './dto/research-note.dto'
 import { ApiSuccessResponse } from 'src/common/decorators/api-success-response.decorator'
 import {
   NoteMessageResponseDto,
@@ -38,15 +46,15 @@ export class ResearchNoteController {
   @Post('stock')
   @ApiOperation({ summary: '获取某只股票的所有研究笔记' })
   @ApiSuccessResponse(ResearchNotesByStockResponseDto)
-  findByStock(@CurrentUser() user: TokenPayload, @Body() { tsCode }: { tsCode: string }) {
-    return this.noteService.findByStock(user.id, tsCode)
+  findByStock(@CurrentUser() user: TokenPayload, @Body() dto: ResearchNoteStockRequestDto) {
+    return this.noteService.findByStock(user.id, dto.tsCode)
   }
 
   @Post('detail')
   @ApiOperation({ summary: '获取单条笔记详情' })
   @ApiSuccessResponse(ResearchNoteDto)
-  findOne(@CurrentUser() user: TokenPayload, @Body() { id }: { id: number }) {
-    return this.noteService.findOne(user.id, id)
+  findOne(@CurrentUser() user: TokenPayload, @Body() dto: ResearchNoteIdRequestDto) {
+    return this.noteService.findOne(user.id, dto.id)
   }
 
   @Post('create')
@@ -59,45 +67,42 @@ export class ResearchNoteController {
   @Post('update')
   @ApiOperation({ summary: '更新研究笔记' })
   @ApiSuccessResponse(ResearchNoteDto)
-  update(@CurrentUser() user: TokenPayload, @Body() dto: UpdateResearchNoteDto & { id: number }) {
+  update(@CurrentUser() user: TokenPayload, @Body() dto: UpdateResearchNoteRequestDto) {
     return this.noteService.update(user.id, dto.id, dto)
   }
 
   @Post('delete')
   @ApiOperation({ summary: '软删除研究笔记（移入回收站）' })
   @ApiSuccessResponse(NoteMessageResponseDto)
-  remove(@CurrentUser() user: TokenPayload, @Body() { id }: { id: number }) {
-    return this.noteService.remove(user.id, id)
+  remove(@CurrentUser() user: TokenPayload, @Body() dto: ResearchNoteIdRequestDto) {
+    return this.noteService.remove(user.id, dto.id)
   }
 
   @Post('restore')
   @ApiOperation({ summary: '从回收站恢复笔记' })
   @ApiSuccessResponse(ResearchNoteDto)
-  restore(@CurrentUser() user: TokenPayload, @Body() { id }: { id: number }) {
-    return this.noteService.restore(user.id, id)
+  restore(@CurrentUser() user: TokenPayload, @Body() dto: ResearchNoteIdRequestDto) {
+    return this.noteService.restore(user.id, dto.id)
   }
 
   @Post('permanent-delete')
   @ApiOperation({ summary: '永久删除笔记（不可恢复）' })
   @ApiSuccessResponse(NoteMessageResponseDto)
-  permanentDelete(@CurrentUser() user: TokenPayload, @Body() { id }: { id: number }) {
-    return this.noteService.permanentDelete(user.id, id)
+  permanentDelete(@CurrentUser() user: TokenPayload, @Body() dto: ResearchNoteIdRequestDto) {
+    return this.noteService.permanentDelete(user.id, dto.id)
   }
 
   @Post('list-trash')
   @ApiOperation({ summary: '查询回收站笔记列表' })
   @ApiSuccessResponse(ResearchNoteListResponseDto)
-  listTrash(@CurrentUser() user: TokenPayload, @Body() { page, pageSize }: { page?: number; pageSize?: number }) {
-    return this.noteService.listTrash(user.id, page, pageSize)
+  listTrash(@CurrentUser() user: TokenPayload, @Body() dto: ResearchNoteTrashQueryDto) {
+    return this.noteService.listTrash(user.id, dto.page, dto.pageSize)
   }
 
   @Post('search')
   @ApiOperation({ summary: '全文搜索笔记（返回带 <mark> 高亮的片段）' })
   @ApiSuccessResponse(ResearchNoteSearchResponseDto)
-  search(
-    @CurrentUser() user: TokenPayload,
-    @Body() { keyword, page, pageSize }: { keyword: string; page?: number; pageSize?: number },
-  ) {
-    return this.noteService.search(user.id, keyword, page, pageSize)
+  search(@CurrentUser() user: TokenPayload, @Body() dto: ResearchNoteSearchRequestDto) {
+    return this.noteService.search(user.id, dto.keyword, dto.page, dto.pageSize)
   }
 }

@@ -57,7 +57,7 @@ function buildTokenServiceMock() {
       refreshTokenTTL: 604800,
     })),
     generateAccessToken: jest.fn(async () => 'mock-access-token'),
-    verifyRefreshToken: jest.fn(async () => ({ id: 1, account: 'admin', jti: 'mock-jti' })),
+    verifyRefreshToken: jest.fn(async () => ({ id: 1, account: 'admin', jti: 'mock-jti', authVersion: 0 })),
     consumeRefreshToken: jest.fn(async () => 'valid' as const),
     deleteRefreshToken: jest.fn(async () => undefined),
     blacklistAccessToken: jest.fn(async () => undefined),
@@ -355,10 +355,16 @@ describe('AuthService', () => {
         status: UserStatus.ACTIVE,
         nickname: 'Admin',
         role: 'ADMIN',
+        authVersion: 0,
       } as never)
 
       const tokenService = buildTokenServiceMock()
-      tokenService.verifyRefreshToken.mockResolvedValue({ id: 1, account: 'admin', jti: 'jti1' } as never)
+      tokenService.verifyRefreshToken.mockResolvedValue({
+        id: 1,
+        account: 'admin',
+        jti: 'jti1',
+        authVersion: 0,
+      } as never)
       tokenService.consumeRefreshToken.mockResolvedValue('grace' as never)
 
       const service = createService(prisma, tokenService)
@@ -377,10 +383,16 @@ describe('AuthService', () => {
         status: UserStatus.ACTIVE,
         nickname: 'Admin',
         role: 'ADMIN',
+        authVersion: 0,
       } as never)
 
       const tokenService = buildTokenServiceMock()
-      tokenService.verifyRefreshToken.mockResolvedValue({ id: 1, account: 'admin', jti: 'jti1' } as never)
+      tokenService.verifyRefreshToken.mockResolvedValue({
+        id: 1,
+        account: 'admin',
+        jti: 'jti1',
+        authVersion: 0,
+      } as never)
       tokenService.consumeRefreshToken.mockResolvedValue('valid' as never)
 
       const service = createService(prisma, tokenService)
@@ -389,6 +401,30 @@ describe('AuthService', () => {
       expect(tokenService.consumeRefreshToken).toHaveBeenCalledWith(1, 'jti1')
       expect(result.accessToken).toBeTruthy()
       expect(result.refreshToken).toBeTruthy()
+    })
+
+    it('[SEC] 认证版本不匹配的 Refresh Token 在消费前被拒绝', async () => {
+      const prisma = buildPrismaMock()
+      prisma.user.findUnique.mockResolvedValue({
+        id: 1,
+        account: 'admin',
+        status: UserStatus.ACTIVE,
+        nickname: 'Admin',
+        role: 'ADMIN',
+        authVersion: 2,
+      } as never)
+      const tokenService = buildTokenServiceMock()
+      tokenService.verifyRefreshToken.mockResolvedValue({
+        id: 1,
+        account: 'admin',
+        jti: 'stale',
+        authVersion: 1,
+      } as never)
+
+      const service = createService(prisma, tokenService)
+
+      await expect(service.refreshToken('stale-refresh-token')).rejects.toThrow(BusinessException)
+      expect(tokenService.consumeRefreshToken).not.toHaveBeenCalled()
     })
   })
 
@@ -405,7 +441,12 @@ describe('AuthService', () => {
 
     it('同时传入 refreshToken → 额外调用 deleteRefreshToken', async () => {
       const tokenService = buildTokenServiceMock()
-      tokenService.verifyRefreshToken.mockResolvedValue({ id: 1, account: 'admin', jti: 'jti1' } as never)
+      tokenService.verifyRefreshToken.mockResolvedValue({
+        id: 1,
+        account: 'admin',
+        jti: 'jti1',
+        authVersion: 0,
+      } as never)
 
       const service = createService(undefined, tokenService)
       await service.logout('access-token', 'refresh-token')
@@ -597,7 +638,12 @@ describe('AuthService', () => {
       prisma.user.findUnique.mockResolvedValue(null)
 
       const tokenService = buildTokenServiceMock()
-      tokenService.verifyRefreshToken.mockResolvedValue({ id: 1, account: 'admin', jti: 'jti1' } as never)
+      tokenService.verifyRefreshToken.mockResolvedValue({
+        id: 1,
+        account: 'admin',
+        jti: 'jti1',
+        authVersion: 0,
+      } as never)
       tokenService.consumeRefreshToken.mockResolvedValue('valid' as never)
 
       const service = createService(prisma, tokenService)
@@ -612,10 +658,16 @@ describe('AuthService', () => {
         status: UserStatus.DEACTIVATED,
         nickname: 'Admin',
         role: 'ADMIN',
+        authVersion: 1,
       } as never)
 
       const tokenService = buildTokenServiceMock()
-      tokenService.verifyRefreshToken.mockResolvedValue({ id: 1, account: 'admin', jti: 'jti1' } as never)
+      tokenService.verifyRefreshToken.mockResolvedValue({
+        id: 1,
+        account: 'admin',
+        jti: 'jti1',
+        authVersion: 0,
+      } as never)
       tokenService.consumeRefreshToken.mockResolvedValue('grace' as never)
 
       const service = createService(prisma, tokenService)

@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common'
+import { Injectable, Logger, OnApplicationBootstrap, Optional } from '@nestjs/common'
 import { AuditAction, Prisma, UserRole, UserStatus } from '@prisma/client'
 import * as bcrypt from 'bcrypt'
 import { PrismaService } from 'src/shared/prisma.service'
@@ -17,6 +17,7 @@ import { AuditLogService } from './audit-log.service'
 import { AuditLogQueryDto } from './dto/audit-log-query.dto'
 import { UpdateRoleDto } from './dto/update-role.dto'
 import { UserSearchQueryDto } from './dto/user-search-query.dto'
+import { EventsGateway } from 'src/websocket/events.gateway'
 
 /** 用户基础信息（不含密码）— 用于列表和详情响应 */
 const USER_SAFE_SELECT = {
@@ -41,6 +42,7 @@ export class UserService implements OnApplicationBootstrap {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditLogService: AuditLogService,
+    @Optional() private readonly eventsGateway?: EventsGateway,
   ) {}
 
   // ── 应用启动：初始化超级管理员 ───────────────────────────────────────────
@@ -204,6 +206,7 @@ export class UserService implements OnApplicationBootstrap {
 
     const hashedPassword = await bcrypt.hash(dto.newPassword, 10)
     await this.prisma.user.update({ where: { id: currentUser.id }, data: { password: hashedPassword } })
+    this.disconnectUserSessions(currentUser.id)
   }
 
   // ── 修改用户状态（管理员以上，需高于目标用户角色）────────────────────────
@@ -215,6 +218,7 @@ export class UserService implements OnApplicationBootstrap {
     if (id === operator.id) throw new BusinessException(ErrorEnum.CANNOT_DISABLE_SELF)
 
     await this.prisma.user.update({ where: { id }, data: { status: dto.status } })
+    this.disconnectUserSessions(id)
 
     this.auditLogService.record({
       operatorId: operator.id,
@@ -257,6 +261,7 @@ export class UserService implements OnApplicationBootstrap {
     const rawPassword = dto.newPassword
     const hashedPassword = await bcrypt.hash(rawPassword, 10)
     await this.prisma.user.update({ where: { id: dto.id }, data: { password: hashedPassword } })
+    this.disconnectUserSessions(dto.id)
 
     this.auditLogService.record({
       operatorId: operator.id,
@@ -279,6 +284,7 @@ export class UserService implements OnApplicationBootstrap {
     if (id === operator.id) throw new BusinessException(ErrorEnum.CANNOT_DELETE_SELF)
 
     await this.prisma.user.update({ where: { id }, data: { status: UserStatus.DELETED } })
+    this.disconnectUserSessions(id)
 
     this.auditLogService.record({
       operatorId: operator.id,
@@ -315,6 +321,7 @@ export class UserService implements OnApplicationBootstrap {
       data: { role: dto.role },
       select: USER_SAFE_SELECT,
     })
+    this.disconnectUserSessions(dto.id)
 
     this.auditLogService.record({
       operatorId: operator.id,
@@ -440,5 +447,16 @@ export class UserService implements OnApplicationBootstrap {
   /** 判断 operatorRole 是否严格高于 targetRole */
   private hasHigherRole(operatorRole: UserRole, targetRole: UserRole): boolean {
     return ROLE_LEVEL[operatorRole] > ROLE_LEVEL[targetRole]
+  }
+
+  private disconnectUserSessions(userId: number): void {
+    try {
+      this.eventsGateway?.disconnectUserSessions(userId)
+    } catch (error) {
+      // 数据库版本已保证 Token 无法复用；Socket 清理失败不能回滚已完成的安全变更。
+      this.logger.warn(
+        `用户 ${userId} 的 WebSocket 会话断开请求失败：${error instanceof Error ? error.message : String(error)}`,
+      )
+    }
   }
 }

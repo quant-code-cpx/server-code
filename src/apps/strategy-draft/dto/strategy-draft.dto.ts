@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
-import { IsInt, IsObject, IsOptional, IsString, MaxLength, MinLength } from 'class-validator'
+import { IsInt, IsObject, IsOptional, IsString, MaxLength, Min, MinLength } from 'class-validator'
+import { Type } from 'class-transformer'
 
 export class CreateStrategyDraftDto {
   @ApiProperty({ description: '草稿名称', maxLength: 100 })
@@ -41,4 +42,12 @@ export class SubmitDraftDto {
   @IsString()
   @MaxLength(128)
   name?: string
+}
+
+export class StrategyDraftIdRequestDto {
+  @ApiProperty({ description: '草稿 ID' })
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  id: number
 }

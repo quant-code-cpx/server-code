@@ -1,5 +1,5 @@
 import { WsException } from '@nestjs/websockets'
-import { UserRole } from '@prisma/client'
+import { UserRole, UserStatus } from '@prisma/client'
 import { Socket } from 'socket.io'
 import { PrismaService } from 'src/shared/prisma.service'
 import { TokenService } from 'src/shared/token.service'
@@ -21,11 +21,14 @@ function makeMockSocket(overrides: Partial<Socket> = {}): jest.Mocked<Socket> {
 
 function makeMockServer() {
   const room = { emit: jest.fn() }
+  const userRoom = { disconnectSockets: jest.fn() }
   return {
     emit: jest.fn(),
     to: jest.fn(() => room),
+    in: jest.fn(() => userRoom),
     fetchSockets: jest.fn(async () => []),
     _room: room,
+    _userRoom: userRoom,
   }
 }
 
@@ -33,6 +36,7 @@ describe('EventsGateway', () => {
   let gateway: EventsGateway
   let tokenService: jest.Mocked<Pick<TokenService, 'verifyAccessToken' | 'isAccessTokenBlacklisted'>>
   let prisma: {
+    user: { findUnique: jest.Mock }
     backtestRun: { findFirst: jest.Mock }
     backtestWalkForwardRun: { findFirst: jest.Mock }
   }
@@ -44,12 +48,16 @@ describe('EventsGateway', () => {
         account: 'user-1',
         nickname: 'User One',
         role: UserRole.USER,
+        authVersion: 0,
         jti: 'access-jti-1',
         exp: Math.floor(Date.now() / 1000) + 60,
       }),
       isAccessTokenBlacklisted: jest.fn().mockResolvedValue(false),
     }
     prisma = {
+      user: {
+        findUnique: jest.fn().mockResolvedValue({ role: UserRole.USER, status: UserStatus.ACTIVE, authVersion: 0 }),
+      },
       backtestRun: { findFirst: jest.fn().mockResolvedValue(null) },
       backtestWalkForwardRun: { findFirst: jest.fn().mockResolvedValue(null) },
     }
@@ -87,6 +95,10 @@ describe('EventsGateway', () => {
 
     expect(tokenService.verifyAccessToken).toHaveBeenCalledWith('valid-jwt')
     expect(tokenService.isAccessTokenBlacklisted).toHaveBeenCalledWith('access-jti-1')
+    expect(prisma.user.findUnique).toHaveBeenCalledWith({
+      where: { id: 1 },
+      select: { role: true, status: true, authVersion: true },
+    })
     expect(socket.join).toHaveBeenCalledWith('user:1')
     expect(socket.data.identity).toEqual(
       expect.objectContaining({ userId: 1, role: UserRole.USER, tokenExpiresAt: expect.any(Number) }),
@@ -95,11 +107,13 @@ describe('EventsGateway', () => {
   })
 
   it('管理员 access token 同时加入管理员房间', async () => {
+    prisma.user.findUnique.mockResolvedValue({ role: UserRole.ADMIN, status: UserStatus.ACTIVE, authVersion: 0 })
     tokenService.verifyAccessToken.mockResolvedValue({
       id: 9,
       account: 'admin',
       nickname: 'Admin',
       role: UserRole.ADMIN,
+      authVersion: 0,
       jti: 'admin-jti',
       exp: Math.floor(Date.now() / 1000) + 60,
     })
@@ -112,6 +126,18 @@ describe('EventsGateway', () => {
     expect(socket.join).toHaveBeenCalledWith('user:9')
     expect(socket.join).toHaveBeenCalledWith('role:admin')
     clearTimeout(socket.data.identity.expiresTimer)
+  })
+
+  it('认证版本不匹配时拒绝旧 access token', async () => {
+    prisma.user.findUnique.mockResolvedValue({ role: UserRole.USER, status: UserStatus.ACTIVE, authVersion: 1 })
+    const socket = makeMockSocket({
+      handshake: { auth: { token: 'revoked-jwt' }, headers: {} } as unknown as Socket['handshake'],
+    })
+
+    await gateway.handleConnection(socket)
+
+    expect(socket.disconnect).toHaveBeenCalledWith(true)
+    expect(socket.join).not.toHaveBeenCalled()
   })
 
   it('缺少 token 时立即断连且不调用 token 校验', async () => {
@@ -291,6 +317,14 @@ describe('EventsGateway', () => {
       mode: 'incremental',
       reason: 'timeout',
     })
+  })
+
+  it('用户认证状态变更时断开该用户的全部 Socket.IO 会话', () => {
+    gateway.disconnectUserSessions(42)
+
+    const server = gateway.server as unknown as ReturnType<typeof makeMockServer>
+    expect(server.in).toHaveBeenCalledWith('user:42')
+    expect(server._userRoom.disconnectSockets).toHaveBeenCalledWith(true)
   })
 
   it('无本地 Socket.IO server 时通过 Redis publisher 转发事件', () => {

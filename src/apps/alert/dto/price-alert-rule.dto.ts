@@ -155,3 +155,11 @@ export class ListPriceAlertHistoryDto {
   @IsIn(['asc', 'desc'])
   sortOrder?: 'asc' | 'desc' = 'desc'
 }
+
+export class PriceAlertRuleIdRequestDto {
+  @ApiProperty({ description: '预警规则 ID' })
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  id: number
+}

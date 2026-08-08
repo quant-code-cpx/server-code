@@ -5,12 +5,12 @@
  * - getSyncPlans() 返回 financial 类别的所有任务
  * - syncForecast: incremental → 最近 2 个季度；full → 历史全量（2010 起）
  * - syncForecast: 单报告期失败不阻断后续报告期（错误容忍）
- * - syncIncome: full 模式 → 触发 rebuildIncomeRecentYears（income.deleteMany 被调用）
+ * - syncIncome: full 模式 → 按股票分区事务替换，不先清全表
  * - syncIncome: incremental + 空表 → 也触发重建
  * - syncIncome: incremental + 非空表 → 按披露计划补齐缺失报告期
  */
 
-import { TushareApiName, TushareSyncTaskName } from 'src/constant/tushare.constant'
+import { TushareApiName, TushareSyncExecutionStatus, TushareSyncTaskName } from 'src/constant/tushare.constant'
 import { FinancialApiService } from '../../api/financial-api.service'
 import { TushareApiError } from '../../api/tushare-client.service'
 import { FinancialSyncService } from '../financial-sync.service'
@@ -20,6 +20,7 @@ import { SyncHelperService } from '../sync-helper.service'
 
 function buildPrismaMock() {
   return {
+    $transaction: jest.fn(async (operations: Promise<unknown>[]) => Promise.all(operations)),
     stockBasic: {
       findMany: jest.fn(async () => [] as { tsCode: string }[]),
     },
@@ -324,19 +325,78 @@ describe('FinancialSyncService', () => {
   // ── syncIncome() ──────────────────────────────────────────────────────────
 
   describe('syncIncome()', () => {
-    it('full 模式应清空 income 表并按股票重建', async () => {
+    it('full 模式应只在成功拉取后按股票分区事务替换，不先清全表', async () => {
       const prismaMock = buildPrismaMock()
-      // stockBasic 返回两只股票使重建流程走完
-      prismaMock.stockBasic.findMany.mockResolvedValue([{ tsCode: '000001.SZ' }, { tsCode: '000002.SZ' }] as never)
+      prismaMock.stockBasic.findMany.mockResolvedValue([{ tsCode: '000001.SZ' }] as never)
 
       const helper = buildMockHelper(prismaMock)
       helper.buildRecentQuarterPeriods.mockReturnValue(['20260331'])
+      const api = buildMockApi()
+      api.getIncomeByTsCode.mockResolvedValue([
+        {
+          ts_code: '000001.SZ',
+          ann_date: '20260416',
+          f_ann_date: '20260416',
+          end_date: '20260331',
+          report_type: '1',
+          comp_type: '1',
+          end_type: '1',
+          total_revenue: 100,
+        },
+      ])
 
-      const service = createService(buildMockApi(), helper)
+      const service = createService(api, helper)
       await service.syncIncome('full')
 
-      // 重建时应先清空旧数据
-      expect(prismaMock.income.deleteMany).toHaveBeenCalledWith({})
+      expect(prismaMock.income.deleteMany).toHaveBeenCalledWith({
+        where: { tsCode: '000001.SZ', endDate: { in: [expect.any(Date)] } },
+      })
+      expect(prismaMock.income.deleteMany).not.toHaveBeenCalledWith({})
+      expect(prismaMock.$transaction).toHaveBeenCalledTimes(1)
+    })
+
+    it('全量重建有股票两次拉取失败时保留该分区并写 FAILED 日志', async () => {
+      const prismaMock = buildPrismaMock()
+      prismaMock.stockBasic.findMany.mockResolvedValue([{ tsCode: '000001.SZ' }, { tsCode: '000002.SZ' }] as never)
+      ;(prismaMock.income.createMany as jest.Mock).mockImplementation(async (args: { data?: unknown[] }) => ({
+        count: args.data?.length ?? 0,
+      }))
+      const helper = buildMockHelper(prismaMock)
+      helper.buildRecentQuarterPeriods.mockReturnValue(['20260331'])
+      const api = buildMockApi()
+      api.getIncomeByTsCode.mockImplementation(async (...args: unknown[]) => {
+        const tsCode = args[0] as string
+        if (tsCode === '000002.SZ') throw new Error('upstream timeout')
+        return [
+          {
+            ts_code: '000001.SZ',
+            ann_date: '20260416',
+            f_ann_date: '20260416',
+            end_date: '20260331',
+            report_type: '1',
+            comp_type: '1',
+            end_type: '1',
+            total_revenue: 100,
+          },
+        ]
+      })
+
+      await expect(createService(api, helper).syncIncome('full')).rejects.toThrow('仍有 1 只股票失败')
+
+      expect(prismaMock.income.deleteMany).toHaveBeenCalledWith({
+        where: { tsCode: '000001.SZ', endDate: { in: [expect.any(Date)] } },
+      })
+      expect(prismaMock.income.deleteMany).not.toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ tsCode: '000002.SZ' }) }),
+      )
+      expect(helper.writeSyncLog).toHaveBeenCalledWith(
+        TushareSyncTaskName.INCOME,
+        expect.objectContaining({
+          status: TushareSyncExecutionStatus.FAILED,
+          payload: expect.objectContaining({ failedStockCount: 1, failedStocks: ['000002.SZ'] }),
+        }),
+        expect.any(Date),
+      )
     })
 
     it('incremental + 空表（count=0）时也应触发重建', async () => {
@@ -350,7 +410,7 @@ describe('FinancialSyncService', () => {
       const service = createService(buildMockApi(), helper)
       await service.syncIncome('incremental')
 
-      expect(prismaMock.income.deleteMany).toHaveBeenCalled()
+      expect(prismaMock.income.deleteMany).not.toHaveBeenCalled()
     })
 
     it('incremental + 非空表时不应触发重建（不调用 income.deleteMany）', async () => {
@@ -450,7 +510,10 @@ describe('FinancialSyncService', () => {
 
       expect(api.getBalanceSheetByPeriod).toHaveBeenCalledWith('20260331')
       expect(api.getBalanceSheetByTsCode).not.toHaveBeenCalled()
-      expect(prismaMock.balanceSheet.deleteMany).toHaveBeenCalledWith({})
+      expect(prismaMock.balanceSheet.deleteMany).toHaveBeenCalledWith({
+        where: { endDate: expect.any(Date) },
+      })
+      expect(prismaMock.balanceSheet.deleteMany).not.toHaveBeenCalledWith({})
       expect(prismaMock.balanceSheet.createMany).toHaveBeenCalledWith({
         data: [expect.objectContaining({ tsCode: '688525.SH', totalAssets: 12_345 })],
         skipDuplicates: true,

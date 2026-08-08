@@ -1,6 +1,6 @@
 import { UnauthorizedException } from '@nestjs/common'
 import { createTestApp } from 'test/helpers/create-test-app'
-import { AuthController } from '../auth.controller'
+import { AuthController, refreshTokenCookiePath } from '../auth.controller'
 import { AuthService } from '../auth.service'
 import { BusinessException } from 'src/common/exceptions/business.exception'
 import { ErrorEnum } from 'src/constant/response-code.constant'
@@ -64,6 +64,24 @@ describe('AuthController (integration)', () => {
     expect(res.body.code).toBe(0)
     expect(res.body.data.accessToken).toBe('access-1')
     expect(mockAuthService.login).toHaveBeenCalledTimes(1)
+  })
+
+  it('[SEC] Refresh Cookie 路径跟随 GLOBAL_PREFIX', async () => {
+    expect(refreshTokenCookiePath('api/v2')).toBe('/api/v2/auth')
+    expect(refreshTokenCookiePath('/internal/')).toBe('/internal/auth')
+
+    const previousPrefix = process.env.GLOBAL_PREFIX
+    process.env.GLOBAL_PREFIX = 'api/v2'
+    try {
+      const res = await req
+        .post('/auth/login')
+        .send({ account: 'admin', password: '123456', captchaId: 'cap-1', captchaCode: 'ABCD' })
+        .expect(201)
+      expect(res.headers['set-cookie']).toEqual(expect.arrayContaining([expect.stringContaining('Path=/api/v2/auth')]))
+    } finally {
+      if (previousPrefix === undefined) delete process.env.GLOBAL_PREFIX
+      else process.env.GLOBAL_PREFIX = previousPrefix
+    }
   })
 
   it('POST /auth/refresh with refreshToken in body → 201, data.accessToken present', async () => {

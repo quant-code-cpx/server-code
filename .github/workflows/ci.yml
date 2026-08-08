@@ -89,6 +89,8 @@ jobs:
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.9
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -98,6 +100,12 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Enforce pnpm as the sole package manager
+        run: test ! -f package-lock.json
+
+      - name: Audit production dependencies
+        run: pnpm audit --prod
 
       - name: Generate Prisma Client
         run: pnpm exec prisma generate
@@ -161,9 +169,9 @@ jobs:
           pnpm exec jest --findRelatedTests ${{ steps.changed.outputs.files }} \
             --passWithNoTests --forceExit
 
-      - name: Test (unit lane — main / PR / new branch)
+      - name: Test + coverage (unit lane — main / PR / new branch)
         if: steps.changed.outputs.mode != 'incremental'
-        run: pnpm run test:unit --passWithNoTests
+        run: pnpm run test:unit --coverage --passWithNoTests
 
       - name: Test (api lane — main / PR / new branch)
         if: steps.changed.outputs.mode != 'incremental'

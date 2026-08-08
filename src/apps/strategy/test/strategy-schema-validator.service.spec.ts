@@ -41,11 +41,13 @@ describe('StrategySchemaValidatorService', () => {
 
     it('返回的是拷贝，对结果的修改不影响内部 map', () => {
       const schemas = service.getAllSchemas()
-      // @ts-expect-error 故意写入非法 key 验证隔离性
-      schemas['SHOULD_NOT_EXIST'] = { type: 'object', properties: {} }
+      const unknownStrategyType = 'SHOULD_NOT_EXIST'
+      schemas[unknownStrategyType] = { type: 'object', properties: {} }
+      expect(schemas).toHaveProperty(unknownStrategyType)
+
       const schemas2 = service.getAllSchemas()
       expect(Object.keys(schemas2)).toHaveLength(5)
-      expect(schemas2).not.toHaveProperty('SHOULD_NOT_EXIST')
+      expect(schemas2).not.toHaveProperty(unknownStrategyType)
     })
   })
 

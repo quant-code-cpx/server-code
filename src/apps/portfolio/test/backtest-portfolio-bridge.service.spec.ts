@@ -116,6 +116,8 @@ describe('BacktestPortfolioBridgeService', () => {
     svc = buildService(prisma, cache)
   })
 
+  afterEach(() => jest.useRealTimers())
+
   // ── 1. 回测不存在 ──────────────────────────────────────────────────────────
   it('回测不存在 → NotFoundException', async () => {
     prisma.backtestRun.findUnique.mockResolvedValue(null)
@@ -151,6 +153,7 @@ describe('BacktestPortfolioBridgeService', () => {
 
   // ── 5. REPLACE 模式 — 目标组合有原持仓 ────────────────────────────────────
   it('REPLACE 模式: 清空原持仓, 写入回测持仓, 返回 SELL + BUY', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-12-31T16:01:00.000Z'))
     prisma.backtestRun.findUnique.mockResolvedValue(makeRun())
     prisma.backtestPositionSnapshot.findFirst.mockResolvedValue({ tradeDate: SNAPSHOT_DATE })
     prisma.backtestPositionSnapshot.findMany.mockResolvedValue([makeSnapshot('000001.SZ', 1000, 12.5)])
@@ -173,6 +176,14 @@ describe('BacktestPortfolioBridgeService', () => {
     const buy = result.changes.find((c) => c.action === 'BUY')
     expect(buy?.tsCode).toBe('000001.SZ')
     expect(buy?.stockName).toBe('平安银行')
+
+    const expectedEffectiveDate = new Date('2027-01-01T00:00:00.000Z')
+    expect(prisma.portfolioHoldingEvent.create).toHaveBeenCalledTimes(3)
+    for (const [call] of prisma.portfolioHoldingEvent.create.mock.calls) {
+      expect(call).toEqual(
+        expect.objectContaining({ data: expect.objectContaining({ effectiveDate: expectedEffectiveDate }) }),
+      )
+    }
   })
 
   // ── 6. REPLACE 模式 — 新建组合 ────────────────────────────────────────────

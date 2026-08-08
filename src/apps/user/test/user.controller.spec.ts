@@ -87,7 +87,7 @@ describe('UserController (USER role — 普通用户)', () => {
     request(app.getHttpServer())
       .post('/user/profile/detail')
       .expect(201)
-      .expect(() => {
+      .expect((res) => {
         expect(res.body.code).toBe(0)
         expect(mockService.getProfile).toHaveBeenCalled()
       }))
@@ -97,7 +97,7 @@ describe('UserController (USER role — 普通用户)', () => {
       .post('/user/profile/update')
       .send({ nickname: '新昵称' })
       .expect(201)
-      .expect(() => {
+      .expect((res) => {
         expect(res.body.code).toBe(0)
         expect(mockService.updateProfile).toHaveBeenCalled()
       }))
@@ -137,7 +137,7 @@ describe('UserController (ADMIN role — 管理员)', () => {
       .post('/user/list')
       .send({})
       .expect(201)
-      .expect(() => {
+      .expect((res) => {
         expect(res.body.code).toBe(0)
         expect(mockService.findAll).toHaveBeenCalled()
       }))

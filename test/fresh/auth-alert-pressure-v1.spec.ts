@@ -62,6 +62,12 @@ async function runWithConcurrency(
   return results
 }
 
+async function createListeningTestApp(options: Parameters<typeof createTestApp>[0]) {
+  const testApp = await createTestApp(options)
+  await testApp.app.listen(0)
+  return testApp
+}
+
 describe('Auth & Alert 压测基线 V1', () => {
   describe('AUTH 深度批次', () => {
     const mockAuthService = {
@@ -85,7 +91,7 @@ describe('Auth & Alert 压测基线 V1', () => {
     })
 
     it('AUTH-PERF-001: /auth/captcha 基线（warmup+100请求）', async () => {
-      const { app, request } = await createTestApp({
+      const { app, request } = await createListeningTestApp({
         controllers: [AuthController],
         providers: [{ provide: AuthService, useValue: mockAuthService }],
       })
@@ -112,7 +118,7 @@ describe('Auth & Alert 压测基线 V1', () => {
     })
 
     it('AUTH-LOAD-001: /auth/login 20并发*30轮，错误率低于阈值', async () => {
-      const { app, request } = await createTestApp({
+      const { app, request } = await createListeningTestApp({
         controllers: [AuthController],
         providers: [{ provide: AuthService, useValue: mockAuthService }],
       })
@@ -147,7 +153,7 @@ describe('Auth & Alert 压测基线 V1', () => {
         return { accessToken: 'at', refreshToken: 'rt', refreshTokenTTL: 3600 }
       })
 
-      const { app, request } = await createTestApp({
+      const { app, request } = await createListeningTestApp({
         controllers: [AuthController],
         providers: [{ provide: AuthService, useValue: mockAuthService }],
       })
@@ -211,7 +217,7 @@ describe('Auth & Alert 压测基线 V1', () => {
     })
 
     it('ALT-LOAD-001: /alert/limit-list 20并发*20轮，错误率低于阈值', async () => {
-      const { app, request } = await createTestApp({
+      const { app, request } = await createListeningTestApp({
         controllers: [AlertController],
         providers: [
           { provide: AlertCalendarService, useValue: mockCalendarService },
@@ -250,7 +256,7 @@ describe('Auth & Alert 压测基线 V1', () => {
         return { items: [], total: 0, page: 1, pageSize: 200 }
       })
 
-      const { app, request } = await createTestApp({
+      const { app, request } = await createListeningTestApp({
         controllers: [AlertController],
         providers: [
           { provide: AlertCalendarService, useValue: mockCalendarService },

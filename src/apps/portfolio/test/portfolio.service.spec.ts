@@ -10,7 +10,7 @@
  * - getPnlToday: 无持仓时返回空结果
  */
 
-import { ForbiddenException, NotFoundException } from '@nestjs/common'
+import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common'
 import { Decimal } from '@prisma/client/runtime/library'
 import { PortfolioService } from '../portfolio.service'
 
@@ -107,6 +107,8 @@ function buildHolding(overrides: Record<string, unknown> = {}) {
 // ═════════════════════════════════════════════════════════════════════════════
 
 describe('PortfolioService', () => {
+  afterEach(() => jest.useRealTimers())
+
   // ─── create ─────────────────────────────────────────────────────────────────
 
   describe('create()', () => {
@@ -206,6 +208,56 @@ describe('PortfolioService', () => {
 
       expect(prisma.portfolioHolding.create).toHaveBeenCalled()
       expect(result).toBe(newHolding)
+    })
+
+    it('省略 effectiveDate 时使用上海日历日', async () => {
+      jest.useFakeTimers().setSystemTime(new Date('2026-08-08T16:01:00.000Z'))
+      const prisma = buildPrismaMock()
+      prisma.portfolio.findUnique.mockResolvedValue(buildPortfolio({ userId: 10 }))
+      prisma.stockBasic.findFirst.mockResolvedValue({ name: '平安银行' })
+      prisma.portfolioHolding.findUnique.mockResolvedValue(null)
+      prisma.portfolioHolding.create.mockResolvedValue(buildHolding())
+
+      const svc = createService(prisma)
+      await svc.addHolding(
+        {
+          portfolioId: 'portfolio-001',
+          tsCode: '000001.SZ',
+          quantity: 100,
+          avgCost: 10,
+          idempotencyKey: 'add-default-date-0001',
+        },
+        10,
+      )
+
+      expect(prisma.portfolioHoldingEvent.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ effectiveDate: new Date('2026-08-09T00:00:00.000Z') }),
+        }),
+      )
+    })
+
+    it('显式无效 effectiveDate 仍抛 BadRequestException', async () => {
+      const prisma = buildPrismaMock()
+      prisma.portfolio.findUnique.mockResolvedValue(buildPortfolio({ userId: 10 }))
+      prisma.stockBasic.findFirst.mockResolvedValue({ name: '平安银行' })
+      prisma.portfolioHolding.findUnique.mockResolvedValue(null)
+      prisma.portfolioHolding.create.mockResolvedValue(buildHolding())
+
+      const svc = createService(prisma)
+      await expect(
+        svc.addHolding(
+          {
+            portfolioId: 'portfolio-001',
+            tsCode: '000001.SZ',
+            quantity: 100,
+            avgCost: 10,
+            idempotencyKey: 'add-invalid-date-0001',
+            effectiveDate: '2026-02-30',
+          },
+          10,
+        ),
+      ).rejects.toThrow(BadRequestException)
     })
 
     it('加仓时使用加权平均成本', async () => {

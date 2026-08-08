@@ -15,11 +15,13 @@ import { StrategyDraftService } from '../strategy-draft.service'
 
 const testUser = { id: 1, account: 'test', nickname: 'Test', role: UserRole.USER, jti: 'jti-1' }
 
+function authenticateRequest(ctx: ExecutionContext): boolean {
+  ctx.switchToHttp().getRequest().user = testUser
+  return true
+}
+
 const mockJwtGuard = {
-  canActivate: jest.fn((ctx: ExecutionContext) => {
-    ctx.switchToHttp().getRequest().user = testUser
-    return true
-  }),
+  canActivate: jest.fn(authenticateRequest),
 }
 
 const mockService = {
@@ -50,6 +52,13 @@ describe('StrategyDraftController (integration)', () => {
   })
 
   afterAll(() => app.close())
+
+  beforeEach(() => {
+    // Reinstall auth behavior so an unauthenticated-case override cannot leak into later requests.
+    mockJwtGuard.canActivate.mockReset()
+    mockJwtGuard.canActivate.mockImplementation(authenticateRequest)
+  })
+
   afterEach(() => jest.clearAllMocks())
 
   it('POST /strategy-draft/list → 200', () =>

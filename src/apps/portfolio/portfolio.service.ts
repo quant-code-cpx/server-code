@@ -3,6 +3,7 @@ import { Decimal } from '@prisma/client/runtime/library'
 import { PrismaService } from 'src/shared/prisma.service'
 import { CacheService } from 'src/shared/cache.service'
 import { CACHE_KEY_PREFIX, CACHE_NAMESPACE } from 'src/constant/cache.constant'
+import { getShanghaiCompactTradeDate, parseCompactTradeDateToUtcDate } from 'src/common/utils/trade-date.util'
 import { CreatePortfolioDto } from './dto/create-portfolio.dto'
 import { UpdatePortfolioDto } from './dto/update-portfolio.dto'
 import { AddHoldingDto } from './dto/add-holding.dto'
@@ -585,17 +586,11 @@ function replayHolding(
   }
 }
 
-function mutationDate(value?: string): Date {
-  const date =
-    value ??
-    new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'Asia/Shanghai',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    }).format(new Date())
-  const parsed = new Date(`${date}T00:00:00.000Z`)
-  if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== date) {
+function mutationDate(value?: string | null): Date {
+  if (value === undefined || value === null) return parseCompactTradeDateToUtcDate(getShanghaiCompactTradeDate())
+
+  const parsed = new Date(`${value}T00:00:00.000Z`)
+  if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== value) {
     throw new BadRequestException('effectiveDate 非法')
   }
   return parsed

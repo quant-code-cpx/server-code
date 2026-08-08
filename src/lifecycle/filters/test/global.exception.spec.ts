@@ -77,7 +77,7 @@ describe('GlobalExceptionsFilter', () => {
     expect(json.message).toBe('请求参数校验失败')
   })
 
-  it('handles BadRequestException with array of messages — sets details and validation error code', () => {
+  it('handles BadRequestException with array of messages — sets structured details and validation error code', () => {
     const filter = createFilter()
     const { host, mockResponse } = makeHost()
     const errors = ['field1 is required', 'field2 must be a string']
@@ -88,7 +88,10 @@ describe('GlobalExceptionsFilter', () => {
     const json = mockResponse.json.mock.calls[0][0] as ResponseModel
     expect(json.code).toBe(9001)
     expect(json.message).toBe('请求参数校验失败')
-    expect((json.data as Record<string, unknown>).details).toEqual(errors)
+    expect((json.data as Record<string, unknown>).details).toEqual([
+      { field: 'field1', code: 'FIELD1_INVALID', message: 'field1 is required' },
+      { field: 'field2', code: 'FIELD2_INVALID', message: 'field2 must be a string' },
+    ])
   })
 
   it('returns 500 and hides error message in non-dev mode for unknown errors', () => {

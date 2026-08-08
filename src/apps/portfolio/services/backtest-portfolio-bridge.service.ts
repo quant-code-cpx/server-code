@@ -5,6 +5,7 @@ import { Decimal } from '@prisma/client/runtime/library'
 import { PrismaService } from 'src/shared/prisma.service'
 import { CacheService } from 'src/shared/cache.service'
 import { CACHE_KEY_PREFIX } from 'src/constant/cache.constant'
+import { getShanghaiCompactTradeDate, parseCompactTradeDateToUtcDate } from 'src/common/utils/trade-date.util'
 import { ApplyBacktestDto, ApplyBacktestResponseDto, ApplyMode, RebalanceActionDto } from '../dto/apply-backtest.dto'
 import { PortfolioTradeLogService } from './portfolio-trade-log.service'
 
@@ -295,13 +296,7 @@ export class BacktestPortfolioBridgeService {
 }
 
 function currentShanghaiDate(): Date {
-  const value = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Shanghai',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(new Date())
-  return new Date(`${value}T00:00:00.000Z`)
+  return parseCompactTradeDateToUtcDate(getShanghaiCompactTradeDate())
 }
 
 function childIdempotencyKey(parent: string, index: number): string {

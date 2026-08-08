@@ -39,12 +39,17 @@ export class SectorToolFacade {
   constructor(private readonly prisma: PrismaService) {}
 
   async membership(input: SectorMembershipInput) {
-    const requestedTypes = input.sectorType
+    const configuredTypes = input.sectorType
       ? [input.sectorType]
       : (['INDUSTRY', 'CONCEPT', 'INDEX'] as SectorMembershipType[])
-    if (requestedTypes.includes('CONCEPT') && isHistoricalDate(input.effectiveDate)) {
+    const historicalConceptRequested = configuredTypes.includes('CONCEPT') && isHistoricalDate(input.effectiveDate)
+    if (input.sectorType === 'CONCEPT' && historicalConceptRequested) {
       throw new SectorHistoryUnavailableError()
     }
+    // 未指定类型时是“尽可能返回所有归属”：历史概念不可追溯，不应拖累可追溯的行业与指数数据。
+    const requestedTypes = historicalConceptRequested
+      ? configuredTypes.filter((type) => type !== 'CONCEPT')
+      : configuredTypes
 
     const resultSets = await Promise.all(
       requestedTypes.map((type) =>
@@ -62,7 +67,11 @@ export class SectorToolFacade {
         .filter((value): value is string => value !== null)
         .sort()
         .at(-1) ?? null
-    const currentConceptWarning = requestedTypes.includes('CONCEPT') ? ['THS_CONCEPT_CURRENT_ONLY'] : []
+    const conceptWarnings = historicalConceptRequested
+      ? ['THS_CONCEPT_HISTORY_OMITTED']
+      : requestedTypes.includes('CONCEPT')
+        ? ['THS_CONCEPT_CURRENT_ONLY']
+        : []
 
     return {
       data: {
@@ -75,7 +84,7 @@ export class SectorToolFacade {
       },
       truncated,
       asOf,
-      warningCodes: currentConceptWarning,
+      warningCodes: conceptWarnings,
       sourceModels: sourceModelsForTypes(requestedTypes),
     }
   }

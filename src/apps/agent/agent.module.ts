@@ -65,7 +65,7 @@ import { WorkflowModelService } from './workflow/workflow-model.service'
 import { ModelContextBudgetService } from './workflow/model-context-budget.service'
 import { AGENT_WORKFLOW_DEFINITIONS, WorkflowRegistryService } from './workflow/workflow-registry.service'
 import { WorkflowToolService } from './workflow/workflow-tool.service'
-import { STOCK_RESEARCH_WORKFLOW_DEFINITIONS } from './workflow/workflows/stock-research.v10'
+import { STOCK_RESEARCH_WORKFLOW_DEFINITIONS } from './workflow/workflows/stock-research.v11'
 import { AgentController } from './api/agent.controller'
 import { AgentStrictBodyGuard } from './api/agent-strict-body.guard'
 import { AgentErrorInterceptor } from './api/agent-error.interceptor'
@@ -91,6 +91,7 @@ import { AgentMetricsService } from './observability/agent-metrics.service'
 import { AgentEvaluationService } from './observability/evaluation/agent-evaluation.service'
 import { AgentEvaluationAdminController } from './api/agent-evaluation-admin.controller'
 import { ModelProviderAdminController } from './api/model-provider-admin.controller'
+import { ModelProviderConsoleController } from './api/model-provider-console.controller'
 import { RolesGuard } from 'src/lifecycle/guard/roles.guard'
 import { RetrievalModule } from './retrieval/retrieval.module'
 import { TechnicalSignalModule } from 'src/apps/technical-signal/technical-signal.module'
@@ -126,6 +127,9 @@ import { EventStudyModule } from 'src/apps/event-study/event-study.module'
 import { EventStudyToolFacade } from 'src/apps/event-study/event-study-tool.facade'
 import { createDerivativeEventToolDefinitions } from './tools/adapters/derivative-event-tools'
 import { createPrivateAnalyticsToolDefinitions } from './tools/adapters/private-analytics-tools'
+import { createMarketNewsToolDefinitions } from './tools/adapters/market-news-tools'
+import { NewsModule } from 'src/apps/news/news.module'
+import { MarketNewsToolFacade } from 'src/apps/news/market-news-tool.facade'
 
 @Module({
   imports: [
@@ -160,6 +164,7 @@ import { createPrivateAnalyticsToolDefinitions } from './tools/adapters/private-
     OptionMarketModule,
     ConvertibleBondModule,
     EventStudyModule,
+    NewsModule,
   ],
   controllers: [
     AgentController,
@@ -167,6 +172,7 @@ import { createPrivateAnalyticsToolDefinitions } from './tools/adapters/private-
     AgentStreamController,
     AgentEvaluationAdminController,
     ModelProviderAdminController,
+    ModelProviderConsoleController,
   ],
   providers: [
     AgentConversationRepository,
@@ -249,6 +255,7 @@ import { createPrivateAnalyticsToolDefinitions } from './tools/adapters/private-
         EventStudyToolFacade,
         BacktestAnalyticsToolFacade,
         PortfolioAnalyticsToolFacade,
+        MarketNewsToolFacade,
       ],
       useFactory: (
         stock: StockToolFacade,
@@ -281,6 +288,7 @@ import { createPrivateAnalyticsToolDefinitions } from './tools/adapters/private-
         eventStudy: EventStudyToolFacade,
         backtestAnalytics: BacktestAnalyticsToolFacade,
         portfolioAnalytics: PortfolioAnalyticsToolFacade,
+        marketNews: MarketNewsToolFacade,
       ) =>
         Object.freeze([
           ...createStockMarketToolDefinitions({ stock, market, sector, watchlist, config }),
@@ -313,6 +321,7 @@ import { createPrivateAnalyticsToolDefinitions } from './tools/adapters/private-
             backtest: backtestAnalytics,
             portfolio: portfolioAnalytics,
           }),
+          ...createMarketNewsToolDefinitions(marketNews),
         ]),
     },
     { provide: TOOL_EXECUTION_OBSERVER, useExisting: AgentMetricsService },

@@ -8,6 +8,18 @@ import { REDIS_CLIENT } from './redis.provider'
 import { REDIS_KEY, REFRESH_TOKEN_GRACE } from 'src/constant/auth.constant'
 import { TokenPayload } from './token.interface'
 
+const CONSUME_REFRESH_TOKEN_SCRIPT = `
+local value = redis.call('GET', KEYS[1])
+if value == '1' then
+  redis.call('SET', KEYS[1], 'used', 'EX', ARGV[1])
+  return 'valid'
+end
+if value == 'used' then
+  return 'grace'
+end
+return 'invalid'
+`
+
 /**
  * TokenService — JWT Token 的生命周期管理。
  *
@@ -81,18 +93,18 @@ export class TokenService {
     })
   }
 
-  /** 验证 Refresh Token 是否在 Redis 中有效（未被撤销） */
-  /** 校验 Refresh Token 状态：'valid' 首次使用 | 'grace' 宽限期内重复 | 'invalid' 已失效或不存在 */
-  async isRefreshTokenValid(userId: number, jti: string): Promise<'valid' | 'grace' | 'invalid'> {
-    const val = await this.redis.get(REDIS_KEY.REFRESH_TOKEN(userId, jti))
-    if (val === '1') return 'valid'
-    if (val === 'used') return 'grace'
-    return 'invalid'
-  }
+  /**
+   * 原子消费 Refresh Token：首次请求把状态从 1 改为 used；并发重复请求进入宽限路径。
+   * 检查与写入必须在同一段 Lua 中完成，避免两个标签同时看见 valid 并各自轮换一份新 Token。
+   */
+  async consumeRefreshToken(userId: number, jti: string): Promise<'valid' | 'grace' | 'invalid'> {
+    const result = await this.redis.eval(CONSUME_REFRESH_TOKEN_SCRIPT, {
+      keys: [REDIS_KEY.REFRESH_TOKEN(userId, jti)],
+      arguments: [String(REFRESH_TOKEN_GRACE)],
+    })
 
-  /** 将 Refresh Token 标记为已使用（保留宽限期后自动过期，防止双 useEffect 误杀） */
-  async revokeRefreshToken(userId: number, jti: string): Promise<void> {
-    await this.redis.set(REDIS_KEY.REFRESH_TOKEN(userId, jti), 'used', { EX: REFRESH_TOKEN_GRACE })
+    if (result === 'valid' || result === 'grace') return result
+    return 'invalid'
   }
 
   /** 立即删除 Refresh Token（用于登出，确保无法再次使用） */

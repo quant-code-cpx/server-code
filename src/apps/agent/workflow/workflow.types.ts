@@ -249,7 +249,9 @@ export interface WorkflowBudgetLimits {
   maxSteps: number
   maxToolCalls: number
   maxParallelTools: number
-  maxInputTokens: number
+  /** 单个 Run 跨模型调用累计输入 Token 的成本/执行护栏；null 表示不启用。 */
+  maxCumulativeInputTokens: number | null
+  inputTokenGuardrailSource: 'RUN_SNAPSHOT' | 'LEGACY_RUN' | 'ENV' | 'LEGACY_ENV' | 'DISABLED_BY_DEFAULT'
   maxCost: number
   costCurrency: string
 }
@@ -261,9 +263,13 @@ export interface WorkflowBudgetUsage {
   outputTokens: number
   cost: number
   costCurrency: string
+  accountingWarnings?: string[]
 }
 
 export interface WorkflowModelProfile {
+  schemaVersion?: 1
+  snapshottedAt?: string
+  source?: 'RUN_CREATION' | 'LEGACY_RUNTIME'
   selectedProvider: string
   selectedModel: string
   candidates: ModelDescriptor[]

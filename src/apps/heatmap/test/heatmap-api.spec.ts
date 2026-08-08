@@ -39,7 +39,13 @@ const allProviders = [
 
 const userPayload: TokenPayload = { id: 1, account: 'test', nickname: 'Test', role: UserRole.USER, jti: 'jti-1' }
 const adminPayload: TokenPayload = { id: 2, account: 'admin', nickname: 'Admin', role: UserRole.ADMIN, jti: 'jti-2' }
-const superAdminPayload: TokenPayload = { id: 3, account: 'superadmin', nickname: 'SuperAdmin', role: UserRole.SUPER_ADMIN, jti: 'jti-3' }
+const superAdminPayload: TokenPayload = {
+  id: 3,
+  account: 'superadmin',
+  nickname: 'SuperAdmin',
+  role: UserRole.SUPER_ADMIN,
+  jti: 'jti-3',
+}
 
 // ── 构建测试应用 ──────────────────────────────────────────────────────────────
 
@@ -79,8 +85,24 @@ async function buildHeatmapApp(user: TokenPayload | null): Promise<INestApplicat
 // ── 示例数据 ──────────────────────────────────────────────────────────────────
 
 const sampleHeatmapItems = [
-  { tsCode: '000001.SZ', name: '平安银行', groupName: '银行', industry: '银行', pctChg: 1.5, totalMv: 2000000, amount: 50000 },
-  { tsCode: '600519.SH', name: '贵州茅台', groupName: '白酒', industry: '白酒', pctChg: -0.8, totalMv: 1500000, amount: 30000 },
+  {
+    tsCode: '000001.SZ',
+    name: '平安银行',
+    groupName: '银行',
+    industry: '银行',
+    pctChg: 1.5,
+    totalMv: 2000000,
+    amount: 50000,
+  },
+  {
+    tsCode: '600519.SH',
+    name: '贵州茅台',
+    groupName: '白酒',
+    industry: '白酒',
+    pctChg: -0.8,
+    totalMv: 1500000,
+    amount: 30000,
+  },
 ]
 
 const sampleHistoryResponse = {
@@ -99,7 +121,7 @@ describe('HeatmapController [BIZ]', () => {
   let app: INestApplication
 
   beforeAll(async () => {
-    app = await buildHeatmapApp(userPayload)
+    app = await buildHeatmapApp(adminPayload)
   })
   afterAll(() => app.close())
   afterEach(() => jest.clearAllMocks())
@@ -108,24 +130,16 @@ describe('HeatmapController [BIZ]', () => {
 
   it('HM-BIZ-001 POST /heatmap/data 默认参数 → 201', async () => {
     mockHeatmapService.getHeatmap.mockResolvedValueOnce(sampleHeatmapItems)
-    const res = await request(app.getHttpServer())
-      .post('/heatmap/data')
-      .send({})
-      .expect(201)
+    const res = await request(app.getHttpServer()).post('/heatmap/data').send({}).expect(201)
     expect(res.body.code).toBe(0)
     expect(res.body.data).toEqual(sampleHeatmapItems)
   })
 
   it('HM-BIZ-002 POST /heatmap/data 指定 trade_date → 201', async () => {
     mockHeatmapService.getHeatmap.mockResolvedValueOnce(sampleHeatmapItems)
-    const res = await request(app.getHttpServer())
-      .post('/heatmap/data')
-      .send({ trade_date: '20260404' })
-      .expect(201)
+    const res = await request(app.getHttpServer()).post('/heatmap/data').send({ trade_date: '20260404' }).expect(201)
     expect(res.body.code).toBe(0)
-    expect(mockHeatmapService.getHeatmap).toHaveBeenCalledWith(
-      expect.objectContaining({ trade_date: '20260404' }),
-    )
+    expect(mockHeatmapService.getHeatmap).toHaveBeenCalledWith(expect.objectContaining({ trade_date: '20260404' }))
   })
 
   it('HM-BIZ-003 POST /heatmap/data group_by=index → 201', async () => {
@@ -139,31 +153,27 @@ describe('HeatmapController [BIZ]', () => {
 
   it('HM-BIZ-004 POST /heatmap/data group_by=concept → 201', async () => {
     mockHeatmapService.getHeatmap.mockResolvedValueOnce([])
-    const res = await request(app.getHttpServer())
-      .post('/heatmap/data')
-      .send({ group_by: 'concept' })
-      .expect(201)
+    const res = await request(app.getHttpServer()).post('/heatmap/data').send({ group_by: 'concept' }).expect(201)
     expect(res.body.code).toBe(0)
   })
 
   it('HM-BIZ-005 POST /heatmap/data industry_source=sw_l1 → 201', async () => {
     mockHeatmapService.getHeatmap.mockResolvedValueOnce(sampleHeatmapItems)
-    const res = await request(app.getHttpServer())
-      .post('/heatmap/data')
-      .send({ industry_source: 'sw_l1' })
-      .expect(201)
+    const res = await request(app.getHttpServer()).post('/heatmap/data').send({ industry_source: 'sw_l1' }).expect(201)
     expect(res.body.code).toBe(0)
   })
 
   it('HM-BIZ-006 POST /heatmap/data include_mapping=true → 201', async () => {
-    const itemsWithMapping = [{
-      ...sampleHeatmapItems[0],
-      swCode: '801120.SI',
-      swName: '食品饮料',
-      dcTsCode: 'BK0438.DC',
-      dcBoardCode: 'BK0438',
-      dcName: '食品饮料',
-    }]
+    const itemsWithMapping = [
+      {
+        ...sampleHeatmapItems[0],
+        swCode: '801120.SI',
+        swName: '食品饮料',
+        dcTsCode: 'BK0438.DC',
+        dcBoardCode: 'BK0438',
+        dcName: '食品饮料',
+      },
+    ]
     mockHeatmapService.getHeatmap.mockResolvedValueOnce(itemsWithMapping)
     const res = await request(app.getHttpServer())
       .post('/heatmap/data')
@@ -175,10 +185,7 @@ describe('HeatmapController [BIZ]', () => {
 
   it('HM-BIZ-007 POST /heatmap/data limit 截断 → 201', async () => {
     mockHeatmapService.getHeatmap.mockResolvedValueOnce([sampleHeatmapItems[0]])
-    const res = await request(app.getHttpServer())
-      .post('/heatmap/data')
-      .send({ limit: 1 })
-      .expect(201)
+    const res = await request(app.getHttpServer()).post('/heatmap/data').send({ limit: 1 }).expect(201)
     expect(res.body.code).toBe(0)
     expect(res.body.data).toHaveLength(1)
   })
@@ -217,57 +224,36 @@ describe('HeatmapController [ERR] DTO 校验', () => {
   let app: INestApplication
 
   beforeAll(async () => {
-    app = await buildHeatmapApp(userPayload)
+    app = await buildHeatmapApp(adminPayload)
   })
   afterAll(() => app.close())
 
   it('HM-ERR-001 POST /heatmap/data trade_date 格式错误 → 400', async () => {
-    await request(app.getHttpServer())
-      .post('/heatmap/data')
-      .send({ trade_date: '2026-04-04' })
-      .expect(400)
+    await request(app.getHttpServer()).post('/heatmap/data').send({ trade_date: '2026-04-04' }).expect(400)
   })
 
   it('HM-ERR-002 POST /heatmap/data group_by 非法值 → 400', async () => {
-    await request(app.getHttpServer())
-      .post('/heatmap/data')
-      .send({ group_by: 'invalid' })
-      .expect(400)
+    await request(app.getHttpServer()).post('/heatmap/data').send({ group_by: 'invalid' }).expect(400)
   })
 
   it('HM-ERR-003 POST /heatmap/data industry_source 非法值 → 400', async () => {
-    await request(app.getHttpServer())
-      .post('/heatmap/data')
-      .send({ industry_source: 'invalid' })
-      .expect(400)
+    await request(app.getHttpServer()).post('/heatmap/data').send({ industry_source: 'invalid' }).expect(400)
   })
 
   it('HM-ERR-004 POST /heatmap/data limit 超出最大值 → 400', async () => {
-    await request(app.getHttpServer())
-      .post('/heatmap/data')
-      .send({ limit: 5001 })
-      .expect(400)
+    await request(app.getHttpServer()).post('/heatmap/data').send({ limit: 5001 }).expect(400)
   })
 
   it('HM-ERR-005 POST /heatmap/data limit 小于最小值 → 400', async () => {
-    await request(app.getHttpServer())
-      .post('/heatmap/data')
-      .send({ limit: 0 })
-      .expect(400)
+    await request(app.getHttpServer()).post('/heatmap/data').send({ limit: 0 }).expect(400)
   })
 
   it('HM-ERR-007 POST /heatmap/snapshot/history trade_date 缺失 → 400', async () => {
-    await request(app.getHttpServer())
-      .post('/heatmap/snapshot/history')
-      .send({})
-      .expect(400)
+    await request(app.getHttpServer()).post('/heatmap/snapshot/history').send({}).expect(400)
   })
 
   it('HM-ERR-008 POST /heatmap/snapshot/history trade_date 格式错误 → 400', async () => {
-    await request(app.getHttpServer())
-      .post('/heatmap/snapshot/history')
-      .send({ trade_date: '2026-04-04' })
-      .expect(400)
+    await request(app.getHttpServer()).post('/heatmap/snapshot/history').send({ trade_date: '2026-04-04' }).expect(400)
   })
 
   it('HM-ERR-009 POST /heatmap/snapshot/history group_by 非法值 → 400', async () => {
@@ -287,10 +273,7 @@ describe('HeatmapController [ERR] snapshot/trigger DTO 校验 (SUPER_ADMIN)', ()
   afterAll(() => app.close())
 
   it('HM-ERR-006 POST /heatmap/snapshot/trigger trade_date 格式错误 → 400', async () => {
-    await request(app.getHttpServer())
-      .post('/heatmap/snapshot/trigger')
-      .send({ trade_date: '2026-04-04' })
-      .expect(400)
+    await request(app.getHttpServer()).post('/heatmap/snapshot/trigger').send({ trade_date: '2026-04-04' }).expect(400)
   })
 })
 
@@ -302,17 +285,14 @@ describe('HeatmapController [ERR] 服务异常', () => {
   let app: INestApplication
 
   beforeAll(async () => {
-    app = await buildHeatmapApp(userPayload)
+    app = await buildHeatmapApp(adminPayload)
   })
   afterAll(() => app.close())
   afterEach(() => jest.clearAllMocks())
 
   it('HM-ERR-010 POST /heatmap/data service 抛 NotFoundException → 404', async () => {
     mockHeatmapService.getHeatmap.mockRejectedValueOnce(new NotFoundException('暂无日线行情数据'))
-    const res = await request(app.getHttpServer())
-      .post('/heatmap/data')
-      .send({})
-      .expect(404)
+    const res = await request(app.getHttpServer()).post('/heatmap/data').send({}).expect(404)
     expect(res.body.code).not.toBe(0)
   })
 
@@ -341,19 +321,13 @@ describe('HeatmapController [EDGE]', () => {
 
   it('HM-EDGE-001 POST /heatmap/data limit=1（最小值） → 201', async () => {
     mockHeatmapService.getHeatmap.mockResolvedValueOnce([sampleHeatmapItems[0]])
-    const res = await request(app.getHttpServer())
-      .post('/heatmap/data')
-      .send({ limit: 1 })
-      .expect(201)
+    const res = await request(app.getHttpServer()).post('/heatmap/data').send({ limit: 1 }).expect(201)
     expect(res.body.code).toBe(0)
   })
 
   it('HM-EDGE-002 POST /heatmap/data limit=5000（最大值） → 201', async () => {
     mockHeatmapService.getHeatmap.mockResolvedValueOnce(sampleHeatmapItems)
-    const res = await request(app.getHttpServer())
-      .post('/heatmap/data')
-      .send({ limit: 5000 })
-      .expect(201)
+    const res = await request(app.getHttpServer()).post('/heatmap/data').send({ limit: 5000 }).expect(201)
     expect(res.body.code).toBe(0)
   })
 })
@@ -366,10 +340,7 @@ describe('HeatmapController [SEC] 权限边界', () => {
   it('HM-SEC-001 USER 角色 POST /heatmap/snapshot/trigger → 403', async () => {
     const app = await buildHeatmapApp(userPayload)
     try {
-      await request(app.getHttpServer())
-        .post('/heatmap/snapshot/trigger')
-        .send({})
-        .expect(403)
+      await request(app.getHttpServer()).post('/heatmap/snapshot/trigger').send({}).expect(403)
     } finally {
       await app.close()
     }
@@ -378,10 +349,7 @@ describe('HeatmapController [SEC] 权限边界', () => {
   it('HM-SEC-002 ADMIN 角色 POST /heatmap/snapshot/trigger → 403（需 SUPER_ADMIN）', async () => {
     const app = await buildHeatmapApp(adminPayload)
     try {
-      await request(app.getHttpServer())
-        .post('/heatmap/snapshot/trigger')
-        .send({})
-        .expect(403)
+      await request(app.getHttpServer()).post('/heatmap/snapshot/trigger').send({}).expect(403)
     } finally {
       await app.close()
     }
@@ -390,10 +358,39 @@ describe('HeatmapController [SEC] 权限边界', () => {
   it('HM-SEC-003 未登录 POST /heatmap/snapshot/trigger → 401', async () => {
     const app = await buildHeatmapApp(null)
     try {
-      await request(app.getHttpServer())
-        .post('/heatmap/snapshot/trigger')
-        .send({})
-        .expect(401)
+      await request(app.getHttpServer()).post('/heatmap/snapshot/trigger').send({}).expect(401)
+    } finally {
+      await app.close()
+    }
+  })
+
+  it('HM-SEC-004 USER 角色 POST /heatmap/snapshot/history → 403', async () => {
+    const app = await buildHeatmapApp(userPayload)
+    try {
+      await request(app.getHttpServer()).post('/heatmap/snapshot/history').send({ trade_date: '20260404' }).expect(403)
+      expect(mockSnapshotService.queryHistory).not.toHaveBeenCalled()
+    } finally {
+      await app.close()
+    }
+  })
+
+  it.each([
+    ['ADMIN', adminPayload],
+    ['SUPER_ADMIN', superAdminPayload],
+  ])('HM-SEC-005 %s 角色可查询 snapshot/history', async (_label, payload) => {
+    const app = await buildHeatmapApp(payload)
+    mockSnapshotService.queryHistory.mockResolvedValueOnce(sampleHistoryResponse)
+    try {
+      await request(app.getHttpServer()).post('/heatmap/snapshot/history').send({ trade_date: '20260404' }).expect(201)
+    } finally {
+      await app.close()
+    }
+  })
+
+  it('HM-SEC-006 未登录 POST /heatmap/snapshot/history → 401', async () => {
+    const app = await buildHeatmapApp(null)
+    try {
+      await request(app.getHttpServer()).post('/heatmap/snapshot/history').send({ trade_date: '20260404' }).expect(401)
     } finally {
       await app.close()
     }
@@ -418,10 +415,7 @@ describe('HeatmapController [BIZ] SUPER_ADMIN 快照触发', () => {
       tradeDate: '20260404',
       totalRecords: 5000,
     })
-    const res = await request(app.getHttpServer())
-      .post('/heatmap/snapshot/trigger')
-      .send({})
-      .expect(201)
+    const res = await request(app.getHttpServer()).post('/heatmap/snapshot/trigger').send({}).expect(201)
     expect(res.body.code).toBe(0)
     expect(res.body.data.tradeDate).toBe('20260404')
     expect(res.body.data.totalRecords).toBe(5000)

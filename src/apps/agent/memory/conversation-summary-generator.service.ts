@@ -12,7 +12,7 @@ import { modelMessage, WorkflowModelService } from '../workflow/workflow-model.s
 import { ModelContextBudgetService, type ModelContextBudgetPlan } from '../workflow/model-context-budget.service'
 import {
   CONVERSATION_SUMMARY_OUTPUT_SCHEMA,
-  CONVERSATION_SUMMARY_PROMPT_V1,
+  CONVERSATION_SUMMARY_PROMPT_V2,
   type ConversationSummaryFactOutput,
   type ConversationSummaryModelOutput,
 } from './conversation-summary.prompt'
@@ -110,9 +110,9 @@ export class ConversationSummaryGeneratorService {
         }
 
         const prompt = await this.summaries.findPublishedPrompt(
-          CONVERSATION_SUMMARY_PROMPT_V1.promptKey,
-          CONVERSATION_SUMMARY_PROMPT_V1.version,
-          CONVERSATION_SUMMARY_PROMPT_V1.contentHash,
+          CONVERSATION_SUMMARY_PROMPT_V2.promptKey,
+          CONVERSATION_SUMMARY_PROMPT_V2.version,
+          CONVERSATION_SUMMARY_PROMPT_V2.contentHash,
         )
         if (!prompt) await this.failRequiredCompaction(command, '会话整理 Prompt 不可用，请稍后重试')
 
@@ -338,6 +338,7 @@ function renderSummaryInput(
       id: message.id,
       role: message.role,
       content: messageContent(message),
+      citationIds: extractCitationIds(message.contentBlocks),
     })),
   })}</untrusted-summary-input>`
 }
@@ -361,7 +362,7 @@ function validateSummaryOutput(
   const normalizedSourceIds = normalizeSourceIds(output.sourceMessageIds, sourceOrder, 512)
   const sourceIdSet = new Set(normalizedSourceIds)
   const facts = output.facts.map((entry, index) => {
-    const fact = requireExactRecord(entry, ['sourceMessageIds', 'text'], `facts[${index}]`)
+    const fact = requireExactRecord(entry, ['citationIds', 'sourceMessageIds', 'text', 'timeRange'], `facts[${index}]`)
     const text = requireBoundedText(fact.text, `facts[${index}].text`, 1_000)
     if (!Array.isArray(fact.sourceMessageIds) || fact.sourceMessageIds.length === 0) {
       throw new AgentSummaryValidationError(`facts[${index}].sourceMessageIds 必须为非空数组`)
@@ -370,8 +371,21 @@ function validateSummaryOutput(
     if (sourceMessageIds.some((id) => !sourceIdSet.has(id))) {
       throw new AgentSummaryValidationError(`facts[${index}] 引用了顶层 sourceMessageIds 之外的消息`)
     }
+    if (!Array.isArray(fact.citationIds) || fact.citationIds.some((id) => typeof id !== 'string')) {
+      throw new AgentSummaryValidationError(`facts[${index}].citationIds 必须为字符串数组`)
+    }
+    const sourceCitationIds = buildSourceCitationIds(currentSummary, messages)
+    const allowedCitationIds = new Set(sourceMessageIds.flatMap((messageId) => sourceCitationIds.get(messageId) ?? []))
+    const citationIds = [...new Set(fact.citationIds as string[])]
+    if (citationIds.length !== fact.citationIds.length || citationIds.some((id) => !allowedCitationIds.has(id))) {
+      throw new AgentSummaryValidationError(`facts[${index}] 引用了不存在或不属于来源消息的 citationId`)
+    }
+    const timeRange = validateTimeRange(
+      fact.timeRange,
+      sourceMessageIds.map((id) => sourceContent.get(id) ?? '').join('\n'),
+    )
     assertAnchorsTraceable(text, sourceMessageIds.map((id) => sourceContent.get(id) ?? '').join('\n'))
-    return { text, sourceMessageIds }
+    return { text, sourceMessageIds, citationIds, timeRange }
   })
   assertAnchorsTraceable(summaryText, [...sourceContent.values()].join('\n'))
   return { summaryText, facts, sourceMessageIds: normalizedSourceIds }
@@ -394,6 +408,26 @@ function buildSourceContent(
   }
   for (const message of messages) content.set(message.id, messageContent(message))
   return content
+}
+
+function buildSourceCitationIds(
+  currentSummary: PersistedConversationSummary | null,
+  messages: readonly PersistedAiMessage[],
+): Map<string, string[]> {
+  const citations = new Map<string, string[]>()
+  if (currentSummary) {
+    for (const value of currentSummary.facts as unknown[]) {
+      const fact = value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {}
+      if (!Array.isArray(fact.sourceMessageIds) || !Array.isArray(fact.citationIds)) continue
+      const ids = fact.citationIds.filter((item): item is string => typeof item === 'string')
+      for (const messageId of fact.sourceMessageIds) {
+        if (typeof messageId !== 'string') continue
+        citations.set(messageId, [...new Set([...(citations.get(messageId) ?? []), ...ids])])
+      }
+    }
+  }
+  for (const message of messages) citations.set(message.id, extractCitationIds(message.contentBlocks))
+  return citations
 }
 
 function normalizeSourceIds(value: unknown[], sourceOrder: string[], maximum: number): string[] {
@@ -459,6 +493,36 @@ function isFactOutput(value: unknown): value is ConversationSummaryFactOutput {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false
   const record = value as Record<string, unknown>
   return typeof record.text === 'string' && Array.isArray(record.sourceMessageIds)
+}
+
+function validateTimeRange(value: unknown, source: string): ConversationSummaryFactOutput['timeRange'] {
+  const range = requireExactRecord(value, ['from', 'through'], 'facts.timeRange')
+  const from = range.from == null ? null : requireIsoDate(range.from, 'facts.timeRange.from')
+  const through = range.through == null ? null : requireIsoDate(range.through, 'facts.timeRange.through')
+  if (from && through && from > through) throw new AgentSummaryValidationError('facts.timeRange 起止日期顺序非法')
+  assertAnchorsTraceable([from, through].filter(Boolean).join(' '), source)
+  return { from, through }
+}
+
+function requireIsoDate(value: unknown, name: string): string {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    throw new AgentSummaryValidationError(`${name} 必须为 ISO 日期或 null`)
+  }
+  return value
+}
+
+function extractCitationIds(value: unknown, depth = 0): string[] {
+  if (depth > 8 || value == null) return []
+  if (Array.isArray(value)) return [...new Set(value.flatMap((item) => extractCitationIds(item, depth + 1)))]
+  if (typeof value !== 'object') return []
+  const record = value as Record<string, unknown>
+  const direct =
+    typeof record.citationId === 'string'
+      ? [record.citationId]
+      : Array.isArray(record.citationIds)
+        ? record.citationIds.filter((item): item is string => typeof item === 'string')
+        : []
+  return [...new Set([...direct, ...Object.values(record).flatMap((item) => extractCitationIds(item, depth + 1))])]
 }
 
 function messageContent(message: PersistedAiMessage): string {

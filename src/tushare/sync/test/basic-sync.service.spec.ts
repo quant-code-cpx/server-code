@@ -42,6 +42,7 @@ function buildMockHelper(prismaMock = buildPrismaMock()) {
       isTaskSyncedToday: jest.fn(async () => false),
       isTaskSyncedWithinDays: jest.fn(async () => false),
       replaceAllRows: jest.fn(async () => 0),
+      upsertRowsByUnique: jest.fn(async () => 0),
       replaceDateRangeRows: jest.fn(async () => 0),
       writeSyncLog: jest.fn(async () => undefined),
       buildYearlyWindows: jest.fn(() => [{ startDate: '20100101', endDate: '20101231' }]),
@@ -135,7 +136,7 @@ describe('BasicSyncService', () => {
       await service.syncStockBasic('incremental')
 
       expect(api.getStockBasic).not.toHaveBeenCalled()
-      expect(helper.replaceAllRows).not.toHaveBeenCalled()
+      expect(helper.upsertRowsByUnique).not.toHaveBeenCalled()
     })
 
     it('incremental 模式今日未同步时应调用 API 并写入数据', async () => {
@@ -147,7 +148,7 @@ describe('BasicSyncService', () => {
       await service.syncStockBasic('incremental')
 
       expect(api.getStockBasic).toHaveBeenCalled()
-      expect(helper.replaceAllRows).toHaveBeenCalledWith('stockBasic', expect.any(Array))
+      expect(helper.upsertRowsByUnique).toHaveBeenCalledWith('stockBasic', 'tsCode', expect.any(Array))
     })
 
     it('full 模式应忽略 isTaskSyncedToday，直接调用 API', async () => {

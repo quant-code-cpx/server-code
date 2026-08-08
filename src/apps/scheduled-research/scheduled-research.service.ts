@@ -311,6 +311,7 @@ export class ScheduledResearchService {
   ): Promise<void> {
     if (execution.runId) return
     try {
+      const workflowSnapshot = this.workflowRegistry.snapshot(task.workflowKey, task.workflowVersion)
       const result = await this.runs.sendScheduled({
         userId: task.userId,
         taskId: task.taskId,
@@ -328,6 +329,7 @@ export class ScheduledResearchService {
           workflowKey: task.workflowKey,
           workflowVersion: task.workflowVersion,
           workflowContentHash: task.workflowContentHash,
+          maxModelCalls: workflowSnapshot.maxModelCalls,
           promptKey: task.promptKey,
           promptVersion: task.promptVersion,
           promptContentHash: task.promptContentHash,

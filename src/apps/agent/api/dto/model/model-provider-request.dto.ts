@@ -15,7 +15,15 @@ import {
   MinLength,
 } from 'class-validator'
 
-const ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/
+const ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/
+const MODEL_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:/@-]{0,255}$/
+const REASONING_EFFORT_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$/
+const PROVIDER_KINDS = [
+  'openai-compatible',
+  'openai-chat-compatible',
+  'openai-responses',
+  'anthropic-messages',
+] as const
 const CAPABILITIES = [
   'STREAMING',
   'STRUCTURED_OUTPUT',
@@ -24,7 +32,7 @@ const CAPABILITIES = [
   'VISION',
   'REASONING_EFFORT',
 ] as const
-const REASONING_EFFORTS = ['LOW', 'MEDIUM', 'HIGH'] as const
+const REASONING_EFFORTS = ['NONE', 'MINIMAL', 'LOW', 'MEDIUM', 'HIGH', 'XHIGH', 'MAX'] as const
 const DATA_CLASSES = ['PUBLIC', 'USER_PRIVATE', 'PORTFOLIO_SENSITIVE'] as const
 
 export class ListModelProvidersDto {}
@@ -42,9 +50,9 @@ export class CreateModelProviderDto {
   @Matches(ID_PATTERN)
   providerId: string
 
-  @ApiProperty({ enum: ['openai-compatible'] })
-  @IsIn(['openai-compatible'])
-  kind: 'openai-compatible'
+  @ApiProperty({ enum: PROVIDER_KINDS })
+  @IsIn(PROVIDER_KINDS)
+  kind: (typeof PROVIDER_KINDS)[number]
 
   @ApiProperty({ maxLength: 128 })
   @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
@@ -53,10 +61,10 @@ export class CreateModelProviderDto {
   @MaxLength(128)
   displayName: string
 
-  @ApiProperty({ maxLength: 128, example: 'deepseek-chat' })
+  @ApiProperty({ maxLength: 256, pattern: MODEL_ID_PATTERN.source, example: 'gpt-5.6-sol' })
   @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   @IsString()
-  @Matches(ID_PATTERN)
+  @Matches(MODEL_ID_PATTERN, { message: 'model 仅允许字母、数字及 . _ : / @ -' })
   model: string
 
   @ApiProperty({ minimum: 0, maximum: 1000, default: 0 })
@@ -102,9 +110,13 @@ export class CreateModelProviderDto {
   @IsIn(CAPABILITIES, { each: true })
   capabilities: string[]
 
-  @ApiProperty({ enum: REASONING_EFFORTS, isArray: true })
+  @ApiProperty({
+    enum: REASONING_EFFORTS,
+    isArray: true,
+    description: '支持内置档位与经适配器验证的供应商原生档位',
+  })
   @IsArray()
-  @IsIn(REASONING_EFFORTS, { each: true })
+  @Matches(REASONING_EFFORT_PATTERN, { each: true, message: 'reasoningEfforts 包含非法档位' })
   reasoningEfforts: string[]
 
   @ApiProperty({ enum: DATA_CLASSES, isArray: true })
@@ -146,12 +158,12 @@ export class UpdateModelProviderDto extends ModelProviderIdDto {
   @Matches(ID_PATTERN)
   providerId?: string
 
-  @ApiPropertyOptional({ enum: ['openai-compatible'] })
+  @ApiPropertyOptional({ enum: PROVIDER_KINDS })
   @IsOptional()
-  @IsIn(['openai-compatible'])
-  kind?: 'openai-compatible'
+  @IsIn(PROVIDER_KINDS)
+  kind?: (typeof PROVIDER_KINDS)[number]
 
-  @ApiPropertyOptional({ maxLength: 128 })
+  @ApiPropertyOptional({ maxLength: 256, pattern: MODEL_ID_PATTERN.source })
   @IsOptional()
   @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   @IsString()
@@ -163,7 +175,7 @@ export class UpdateModelProviderDto extends ModelProviderIdDto {
   @IsOptional()
   @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   @IsString()
-  @Matches(ID_PATTERN)
+  @Matches(MODEL_ID_PATTERN, { message: 'model 仅允许字母、数字及 . _ : / @ -' })
   model?: string
 
   @ApiPropertyOptional({ minimum: 0, maximum: 1000 })
@@ -217,7 +229,7 @@ export class UpdateModelProviderDto extends ModelProviderIdDto {
   @ApiPropertyOptional({ enum: REASONING_EFFORTS, isArray: true })
   @IsOptional()
   @IsArray()
-  @IsIn(REASONING_EFFORTS, { each: true })
+  @Matches(REASONING_EFFORT_PATTERN, { each: true, message: 'reasoningEfforts 包含非法档位' })
   reasoningEfforts?: string[]
 
   @ApiPropertyOptional({ enum: DATA_CLASSES, isArray: true })

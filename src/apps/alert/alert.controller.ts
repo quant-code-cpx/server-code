@@ -19,7 +19,11 @@ import {
   ListPriceAlertRulesDto,
   UpdatePriceAlertRuleDto,
 } from './dto/price-alert-rule.dto'
-import { MarketAnomalyDetailQueryDto, MarketAnomalyListResponseDto, MarketAnomalyQueryDto } from './dto/market-anomaly.dto'
+import {
+  MarketAnomalyDetailQueryDto,
+  MarketAnomalyListResponseDto,
+  MarketAnomalyQueryDto,
+} from './dto/market-anomaly.dto'
 
 @ApiBearerAuth()
 @ApiTags('Alert - 预警与监控')
@@ -51,7 +55,7 @@ export class AlertController {
 
   // ── 价格预警规则 ──────────────────────────────────────────────────────────
 
-  @ApiOperation({ summary: '创建价格预警规则' })
+  @ApiOperation({ summary: '创建价格或事件预警规则' })
   @ApiSuccessRawResponse({ type: 'object' })
   @Post('price-rules')
   createRule(@CurrentUser() user: TokenPayload, @Body() dto: CreatePriceAlertRuleDto) {

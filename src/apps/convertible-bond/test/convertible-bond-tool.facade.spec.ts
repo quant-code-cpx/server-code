@@ -76,6 +76,28 @@ describe('ConvertibleBondToolFacade', () => {
     })
   })
 
+  it('[REG] SEARCH 不返回逐券条款全文，50 条结果仍在 Tool 载荷上限内', async () => {
+    const longClauseBond = {
+      ...bond,
+      callClause: '赎回条款'.repeat(3_000),
+      putClause: '回售条款'.repeat(3_000),
+      resetClause: '下修条款'.repeat(3_000),
+      convClause: '转股条款'.repeat(3_000),
+    }
+    repository.search.mockResolvedValueOnce({
+      total: 50,
+      items: Array.from({ length: 50 }, () => longClauseBond),
+    })
+
+    const result = await facade.getMarket({ operation: 'SEARCH', asOfDate: '2026-08-04', pageSize: 50 })
+
+    expect(result.data.operation).toBe('SEARCH')
+    if (result.data.operation !== 'SEARCH') throw new Error('expected SEARCH result')
+    expect(result.data.items).toHaveLength(50)
+    expect(result.data.items[0]).not.toHaveProperty('clauses')
+    expect(Buffer.byteLength(JSON.stringify(result), 'utf8')).toBeLessThan(256_000)
+  })
+
   it('[HISTORY] 历史短于请求区间时返回 PARTIAL_COVERAGE', async () => {
     const result = await facade.getMarket({
       operation: 'HISTORY',

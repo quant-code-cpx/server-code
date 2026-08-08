@@ -20,7 +20,14 @@ import { TokenService } from 'src/shared/token.service'
 import { LoggerService } from 'src/shared/logger/logger.service'
 import { TransformInterceptor } from 'src/lifecycle/interceptors/transform.interceptor'
 import { GlobalExceptionsFilter } from 'src/lifecycle/filters/global.exception'
-import { PUBLIC_KEY, LOGIN_MAX_FAIL, LOGIN_FAIL_WINDOW, LOGIN_LOCK_DURATION, CAPTCHA_TTL, REDIS_KEY } from 'src/constant/auth.constant'
+import {
+  PUBLIC_KEY,
+  LOGIN_MAX_FAIL,
+  LOGIN_FAIL_WINDOW,
+  LOGIN_LOCK_DURATION,
+  CAPTCHA_TTL,
+  REDIS_KEY,
+} from 'src/constant/auth.constant'
 import { BusinessException } from 'src/common/exceptions/business.exception'
 import { ErrorEnum } from 'src/constant/response-code.constant'
 import { buildTestUser } from 'test/helpers/create-test-app'
@@ -29,14 +36,18 @@ import { buildTestUser } from 'test/helpers/create-test-app'
 
 function createMockLoggerService(): LoggerService {
   return {
-    log: jest.fn(), warn: jest.fn(), error: jest.fn(),
-    debug: jest.fn(), verbose: jest.fn(), devLog: jest.fn(),
+    log: jest.fn(),
+    warn: jest.fn(),
+    error: jest.fn(),
+    debug: jest.fn(),
+    verbose: jest.fn(),
+    devLog: jest.fn(),
   } as unknown as LoggerService
 }
 
 /**
  * Create a mock Redis client with an in-memory store.
- * Supports: set/get/getDel/exists/incr/expire/del with TTL via setTimeout.
+ * Supports: set/get/getDel/exists/incr/expire/del with TTL via setTimeout，并可显式释放计时器。
  */
 function createMockRedis() {
   const store = new Map<string, string>()
@@ -44,16 +55,29 @@ function createMockRedis() {
 
   const clearTimer = (key: string) => {
     const t = timers.get(key)
-    if (t) { clearTimeout(t); timers.delete(key) }
+    if (t) {
+      clearTimeout(t)
+      timers.delete(key)
+    }
+  }
+
+  const reset = () => {
+    timers.forEach((timer) => clearTimeout(timer))
+    timers.clear()
+    store.clear()
   }
 
   return {
     store,
+    reset,
     set: jest.fn().mockImplementation((key: string, value: string, opts?: { EX?: number }) => {
       store.set(key, value)
       clearTimer(key)
       if (opts?.EX) {
-        timers.set(key, setTimeout(() => store.delete(key), opts.EX * 1000))
+        timers.set(
+          key,
+          setTimeout(() => store.delete(key), opts.EX * 1000),
+        )
       }
       return Promise.resolve('OK')
     }),
@@ -79,7 +103,10 @@ function createMockRedis() {
       if (mode === 'NX' && timers.has(key)) return Promise.resolve(false)
       clearTimer(key)
       if (ttl > 0) {
-        timers.set(key, setTimeout(() => store.delete(key), ttl * 1000))
+        timers.set(
+          key,
+          setTimeout(() => store.delete(key), ttl * 1000),
+        )
       }
       return Promise.resolve(true)
     }),
@@ -129,9 +156,8 @@ describe('AuthService — 登录核心流程', () => {
     mockTokenService = {
       generateTokens: jest.fn().mockResolvedValue(VALID_TOKENS),
       verifyRefreshToken: jest.fn().mockResolvedValue({ id: 1, jti: 'jti-1', account: 'testuser' }),
-      isRefreshTokenValid: jest.fn().mockResolvedValue('valid'),
+      consumeRefreshToken: jest.fn().mockResolvedValue('valid'),
       generateAccessToken: jest.fn().mockResolvedValue('new-access-token'),
-      revokeRefreshToken: jest.fn().mockResolvedValue(undefined),
       blacklistAccessToken: jest.fn().mockResolvedValue(undefined),
       deleteRefreshToken: jest.fn().mockResolvedValue(undefined),
     }
@@ -149,12 +175,16 @@ describe('AuthService — 登录核心流程', () => {
   })
 
   beforeEach(() => {
-    mockRedis.store.clear()
+    mockRedis.reset()
     jest.clearAllMocks()
     // Reset mock returns
     mockPrisma.user.findUnique.mockResolvedValue(TEST_USER)
     mockTokenService.generateTokens.mockResolvedValue(VALID_TOKENS)
     mockTokenService.verifyRefreshToken.mockResolvedValue({ id: 1, jti: 'jti-1', account: 'testuser' })
+  })
+
+  afterAll(() => {
+    mockRedis.reset()
   })
 
   // ── 验证码 ────────────────────────────────────────────────────────────────
@@ -195,7 +225,12 @@ describe('AuthService — 登录核心流程', () => {
       const captcha = await service.generateCaptcha()
       const captchaCode = mockRedis.store.get(REDIS_KEY.CAPTCHA(captcha.captchaId))!
 
-      await service.login({ account: 'testuser', password: 'correct-password', captchaId: captcha.captchaId, captchaCode })
+      await service.login({
+        account: 'testuser',
+        password: 'correct-password',
+        captchaId: captcha.captchaId,
+        captchaCode,
+      })
       expect(mockRedis.getDel).toHaveBeenCalledWith(REDIS_KEY.CAPTCHA(captcha.captchaId))
     })
 
@@ -203,12 +238,19 @@ describe('AuthService — 登录核心流程', () => {
       // 先制造1次失败
       const captcha1 = await service.generateCaptcha()
       const code1 = mockRedis.store.get(REDIS_KEY.CAPTCHA(captcha1.captchaId))!
-      await service.login({ account: 'testuser', password: 'wrong', captchaId: captcha1.captchaId, captchaCode: code1 }).catch(() => {})
+      await service
+        .login({ account: 'testuser', password: 'wrong', captchaId: captcha1.captchaId, captchaCode: code1 })
+        .catch(() => {})
 
       // 再成功登录
       const captcha2 = await service.generateCaptcha()
       const code2 = mockRedis.store.get(REDIS_KEY.CAPTCHA(captcha2.captchaId))!
-      await service.login({ account: 'testuser', password: 'correct-password', captchaId: captcha2.captchaId, captchaCode: code2 })
+      await service.login({
+        account: 'testuser',
+        password: 'correct-password',
+        captchaId: captcha2.captchaId,
+        captchaCode: code2,
+      })
 
       // 失败计数应被清除
       expect(mockRedis.del).toHaveBeenCalledWith(REDIS_KEY.LOGIN_FAIL('testuser'))
@@ -239,7 +281,12 @@ describe('AuthService — 登录核心流程', () => {
     it('错误验证码 → 抛出 INVALID_CAPTCHA', async () => {
       await service.generateCaptcha() // consumes the captcha store
       await expect(
-        service.login({ account: 'testuser', password: 'correct-password', captchaId: 'fake-id', captchaCode: 'wrong' }),
+        service.login({
+          account: 'testuser',
+          password: 'correct-password',
+          captchaId: 'fake-id',
+          captchaCode: 'wrong',
+        }),
       ).rejects.toThrow(BusinessException)
     })
 
@@ -266,7 +313,9 @@ describe('AuthService — 登录核心流程', () => {
       for (let i = 0; i < LOGIN_MAX_FAIL; i++) {
         const captcha = await service.generateCaptcha()
         const code = mockRedis.store.get(REDIS_KEY.CAPTCHA(captcha.captchaId))!
-        await service.login({ account: 'testuser', password: 'wrong', captchaId: captcha.captchaId, captchaCode: code }).catch(() => {})
+        await service
+          .login({ account: 'testuser', password: 'wrong', captchaId: captcha.captchaId, captchaCode: code })
+          .catch(() => {})
       }
 
       // 锁定标记应存在
@@ -279,14 +328,21 @@ describe('AuthService — 登录核心流程', () => {
       for (let i = 0; i < LOGIN_MAX_FAIL; i++) {
         const captcha = await service.generateCaptcha()
         const code = mockRedis.store.get(REDIS_KEY.CAPTCHA(captcha.captchaId))!
-        await service.login({ account: 'testuser', password: 'wrong', captchaId: captcha.captchaId, captchaCode: code }).catch(() => {})
+        await service
+          .login({ account: 'testuser', password: 'wrong', captchaId: captcha.captchaId, captchaCode: code })
+          .catch(() => {})
       }
 
       // 锁定期内正确密码
       const captcha = await service.generateCaptcha()
       const code = mockRedis.store.get(REDIS_KEY.CAPTCHA(captcha.captchaId))!
       await expect(
-        service.login({ account: 'testuser', password: 'correct-password', captchaId: captcha.captchaId, captchaCode: code }),
+        service.login({
+          account: 'testuser',
+          password: 'correct-password',
+          captchaId: captcha.captchaId,
+          captchaCode: code,
+        }),
       ).rejects.toThrow(BusinessException)
     })
   })
@@ -299,7 +355,12 @@ describe('AuthService — 登录核心流程', () => {
       const code = mockRedis.store.get(REDIS_KEY.CAPTCHA(captcha.captchaId))!
 
       await expect(
-        service.login({ account: 'testuser', password: 'correct-password', captchaId: captcha.captchaId, captchaCode: code }),
+        service.login({
+          account: 'testuser',
+          password: 'correct-password',
+          captchaId: captcha.captchaId,
+          captchaCode: code,
+        }),
       ).rejects.toThrow(BusinessException)
     })
   })
@@ -411,17 +472,12 @@ describe('AuthController — DTO校验 + Guard行为', () => {
   // ── Refresh ─────────────────────────────────────────────────────────────
   describe('refresh', () => {
     it('POST /auth/refresh → 201 + accessToken', async () => {
-      const res = await httpRequest
-        .post('/auth/refresh')
-        .send({ refreshToken: 'some-rt' })
-        .expect(201)
+      const res = await httpRequest.post('/auth/refresh').send({ refreshToken: 'some-rt' }).expect(201)
       expect(res.body.data.accessToken).toBe('new-jwt-token')
     })
 
     it('无 refreshToken → 业务异常（HTTP 200 + error code）', async () => {
-      mockAuthService.refreshToken.mockRejectedValueOnce(
-        new BusinessException(ErrorEnum.INVALID_REFRESH_TOKEN),
-      )
+      mockAuthService.refreshToken.mockRejectedValueOnce(new BusinessException(ErrorEnum.INVALID_REFRESH_TOKEN))
       await httpRequest.post('/auth/refresh').send({}).expect(200)
     })
   })
@@ -429,10 +485,7 @@ describe('AuthController — DTO校验 + Guard行为', () => {
   // ── Logout ──────────────────────────────────────────────────────────────
   describe('logout', () => {
     it('POST /auth/logout → 201', async () => {
-      const res = await httpRequest
-        .post('/auth/logout')
-        .set('Authorization', 'Bearer some-token')
-        .expect(201)
+      const res = await httpRequest.post('/auth/logout').set('Authorization', 'Bearer some-token').expect(201)
     })
   })
 })

@@ -40,6 +40,7 @@ describe('AgentRunService.sendScheduled', () => {
         workflowKey: 'stock_research',
         workflowVersion: 1,
         workflowContentHash: 'a'.repeat(64),
+        maxModelCalls: 4,
         promptKey: 'stock_research_system',
         promptVersion: 1,
         promptContentHash: 'b'.repeat(64),

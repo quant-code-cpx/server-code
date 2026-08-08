@@ -212,7 +212,17 @@ export type StreamError = {
 export type AgentEventPayloadMap = {
   'message.created': { messageId: string; role: MessageRole; status: MessageStatus }
   'agent.started': { workflowKey: string; workflowVersion: number; modelPolicy: ModelPolicy }
-  'agent.planning': { intent: string; capabilities: AgentCapability[]; planSummary: string }
+  'agent.planning': {
+    intent: string
+    capabilities: AgentCapability[]
+    planSummary: string
+    decision?: {
+      toolSelectionReason: string
+      selectedTools: AgentToolKey[]
+      plannedTools: AgentToolKey[]
+      fallback: boolean
+    }
+  }
   'agent.progress': { stepKey: string; label: string; completed: number; total: number | null }
   'context.compaction.started': {
     model: string
@@ -248,6 +258,16 @@ export type AgentEventPayloadMap = {
         estimatedInputTokens: number
         maxOutputTokens: number
         contextWindow: number
+        inputTokenCountSource:
+          | 'OPENAI_INPUT_TOKENS_API'
+          | 'ANTHROPIC_COUNT_TOKENS_API'
+          | 'LOCAL_CONSERVATIVE_V1'
+        inputTokenCountExact: boolean
+        inputTokenSafetyMarginTokens: number
+        runInputReservationTokens: number
+        runMaxCumulativeInputTokens: number | null
+        runInputTokensUsedBeforeCall: number
+        runInputGuardrailSource: 'RUN_SNAPSHOT' | 'LEGACY_RUN' | 'ENV' | 'LEGACY_ENV' | 'DISABLED_BY_DEFAULT'
       }
     | {
         modelCallId: string

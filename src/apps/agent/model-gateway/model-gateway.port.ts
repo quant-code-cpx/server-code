@@ -6,7 +6,13 @@ export const MODEL_GATEWAY_OBSERVER = Symbol('MODEL_GATEWAY_OBSERVER')
 export type ModelPolicy = 'AUTO' | 'MANUAL'
 export type ModelPurpose = 'CLASSIFY' | 'PLAN' | 'SYNTHESIZE' | 'SUMMARIZE' | 'VERIFY'
 export type ModelMessageRole = 'system' | 'user' | 'assistant' | 'tool'
-export type ModelReasoningEffort = 'LOW' | 'MEDIUM' | 'HIGH'
+export type ModelReasoningMode = 'AUTO' | 'DISABLED' | 'EFFORT' | 'TOKEN_BUDGET'
+export type ModelReasoningEffort = string
+export type ModelReasoningIntent =
+  | { mode: 'AUTO' }
+  | { mode: 'DISABLED' }
+  | { mode: 'EFFORT'; effort: ModelReasoningEffort }
+  | { mode: 'TOKEN_BUDGET'; budgetTokens: number; effort?: ModelReasoningEffort }
 export type ModelDataClass = 'PUBLIC' | 'USER_PRIVATE' | 'PORTFOLIO_SENSITIVE'
 export type ModelCapability =
   | 'STREAMING'
@@ -49,6 +55,8 @@ export interface ModelRequest {
   tools?: NormalizedToolDefinition[]
   responseSchema?: Record<string, unknown>
   temperature?: number
+  reasoning?: ModelReasoningIntent
+  /** @deprecated Prefer the protocol-neutral reasoning intent. */
   reasoningEffort?: ModelReasoningEffort
   maxOutputTokens: number
   deadlineAt: string
@@ -71,6 +79,18 @@ export interface ModelUsage {
     currency: string
     estimated: boolean
   }
+}
+
+export type ModelTokenCountSource = 'OPENAI_INPUT_TOKENS_API' | 'ANTHROPIC_COUNT_TOKENS_API' | 'LOCAL_CONSERVATIVE_V1'
+
+export interface ModelTokenCountEstimate {
+  /** 已包含安全余量，用于调用前判定。 */
+  inputTokens: number
+  /** Provider/tokenizer 原始计数，或本地估算的未加余量值。 */
+  rawInputTokens: number
+  safetyMarginTokens: number
+  source: ModelTokenCountSource
+  exact: boolean
 }
 
 export interface ModelToolCallDelta {
@@ -126,6 +146,7 @@ export interface ModelDescriptor {
   maxOutputTokens: number
   capabilities: readonly ModelCapability[]
   reasoningEfforts: readonly ModelReasoningEffort[]
+  defaultReasoning?: ModelReasoningIntent
   dataClasses: readonly ModelDataClass[]
 }
 
@@ -145,6 +166,7 @@ export interface ModelProvider {
   listModels(): readonly ModelDescriptor[]
   supports(model: string, required: readonly ModelCapability[]): boolean
   stream(request: ProviderModelRequest, signal: AbortSignal): AsyncIterable<ModelChunk>
+  countInputTokens?(request: ProviderModelRequest, signal: AbortSignal): Promise<ModelTokenCountEstimate>
 }
 
 export interface ModelGatewayPort {
@@ -160,6 +182,11 @@ export interface ModelGatewayPort {
     signal?: AbortSignal,
     streamObserver?: ModelStructuredStreamObserver,
   ): Promise<ModelResult<T>>
+  countInputTokensForModel?(
+    request: ModelRequest,
+    descriptor: ModelDescriptor,
+    signal?: AbortSignal,
+  ): Promise<ModelTokenCountEstimate>
   select(request: ModelRequest): ModelRouteDecision
   getCapabilities(modelRef?: string | null): ModelDescriptor
 }

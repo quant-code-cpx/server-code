@@ -13,9 +13,11 @@ describe('AgentReconcilerService', () => {
     }
     const logger = { log: jest.fn(), warn: jest.fn() }
     const recoveries = { inc: jest.fn() }
+    const runs = { expireOverdueRuns: jest.fn().mockResolvedValue(1) }
     const service = new AgentReconcilerService(
       prisma as never,
       queue as never,
+      runs as never,
       buildAgentQueueConfig({}),
       logger as never,
       recoveries as never,
@@ -27,6 +29,10 @@ describe('AgentReconcilerService', () => {
     releaseQuery!([{ id: 'run_1' }, { id: 'run_2' }])
     await expect(first).resolves.toBe(1)
 
+    expect(runs.expireOverdueRuns).toHaveBeenCalledWith(100)
+    expect(runs.expireOverdueRuns.mock.invocationCallOrder[0]).toBeLessThan(
+      queue.publishDueOutbox.mock.invocationCallOrder[0],
+    )
     expect(queue.publishDueOutbox.mock.invocationCallOrder[0]).toBeLessThan(
       prisma.$queryRaw.mock.invocationCallOrder[0],
     )
@@ -43,9 +49,11 @@ describe('AgentReconcilerService', () => {
       enqueueRun: jest.fn().mockRejectedValueOnce(new Error('redis')).mockResolvedValueOnce({ state: 'enqueued' }),
     }
     const logger = { log: jest.fn(), warn: jest.fn() }
+    const runs = { expireOverdueRuns: jest.fn().mockResolvedValue(0) }
     const service = new AgentReconcilerService(
       prisma as never,
       queue as never,
+      runs as never,
       buildAgentQueueConfig({}),
       logger as never,
     )

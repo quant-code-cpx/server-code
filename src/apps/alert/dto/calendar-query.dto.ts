@@ -1,12 +1,21 @@
-import { IsArray, IsEnum, IsOptional, IsString, Matches } from 'class-validator'
+import { IsArray, IsEnum, IsInt, IsOptional, IsString, Matches } from 'class-validator'
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
-import { Transform } from 'class-transformer'
+import { Transform, Type } from 'class-transformer'
 
 export enum CalendarEventType {
   DISCLOSURE = 'DISCLOSURE',
   FLOAT = 'FLOAT',
   DIVIDEND = 'DIVIDEND',
   FORECAST = 'FORECAST',
+  IPO = 'IPO',
+  CONVERTIBLE = 'CONVERTIBLE',
+  SHAREHOLDER = 'SHAREHOLDER',
+}
+
+export enum CalendarScope {
+  ALL = 'ALL',
+  WATCHLIST = 'WATCHLIST',
+  PORTFOLIO = 'PORTFOLIO',
 }
 
 export enum ImpactLevel {
@@ -44,6 +53,22 @@ export class CalendarQueryDto {
   @IsString()
   keyword?: string
 
+  @ApiPropertyOptional({ enum: CalendarScope, default: CalendarScope.ALL })
+  @IsOptional()
+  @IsEnum(CalendarScope)
+  scope?: CalendarScope
+
+  @ApiPropertyOptional({ description: '自选股组 ID；省略时使用当前用户全部自选股组' })
+  @IsOptional()
+  @IsInt()
+  @Type(() => Number)
+  watchlistId?: number
+
+  @ApiPropertyOptional({ description: '投资组合 ID；省略时使用当前用户全部组合' })
+  @IsOptional()
+  @IsString()
+  portfolioId?: string
+
   @IsOptional()
   @IsArray()
   @IsEnum(ImpactLevel, { each: true })
@@ -80,4 +105,9 @@ export class CalendarHistoryTrendQueryDto {
   @IsOptional()
   @Matches(/^\d{8}$/, { message: 'endDate 格式应为 YYYYMMDD' })
   endDate?: string
+
+  @ApiPropertyOptional({ description: '事件子类型（如股东增持 IN / 减持 DE）' })
+  @IsOptional()
+  @IsString()
+  subType?: string
 }

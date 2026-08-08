@@ -1,7 +1,9 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { UserRole, UserStatus } from '@prisma/client'
+import { MarketMultiAssetToolError } from 'src/apps/market-multi-asset/market-multi-asset.types'
 import { AGENT_TOOL_KEYS } from '../../../contracts'
+import { ToolAdapterError } from '../../contracts/tool-error'
 import type { ToolAccessContext } from '../../tool-access-context'
 import { ToolSchemaValidator } from '../../tool-schema-validator'
 import { createMarketMultiAssetToolDefinitions } from '../market-multi-asset-tools'
@@ -168,5 +170,123 @@ describe('第三批市场与多资产 Tool adapters', () => {
     expect(source).not.toMatch(
       /TushareClient|ApiService|SyncService|FactorCustomService|FactorExpressionService|FactorPrecomputeService/,
     )
+  })
+
+  it('AGT2-DATA-002: Adapter 保留 null/部分数据，并从各 section 选择最新合法数据日期', async () => {
+    facades.index.getMarketData.mockResolvedValueOnce({
+      data: {
+        meta: {
+          indexCode: '000300.SH',
+          name: null,
+          requestedAsOfDate: null,
+          dataThroughBySection: { BASIC: null, QUOTE: '2026-07-31', HISTORY: '2026-08-04' },
+          coverageStartBySection: { BASIC: null, QUOTE: '2026-07-31', HISTORY: '2020-01-01' },
+          currency: 'CNY',
+          adjustment: 'NONE',
+          frequency: 'D',
+          algorithmVersion: null,
+        },
+        basic: section,
+        quote: section,
+        history: section,
+        valuation: section,
+        constituents: section,
+        units: {},
+      },
+      warnings: [{ code: 'PARTIAL_DATA', message: '基本信息缺失' }],
+      truncated: true,
+    } as never)
+    const indexTool = definitions.find((item) => item.key === 'get_index_market_data')!
+    const result = await indexTool.execute(validInputs.get_index_market_data, {
+      ...context,
+      toolCallId: 'index-partial',
+    })
+
+    expect(result.data).toMatchObject({ meta: { name: null } })
+    expect(result.provenance.asOf.tradeDate).toBe('2026-08-04')
+    expect(result.provenance.dataVersion).toBe('get_index_market_data.v1:2026-08-04')
+    expect(result.warnings).toEqual([{ code: 'PARTIAL_DATA', message: '基本信息缺失' }])
+    expect(result.truncated).toBe(true)
+
+    facades.macro.getSnapshot.mockResolvedValueOnce({
+      data: {
+        requestedSeries: ['CPI'],
+        dataThroughBySeries: {},
+        coverageStartBySeries: { CPI: null },
+        latest: section,
+        history: section,
+        unitsByField: {},
+      },
+      warnings: [],
+    } as never)
+    const macroTool = definitions.find((item) => item.key === 'get_macro_snapshot')!
+    const emptyResult = await macroTool.execute({}, { ...context, toolCallId: 'macro-empty' })
+    expect(emptyResult.provenance.asOf).not.toHaveProperty('tradeDate')
+    expect(emptyResult.provenance.dataVersion).toBe('get_macro_snapshot.v1:empty')
+  })
+
+  it('AGT2-ERR-003: 领域错误保持业务分类，未知异常统一脱敏为可重试上游错误', async () => {
+    const indexTool = definitions.find((item) => item.key === 'get_index_market_data')!
+    facades.index.getMarketData.mockRejectedValueOnce(
+      new MarketMultiAssetToolError('DATA_NOT_READY', '指数日线尚未同步', false),
+    )
+    await expect(
+      indexTool.execute(validInputs.get_index_market_data, { ...context, toolCallId: 'known-error' }),
+    ).rejects.toMatchObject({
+      name: ToolAdapterError.name,
+      code: 'DATA_NOT_READY',
+      message: '指数日线尚未同步',
+      retryable: false,
+    })
+
+    facades.index.getMarketData.mockRejectedValueOnce(new Error('postgres://user:secret@database/internal'))
+    await expect(
+      indexTool.execute(validInputs.get_index_market_data, { ...context, toolCallId: 'unknown-error' }),
+    ).rejects.toMatchObject({
+      name: ToolAdapterError.name,
+      code: 'UPSTREAM_FAILED',
+      message: 'get_index_market_data 暂时不可用',
+      retryable: true,
+    })
+  })
+
+  it('AGT2-DATA-006: 行数计数按实际返回样本计算，不把 ERROR/null/元数据伪装成数据行', () => {
+    const indexTool = definitions.find((item) => item.key === 'get_index_market_data')!
+    expect(
+      indexTool.countRows({
+        meta: { status: 'metadata-only' },
+        missing: null,
+        errored: { status: 'ERROR', data: null },
+        array: { status: 'OK', data: [{ id: 1 }, { id: 2 }] },
+        emptyItems: { status: 'OK', data: { items: [] } },
+        items: { status: 'OK', data: { items: [{ id: 1 }, { id: 2 }] } },
+        scalar: { status: 'OK', data: { value: 1 } },
+      }),
+    ).toBe(6)
+
+    const factorTool = definitions.find((item) => item.key === 'get_factor_analysis')!
+    const factorCases = [
+      ['VALUES', 'items', 2],
+      ['IC', 'series', 3],
+      ['QUANTILE', 'groups', 4],
+      ['DECAY', 'results', 5],
+      ['DISTRIBUTION', 'histogram', 6],
+      ['CORRELATION', 'matrix', 7],
+    ] as const
+    for (const [analysis, field, count] of factorCases) {
+      expect(factorTool.countRows({ analysis, result: { [field]: Array.from({ length: count }) } })).toBe(count)
+    }
+    expect(factorTool.countRows({ analysis: 'UNKNOWN', result: {} })).toBe(0)
+    expect(factorTool.countRows({ analysis: 'VALUES' })).toBe(0)
+
+    const macroTool = definitions.find((item) => item.key === 'get_macro_snapshot')!
+    expect(
+      macroTool.countRows({
+        history: { status: 'OK', data: { CPI: [{ period: '202607' }], PPI: [{}, {}] } },
+      }),
+    ).toBe(3)
+    expect(macroTool.countRows({ history: { status: 'OK' } })).toBe(0)
+    expect(macroTool.countRows({ history: { status: 'ERROR' }, latest: { status: 'OK' } })).toBe(1)
+    expect(macroTool.countRows({ latest: { status: 'NOT_READY' } })).toBe(0)
   })
 })

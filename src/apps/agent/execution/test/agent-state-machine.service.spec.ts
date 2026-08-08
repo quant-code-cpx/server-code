@@ -10,6 +10,7 @@ describe('AgentStateMachineService', () => {
   it('Run 合法转换集合与 canonical 公共状态模型完全一致', () => {
     const expected = new Set([
       'QUEUED->RUNNING',
+      'QUEUED->FAILED',
       'QUEUED->CANCELLED',
       'RUNNING->CANCEL_REQUESTED',
       'RUNNING->COMPLETED',
@@ -62,11 +63,14 @@ describe('Agent execution 配置与 payload 边界', () => {
       leaseMs: 30_000,
       leaseHeartbeatMs: 10_000,
       replayLimit: 100,
-      maxDurationMs: 180_000,
+      fallbackDurationMs: 180_000,
+      nonModelReserveMs: 60_000,
+      maxDurationMs: 10_800_000,
       maxSteps: 32,
       maxToolCalls: 20,
       maxParallelTools: 3,
-      maxInputTokens: 32_768,
+      maxCumulativeInputTokens: null,
+      inputTokenGuardrailSource: 'DISABLED_BY_DEFAULT',
       maxCostPerRun: 10,
     })
     expect(() => buildAgentExecutionConfig({ AGENT_RUN_LEASE_MS: '999' })).toThrow('AGENT_RUN_LEASE_MS')
@@ -75,10 +79,18 @@ describe('Agent execution 配置与 payload 边界', () => {
     )
     expect(() => buildAgentExecutionConfig({ AGENT_EVENT_REPLAY_LIMIT: '1001' })).toThrow('AGENT_EVENT_REPLAY_LIMIT')
     expect(() => buildAgentExecutionConfig({ AGENT_RUN_MAX_DURATION_MS: 'NaN' })).toThrow('AGENT_RUN_MAX_DURATION_MS')
+    expect(() =>
+      buildAgentExecutionConfig({
+        AGENT_RUN_FALLBACK_DURATION_MS: '20000',
+        AGENT_RUN_MAX_DURATION_MS: '10000',
+      }),
+    ).toThrow('AGENT_RUN_FALLBACK_DURATION_MS')
     expect(() => buildAgentExecutionConfig({ AGENT_MAX_STEPS: '7' })).toThrow('AGENT_MAX_STEPS')
     expect(() => buildAgentExecutionConfig({ AGENT_MAX_TOOL_CALLS: '-1' })).toThrow('AGENT_MAX_TOOL_CALLS')
     expect(() => buildAgentExecutionConfig({ AGENT_MAX_PARALLEL_TOOLS: '0' })).toThrow('AGENT_MAX_PARALLEL_TOOLS')
-    expect(() => buildAgentExecutionConfig({ AGENT_MAX_INPUT_TOKENS: '0' })).toThrow('AGENT_MAX_INPUT_TOKENS')
+    expect(() => buildAgentExecutionConfig({ AGENT_RUN_MAX_CUMULATIVE_INPUT_TOKENS: '0' })).toThrow(
+      'AGENT_RUN_MAX_CUMULATIVE_INPUT_TOKENS',
+    )
     expect(() => buildAgentExecutionConfig({ AGENT_MAX_COST_PER_RUN: 'Infinity' })).toThrow('AGENT_MAX_COST_PER_RUN')
   })
 

@@ -1,15 +1,10 @@
 import { Injectable } from '@nestjs/common'
+import { estimateTextTokens } from '../model-gateway/model-token-estimator'
 
 @Injectable()
 export class ContextTokenEstimator {
   estimateText(value: string): number {
-    let asciiCharacters = 0
-    let nonAsciiCodePoints = 0
-    for (const character of value) {
-      if (character.codePointAt(0)! <= 0x7f) asciiCharacters += 1
-      else nonAsciiCodePoints += 1
-    }
-    return Math.ceil(asciiCharacters / 4) + nonAsciiCodePoints
+    return estimateTextTokens(value)
   }
 
   estimateMessages(messages: readonly { role?: string; content: string }[]): number {

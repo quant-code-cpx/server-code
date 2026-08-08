@@ -66,6 +66,7 @@ export class WorkflowRegistryService implements OnModuleInit {
     return Object.freeze({
       workflowKey: definition.key,
       version: definition.version,
+      maxModelCalls: maximumModelCalls(definition),
       definition: workflowDefinitionPayload(definition),
       toolAllowlist: [...definition.toolAllowlist],
       inputSchema: definition.inputSchema,
@@ -81,6 +82,12 @@ export class WorkflowRegistryService implements OnModuleInit {
       }),
     })
   }
+}
+
+function maximumModelCalls(definition: WorkflowDefinition): number {
+  const directCalls = definition.nodes.filter((node) => node.kind === 'PLAN' || node.kind === 'MODEL').length
+  const citationRepairCalls = definition.nodes.some((node) => node.key === 'validate_citations') ? 1 : 0
+  return Math.max(1, directCalls + citationRepairCalls)
 }
 
 export function workflowDefinitionPayload(definition: WorkflowDefinition): Record<string, unknown> {

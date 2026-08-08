@@ -1,4 +1,4 @@
-import { AGENT_TOOL_KEYS } from '../../contracts/tool-keys'
+import { AGENT_V9_TOOL_KEYS } from '../../contracts/tool-keys'
 import type { WorkflowDefinition } from '../workflow.types'
 import {
   RESEARCH_PLAN_SCHEMA_V5,
@@ -25,7 +25,7 @@ export const RESEARCH_PLAN_SCHEMA_V6: Record<string, unknown> = Object.freeze({
               Record<string, unknown>
             >) ?? {}
           ).properties as Record<string, unknown>),
-          toolKey: { enum: [...AGENT_TOOL_KEYS] },
+          toolKey: { enum: [...AGENT_V9_TOOL_KEYS] },
         },
       },
     },
@@ -47,7 +47,7 @@ export const STOCK_RESEARCH_WORKFLOW_V9: WorkflowDefinition = Object.freeze({
   ...STOCK_RESEARCH_WORKFLOW_V8,
   version: 9,
   capabilityCatalogVersion: 4,
-  toolAllowlist: Object.freeze([...AGENT_TOOL_KEYS]),
+  toolAllowlist: Object.freeze([...AGENT_V9_TOOL_KEYS]),
   planSchema: RESEARCH_PLAN_SCHEMA_V6,
   prompt: STOCK_RESEARCH_PROMPT_V7,
 })

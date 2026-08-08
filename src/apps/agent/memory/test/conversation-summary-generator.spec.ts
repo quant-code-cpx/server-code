@@ -204,7 +204,7 @@ describe('ConversationSummaryGeneratorService', () => {
     const currentSummary = persistedSummary({
       sourceMessageIds: ['source_1'],
       summaryText: '600519.SH 在 2026-07-20 收盘 1490 元',
-      facts: [{ text: '600519.SH 在 2026-07-20 收盘 1490 元', sourceMessageIds: ['source_1'] }],
+      facts: [summaryFact('600519.SH 在 2026-07-20 收盘 1490 元', ['source_1'])],
     })
     summaries.findCurrentState.mockResolvedValue({ summaryVersion: 1, currentSummary })
     messages.listCompletedSummaryCandidates.mockResolvedValue({
@@ -216,8 +216,8 @@ describe('ConversationSummaryGeneratorService', () => {
     const output = {
       summaryText: '600519.SH 已比较两个交易日',
       facts: [
-        { text: '600519.SH 在 2026-07-20 收盘 1490 元', sourceMessageIds: ['source_1'] },
-        { text: '新增消息保持原结论', sourceMessageIds: ['source_9'] },
+        summaryFact('600519.SH 在 2026-07-20 收盘 1490 元', ['source_1']),
+        summaryFact('新增消息保持原结论', ['source_9']),
       ],
       sourceMessageIds: ['source_1', 'source_9'],
     }
@@ -250,7 +250,7 @@ describe('ConversationSummaryGeneratorService', () => {
     models.generateStructured.mockResolvedValue({
       data: {
         summaryText: '新增收益率 999%',
-        facts: [{ text: '新增收益率 999%', sourceMessageIds: ['source_1'] }],
+        facts: [summaryFact('新增收益率 999%', ['source_1'])],
         sourceMessageIds: ['source_1'],
       },
       usage: usage({ inputTokens: 2_100, outputTokens: 30 }),
@@ -268,7 +268,7 @@ describe('ConversationSummaryGeneratorService', () => {
       name: '额外字段',
       output: {
         summaryText: '摘要',
-        facts: [{ text: '事实', sourceMessageIds: ['source_1'] }],
+        facts: [summaryFact('事实', ['source_1'])],
         sourceMessageIds: ['source_1'],
         hidden: true,
       },
@@ -277,7 +277,7 @@ describe('ConversationSummaryGeneratorService', () => {
       name: '范围外来源',
       output: {
         summaryText: '摘要',
-        facts: [{ text: '事实', sourceMessageIds: ['other_tenant_message'] }],
+        facts: [summaryFact('事实', ['other_tenant_message'])],
         sourceMessageIds: ['other_tenant_message'],
       },
     },
@@ -285,7 +285,7 @@ describe('ConversationSummaryGeneratorService', () => {
       name: '重复来源',
       output: {
         summaryText: '摘要',
-        facts: [{ text: '事实', sourceMessageIds: ['source_1'] }],
+        facts: [summaryFact('事实', ['source_1'])],
         sourceMessageIds: ['source_1', 'source_1'],
       },
     },
@@ -306,7 +306,7 @@ describe('ConversationSummaryGeneratorService', () => {
     models.generateStructured.mockResolvedValue({
       data: {
         summaryText: '摘要',
-        facts: [{ text: '事实', sourceMessageIds: ['source_2', 'source_1'] }],
+        facts: [summaryFact('事实', ['source_2', 'source_1'])],
         sourceMessageIds: ['source_2', 'source_1'],
       },
       usage: usage({ inputTokens: 2_100, outputTokens: 30 }),
@@ -322,7 +322,7 @@ describe('ConversationSummaryGeneratorService', () => {
       'conversation_1',
       expect.objectContaining({
         sourceMessageIds: ['source_1', 'source_2'],
-        facts: [{ text: '事实', sourceMessageIds: ['source_1', 'source_2'] }],
+        facts: [summaryFact('事实', ['source_1', 'source_2'])],
       }),
     )
   })
@@ -503,7 +503,7 @@ function sourceMessages(count: number, contentLength: number, start = 1): Persis
 function validOutput(messages: PersistedAiMessage[]) {
   return {
     summaryText: '保留原结论',
-    facts: [{ text: '保留原结论', sourceMessageIds: [messages[0].id] }],
+    facts: [summaryFact('保留原结论', [messages[0].id])],
     sourceMessageIds: [messages[0].id],
   }
 }
@@ -516,7 +516,7 @@ function persistedSummary(overrides: Record<string, unknown> = {}) {
     throughMessageId: 'source_8',
     version: 1,
     summaryText: '旧摘要',
-    facts: [{ text: '旧事实', sourceMessageIds: ['source_1'] }],
+    facts: [summaryFact('旧事实', ['source_1'])],
     sourceMessageIds: ['source_1'],
     promptVersionId: 'old_prompt',
     modelName: 'old-model',
@@ -542,12 +542,17 @@ function usage(overrides: Partial<WorkflowBudgetUsage> = {}): WorkflowBudgetUsag
   return { steps: 1, toolCalls: 0, inputTokens: 0, outputTokens: 0, cost: 0, costCurrency: 'CNY', ...overrides }
 }
 
+function summaryFact(text: string, sourceMessageIds: string[]) {
+  return { text, sourceMessageIds, citationIds: [], timeRange: { from: null, through: null } }
+}
+
 function limits(): WorkflowBudgetLimits {
   return {
     maxSteps: 8,
     maxToolCalls: 10,
     maxParallelTools: 3,
-    maxInputTokens: 50_000,
+    maxCumulativeInputTokens: 50_000,
+    inputTokenGuardrailSource: 'RUN_SNAPSHOT',
     maxCost: 10,
     costCurrency: 'CNY',
   }

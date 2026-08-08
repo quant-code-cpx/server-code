@@ -61,6 +61,26 @@ describe('IndexResearchToolFacade', () => {
     await expect(facade.getMarketData({ indexCode: '999999.SH' })).rejects.toMatchObject({ code: 'DATA_NOT_FOUND' })
   })
 
+  it('未显式指定 asOf 时，周末结束日自动收敛到最新可用交易日', async () => {
+    const result = await facade.getMarketData({
+      indexCode: '000300.SH',
+      sections: ['HISTORY'],
+      startDate: '2026-08-01',
+      endDate: '2026-08-08',
+    })
+
+    expect(repository.findDailyRange).toHaveBeenLastCalledWith(
+      '000300.SH',
+      new Date('2026-08-01T00:00:00.000Z'),
+      latest,
+    )
+    expect(result.warnings).toContainEqual({
+      code: 'INDEX_END_DATE_CLAMPED_TO_DATA_THROUGH',
+      message: '请求结束日 2026-08-08 晚于最新可用交易日 2026-08-04，已按最新可用交易日查询',
+      affectedFields: ['history', 'valuation'],
+    })
+  })
+
   it('[BUDGET] 多 section 共享 2,500 行预算并对长序列确定性采样', async () => {
     const dates = Array.from({ length: 1_200 }, (_, index) => {
       const value = new Date('2023-01-01T00:00:00.000Z')

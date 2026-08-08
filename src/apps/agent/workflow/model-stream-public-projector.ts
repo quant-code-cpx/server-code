@@ -1,10 +1,19 @@
 import type { ModelChunk, ModelPurpose, ModelStructuredStreamEvent } from '../model-gateway/model-gateway.port'
+import type { ModelTokenCountSource } from '../model-gateway/model-gateway.port'
+import type { WorkflowBudgetLimits } from './workflow.types'
 
 export interface ModelPublicTraceContext {
   messageCount: number
   estimatedInputTokens: number
   maxOutputTokens: number
   contextWindow: number
+  inputTokenCountSource: ModelTokenCountSource
+  inputTokenCountExact: boolean
+  inputTokenSafetyMarginTokens: number
+  runInputReservationTokens: number
+  runMaxCumulativeInputTokens: number | null
+  runInputTokensUsedBeforeCall: number
+  runInputGuardrailSource: WorkflowBudgetLimits['inputTokenGuardrailSource']
 }
 
 export type PublicModelStreamEvent =
@@ -19,6 +28,13 @@ export type PublicModelStreamEvent =
             estimatedInputTokens: number
             maxOutputTokens: number
             contextWindow: number
+            inputTokenCountSource: ModelTokenCountSource
+            inputTokenCountExact: boolean
+            inputTokenSafetyMarginTokens: number
+            runInputReservationTokens: number
+            runMaxCumulativeInputTokens: number | null
+            runInputTokensUsedBeforeCall: number
+            runInputGuardrailSource: WorkflowBudgetLimits['inputTokenGuardrailSource']
           }
         | {
             modelCallId: string

@@ -35,6 +35,7 @@ type AnyModelDelegate = {
   findMany(args?: Record<string, unknown>): Promise<Record<string, unknown>[]>
   createMany(args: Record<string, unknown>): Prisma.PrismaPromise<{ count: number }>
   deleteMany(args?: Record<string, unknown>): Prisma.PrismaPromise<{ count: number }>
+  upsert(args: Record<string, unknown>): Prisma.PrismaPromise<Record<string, unknown>>
   count(args?: Record<string, unknown>): Prisma.PrismaPromise<number>
 }
 
@@ -203,6 +204,31 @@ export class SyncHelperService {
     }
     const [, result] = await this.prisma.$transaction([model.deleteMany(), model.createMany({ data })])
     return result.count as number
+  }
+
+  /** 按唯一键批量 upsert；用于被其他业务表引用、不可先删后插的主数据。 */
+  async upsertRowsByUnique(modelName: string, uniqueField: string, data: Record<string, unknown>[]): Promise<number> {
+    const model = (this.prisma as unknown as Record<string, AnyModelDelegate>)[modelName]
+    const batchSize = 500
+
+    for (let offset = 0; offset < data.length; offset += batchSize) {
+      const batch = data.slice(offset, offset + batchSize)
+      await this.prisma.$transaction(
+        batch.map((row) => {
+          const uniqueValue = row[uniqueField]
+          if (uniqueValue === undefined || uniqueValue === null) {
+            throw new Error(`${modelName}.${uniqueField} is required for upsert`)
+          }
+          return model.upsert({
+            where: { [uniqueField]: uniqueValue },
+            create: row,
+            update: row,
+          })
+        }),
+      )
+    }
+
+    return data.length
   }
 
   /** 按交易日幂等覆盖 */

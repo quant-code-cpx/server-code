@@ -110,15 +110,33 @@ function responseFor(request: ProviderModelRequest): Record<string, unknown> {
     if (!sourceMessageId) throw new Error('SUMMARIZE 测试输入缺少 source message id')
     return {
       summaryText: '旧消息已压缩',
-      facts: [{ text: '旧消息已压缩', sourceMessageIds: [sourceMessageId] }],
+      facts: [
+        {
+          text: '旧消息已压缩',
+          sourceMessageIds: [sourceMessageId],
+          citationIds: [],
+          timeRange: { from: null, through: null },
+        },
+      ],
       sourceMessageIds: [sourceMessageId],
     }
+  }
+  if (request.purpose === 'VERIFY') {
+    const repair = parseJson(request.messages.at(-1)?.content ?? '')
+    if (isRecord(repair) && isRecord(repair.invalidDraft)) return repair.invalidDraft
   }
   const input = parseContext(request)
   if (request.purpose === 'PLAN') {
     const task = typeof input.task === 'string' ? input.task : ''
     const needsData = !task.includes('你能做什么') && !task.includes('无需工具')
     const needsWeb = needsData && (task.includes('公告') || task.includes('联网') || task.includes('恶意网页'))
+    if (isToolSelectionRequest(request)) {
+      return {
+        packs: needsWeb ? ['CORE_RESEARCH', 'EXTERNAL_EVENT'] : ['CORE_RESEARCH'],
+        toolKeys: needsWeb ? ['get_stock_overview', 'search_web', 'fetch_web_page'] : ['get_stock_overview'],
+        reason: needsWeb ? '选择内部概览与受控网页核验' : '选择最小核心研究工具集',
+      }
+    }
     const maliciousWeb = task.includes('恶意网页')
     const toolCalls: Array<Record<string, unknown>> = needsData
       ? [
@@ -244,6 +262,13 @@ function responseFor(request: ProviderModelRequest): Record<string, unknown> {
     warnings: ['非投资建议'],
     dataCutoff: tradeDates.at(-1) ?? '2026-07-17',
   }
+}
+
+function isToolSelectionRequest(request: ProviderModelRequest): boolean {
+  const properties = request.responseSchema?.properties
+  if (!properties || typeof properties !== 'object' || Array.isArray(properties)) return false
+  const keys = Object.keys(properties).sort()
+  return keys.join(',') === 'packs,reason,toolKeys'
 }
 
 function parseContext(request: ProviderModelRequest): Record<string, unknown> {

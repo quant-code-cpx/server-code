@@ -8,6 +8,8 @@ import { PrismaService } from 'src/shared/prisma.service'
 import { DistributedCronLockService } from 'src/shared/scheduler/distributed-cron-lock.service'
 import { EventsGateway } from 'src/websocket/events.gateway'
 import { NotificationService } from 'src/apps/notification/notification.service'
+import { AlertCalendarService } from './alert-calendar.service'
+import { CalendarEventType } from './dto/calendar-query.dto'
 import {
   CreatePriceAlertRuleDto,
   ListPriceAlertHistoryDto,
@@ -25,6 +27,9 @@ interface PriceAlertPayload {
   actualValue: number
   memo: string | null
   source?: { type: string; id: number | string; name: string } | null
+  eventDate?: string
+  eventType?: CalendarEventType
+  eventTitle?: string
 }
 
 interface ExpandedEntry {
@@ -40,6 +45,24 @@ interface PendingPriceAlertTrigger {
   payload: PriceAlertPayload
 }
 
+const EVENT_RULE_TO_CALENDAR_TYPE: Partial<Record<PriceAlertRuleType, CalendarEventType | 'ANY'>> = {
+  [PriceAlertRuleType.EVENT_DISCLOSURE]: CalendarEventType.DISCLOSURE,
+  [PriceAlertRuleType.EVENT_FLOAT]: CalendarEventType.FLOAT,
+  [PriceAlertRuleType.EVENT_DIVIDEND]: CalendarEventType.DIVIDEND,
+  [PriceAlertRuleType.EVENT_FORECAST]: CalendarEventType.FORECAST,
+  [PriceAlertRuleType.EVENT_IPO]: CalendarEventType.IPO,
+  [PriceAlertRuleType.EVENT_CONVERTIBLE]: CalendarEventType.CONVERTIBLE,
+  [PriceAlertRuleType.EVENT_SHAREHOLDER]: CalendarEventType.SHAREHOLDER,
+  [PriceAlertRuleType.EVENT_ANY]: 'ANY',
+}
+
+const EVENT_RULE_TYPES = Object.keys(EVENT_RULE_TO_CALENDAR_TYPE) as PriceAlertRuleType[]
+const EVENT_TRIGGER_WINDOWS = new Set([0, 1, 3, 7])
+
+function isEventRuleType(ruleType: PriceAlertRuleType): boolean {
+  return EVENT_RULE_TO_CALENDAR_TYPE[ruleType] !== undefined
+}
+
 @Injectable()
 export class PriceAlertService {
   private readonly logger = new Logger(PriceAlertService.name)
@@ -49,6 +72,7 @@ export class PriceAlertService {
     private readonly eventsGateway: EventsGateway,
     private readonly notificationService: NotificationService,
     private readonly cronLock: DistributedCronLockService,
+    private readonly calendarService: AlertCalendarService,
   ) {}
 
   // ── 规则 CRUD ──────────────────────────────────────────────────────────────
@@ -56,6 +80,9 @@ export class PriceAlertService {
   async createRule(userId: number, dto: CreatePriceAlertRuleDto) {
     if (!dto.tsCode && !dto.watchlistId && !dto.portfolioId) {
       throw new BadRequestException('至少需要指定 tsCode、watchlistId 或 portfolioId 其中之一')
+    }
+    if (isEventRuleType(dto.ruleType) && !EVENT_TRIGGER_WINDOWS.has(dto.threshold ?? Number.NaN)) {
+      throw new BadRequestException('事件提醒时机仅支持事件当日或提前 1/3/7 天')
     }
 
     let stockName: string | null = null
@@ -85,6 +112,21 @@ export class PriceAlertService {
       })
       if (!portfolio) throw new NotFoundException('投资组合不存在或无权访问')
       sourceName = (sourceName ? `${sourceName} / ` : '') + portfolio.name
+    }
+
+    if (isEventRuleType(dto.ruleType)) {
+      const existing = await this.prisma.priceAlertRule.findFirst({
+        where: {
+          userId,
+          tsCode: dto.tsCode ?? null,
+          watchlistId: dto.watchlistId ?? null,
+          portfolioId: dto.portfolioId ?? null,
+          ruleType: dto.ruleType,
+          threshold: dto.threshold ?? null,
+          status: PriceAlertRuleStatus.ACTIVE,
+        },
+      })
+      if (existing) return existing
     }
 
     return this.prisma.priceAlertRule.create({
@@ -252,7 +294,28 @@ export class PriceAlertService {
     })
   }
 
-  async runScan(): Promise<{ triggered: number }> {
+  @Cron('0 0 8 * * *', { timeZone: 'Asia/Shanghai' })
+  async dailyEventScan() {
+    await this.cronLock.runIfScheduler('event-alert:daily', async () => {
+      this.logger.log('定时任务：开始事件提醒扫描')
+      try {
+        await this.runEventScan()
+      } catch (err) {
+        this.logger.error('事件提醒扫描异常', (err as Error).stack)
+      }
+    })
+  }
+
+  async runEventScan(referenceDate = dayjs().format('YYYYMMDD')): Promise<{ triggered: number }> {
+    const rules = await this.prisma.priceAlertRule.findMany({
+      where: { status: PriceAlertRuleStatus.ACTIVE, ruleType: { in: EVENT_RULE_TYPES } },
+    })
+    const entries = await this.expandRulesToEntries(rules)
+    const triggeredRuleIds = await this.scanEventEntries(entries, referenceDate)
+    return { triggered: triggeredRuleIds.size }
+  }
+
+  async runScan(referenceDate = dayjs().format('YYYYMMDD')): Promise<{ triggered: number }> {
     const rules = await this.prisma.priceAlertRule.findMany({
       where: { status: PriceAlertRuleStatus.ACTIVE },
     })
@@ -269,8 +332,15 @@ export class PriceAlertService {
       return { triggered: 0 }
     }
 
+    const eventEntries = entries.filter((entry) => isEventRuleType(entry.rule.ruleType))
+    const eventTriggeredRuleIds = await this.scanEventEntries(eventEntries, referenceDate)
+    const priceEntries = entries.filter((entry) => !isEventRuleType(entry.rule.ruleType))
+    if (priceEntries.length === 0) {
+      return { triggered: eventTriggeredRuleIds.size }
+    }
+
     // 获取所有涉及股票的最新一日行情
-    const tsCodes = [...new Set(entries.map((e) => e.tsCode))]
+    const tsCodes = [...new Set(priceEntries.map((e) => e.tsCode))]
 
     // 获取最新交易日
     const latestDaily = await this.prisma.daily.findFirst({
@@ -279,7 +349,7 @@ export class PriceAlertService {
     })
     if (!latestDaily) {
       this.logger.warn('价格预警：数据库中没有日行情数据，跳过扫描')
-      return { triggered: 0 }
+      return { triggered: eventTriggeredRuleIds.size }
     }
 
     const latestTradeDate = latestDaily.tradeDate
@@ -293,7 +363,7 @@ export class PriceAlertService {
     const dailyMap = new Map(dailyRows.map((r) => [r.tsCode, r]))
 
     // 批量加载当日涨跌停价（tradeDateStr 是字符串格式）
-    const limitTsCodes = entries
+    const limitTsCodes = priceEntries
       .filter(
         (e) => e.rule.ruleType === PriceAlertRuleType.LIMIT_UP || e.rule.ruleType === PriceAlertRuleType.LIMIT_DOWN,
       )
@@ -316,7 +386,7 @@ export class PriceAlertService {
     const scanBatchId = randomUUID()
     const pendingByRule = new Map<number, Map<string, PendingPriceAlertTrigger>>()
 
-    for (const { rule, tsCode, stockName, source } of entries) {
+    for (const { rule, tsCode, stockName, source } of priceEntries) {
       const daily = dailyMap.get(tsCode)
       if (!daily) continue
 
@@ -454,8 +524,142 @@ export class PriceAlertService {
       })
     }
 
-    this.logger.log(`价格预警扫描完成：共展开 ${entries.length} 条目标，触发 ${triggeredRuleIds.size} 条规则`)
-    return { triggered: triggeredRuleIds.size }
+    const allTriggeredRuleIds = new Set([...eventTriggeredRuleIds, ...triggeredRuleIds])
+    this.logger.log(`预警扫描完成：共展开 ${entries.length} 条目标，触发 ${allTriggeredRuleIds.size} 条规则`)
+    return { triggered: allTriggeredRuleIds.size }
+  }
+
+  private async scanEventEntries(entries: ExpandedEntry[], referenceDate: string): Promise<Set<number>> {
+    if (entries.length === 0) return new Set()
+    if (!/^\d{8}$/.test(referenceDate)) throw new BadRequestException('事件扫描日期格式应为 YYYYMMDD')
+
+    const entriesByWindow = new Map<number, ExpandedEntry[]>()
+    for (const entry of entries) {
+      const triggerWindow = entry.rule.threshold
+      if (triggerWindow == null || !EVENT_TRIGGER_WINDOWS.has(triggerWindow)) continue
+      const group = entriesByWindow.get(triggerWindow) ?? []
+      group.push(entry)
+      entriesByWindow.set(triggerWindow, group)
+    }
+
+    const pendingByRule = new Map<number, Map<string, PendingPriceAlertTrigger>>()
+    const scanBatchId = randomUUID()
+
+    for (const [triggerWindow, windowEntries] of entriesByWindow) {
+      const targetDate = dayjs(referenceDate, 'YYYYMMDD').add(triggerWindow, 'day').format('YYYYMMDD')
+      const requestedTypes = new Set<CalendarEventType>()
+      for (const entry of windowEntries) {
+        const calendarType = EVENT_RULE_TO_CALENDAR_TYPE[entry.rule.ruleType]
+        if (calendarType === 'ANY') {
+          Object.values(CalendarEventType).forEach((type) => requestedTypes.add(type))
+        } else if (calendarType) {
+          requestedTypes.add(calendarType)
+        }
+      }
+
+      const calendar = await this.calendarService.getCalendar({
+        startDate: targetDate,
+        endDate: targetDate,
+        types: [...requestedTypes],
+      })
+      const eventsByCode = new Map<string, typeof calendar.events>()
+      for (const event of calendar.events) {
+        const codeEvents = eventsByCode.get(event.tsCode) ?? []
+        codeEvents.push(event)
+        eventsByCode.set(event.tsCode, codeEvents)
+      }
+
+      for (const { rule, tsCode, stockName, source } of windowEntries) {
+        const expectedType = EVENT_RULE_TO_CALENDAR_TYPE[rule.ruleType]
+        const event = (eventsByCode.get(tsCode) ?? []).find(
+          (candidate) => expectedType === 'ANY' || candidate.type === expectedType,
+        )
+        if (!event) continue
+
+        const payload: PriceAlertPayload = {
+          ruleId: rule.id,
+          tsCode,
+          stockName: stockName ?? event.stockName,
+          ruleType: rule.ruleType,
+          threshold: rule.threshold,
+          tradeDate: referenceDate,
+          actualValue: triggerWindow,
+          memo: rule.memo,
+          source: source ?? null,
+          eventDate: event.date,
+          eventType: event.type,
+          eventTitle: event.title,
+        }
+        const ruleTriggers = pendingByRule.get(rule.id) ?? new Map<string, PendingPriceAlertTrigger>()
+        if (!ruleTriggers.has(tsCode)) {
+          ruleTriggers.set(tsCode, {
+            rule,
+            history: {
+              ruleId: rule.id,
+              userId: rule.userId,
+              tsCode,
+              stockName: stockName ?? event.stockName,
+              ruleType: rule.ruleType,
+              threshold: rule.threshold,
+              actualValue: triggerWindow,
+              closePrice: null,
+              pctChg: null,
+              tradeDate: referenceDate,
+              sourceType: source?.type ?? null,
+              sourceName: source?.name ?? null,
+              scanBatchId,
+            },
+            payload,
+          })
+          pendingByRule.set(rule.id, ruleTriggers)
+        }
+      }
+    }
+
+    const triggeredRuleIds = new Set<number>()
+    const persistedTriggers: PendingPriceAlertTrigger[] = []
+    for (const [ruleId, ruleTriggerMap] of pendingByRule) {
+      const candidates = [...ruleTriggerMap.values()]
+      const newlyPersisted = await this.prisma.$transaction(async (tx) => {
+        const insertResult = await tx.priceAlertTriggerHistory.createMany({
+          data: candidates.map((candidate) => candidate.history),
+          skipDuplicates: true,
+        })
+        if (insertResult.count === 0) return []
+
+        const createdRows = await tx.priceAlertTriggerHistory.findMany({
+          where: { ruleId, tradeDate: referenceDate, scanBatchId },
+          select: { tsCode: true },
+        })
+        const createdTsCodes = new Set(createdRows.map((row) => row.tsCode))
+        const created = candidates.filter((candidate) => createdTsCodes.has(candidate.history.tsCode))
+        if (created.length > 0) {
+          await tx.priceAlertRule.update({
+            where: { id: ruleId },
+            data: { lastTriggeredAt: new Date(), triggerCount: { increment: 1 } },
+          })
+        }
+        return created
+      })
+
+      if (newlyPersisted.length > 0) {
+        triggeredRuleIds.add(ruleId)
+        persistedTriggers.push(...newlyPersisted)
+      }
+    }
+
+    for (const { rule, payload } of persistedTriggers) {
+      this.eventsGateway.emitToUser(rule.userId, 'price-alert', payload)
+      void this.notificationService.create({
+        userId: rule.userId,
+        type: NotificationType.PRICE_ALERT,
+        title: `事件提醒：${payload.stockName ?? payload.tsCode}`,
+        body: `${payload.eventDate} ${payload.eventTitle ?? payload.eventType ?? '事件'} 即将发生`,
+        data: payload as unknown as Record<string, unknown>,
+      })
+    }
+
+    return triggeredRuleIds
   }
 
   /** 将活跃规则展开为 (rule, tsCode) 扁平列表，含关联自选股组 / 组合 */

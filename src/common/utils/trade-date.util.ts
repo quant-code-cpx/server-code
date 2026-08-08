@@ -28,6 +28,14 @@ export function parseCompactTradeDateToUtcDate(value: string, fieldName = 'trade
 
 export function formatDateToCompactTradeDate(date: Date | string | null | undefined): string | null {
   if (!date) return null
+  if (typeof date === 'string' && COMPACT_DATE_RE.test(date)) {
+    try {
+      parseCompactTradeDateToUtcDate(date)
+      return date
+    } catch {
+      return null
+    }
+  }
   const d = date instanceof Date ? date : new Date(date)
   if (Number.isNaN(d.getTime())) return null
   return `${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, '0')}${String(d.getUTCDate()).padStart(2, '0')}`

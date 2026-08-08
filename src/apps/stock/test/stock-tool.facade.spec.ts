@@ -147,6 +147,69 @@ describe('StockToolFacade', () => {
     expect(value.ambiguous).toBe(true)
   })
 
+  it('[SMT-REG-002] 旧证券简称的组织后缀变更后仍能解析当前证券', async () => {
+    const prisma = prismaMock()
+    prisma.stockBasic.findMany.mockResolvedValueOnce([]).mockResolvedValueOnce([
+      {
+        tsCode: '300781.SZ',
+        symbol: '300781',
+        name: '因赛集团',
+        exchange: 'SZSE',
+        listStatus: 'L',
+        listDate: new Date('2019-06-06T00:00:00.000Z'),
+        delistDate: null,
+      },
+    ])
+    const facade = new StockToolFacade(prisma as never)
+
+    const value = await facade.resolveSecurity({ query: '因赛股份', securityTypes: ['STOCK'] })
+
+    expect(value.candidates).toEqual([
+      expect.objectContaining({ tsCode: '300781.SZ', name: '因赛集团', matchScore: 0.95 }),
+    ])
+    expect(value.ambiguous).toBe(false)
+    expect(prisma.stockBasic.findMany).toHaveBeenCalledTimes(2)
+    expect(prisma.stockBasic.findMany.mock.calls[1][0].where.AND[0]).toEqual({
+      OR: [
+        { tsCode: { contains: '因赛', mode: 'insensitive' } },
+        { symbol: { contains: '因赛', mode: 'insensitive' } },
+        { name: { contains: '因赛', mode: 'insensitive' } },
+        { cnspell: { contains: '因赛', mode: 'insensitive' } },
+      ],
+    })
+  })
+
+  it('[SMT-REG-003] 模型为证券名称附加 A 股限定词时仍能解析', async () => {
+    const prisma = prismaMock()
+    prisma.stockBasic.findMany.mockResolvedValueOnce([]).mockResolvedValueOnce([
+      {
+        tsCode: '600036.SH',
+        symbol: '600036',
+        name: '招商银行',
+        exchange: 'SSE',
+        listStatus: 'L',
+        listDate: null,
+        delistDate: null,
+      },
+    ])
+    const facade = new StockToolFacade(prisma as never)
+
+    const value = await facade.resolveSecurity({ query: '招商银行 A股', securityTypes: ['STOCK'] })
+
+    expect(value.candidates).toEqual([
+      expect.objectContaining({ tsCode: '600036.SH', name: '招商银行', matchScore: 1 }),
+    ])
+    expect(prisma.stockBasic.findMany).toHaveBeenCalledTimes(2)
+    expect(prisma.stockBasic.findMany.mock.calls[1][0].where.AND[0]).toEqual({
+      OR: [
+        { tsCode: { contains: '招商银行', mode: 'insensitive' } },
+        { symbol: { contains: '招商银行', mode: 'insensitive' } },
+        { name: { contains: '招商银行', mode: 'insensitive' } },
+        { cnspell: { contains: '招商银行', mode: 'insensitive' } },
+      ],
+    })
+  })
+
   it('[SMT-DATA-001] QFQ=raw*factor/latestFactor，null 保持 null，结果按日期升序', async () => {
     const prisma = prismaMock()
     prisma.$queryRaw.mockResolvedValue([

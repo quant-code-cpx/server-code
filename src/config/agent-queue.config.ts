@@ -23,7 +23,7 @@ export function buildAgentQueueConfig(env: AgentQueueConfigEnvironment) {
     redisUrl,
     prefix,
     workerConcurrency: parseInteger(env.AGENT_WORKER_CONCURRENCY, 'AGENT_WORKER_CONCURRENCY', 2, 1, 50),
-    jobTimeoutMs: parseInteger(env.AGENT_JOB_TIMEOUT_MS, 'AGENT_JOB_TIMEOUT_MS', 180_000, 10_000, 86_400_000),
+    jobTimeoutMs: parseInteger(env.AGENT_JOB_TIMEOUT_MS, 'AGENT_JOB_TIMEOUT_MS', 10_860_000, 10_000, 86_400_000),
     jobAttempts: parseInteger(env.AGENT_JOB_ATTEMPTS, 'AGENT_JOB_ATTEMPTS', 5, 1, 20),
     jobBackoffMs: parseInteger(env.AGENT_JOB_BACKOFF_MS, 'AGENT_JOB_BACKOFF_MS', 2_000, 100, 300_000),
     reconcileIntervalMs: parseInteger(

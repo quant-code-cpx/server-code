@@ -16,7 +16,7 @@ import type {
 import { AgentRestReadRepository } from '../api/agent-rest-read.repository'
 import { AgentRunRepository } from '../execution/agent-run.repository'
 import { WorkflowRegistryService } from '../workflow/workflow-registry.service'
-import { STOCK_RESEARCH_WORKFLOW_CURRENT } from '../workflow/workflows/stock-research.v10'
+import { STOCK_RESEARCH_WORKFLOW_CURRENT } from '../workflow/workflows/stock-research.v11'
 import { AgentInteractionRepository, type AgentWorkflowPin } from './agent-interaction.repository'
 
 const STREAM_ENDPOINT = '/api/agent/runs/events' as const
@@ -155,6 +155,7 @@ export class AgentRunService {
       workflowKey: snapshot.workflowKey,
       workflowVersion: snapshot.version,
       workflowContentHash: snapshot.contentHash,
+      maxModelCalls: snapshot.maxModelCalls,
       promptKey: snapshot.prompt.promptKey,
       promptVersion: snapshot.prompt.version,
       promptContentHash: snapshot.prompt.contentHash,

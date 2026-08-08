@@ -22,7 +22,7 @@ import {
   ValidateNested,
 } from 'class-validator'
 import { AGENT_CAPABILITIES, type AgentCapability } from 'src/apps/agent/contracts'
-import { STOCK_RESEARCH_WORKFLOW_CURRENT } from 'src/apps/agent/workflow/workflows/stock-research.v10'
+import { STOCK_RESEARCH_WORKFLOW_CURRENT } from 'src/apps/agent/workflow/workflows/stock-research.v11'
 import { CONDITION_METRIC_KEYS, CONDITION_OPERATORS, WATERMARK_DATASETS } from '../scheduled-research.policy'
 
 const SCHEDULE_ID_PATTERN = /^[A-Za-z0-9_-]{1,32}$/

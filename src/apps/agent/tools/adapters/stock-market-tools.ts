@@ -677,7 +677,10 @@ function sectorMembershipDefinition(sector: SectorToolFacade): ToolDefinition {
         const value = await sector.membership({ ...raw, limit: raw.limit ?? 100 })
         const warnings = value.warningCodes.map((code) => ({
           code,
-          message: 'THS 概念数据只代表当前成分，不提供历史有效期',
+          message:
+            code === 'THS_CONCEPT_HISTORY_OMITTED'
+              ? '历史时点无法追溯 THS 概念成分，已仅返回可追溯的行业与指数归属'
+              : 'THS 概念数据只代表当前成分，不提供历史有效期',
         }))
         return toolResult(context, input, 'get_sector_membership', value.data, {
           sourceServices: ['SectorToolFacade'],

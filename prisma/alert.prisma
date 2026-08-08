@@ -7,6 +7,14 @@ enum PriceAlertRuleType {
   PRICE_BELOW // 收盘价 <= threshold
   LIMIT_UP // 涨停（close >= up_limit）
   LIMIT_DOWN // 跌停（close <= down_limit）
+  EVENT_DISCLOSURE // 财报披露事件
+  EVENT_FLOAT // 限售解禁事件
+  EVENT_DIVIDEND // 除权除息事件
+  EVENT_FORECAST // 业绩预告事件
+  EVENT_IPO // 新股发行事件
+  EVENT_CONVERTIBLE // 可转债事件
+  EVENT_SHAREHOLDER // 股东增减持事件
+  EVENT_ANY // 任意事件类型
 
   @@map("price_alert_rule_type")
 }

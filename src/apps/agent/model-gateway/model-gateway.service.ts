@@ -5,6 +5,7 @@ import { LoggerService } from 'src/shared/logger/logger.service'
 import { ModelCapabilityRegistry } from './model-capability.registry'
 import { ModelRouterService } from './model-router.service'
 import { ProviderHealthService } from './provider-health.service'
+import { estimateModelRequestTokens } from './model-token-estimator'
 import {
   MODEL_GATEWAY_OBSERVER,
   ModelAbortError,
@@ -19,6 +20,7 @@ import {
   type ModelResult,
   type ModelRouteDecision,
   type ModelStructuredStreamObserver,
+  type ModelTokenCountEstimate,
   type ModelUsage,
   type ProviderModelRequest,
 } from './model-gateway.port'
@@ -117,6 +119,35 @@ export class ModelGatewayService implements ModelGatewayPort {
     }
   }
 
+  async countInputTokensForModel(
+    request: ModelRequest,
+    target: ModelDescriptor,
+    signal?: AbortSignal,
+  ): Promise<ModelTokenCountEstimate> {
+    this.prepareRequest(request)
+    const descriptor = this.registry.assertDescriptorSupported(target, request)
+    const provider = this.registry.getProviderForDescriptor(descriptor)
+    if (!provider.countInputTokens) return estimateModelRequestTokens(request)
+    const parentSignal = signal ?? new AbortController().signal
+    if (parentSignal.aborted) throw new ModelAbortError()
+    try {
+      return await provider.countInputTokens(this.toProviderRequest(request, descriptor), parentSignal)
+    } catch (error) {
+      if (parentSignal.aborted || error instanceof ModelAbortError) throw new ModelAbortError()
+      this.logger.warn(
+        {
+          operation: 'modelInputTokenCount',
+          status: 'FALLBACK',
+          provider: descriptor.provider,
+          model: descriptor.model,
+          errorClass: error instanceof Error ? error.name : 'UnknownError',
+        },
+        ModelGatewayService.name,
+      )
+      return estimateModelRequestTokens(request)
+    }
+  }
+
   private prepareRequest(request: ModelRequest): void {
     validateRequest(request)
     if (request.responseSchema) this.compileSchema(request.responseSchema, 'responseSchema')
@@ -146,6 +177,7 @@ export class ModelGatewayService implements ModelGatewayPort {
     const validate = this.compileSchema(request.responseSchema as Record<string, unknown>, 'responseSchema')
     let currentRequest = request
     let lastCompletion: ModelCompletion | null = null
+    let cumulativeUsage: ModelUsage | null = null
 
     for (let repairAttempt = 0; repairAttempt <= 1; repairAttempt += 1) {
       await streamObserver?.({ type: 'ATTEMPT_STARTED', repairAttempt })
@@ -157,17 +189,22 @@ export class ModelGatewayService implements ModelGatewayPort {
         streamObserver,
       )
       lastCompletion = completion
+      cumulativeUsage = addModelUsage(cumulativeUsage, completion.usage)
       const parsed = parseStructuredText(completion.text)
       if (parsed.ok && validate(parsed.value)) {
         this.health.recordSuccess(descriptor)
-        return { data: parsed.value as T, completion, repaired: repairAttempt === 1 }
+        return {
+          data: parsed.value as T,
+          completion: { ...completion, usage: cumulativeUsage },
+          repaired: repairAttempt === 1,
+        }
       }
       if (repairAttempt === 0) currentRequest = createRepairRequest(request, completion)
     }
 
     throw new ModelGatewayError(
       'INVALID_OUTPUT',
-      false,
+      true,
       `模型结构化输出校验失败${lastCompletion?.finishReason ? ` (${lastCompletion.finishReason})` : ''}`,
       undefined,
       undefined,
@@ -226,7 +263,7 @@ export class ModelGatewayService implements ModelGatewayPort {
     if (parentSignal.aborted) throw new ModelAbortError()
     const provider = this.registry.getProviderForDescriptor(descriptor)
     const providerConfig = this.providerConfig(descriptor)
-    const providerRequest: ProviderModelRequest = { ...request, model: descriptor.model }
+    const providerRequest = this.toProviderRequest(request, descriptor)
     const deadlineAt = Date.parse(request.deadlineAt)
 
     for (let attempt = 1; attempt <= providerConfig.maxRetries + 1; attempt += 1) {
@@ -285,6 +322,25 @@ export class ModelGatewayService implements ModelGatewayPort {
     throw new ModelGatewayError('UNAVAILABLE', true, '模型供应商调用失败')
   }
 
+  private toProviderRequest(request: ModelRequest, descriptor: ModelDescriptor): ProviderModelRequest {
+    return {
+      ...request,
+      model: descriptor.model,
+      reasoning: resolveReasoningIntent(request, descriptor),
+      ...(request.tools?.length
+        ? {
+            metadata: {
+              ...request.metadata,
+              parallelToolCalls:
+                typeof request.metadata?.parallelToolCalls === 'boolean'
+                  ? request.metadata.parallelToolCalls
+                  : descriptor.capabilities.includes('PARALLEL_TOOL_CALLING'),
+            },
+          }
+        : {}),
+    }
+  }
+
   private providerConfig(descriptor: ModelDescriptor): Pick<IModelConfig, 'timeoutMs' | 'maxRetries' | 'retryBaseMs'> {
     return (
       this.registry.getProviderConfig(descriptor.provider) ??
@@ -323,6 +379,40 @@ export class ModelGatewayService implements ModelGatewayPort {
   }
 }
 
+function addModelUsage(current: ModelUsage | null, next: ModelUsage | null): ModelUsage | null {
+  if (!current)
+    return next ? { ...next, ...(next.providerCost ? { providerCost: { ...next.providerCost } } : {}) } : null
+  if (!next) return current
+  const providerCost = addProviderCost(current.providerCost, next.providerCost)
+  return {
+    inputTokens: current.inputTokens + next.inputTokens,
+    outputTokens: current.outputTokens + next.outputTokens,
+    ...((current.cachedTokens ?? next.cachedTokens) == null
+      ? {}
+      : { cachedTokens: (current.cachedTokens ?? 0) + (next.cachedTokens ?? 0) }),
+    ...((current.reasoningTokens ?? next.reasoningTokens) == null
+      ? {}
+      : { reasoningTokens: (current.reasoningTokens ?? 0) + (next.reasoningTokens ?? 0) }),
+    ...(providerCost ? { providerCost } : {}),
+  }
+}
+
+function addProviderCost(
+  current: ModelUsage['providerCost'],
+  next: ModelUsage['providerCost'],
+): ModelUsage['providerCost'] {
+  if (!current) return next
+  if (!next) return current
+  if (current.currency.toUpperCase() !== next.currency.toUpperCase()) return undefined
+  const amount = Number(current.amount) + Number(next.amount)
+  if (!Number.isFinite(amount) || amount < 0) return undefined
+  return {
+    amount: String(amount),
+    currency: current.currency.toUpperCase(),
+    estimated: current.estimated || next.estimated,
+  }
+}
+
 function validateRequest(request: ModelRequest): void {
   if (!['AUTO', 'MANUAL'].includes(request.modelPolicy ?? 'AUTO')) {
     throw new ModelGatewayError('CONTENT', false, 'modelPolicy 非法')
@@ -330,9 +420,10 @@ function validateRequest(request: ModelRequest): void {
   if (!['CLASSIFY', 'PLAN', 'SYNTHESIZE', 'SUMMARIZE', 'VERIFY'].includes(request.purpose)) {
     throw new ModelGatewayError('CONTENT', false, 'purpose 非法')
   }
-  if (request.reasoningEffort && !['LOW', 'MEDIUM', 'HIGH'].includes(request.reasoningEffort)) {
+  if (request.reasoningEffort && !isReasoningEffort(request.reasoningEffort)) {
     throw new ModelGatewayError('CONTENT', false, 'reasoningEffort 非法')
   }
+  validateReasoningIntent(request.reasoning)
   if (request.dataClass && !['PUBLIC', 'USER_PRIVATE', 'PORTFOLIO_SENSITIVE'].includes(request.dataClass)) {
     throw new ModelGatewayError('CONTENT', false, 'dataClass 非法')
   }
@@ -417,6 +508,34 @@ function validateRequest(request: ModelRequest): void {
       throw new ModelGatewayError('CONTENT', false, 'metadata string 超过限制')
     }
   }
+}
+
+function resolveReasoningIntent(request: ModelRequest, descriptor: ModelDescriptor) {
+  if (request.reasoning) return request.reasoning
+  if (request.reasoningEffort) return { mode: 'EFFORT' as const, effort: request.reasoningEffort }
+  return descriptor.defaultReasoning ?? { mode: 'AUTO' as const }
+}
+
+function validateReasoningIntent(reasoning: ModelRequest['reasoning']): void {
+  if (!reasoning) return
+  if (!['AUTO', 'DISABLED', 'EFFORT', 'TOKEN_BUDGET'].includes(reasoning.mode)) {
+    throw new ModelGatewayError('CONTENT', false, 'reasoning.mode 非法')
+  }
+  if (reasoning.mode === 'EFFORT' && !isReasoningEffort(reasoning.effort)) {
+    throw new ModelGatewayError('CONTENT', false, 'reasoning.effort 非法')
+  }
+  if (reasoning.mode === 'TOKEN_BUDGET') {
+    if (!Number.isInteger(reasoning.budgetTokens) || reasoning.budgetTokens < 1 || reasoning.budgetTokens > 1_000_000) {
+      throw new ModelGatewayError('CONTENT', false, 'reasoning.budgetTokens 非法')
+    }
+    if (reasoning.effort && !isReasoningEffort(reasoning.effort)) {
+      throw new ModelGatewayError('CONTENT', false, 'reasoning.effort 非法')
+    }
+  }
+}
+
+function isReasoningEffort(value: string): boolean {
+  return /^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$/.test(value)
 }
 
 function createAttemptSignal(parent: AbortSignal, deadlineAt: number, timeoutMs: number): AttemptSignal {

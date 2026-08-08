@@ -102,7 +102,11 @@ export class PortfolioAnalyticsToolFacade {
     const pnl = requested.has('PNL')
       ? ok(computePnl(portfolio.initialCash.toNumber(), asOfSnapshot, previous, positions))
       : notRequested()
-    const drift = requested.has('DRIFT') ? ok(computeDrift(positions, command.targetWeights)) : notRequested()
+    const drift = requested.has('DRIFT')
+      ? command.targetWeights
+        ? ok(computeDrift(positions, command.targetWeights))
+        : notReady('持仓漂移分析需要 targetWeights')
+      : notRequested()
     const trades = requested.has('TRADES')
       ? ok(await this.loadTrades(command.portfolioId, userId, command.tradePage, command.tradePageSize))
       : notRequested()
@@ -215,7 +219,6 @@ function normalizeInput(input: PortfolioAnalyticsToolInput) {
     const sum = entries.reduce((value, [, weight]) => value + weight, 0)
     if (Math.abs(sum - 1) > 0.0001) throw invalid('targetWeights 权重和必须约等于 1')
   }
-  if (sections.includes('DRIFT') && !targetWeights) throw invalid('DRIFT 需要 targetWeights')
   return {
     portfolioId,
     sections,

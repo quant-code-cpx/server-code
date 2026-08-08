@@ -9,7 +9,7 @@ export interface HeatmapHistoryResponse {
   tradeDate: string
   groupBy: string
   stockCount: number
-  /** true = 读快照；false = 实时计算后已写入快照 */
+  /** true = 读快照；false = 只读实时计算，不写入快照 */
   isFromSnapshot: boolean
   items: HeatmapItemDto[]
 }
@@ -153,7 +153,7 @@ export class HeatmapSnapshotService {
 
   /**
    * 查询指定日期和维度的热力图快照数据。
-   * 优先读 heatmap_snapshots 快照表，若快照不存在则降级为实时计算并异步写入快照。
+   * 优先读 heatmap_snapshots 快照表，若快照不存在则降级为只读实时计算。
    */
   async queryHistory(dto: HeatmapHistoryQueryDto): Promise<HeatmapHistoryResponse> {
     const groupBy = dto.group_by ?? 'industry'
@@ -187,18 +187,13 @@ export class HeatmapSnapshotService {
       }
     }
 
-    // 2b. 快照不存在，降级为实时计算并异步写入快照
+    // 2b. 快照不存在，降级为只读实时计算；查询操作不得触发聚合写入。
     const { group_by: gby, index_code } = this.parseGroupBy(groupBy)
     const items = await this.heatmapService.getHeatmap({
       trade_date: tradeDate,
       group_by: gby as 'industry' | 'index' | 'concept',
       index_code,
     })
-    // 异步写入快照（不阻塞响应）
-    this.aggregateSnapshot(tradeDate).catch((err) =>
-      this.logger.warn(`历史快照降级写入失败：${(err as Error).message}`),
-    )
-
     return {
       tradeDate,
       groupBy,

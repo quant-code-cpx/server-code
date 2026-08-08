@@ -438,9 +438,9 @@ describe('ContextBuilderService', () => {
 describe('ContextTokenEstimator', () => {
   it('对 ASCII、中文和 emoji 做确定性保守估算', () => {
     const estimator = new ContextTokenEstimator()
-    expect(estimator.estimateText('abcd')).toBe(1)
+    expect(estimator.estimateText('abcd')).toBe(2)
     expect(estimator.estimateText('中文')).toBe(2)
-    expect(estimator.estimateText('😀')).toBe(1)
+    expect(estimator.estimateText('😀')).toBe(2)
     expect(estimator.estimateMessages([{ role: 'user', content: '中文abcd' }])).toBeGreaterThanOrEqual(7)
   })
 })

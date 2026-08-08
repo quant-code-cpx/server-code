@@ -2,7 +2,12 @@ import { registerAs } from '@nestjs/config'
 
 export const MODEL_CONFIG_TOKEN = 'agentModel'
 
-export type AgentModelProviderName = 'fake' | 'openai-compatible'
+export type AgentModelProviderName =
+  | 'fake'
+  | 'openai-compatible'
+  | 'openai-chat-compatible'
+  | 'openai-responses'
+  | 'anthropic-messages'
 export type AgentModelCostTier = 'LOW' | 'MEDIUM' | 'HIGH'
 export type AgentModelConfigSource = 'env' | 'database'
 
@@ -11,6 +16,11 @@ export interface ModelDescriptorConfig {
   maxOutputTokens: number
   capabilities: string[]
   reasoningEfforts: string[]
+  defaultReasoning?:
+    | { mode: 'AUTO' }
+    | { mode: 'DISABLED' }
+    | { mode: 'EFFORT'; effort: string }
+    | { mode: 'TOKEN_BUDGET'; budgetTokens: number; effort?: string }
   dataClasses: string[]
 }
 
@@ -65,7 +75,13 @@ export interface IModelConfig {
   circuitOpenMs: number
 }
 
-const SUPPORTED_PROVIDERS = new Set<AgentModelProviderName>(['fake', 'openai-compatible'])
+const SUPPORTED_PROVIDERS = new Set<AgentModelProviderName>([
+  'fake',
+  'openai-compatible',
+  'openai-chat-compatible',
+  'openai-responses',
+  'anthropic-messages',
+])
 const CAPABILITY_VALUES = new Set([
   'STREAMING',
   'STRUCTURED_OUTPUT',
@@ -74,7 +90,8 @@ const CAPABILITY_VALUES = new Set([
   'VISION',
   'REASONING_EFFORT',
 ])
-const REASONING_EFFORT_VALUES = new Set(['LOW', 'MEDIUM', 'HIGH'])
+const REASONING_EFFORT_VALUES = new Set(['NONE', 'MINIMAL', 'LOW', 'MEDIUM', 'HIGH', 'XHIGH', 'MAX'])
+const MODEL_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:/@-]{0,255}$/
 const DATA_CLASS_VALUES = new Set(['PUBLIC', 'USER_PRIVATE', 'PORTFOLIO_SENSITIVE'])
 const COST_TIER_VALUES = new Set<AgentModelCostTier>(['LOW', 'MEDIUM', 'HIGH'])
 
@@ -203,7 +220,7 @@ function parseProviders(raw: string, isProduction: boolean, isTest: boolean): Ag
       const value = asRecord(entry, `AGENT_MODEL_PROVIDERS[${index}]`)
       const id = requireIdentifier(value.id, `AGENT_MODEL_PROVIDERS[${index}].id`)
       const kind = requireProviderKind(value.kind, `AGENT_MODEL_PROVIDERS[${index}].kind`, isTest)
-      const defaultModel = requireIdentifier(value.model, `AGENT_MODEL_PROVIDERS[${index}].model`)
+      const defaultModel = requireModelId(value.model, `AGENT_MODEL_PROVIDERS[${index}].model`)
       const descriptor = parseInlineDescriptor(value, index, kind === 'fake')
       if (!descriptor.capabilities.includes('STREAMING')) {
         throw new Error(`[AgentModel] AGENT_MODEL_PROVIDERS[${index}] 必须声明 STREAMING capability`)
@@ -221,7 +238,7 @@ function parseProviders(raw: string, isProduction: boolean, isTest: boolean): Ag
       return {
         id,
         kind,
-        displayName: optionalIdentifier(value.displayName) ?? id,
+        displayName: optionalDisplayName(value.displayName) ?? id,
         defaultModel,
         priority: parseInlineInteger(value.priority, `AGENT_MODEL_PROVIDERS[${index}].priority`, index, 0, 1000),
         costTier: parseCostTier(value.costTier, `AGENT_MODEL_PROVIDERS[${index}].costTier`, 'MEDIUM'),
@@ -441,6 +458,19 @@ function requireIdentifier(value: unknown, name: string): string {
   const normalized = optionalIdentifier(value)
   if (!normalized) throw new Error(`[AgentModel] ${name} 必须是 1-128 位字母、数字、_ 或 -`)
   return normalized
+}
+
+function requireModelId(value: unknown, name: string): string {
+  const normalized = typeof value === 'string' ? value.trim() : ''
+  if (!MODEL_ID_PATTERN.test(normalized)) {
+    throw new Error(`[AgentModel] ${name} 仅允许字母、数字及 . _ : / @ -`)
+  }
+  return normalized
+}
+
+function optionalDisplayName(value: unknown): string | null {
+  const normalized = typeof value === 'string' ? value.trim() : ''
+  return normalized.length >= 1 && normalized.length <= 128 ? normalized : null
 }
 
 function optionalIdentifier(value: unknown): string | null {

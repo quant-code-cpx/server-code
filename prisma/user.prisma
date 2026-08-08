@@ -52,6 +52,7 @@ model User {
   aiResearchReports        AiResearchReport[] // Agent 已确认研究报告
   aiUserMemories           AiUserMemory[] // 用户明确确认的 Agent 长期记忆
   aiScheduledTasks         AiScheduledTask[] // 用户保存的 Agent 定时/条件研究任务
+  newsIngestionCommands    NewsIngestionCommand[] // 新闻采集管理命令
   createdAt                DateTime                 @default(now())
   updatedAt                DateTime                 @updatedAt
 

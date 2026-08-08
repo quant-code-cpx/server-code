@@ -237,22 +237,27 @@ export class ContextBuilderService {
       conversationState: { ...command.context.conversationState },
       warnings: [...warnings],
     }
+    let workingCommand = { ...command, stageData: command.stageData ? cloneJson(command.stageData) : undefined }
 
-    let rendered = this.render(working, command, facts)
+    let rendered = this.render(working, workingCommand, facts)
     let totalTokens = this.estimator.estimateMessages(rendered.map((segment) => segment.message))
     while (totalTokens > budget) {
+      const compactedStageData = compactLargeStageData(workingCommand.stageData)
       const removableMessageIndex = working.recentMessages.findIndex(
         (message) => message.id !== working.triggerMessageId,
       )
-      if (removableMessageIndex >= 0) {
+      if (compactedStageData.changed) {
+        workingCommand = { ...workingCommand, stageData: compactedStageData.value }
+        warnings.add('TOOL_CATALOG_COMPACTED')
+      } else if (working.retrievedSources.length > 0) {
+        working.retrievedSources.pop()
+        warnings.add('RETRIEVAL_TRIMMED')
+      } else if (removableMessageIndex >= 0) {
         working.recentMessages.splice(removableMessageIndex, 1)
         warnings.add('RECENT_MESSAGES_TRIMMED')
       } else if (working.summary) {
         working.summary = null
         warnings.add('SUMMARY_TRIMMED')
-      } else if (working.retrievedSources.length > 0) {
-        working.retrievedSources.pop()
-        warnings.add('RETRIEVAL_TRIMMED')
       } else if (working.activeMemories.length > 0) {
         working.activeMemories.pop()
         warnings.add('MEMORIES_TRIMMED')
@@ -263,7 +268,7 @@ export class ContextBuilderService {
         throw new WorkflowBudgetError('当前问题与必要系统上下文超过目标模型限制，请缩短输入或切换模型', 6049)
       }
       working.warnings = [...warnings]
-      rendered = this.render(working, command, facts)
+      rendered = this.render(working, workingCommand, facts)
       totalTokens = this.estimator.estimateMessages(rendered.map((segment) => segment.message))
     }
 
@@ -560,6 +565,31 @@ function cloneBoundedRecord(value: unknown, maxBytes: number, warnings: Set<stri
   if (Buffer.byteLength(serialized, 'utf8') <= maxBytes) return JSON.parse(serialized) as Record<string, unknown>
   warnings.add('PAGE_OR_STATE_CONTEXT_TRUNCATED')
   return { truncated: true, contentHash: hashStableJson(asRecord(value)) }
+}
+
+function cloneJson(value: Record<string, unknown>): Record<string, unknown> {
+  return JSON.parse(JSON.stringify(value)) as Record<string, unknown>
+}
+
+function compactLargeStageData(value: Record<string, unknown> | undefined): {
+  changed: boolean
+  value: Record<string, unknown> | undefined
+} {
+  if (!value) return { changed: false, value }
+  const catalog = asRecord(value.capabilityCatalog)
+  if (!Array.isArray(catalog.tools)) return { changed: false, value }
+  let changed = false
+  const tools = catalog.tools.map((item) => {
+    const tool = asRecord(item)
+    if (!('positiveExamples' in tool) && !('negativeExamples' in tool)) return tool
+    changed = true
+    const compact = { ...tool }
+    delete compact.positiveExamples
+    delete compact.negativeExamples
+    return compact
+  })
+  if (!changed) return { changed: false, value }
+  return { changed: true, value: { ...value, capabilityCatalog: { ...catalog, tools } } }
 }
 
 function asRecord(value: unknown): Record<string, unknown> {

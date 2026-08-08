@@ -7,6 +7,7 @@ import { AgentQueueConfig, buildAgentQueueConfig, type IAgentQueueConfig } from 
 import { LoggerService } from 'src/shared/logger/logger.service'
 import { AGENT_RUN_RECOVERY_TOTAL } from 'src/shared/metrics/metrics.constants'
 import { PrismaService } from 'src/shared/prisma.service'
+import { AgentRunRepository } from 'src/apps/agent/execution/agent-run.repository'
 import { AgentQueueService } from './agent-queue.service'
 import { AGENT_RECONCILER_INTERVAL_NAME } from './agent.queue.constants'
 
@@ -23,6 +24,7 @@ export class AgentReconcilerService implements OnModuleInit {
   constructor(
     private readonly prisma: PrismaService,
     private readonly queue: AgentQueueService,
+    private readonly runs: AgentRunRepository,
     @Inject(AgentQueueConfig.KEY) private readonly config: IAgentQueueConfig,
     private readonly logger: LoggerService,
     @Optional() @InjectMetric(AGENT_RUN_RECOVERY_TOTAL) private readonly recoveries?: Counter,
@@ -37,6 +39,7 @@ export class AgentReconcilerService implements OnModuleInit {
     if (this.running) return 0
     this.running = true
     try {
+      await this.runs.expireOverdueRuns(this.config.reconcileBatchSize)
       await this.queue.publishDueOutbox(this.config.reconcileBatchSize)
       const rows = await this.prisma.$queryRaw<RecoverableRunRow[]>(Prisma.sql`
         SELECT "id"

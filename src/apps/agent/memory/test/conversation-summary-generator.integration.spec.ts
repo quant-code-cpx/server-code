@@ -17,6 +17,7 @@ import { createTemporaryAgentDatabase, type TemporaryAgentDatabase } from 'test/
 import { AgentMessageRepository } from '../../conversation/agent-message.repository'
 import type { AgentExecutionRun } from '../../execution/agent-run.repository'
 import { LoadContextNode } from '../../workflow/nodes/load-context.node'
+import { ModelContextBudgetService } from '../../workflow/model-context-budget.service'
 import type { FrozenWorkflowDefinition } from '../../workflow/workflow.types'
 import { ConversationSummaryGeneratorService } from '../conversation-summary-generator.service'
 import { CONVERSATION_SUMMARY_PROMPT_V1 } from '../conversation-summary.prompt'
@@ -45,15 +46,19 @@ integrationDescribe('自动滚动摘要 - 真实 PostgreSQL 跨层集成', () =>
     maxSteps: 8,
     maxToolCalls: 10,
     maxParallelTools: 3,
-    maxInputTokens: 50_000,
+    maxCumulativeInputTokens: 50_000,
+    inputTokenGuardrailSource: 'RUN_SNAPSHOT' as const,
     maxCost: 10,
     costCurrency: 'CNY',
   }
   const logger = { log: jest.fn(), warn: jest.fn(), error: jest.fn() } as unknown as LoggerService
+  const contextBudgets = new ModelContextBudgetService(config as never)
   const models = {
     generateStructured: jest.fn(),
     resolveModelProfile: jest.fn(() => modelProfile()),
-    resolveInputTokenBudget: jest.fn(() => 395),
+    resolveInputTokenBudget: jest.fn(
+      (profile, usage, runLimits) => contextBudgets.resolve(profile, usage, runLimits).inputBudget,
+    ),
   }
   let database: TemporaryAgentDatabase | undefined
   let client: PrismaClient
@@ -99,6 +104,7 @@ integrationDescribe('自动滚动摘要 - 真实 PostgreSQL 跨层集成', () =>
       models as never,
       estimator,
       config as never,
+      contextBudgets,
     )
     builder = new ContextBuilderService(
       messageRepository,
@@ -133,14 +139,20 @@ integrationDescribe('自动滚动摘要 - 真实 PostgreSQL 跨层集成', () =>
     expect(current).toMatchObject({
       version: 1,
       fromMessageId: fixture.messages[0].id,
-      throughMessageId: fixture.messages[8].id,
       promptVersionId: promptId,
     })
+    const throughIndex = fixture.messages.findIndex((message) => message.id === current!.throughMessageId)
+    expect(throughIndex).toBeGreaterThanOrEqual(0)
+    expect(throughIndex).toBeLessThan(fixture.messages.length - 1)
     expect(result.context?.summary?.id).toBe(current!.id)
-    expect(result.context?.recentMessages.map((message) => message.id)).toEqual(
-      fixture.messages.slice(9).map((message) => message.id),
-    )
+    const recentIds = result.context?.recentMessages.map((message) => message.id) ?? []
+    expect(recentIds).toEqual(fixture.messages.slice(throughIndex + 1).map((message) => message.id))
+    const sourceMessageIds = current!.sourceMessageIds as string[]
+    expect(sourceMessageIds.every((id) => !recentIds.includes(id))).toBe(true)
     expect(result.context?.recentMessages.at(-1)?.id).toBe(fixture.trigger.id)
+    expect(result.context!.contextTokenCount).toBeLessThanOrEqual(
+      contextBudgets.resolve(modelProfile(), result.budget, limits).inputBudget,
+    )
     expect(result.warnings).not.toContain('HISTORY_GAP')
     expect(models.generateStructured).toHaveBeenCalledWith(
       expect.objectContaining({ purpose: 'SUMMARIZE', promptVersionId: promptId, attemptCount: 1 }),
@@ -377,7 +389,14 @@ function modelResult(command: { usage: ReturnType<typeof baseUsage> }, sourceMes
   return {
     data: {
       summaryText: '保留旧结论',
-      facts: [{ text: '保留旧结论', sourceMessageIds: [sourceMessageId] }],
+      facts: [
+        {
+          text: '保留旧结论',
+          sourceMessageIds: [sourceMessageId],
+          citationIds: [],
+          timeRange: { from: null, through: null },
+        },
+      ],
       sourceMessageIds: [sourceMessageId],
     },
     usage: { ...command.usage, inputTokens: command.usage.inputTokens + 2_400, outputTokens: 80 },
@@ -409,7 +428,7 @@ function modelProfile() {
       {
         provider: 'fake',
         model: 'fake-summary-v1',
-        contextWindow: 512,
+        contextWindow: 8_192,
         maxOutputTokens: 128,
         capabilities: ['STREAMING', 'STRUCTURED_OUTPUT'] as const,
         reasoningEfforts: [] as const,

@@ -12,7 +12,7 @@ export class FlowAnalysisQueryDto {
   @IsOptional()
   @IsInt()
   @Min(1)
-  @Max(60)
+  @Max(250)
   @Type(() => Number)
   days?: number
 

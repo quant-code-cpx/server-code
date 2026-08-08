@@ -2,7 +2,7 @@ import { Module } from '@nestjs/common'
 import { ConfigModule } from '@nestjs/config'
 import { APP_GUARD } from '@nestjs/core'
 import { ScheduleModule } from '@nestjs/schedule'
-import { seconds, ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler'
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler'
 import configs from './config'
 import { SharedModule } from './shared/shared.module'
 import { RequestContextModule } from './shared/context/request-context.module'
@@ -43,9 +43,12 @@ import { WebSearchModule } from './apps/web-search/web-search.module'
 import { AgentQueueModule } from './queue/agent/agent-queue.module'
 import { ScheduledResearchModule } from './apps/scheduled-research/scheduled-research.module'
 import { TechnicalSignalModule } from './apps/technical-signal/technical-signal.module'
+import { NewsModule } from './apps/news/news.module'
 import { buildProcessRoleConfig } from './config/process-role.config'
+import { buildHttpThrottleConfig } from './config/http-throttle.config'
 
 const processRole = buildProcessRoleConfig(process.env)
+const httpThrottle = buildHttpThrottleConfig(process.env)
 
 @Module({
   imports: [
@@ -60,7 +63,7 @@ const processRole = buildProcessRoleConfig(process.env)
     ThrottlerModule.forRootAsync({
       useFactory: () => ({
         errorMessage: '操作过于频繁，请稍后再试！',
-        throttlers: [{ name: 'default', ttl: seconds(10), limit: 20 }],
+        throttlers: [{ name: 'default', ttl: httpThrottle.ttlMs, limit: httpThrottle.limit }],
       }),
     }),
 
@@ -114,6 +117,7 @@ const processRole = buildProcessRoleConfig(process.env)
     AgentModule,
     ScheduledResearchModule,
     TechnicalSignalModule,
+    NewsModule,
     AgentQueueModule.register({ workerEnabled: processRole.agentWorkerEnabled }),
 
     // ── 队列模块（BullMQ 回测任务） ──

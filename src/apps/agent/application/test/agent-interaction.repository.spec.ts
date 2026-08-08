@@ -33,6 +33,8 @@ import {
 import { AgentConversationRepository } from '../../conversation/agent-conversation.repository'
 import { AgentRunIdempotencyConflictError, AgentRunNotFoundError } from '../../execution/agent-execution.errors'
 import { AgentEventRepository } from '../../execution/agent-event.repository'
+import { AgentRunRepository } from '../../execution/agent-run.repository'
+import { AgentStateMachineService } from '../../execution/agent-state-machine.service'
 import { ModelCapabilityRegistry } from '../../model-gateway/model-capability.registry'
 import { AgentInteractionRepository, type AgentWorkflowPin } from '../agent-interaction.repository'
 
@@ -61,6 +63,26 @@ integrationDescribe('AgentInteractionRepository - 独立 PostgreSQL 集成测试
   })
   const models = {
     get: jest.fn().mockReturnValue({ model: 'fake-deterministic-v1' }),
+    executionBudgetConfigs: jest.fn().mockReturnValue([]),
+    executionBudgetConfigsForDescriptors: jest.fn().mockReturnValue([]),
+    snapshotRunProfile: jest.fn().mockReturnValue({
+      schemaVersion: 1,
+      snapshottedAt: '2026-08-07T00:00:00.000Z',
+      source: 'RUN_CREATION',
+      selectedProvider: 'fake',
+      selectedModel: 'fake-deterministic-v1',
+      candidates: [
+        {
+          provider: 'fake',
+          model: 'fake-deterministic-v1',
+          contextWindow: 128_000,
+          maxOutputTokens: 8_192,
+          capabilities: ['STREAMING', 'STRUCTURED_OUTPUT'],
+          reasoningEfforts: [],
+          dataClasses: ['USER_PRIVATE'],
+        },
+      ],
+    }),
   } as unknown as ModelCapabilityRegistry
 
   beforeAll(async () => {
@@ -115,6 +137,7 @@ integrationDescribe('AgentInteractionRepository - 独立 PostgreSQL 集成测试
       workflowKey: workflow.workflowKey,
       workflowVersion: workflow.version,
       workflowContentHash: workflow.contentHash,
+      maxModelCalls: 4,
       promptKey: prompt.promptKey,
       promptVersion: prompt.version,
       promptContentHash: prompt.contentHash,
@@ -287,6 +310,47 @@ integrationDescribe('AgentInteractionRepository - 独立 PostgreSQL 集成测试
     })
     expect(await client!.aiMessage.count({ where: { conversationId: secondConversation.id } })).toBe(0)
   })
+
+  it('已过 deadline 的非终态 Run 不占用活跃配额', async () => {
+    const quotaUser = await client!.user.create({
+      data: { account: `agent_expired_quota_${Date.now()}`, password: 'integration-test-only', nickname: 'Expired' },
+    })
+    const expiredConversation = await createConversation(quotaUser)
+    const nextConversation = await createConversation(quotaUser)
+    const shortExecutionConfig = buildAgentExecutionConfig({
+      AGENT_RUN_FALLBACK_DURATION_MS: '10000',
+      AGENT_RUN_MAX_DURATION_MS: '10000',
+      AGENT_RUN_NON_MODEL_RESERVE_MS: '0',
+    })
+    const quotaRepository = new AgentInteractionRepository(
+      client as unknown as PrismaService,
+      new AgentEventRepository(client as unknown as PrismaService, shortExecutionConfig, logger),
+      buildAgentApiConfig({ AGENT_MAX_ACTIVE_RUNS_PER_USER: '1', AGENT_DEFAULT_DAILY_BUDGET: '20' }),
+      shortExecutionConfig,
+      models,
+      logger,
+    )
+    const expired = await quotaRepository.send(sendCommand(quotaUser.id, expiredConversation.id))
+    await new Promise((resolve) => setTimeout(resolve, 10_100))
+
+    await expect(quotaRepository.send(sendCommand(quotaUser.id, nextConversation.id))).resolves.toMatchObject({
+      run: { status: AiAgentRunStatus.QUEUED },
+    })
+    await expect(
+      new AgentRunRepository(
+        client as unknown as PrismaService,
+        new AgentEventRepository(client as unknown as PrismaService, shortExecutionConfig, logger),
+        new AgentStateMachineService(),
+        shortExecutionConfig,
+        logger,
+      ).expireOverdueRuns(10),
+    ).resolves.toBe(1)
+    await expect(client!.aiAgentRun.findUniqueOrThrow({ where: { id: expired.run.id } })).resolves.toMatchObject({
+      status: AiAgentRunStatus.FAILED,
+      errorCode: 6007,
+      errorClass: 'TIMEOUT',
+    })
+  }, 30_000)
 
   it('上海自然日成本达到上限后拒绝新 Run', async () => {
     const budgetUser = await client!.user.create({

@@ -7,10 +7,12 @@ import {
   type ModelDescriptor,
   type ModelProvider,
   type ModelReasoningEffort,
+  type ModelReasoningIntent,
   type ModelUsage,
   type NormalizedMessage,
   type ProviderModelRequest,
 } from '../model-gateway.port'
+import { mapProviderHttpError } from './provider-stream.utils'
 
 interface OpenAiStreamChunk {
   id?: string
@@ -71,6 +73,7 @@ export class OpenAiCompatibleProvider implements ModelProvider {
       maxOutputTokens: providerConfig.descriptor.maxOutputTokens,
       capabilities: providerConfig.descriptor.capabilities as ModelCapability[],
       reasoningEfforts: providerConfig.descriptor.reasoningEfforts as ModelReasoningEffort[],
+      defaultReasoning: providerConfig.descriptor.defaultReasoning,
       dataClasses: providerConfig.descriptor.dataClasses as ModelDataClass[],
     }
   }
@@ -107,7 +110,7 @@ export class OpenAiCompatibleProvider implements ModelProvider {
       throw new ModelGatewayError('UNAVAILABLE', true, '模型供应商网络不可用')
     }
 
-    if (!response.ok) throw await mapHttpError(response)
+    if (!response.ok) throw await mapProviderHttpError(response)
     if (!response.body) throw new ModelGatewayError('UNAVAILABLE', true, '模型供应商未返回响应流')
 
     const toolCalls = new Map<number, ToolCallAccumulator>()
@@ -180,7 +183,8 @@ function toOpenAiRequest(request: ProviderModelRequest): Record<string, unknown>
     max_tokens: request.maxOutputTokens,
   }
   if (request.temperature != null) body.temperature = request.temperature
-  if (request.reasoningEffort) body.reasoning_effort = request.reasoningEffort.toLowerCase()
+  const reasoningEffort = resolveCompatibleReasoningEffort(request.reasoning, request.reasoningEffort)
+  if (reasoningEffort) body.reasoning_effort = reasoningEffort
   if (request.tools?.length) {
     body.tools = request.tools.map((tool) => ({
       type: 'function',
@@ -192,11 +196,27 @@ function toOpenAiRequest(request: ProviderModelRequest): Record<string, unknown>
       },
     }))
     body.tool_choice = 'auto'
+    if (typeof request.metadata?.parallelToolCalls === 'boolean') {
+      body.parallel_tool_calls = request.metadata.parallelToolCalls
+    }
   }
   if (request.responseSchema) {
     body.response_format = { type: 'json_object' }
   }
   return body
+}
+
+function resolveCompatibleReasoningEffort(
+  reasoning: ModelReasoningIntent | undefined,
+  legacyEffort: string | undefined,
+): string | null {
+  if (!reasoning) return legacyEffort?.toLowerCase() ?? null
+  if (reasoning.mode === 'AUTO') return null
+  if (reasoning.mode === 'DISABLED') return 'none'
+  if (reasoning.mode === 'TOKEN_BUDGET') {
+    throw new ModelGatewayError('CONTENT', false, 'OpenAI Chat Compatible 不支持 Token budget 推理模式')
+  }
+  return reasoning.effort.toLowerCase()
 }
 
 function toOpenAiMessage(message: NormalizedMessage): Record<string, unknown> {
@@ -361,62 +381,6 @@ function requireNonNegativeInteger(value: number | undefined, name: string): num
 function optionalNonNegativeInteger(value: number | undefined, name: string): number | undefined {
   if (value == null) return undefined
   return requireNonNegativeInteger(value, name)
-}
-
-async function mapHttpError(response: Response): Promise<ModelGatewayError> {
-  const retryAfterMs = parseRetryAfter(response.headers.get('retry-after'))
-  if (response.status === 401 || response.status === 403) {
-    return new ModelGatewayError('AUTH', false, '模型供应商鉴权失败', response.status)
-  }
-  if (response.status === 429) {
-    return new ModelGatewayError('RATE_LIMIT', true, '模型供应商限流', response.status, retryAfterMs)
-  }
-  if (response.status === 408) {
-    return new ModelGatewayError('TIMEOUT', true, '模型供应商请求超时', response.status, retryAfterMs)
-  }
-  if (response.status >= 500) {
-    return new ModelGatewayError('UNAVAILABLE', true, '模型供应商暂不可用', response.status, retryAfterMs)
-  }
-  if (response.status === 400 || response.status === 409 || response.status === 422) {
-    const detail = await readBoundedErrorDetail(response)
-    if (isContextLengthError(detail)) {
-      return new ModelGatewayError('CONTEXT_LENGTH', false, '请求超过目标模型的上下文窗口', response.status)
-    }
-    return new ModelGatewayError('CONTENT', false, '模型供应商拒绝请求内容', response.status)
-  }
-  return new ModelGatewayError('UNAVAILABLE', false, '模型供应商请求失败', response.status)
-}
-
-async function readBoundedErrorDetail(response: Response): Promise<string> {
-  try {
-    return (await response.text()).slice(0, 8_192).toLowerCase()
-  } catch {
-    return ''
-  }
-}
-
-function isContextLengthError(value: string): boolean {
-  if (!value) return false
-  return [
-    'context_length_exceeded',
-    'maximum context length',
-    'max context length',
-    'context window',
-    'token limit exceeded',
-    'prompt is too long',
-    'input is too long',
-    '请求的长度超过',
-    '上下文长度',
-  ].some((pattern) => value.includes(pattern))
-}
-
-function parseRetryAfter(value: string | null): number | undefined {
-  if (!value) return undefined
-  const seconds = Number(value)
-  if (Number.isFinite(seconds) && seconds >= 0) return Math.round(seconds * 1_000)
-  const at = Date.parse(value)
-  if (!Number.isNaN(at)) return Math.max(0, at - Date.now())
-  return undefined
 }
 
 function isAbortError(error: unknown): boolean {

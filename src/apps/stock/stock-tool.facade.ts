@@ -124,6 +124,8 @@ const DEFAULT_OVERVIEW_SECTIONS: StockOverviewSection[] = [
   'DATA_DATES',
 ]
 
+const CORPORATE_NAME_SUFFIXES = ['股份有限公司', '有限责任公司', '有限公司', '股份', '集团'] as const
+
 @Injectable()
 export class StockToolFacade {
   constructor(
@@ -142,7 +144,7 @@ export class StockToolFacade {
   }
 
   async resolveSecurity(input: ResolveSecurityInput) {
-    const query = input.query.trim()
+    const query = input.query.trim().normalize('NFKC')
     const normalized = query.toLocaleLowerCase('zh-CN')
     const types = input.securityTypes?.length
       ? [...new Set(input.securityTypes)]
@@ -162,34 +164,50 @@ export class StockToolFacade {
     await Promise.all(
       types.map(async (securityType) => {
         if (securityType === 'STOCK') {
-          const rows = await this.prisma.stockBasic.findMany({
-            where: {
-              AND: [
-                {
-                  OR: [
-                    { tsCode: { contains: query, mode: 'insensitive' } },
-                    { symbol: { contains: query, mode: 'insensitive' } },
-                    { name: { contains: query, mode: 'insensitive' } },
-                    { cnspell: { contains: query, mode: 'insensitive' } },
-                  ],
-                },
-                ...(includeDelisted
-                  ? []
-                  : [{ OR: [{ listStatus: null }, { listStatus: { not: StockListStatus.D } }] }]),
-              ],
-            },
-            select: {
-              tsCode: true,
-              symbol: true,
-              name: true,
-              exchange: true,
-              listStatus: true,
-              listDate: true,
-              delistDate: true,
-            },
-            orderBy: { tsCode: 'asc' },
-            take: 20,
-          })
+          const findStocks = (searchTerm: string) =>
+            this.prisma.stockBasic.findMany({
+              where: {
+                AND: [
+                  {
+                    OR: [
+                      { tsCode: { contains: searchTerm, mode: 'insensitive' } },
+                      { symbol: { contains: searchTerm, mode: 'insensitive' } },
+                      { name: { contains: searchTerm, mode: 'insensitive' } },
+                      { cnspell: { contains: searchTerm, mode: 'insensitive' } },
+                    ],
+                  },
+                  ...(includeDelisted
+                    ? []
+                    : [{ OR: [{ listStatus: null }, { listStatus: { not: StockListStatus.D } }] }]),
+                ],
+              },
+              select: {
+                tsCode: true,
+                symbol: true,
+                name: true,
+                exchange: true,
+                listStatus: true,
+                listDate: true,
+                delistDate: true,
+              },
+              orderBy: { tsCode: 'asc' },
+              take: 20,
+            })
+          let rows = await findStocks(query)
+          const marketQualifiedCore = normalizeMarketQualifiedStockQuery(query)
+          const corporateNameCore = normalizeCorporateNameCore(marketQualifiedCore ?? query)
+          let scoreQuery = normalized
+          let scoreCorporateNameCore: string | null = null
+          if (rows.length === 0 && marketQualifiedCore !== null) {
+            rows = await findStocks(marketQualifiedCore)
+            scoreQuery = marketQualifiedCore.toLocaleLowerCase('zh-CN')
+            scoreCorporateNameCore = normalizeCorporateNameCore(marketQualifiedCore)
+          }
+          if (rows.length === 0 && corporateNameCore !== null && corporateNameCore !== marketQualifiedCore) {
+            rows = await findStocks(corporateNameCore)
+            scoreQuery = normalized
+            scoreCorporateNameCore = corporateNameCore
+          }
           candidates.push(
             ...rows.map((row) => ({
               tsCode: row.tsCode,
@@ -199,7 +217,7 @@ export class StockToolFacade {
               listStatus: row.listStatus,
               listDate: toIsoDate(row.listDate),
               delistDate: toIsoDate(row.delistDate),
-              matchScore: matchScore(normalized, row.tsCode, row.symbol, row.name),
+              matchScore: matchScore(scoreQuery, row.tsCode, row.symbol, row.name, scoreCorporateNameCore),
             })),
           )
           return
@@ -639,12 +657,33 @@ export class StockToolFacade {
   }
 }
 
-function matchScore(query: string, tsCode: string, symbol?: string | null, name?: string | null): number {
+function matchScore(
+  query: string,
+  tsCode: string,
+  symbol?: string | null,
+  name?: string | null,
+  corporateNameCore?: string | null,
+): number {
   const values = [tsCode, symbol, name].filter(isString).map((value) => value.toLocaleLowerCase('zh-CN'))
   if (values.some((value) => value === query)) return 1
+  if (corporateNameCore && name && normalizeCorporateNameCore(name) === corporateNameCore) return 0.95
   if (values.some((value) => value.startsWith(query))) return 0.9
   if (values.some((value) => value.includes(query))) return 0.75
   return 0.5
+}
+
+function normalizeCorporateNameCore(value: string): string | null {
+  const normalized = value.trim().normalize('NFKC').toLocaleLowerCase('zh-CN')
+  const suffix = CORPORATE_NAME_SUFFIXES.find(
+    (candidate) => normalized.endsWith(candidate) && normalized.length - candidate.length >= 2,
+  )
+  return suffix ? normalized.slice(0, -suffix.length) : null
+}
+
+function normalizeMarketQualifiedStockQuery(value: string): string | null {
+  const normalized = value.trim().normalize('NFKC')
+  const core = normalized.replace(/\s*[\[(]?\s*A股\s*[\])]?\s*$/iu, '').trim()
+  return core && core !== normalized ? core : null
 }
 
 function sourceModelsForSecurityTypes(types: SecurityType[]): string[] {

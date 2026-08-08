@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common'
 import { ContextBuilderService } from '../../memory/context-builder.service'
 import { ToolRegistryService } from '../../tools/tool-registry.service'
-import { parseMarketScreeningRequest } from '../market-screening-recovery'
+import { MarketScreeningRequestError, parseMarketScreeningRequest } from '../market-screening-recovery'
 import { WorkflowModelService } from '../workflow-model.service'
 import type { ResearchPlan } from '../workflow.types'
 import { WorkflowValidationError } from '../workflow.errors'
@@ -25,22 +25,32 @@ export class PlanNode implements WorkflowNodeHandler {
     const allowedEntries = enabledSnapshot.entries.filter(
       (pin) => workflow.toolAllowlist.includes(pin.key) && (!selectedKeys || selectedKeys.has(pin.key)),
     )
-    const marketScreening = parseMarketScreeningRequest(state.context.userText)
+    let marketScreening
+    try {
+      marketScreening = parseMarketScreeningRequest(state.context.userText)
+    } catch (error) {
+      if (error instanceof MarketScreeningRequestError) throw new WorkflowValidationError(error.message)
+      throw error
+    }
     const screenStocks = allowedEntries.find((entry) => entry.key === 'screen_stocks')
     if (marketScreening && screenStocks) {
+      const targets = marketScreening.scope === 'ALL_A' ? [null] : marketScreening.markets
       return {
         ...state,
         modelProfile,
         plan: {
           intent: 'market_buy_signal_ranking',
-          summary: `按${marketScreening.markets.join('、')}全样本买入信号排序`,
-          toolCalls: marketScreening.markets.map((market) => ({
-            id: market === '科创板' ? 'screen_star_market' : 'screen_chinext_market',
+          summary:
+            marketScreening.scope === 'ALL_A'
+              ? '按全 A 股全样本买入信号排序'
+              : `按${marketScreening.markets.join('、')}全样本买入信号排序`,
+          toolCalls: targets.map((market) => ({
+            id: market === null ? 'screen_all_a' : market === '科创板' ? 'screen_star_market' : 'screen_chinext_market',
             toolKey: 'screen_stocks' as const,
             toolVersion: screenStocks.version,
             input: {
               preset: 'buy_signal_ranking',
-              market,
+              ...(market ? { market } : {}),
               pageSize: marketScreening.perMarketLimit,
               minBuySignalCount: 1,
               sortBy: 'buySignalCount',
@@ -68,7 +78,7 @@ export class PlanNode implements WorkflowNodeHandler {
       purpose: 'PLAN',
       messages: prepared.messages,
       contextManifest: prepared.manifest,
-      responseSchema: workflow.planSchema,
+      responseSchema: restrictPlanSchema(workflow.planSchema, allowedEntries),
       maxOutputTokens,
       usage: state.budget,
       limits,
@@ -86,4 +96,32 @@ export class PlanNode implements WorkflowNodeHandler {
       warnings: [...new Set([...state.warnings, ...prepared.warnings])],
     }
   }
+}
+
+function restrictPlanSchema(
+  schema: Record<string, unknown>,
+  allowedEntries: readonly { key: string; version: number }[],
+): Record<string, unknown> {
+  const clone = JSON.parse(JSON.stringify(schema)) as Record<string, unknown>
+  const properties = asRecord(clone.properties)
+  const toolCalls = asRecord(properties.toolCalls)
+  const item = asRecord(toolCalls.items)
+  const itemProperties = asRecord(item.properties)
+  const toolKey = asRecord(itemProperties.toolKey)
+  const allowedKeys = [...new Set(allowedEntries.map((entry) => entry.key))]
+
+  if (allowedKeys.length === 0) {
+    toolCalls.maxItems = 0
+  } else {
+    itemProperties.toolKey = { ...toolKey, enum: allowedKeys }
+  }
+  item.properties = itemProperties
+  toolCalls.items = item
+  properties.toolCalls = toolCalls
+  clone.properties = properties
+  return clone
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {}
 }

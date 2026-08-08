@@ -6,6 +6,7 @@ import { RequestContextService } from 'src/shared/context/request-context.servic
 import { LoggerService } from 'src/shared/logger/logger.service'
 import { TushareApiError } from 'src/tushare/api/tushare-client.service'
 import { AgentHttpException } from 'src/apps/agent/api/agent-http.exception'
+import { NewsHttpException } from 'src/apps/news/news.errors'
 
 interface ExceptionBody {
   message?: string | string[]
@@ -63,7 +64,7 @@ export class GlobalExceptionsFilter implements ExceptionFilter {
     }
 
     let apiErrorCode: number
-    if (exception instanceof AgentHttpException) {
+    if (exception instanceof AgentHttpException || exception instanceof NewsHttpException) {
       apiErrorCode = exception.definition.code
     } else if (exception instanceof BusinessException) {
       apiErrorCode = exception.getErrorCode()
@@ -79,7 +80,7 @@ export class GlobalExceptionsFilter implements ExceptionFilter {
       }
     } else if (exception instanceof BadRequestException && validationMessages) {
       apiErrorCode = this.parseErrorCode(ErrorEnum.VALIDATION_ERROR)
-      data = { details: validationMessages }
+      data = { details: validationMessages.map(toValidationDetail) }
       message = this.parseErrorMessage(ErrorEnum.VALIDATION_ERROR)
     } else {
       apiErrorCode = status
@@ -152,5 +153,15 @@ export class GlobalExceptionsFilter implements ExceptionFilter {
 
   private isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === 'object' && value !== null
+  }
+}
+
+function toValidationDetail(message: string): { field: string | null; code: string; message: string } {
+  const unknownProperty = /^property\s+([A-Za-z][A-Za-z0-9_.]*)\s+should not exist$/.exec(message)
+  const field = unknownProperty?.[1] ?? /^([A-Za-z][A-Za-z0-9_.]*)\s/.exec(message)?.[1] ?? null
+  return {
+    field,
+    code: field ? `${field.replace(/[^A-Za-z0-9]+/g, '_').toUpperCase()}_INVALID` : 'VALIDATION_ERROR',
+    message,
   }
 }

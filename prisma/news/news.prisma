@@ -1,0 +1,291 @@
+enum NewsContentType {
+  NOTICE
+  NEWS
+  FLASH
+
+  @@map("news_content_type")
+}
+
+enum NewsSourceType {
+  REGULATOR
+  EXCHANGE
+  COMPANY
+  MEDIA
+  INSTITUTION
+  AGGREGATOR
+  OTHER
+
+  @@map("news_source_type")
+}
+
+enum NewsPublishedPrecision {
+  SECOND
+  MINUTE
+  DATE
+  UNKNOWN
+
+  @@map("news_published_precision")
+}
+
+enum NewsIngestionRunStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  PARTIAL
+  FAILED
+  CANCELLED
+
+  @@map("news_ingestion_run_status")
+}
+
+enum NewsIngestionTrigger {
+  SCHEDULED
+  MANUAL
+  BOOTSTRAP
+  RETRY
+
+  @@map("news_ingestion_trigger")
+}
+
+enum NewsIngestionOperation {
+  POLL_FEED
+  BACKFILL_SECURITY_NOTICES
+
+  @@map("news_ingestion_operation")
+}
+
+enum NewsCircuitState {
+  CLOSED
+  OPEN
+  HALF_OPEN
+
+  @@map("news_circuit_state")
+}
+
+enum NewsEntityMatchMethod {
+  PROVIDER_CODE
+  DIRECT_CODE
+  EXACT_NAME
+  MANUAL
+
+  @@map("news_entity_match_method")
+}
+
+model NewsArticle {
+  id                 String                 @id @default(cuid()) @db.VarChar(32)
+  identityHash       String                 @unique(map: "news_articles_identity_hash_key") @map("identity_hash") @db.Char(64)
+  canonicalUrl       String?                @map("canonical_url") @db.VarChar(4096)
+  canonicalUrlHash   String?                @map("canonical_url_hash") @db.Char(64)
+  alternateUrls      Json                   @default("[]") @map("alternate_urls") @db.JsonB
+  contentType        NewsContentType        @map("content_type")
+  sourceType         NewsSourceType         @map("source_type")
+  publisher          String?                @db.VarChar(256)
+  title              String                 @db.VarChar(1000)
+  excerpt            String?                @db.Text
+  publishedAt        DateTime?              @map("published_at") @db.Timestamptz(3)
+  publishedDate      DateTime?              @map("published_date") @db.Date
+  publishedPrecision NewsPublishedPrecision @map("published_precision")
+  language           String?                @db.VarChar(16)
+  sourceCountry      String?                @map("source_country") @db.VarChar(64)
+  currentRevision    Int                    @default(1) @map("current_revision")
+  currentContentHash String                 @map("current_content_hash") @db.Char(64)
+  qualityFlags       Json                   @default("[]") @map("quality_flags") @db.JsonB
+  firstSeenAt        DateTime               @map("first_seen_at") @db.Timestamptz(3)
+  lastSeenAt         DateTime               @map("last_seen_at") @db.Timestamptz(3)
+  timelineSortAt     DateTime               @map("timeline_sort_at") @db.Timestamptz(3)
+  createdAt          DateTime               @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt          DateTime               @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  revisions     NewsArticleRevision[]
+  providerItems NewsProviderItem[]
+  securityLinks NewsSecurityLink[]
+
+  @@index([publishedAt(sort: Desc), id(sort: Desc)], map: "news_articles_published_id_idx")
+  @@index([publishedDate(sort: Desc), id(sort: Desc)], map: "news_articles_date_id_idx")
+  @@index([timelineSortAt(sort: Desc), firstSeenAt(sort: Desc), id(sort: Desc)], map: "news_articles_timeline_cursor_idx")
+  @@index([contentType, firstSeenAt(sort: Desc)], map: "news_articles_type_seen_idx")
+  @@index([sourceType, firstSeenAt(sort: Desc)], map: "news_articles_source_seen_idx")
+  @@index([canonicalUrlHash], map: "news_articles_url_hash_idx")
+  @@map("news_articles")
+}
+
+model NewsArticleRevision {
+  id                 BigInt                 @id @default(autoincrement())
+  articleId          String                 @map("article_id") @db.VarChar(32)
+  revision           Int
+  contentHash        String                 @map("content_hash") @db.Char(64)
+  rawPayloadHash     String                 @map("raw_payload_hash") @db.Char(64)
+  normalizerVersion  String                 @map("normalizer_version") @db.VarChar(40)
+  contentType        NewsContentType        @map("content_type")
+  sourceType         NewsSourceType         @map("source_type")
+  canonicalUrl       String?                @map("canonical_url") @db.VarChar(4096)
+  alternateUrls      Json                   @default("[]") @map("alternate_urls") @db.JsonB
+  title              String                 @db.VarChar(1000)
+  excerpt            String?                @db.Text
+  publisher          String?                @db.VarChar(256)
+  publishedAt        DateTime?              @map("published_at") @db.Timestamptz(3)
+  publishedDate      DateTime?              @map("published_date") @db.Date
+  publishedPrecision NewsPublishedPrecision @map("published_precision")
+  language           String?                @db.VarChar(16)
+  sourceCountry      String?                @map("source_country") @db.VarChar(64)
+  qualityFlags       Json                   @default("[]") @map("quality_flags") @db.JsonB
+  createdAt          DateTime               @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  article NewsArticle @relation(fields: [articleId], references: [id], onDelete: Restrict)
+
+  @@unique([articleId, revision], map: "news_article_revisions_number_key")
+  @@unique([articleId, contentHash], map: "news_article_revisions_content_key")
+  @@index([articleId, createdAt(sort: Desc)], map: "news_article_revisions_created_idx")
+  @@map("news_article_revisions")
+}
+
+model NewsProviderItem {
+  id                 BigInt    @id @default(autoincrement())
+  providerKey        String    @map("provider_key") @db.VarChar(32)
+  feedKey            String    @map("feed_key") @db.VarChar(96)
+  upstreamId         String    @map("upstream_id") @db.VarChar(256)
+  articleId          String    @map("article_id") @db.VarChar(32)
+  sourceDiscoveredAt DateTime? @map("source_discovered_at") @db.Timestamptz(3)
+  rawPayloadHash     String    @map("raw_payload_hash") @db.Char(64)
+  sourceMetadata     Json      @default("{}") @map("source_metadata") @db.JsonB
+  firstSeenAt        DateTime  @map("first_seen_at") @db.Timestamptz(3)
+  lastSeenAt         DateTime  @map("last_seen_at") @db.Timestamptz(3)
+  retrievedAt        DateTime  @map("retrieved_at") @db.Timestamptz(3)
+
+  article NewsArticle @relation(fields: [articleId], references: [id], onDelete: Restrict)
+
+  @@unique([providerKey, feedKey, upstreamId], map: "news_provider_items_upstream_key")
+  @@index([articleId], map: "news_provider_items_article_idx")
+  @@index([providerKey, feedKey, retrievedAt(sort: Desc)], map: "news_provider_items_feed_retrieved_idx")
+  @@map("news_provider_items")
+}
+
+model NewsSecurityLink {
+  articleId   String                @map("article_id") @db.VarChar(32)
+  tsCode      String                @map("ts_code") @db.VarChar(16)
+  matchMethod NewsEntityMatchMethod @map("match_method")
+  confidence  Decimal               @db.Decimal(5, 4)
+  evidence    String?               @db.VarChar(256)
+  createdAt   DateTime              @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  article  NewsArticle @relation(fields: [articleId], references: [id], onDelete: Restrict)
+  security StockBasic  @relation(fields: [tsCode], references: [tsCode], onDelete: Restrict)
+
+  @@id([articleId, tsCode])
+  @@index([tsCode, articleId], map: "news_security_links_code_article_idx")
+  @@map("news_security_links")
+}
+
+model NewsFeedHealth {
+  providerKey            String                  @map("provider_key") @db.VarChar(32)
+  feedKey                String                  @map("feed_key") @db.VarChar(96)
+  lastSuccessfulAt       DateTime?               @map("last_successful_at") @db.Timestamptz(3)
+  dataThrough            DateTime?               @map("data_through") @db.Timestamptz(3)
+  lastAttemptAt          DateTime?               @map("last_attempt_at") @db.Timestamptz(3)
+  consecutiveFailures    Int                     @default(0) @map("consecutive_failures")
+  lastRunStatus          NewsIngestionRunStatus? @map("last_run_status")
+  potentiallyTruncated   Boolean                 @default(false) @map("potentially_truncated")
+  circuitState           NewsCircuitState        @default(CLOSED) @map("circuit_state")
+  warningSince           Json                    @default("{}") @map("warning_since") @db.JsonB
+  lastPublicErrorCode    String?                 @map("last_public_error_code") @db.VarChar(64)
+  lastPublicErrorMessage String?                 @map("last_public_error_message") @db.VarChar(500)
+  createdAt              DateTime                @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt              DateTime                @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@id([providerKey, feedKey])
+  @@index([lastSuccessfulAt], map: "news_feed_health_success_idx")
+  @@map("news_feed_health")
+}
+
+model NewsIngestionCursor {
+  id                  BigInt    @id @default(autoincrement())
+  providerKey         String    @map("provider_key") @db.VarChar(32)
+  feedKey             String    @map("feed_key") @db.VarChar(96)
+  partitionKey        String    @default("default") @map("partition_key") @db.VarChar(128)
+  providerCursor      Json?     @map("provider_cursor") @db.JsonB
+  watermarkAt         DateTime? @map("watermark_at") @db.Timestamptz(3)
+  lastSuccessfulAt    DateTime? @map("last_successful_at") @db.Timestamptz(3)
+  lastAttemptAt       DateTime? @map("last_attempt_at") @db.Timestamptz(3)
+  consecutiveFailures Int       @default(0) @map("consecutive_failures")
+  version             Int       @default(1)
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt           DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([providerKey, feedKey, partitionKey], map: "news_ingestion_cursors_partition_key")
+  @@index([lastSuccessfulAt], map: "news_ingestion_cursors_success_idx")
+  @@map("news_ingestion_cursors")
+}
+
+model NewsIngestionCommand {
+  id                String                 @id @default(cuid()) @db.VarChar(32)
+  clientRequestId   String                 @map("client_request_id") @db.Uuid
+  requestHash       String                 @map("request_hash") @db.Char(64)
+  requestedByUserId Int                    @map("requested_by_user_id")
+  operation         NewsIngestionOperation
+  requestSpec       Json                   @map("request_spec") @db.JsonB
+  status            NewsIngestionRunStatus
+  acceptedAt        DateTime               @default(now()) @map("accepted_at") @db.Timestamptz(3)
+  startedAt         DateTime?              @map("started_at") @db.Timestamptz(3)
+  finishedAt        DateTime?              @map("finished_at") @db.Timestamptz(3)
+
+  requestedBy User               @relation(fields: [requestedByUserId], references: [id], onDelete: Restrict)
+  runs        NewsIngestionRun[]
+
+  @@unique([requestedByUserId, clientRequestId], map: "news_ingestion_commands_actor_request_key")
+  @@index([requestedByUserId, acceptedAt(sort: Desc)], map: "news_ingestion_commands_actor_accepted_idx")
+  @@index([status, acceptedAt], map: "news_ingestion_commands_status_accepted_idx")
+  @@map("news_ingestion_commands")
+}
+
+model NewsIngestionRun {
+  id                   String                 @id @default(cuid()) @db.VarChar(32)
+  commandId            String?                @map("command_id") @db.VarChar(32)
+  idempotencyKey       String                 @unique(map: "news_ingestion_runs_idempotency_key") @map("idempotency_key") @db.VarChar(200)
+  operation            NewsIngestionOperation
+  providerKey          String                 @map("provider_key") @db.VarChar(32)
+  feedKey              String                 @map("feed_key") @db.VarChar(96)
+  partitionKey         String                 @map("partition_key") @db.VarChar(128)
+  trigger              NewsIngestionTrigger
+  status               NewsIngestionRunStatus
+  fetchedCount         Int                    @default(0) @map("fetched_count")
+  insertedCount        Int                    @default(0) @map("inserted_count")
+  revisedCount         Int                    @default(0) @map("revised_count")
+  duplicateCount       Int                    @default(0) @map("duplicate_count")
+  quarantinedCount     Int                    @default(0) @map("quarantined_count")
+  potentiallyTruncated Boolean                @default(false) @map("potentially_truncated")
+  dataThroughBefore    DateTime?              @map("data_through_before") @db.Timestamptz(3)
+  dataThroughAfter     DateTime?              @map("data_through_after") @db.Timestamptz(3)
+  errorCode            String?                @map("error_code") @db.VarChar(64)
+  errorMessage         String?                @map("error_message") @db.VarChar(500)
+  startedAt            DateTime?              @map("started_at") @db.Timestamptz(3)
+  finishedAt           DateTime?              @map("finished_at") @db.Timestamptz(3)
+  createdAt            DateTime               @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  command          NewsIngestionCommand? @relation(fields: [commandId], references: [id], onDelete: Restrict)
+  quarantinedItems NewsQuarantineItem[]
+
+  @@index([commandId, createdAt], map: "news_ingestion_runs_command_created_idx")
+  @@index([providerKey, feedKey, createdAt(sort: Desc)], map: "news_ingestion_runs_feed_created_idx")
+  @@index([status, createdAt(sort: Desc)], map: "news_ingestion_runs_status_created_idx")
+  @@map("news_ingestion_runs")
+}
+
+model NewsQuarantineItem {
+  id               BigInt    @id @default(autoincrement())
+  runId            String    @map("run_id") @db.VarChar(32)
+  itemKeyHash      String    @map("item_key_hash") @db.Char(64)
+  rawPayloadHash   String    @map("raw_payload_hash") @db.Char(64)
+  errorCode        String    @map("error_code") @db.VarChar(64)
+  errorMessage     String    @map("error_message") @db.VarChar(500)
+  fieldManifest    Json      @default("{}") @map("field_manifest") @db.JsonB
+  sanitizedPayload Json?     @map("sanitized_payload") @db.JsonB
+  retryable        Boolean   @default(false)
+  resolvedAt       DateTime? @map("resolved_at") @db.Timestamptz(3)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  run NewsIngestionRun @relation(fields: [runId], references: [id], onDelete: Restrict)
+
+  @@unique([runId, itemKeyHash], map: "news_quarantine_items_run_item_key")
+  @@index([errorCode, createdAt(sort: Desc)], map: "news_quarantine_items_error_created_idx")
+  @@map("news_quarantine_items")
+}

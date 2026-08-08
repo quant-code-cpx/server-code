@@ -51,11 +51,13 @@ export const AGENT_V8_READ_TOOL_KEYS = [
   'run_event_study',
 ] as const
 
-export const AGENT_READ_TOOL_KEYS = [
+export const AGENT_V9_READ_TOOL_KEYS = [
   ...AGENT_V8_READ_TOOL_KEYS,
   'get_backtest_analytics',
   'get_portfolio_analytics',
 ] as const
+
+export const AGENT_READ_TOOL_KEYS = [...AGENT_V9_READ_TOOL_KEYS, 'get_market_news'] as const
 
 export const AGENT_WRITE_TOOL_KEYS = ['save_research_report'] as const
 
@@ -68,6 +70,8 @@ export const AGENT_V6_TOOL_KEYS = [...AGENT_V6_READ_TOOL_KEYS, ...AGENT_WRITE_TO
 export const AGENT_V7_TOOL_KEYS = [...AGENT_V7_READ_TOOL_KEYS, ...AGENT_WRITE_TOOL_KEYS] as const
 
 export const AGENT_V8_TOOL_KEYS = [...AGENT_V8_READ_TOOL_KEYS, ...AGENT_WRITE_TOOL_KEYS] as const
+
+export const AGENT_V9_TOOL_KEYS = [...AGENT_V9_READ_TOOL_KEYS, ...AGENT_WRITE_TOOL_KEYS] as const
 
 export const AGENT_TOOL_KEYS = [...AGENT_READ_TOOL_KEYS, ...AGENT_WRITE_TOOL_KEYS] as const
 

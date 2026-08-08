@@ -68,6 +68,28 @@ services:
       start_period: 10s
     restart: unless-stopped
 
+  # ── 固定契约 AKShare 新闻桥（仅 Compose 内网，不映射宿主机端口）────────────
+  news-source-bridge:
+    build:
+      context: ./services/news-source-bridge
+      dockerfile: Dockerfile
+    container_name: quant_news_source_bridge
+    environment:
+      NEWS_AKSHARE_BRIDGE_TOKEN: ${NEWS_AKSHARE_BRIDGE_TOKEN}
+    networks:
+      - quant-net
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'python -c "import urllib.request; urllib.request.urlopen(\"http://127.0.0.1:8080/healthz\", timeout=3)"',
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+
   # ── NestJS 开发服务器（热重载）───────────────────────────────────────────
   app:
     build:
@@ -85,6 +107,8 @@ services:
       REDIS_PORT: 6379
       REDIS_USERNAME: default
       REDIS_PASSWORD: ${REDIS_PASSWORD}
+      NEWS_AKSHARE_BRIDGE_BASE_URL: http://news-source-bridge:8080
+      NEWS_AKSHARE_BRIDGE_ALLOWED_HOST: news-source-bridge
     volumes:
       # 将项目根目录挂载到容器，实现热重载
       - .:/app
@@ -109,6 +133,306 @@ services:
       start_period: 30s
     restart: unless-stopped
 
+  # ── 新闻性能专用 Redis（无宿主机端口、无共享队列噪声）───────────────────
+  news-performance-redis:
+    build:
+      context: ./dockerfiles/redis
+      dockerfile: Dockerfile
+    container_name: quant_news_performance_redis
+    profiles: ['news-performance']
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    tmpfs:
+      - /data
+      - /var/log/redis
+    networks:
+      - quant-net
+    healthcheck:
+      test: ['CMD-SHELL', 'redis-cli --no-auth-warning -h 127.0.0.1 -a "$REDIS_PASSWORD" ping']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+
+  # ── 新闻性能专用 API（显式 profile；独立 schema，无宿主机端口）────────────
+  news-performance-app:
+    build:
+      context: .
+      dockerfile: dockerfiles/app/Dockerfile
+    container_name: quant_news_performance_app
+    profiles: ['news-performance']
+    env_file: .env
+    environment:
+      NODE_ENV: development
+      PROCESS_ROLE: api
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@database:5432/quant_db?schema=${NEWS_PERF_DATABASE_SCHEMA:-news_perf_round2}&application_name=news-performance-app
+      REDIS_HOST: news-performance-redis
+      REDIS_PORT: 6379
+      REDIS_USERNAME: default
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      NEWS_ENABLED: 'true'
+      NEWS_CURSOR_SECRET: ${NEWS_PERF_CURSOR_SECRET:-local-performance-cursor-secret-32-bytes}
+      NEWS_AKSHARE_BRIDGE_ENABLED: 'false'
+      NEWS_GDELT_ENABLED: 'false'
+      HTTP_THROTTLE_LIMIT: 1000000
+      HTTP_THROTTLE_TTL_MS: 10000
+      TUSHARE_SYNC_ENABLED: 'false'
+    volumes:
+      - .:/app
+      - /app/node_modules
+    command: sh -c "pnpm exec prisma generate && pnpm exec prisma migrate deploy && pnpm exec ts-node -r tsconfig-paths/register -T test/fault/news/fault-runtime.ts api"
+    networks:
+      - quant-net
+    depends_on:
+      database:
+        condition: service_healthy
+      news-performance-redis:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -qO- http://127.0.0.1:3000/health > /dev/null 2>&1 || exit 1']
+      interval: 15s
+      timeout: 5s
+      retries: 6
+      start_period: 45s
+
+  # ── 新闻读接口性能门禁（显式 profile；只访问性能专用 API）────────────────
+  news-performance:
+    image: grafana/k6:0.54.0
+    container_name: quant_news_performance
+    profiles: ['news-performance']
+    environment:
+      NEWS_PERF_ENABLED: ${NEWS_PERF_ENABLED:-false}
+      NEWS_PERF_PROFILE: ${NEWS_PERF_PROFILE:-smoke}
+      NEWS_PERF_BASE_URL: http://news-performance-app:3000
+      NEWS_PERF_ACCESS_TOKEN: ${NEWS_PERF_ACCESS_TOKEN:-}
+      NEWS_PERF_ACCESS_TOKEN_FILE: /reports/${NEWS_PERF_RUN_ID:-news-perf-round4}-access-token
+      NEWS_PERF_DURATION: ${NEWS_PERF_DURATION:-}
+      NEWS_PERF_VUS: ${NEWS_PERF_VUS:-}
+      NEWS_PERF_SUMMARY_PATH: /reports/${NEWS_PERF_RUN_ID:-news-perf-round4}-k6-summary.json
+    volumes:
+      - ./test/performance/news:/scripts:ro
+      - ./storage/news-performance:/reports
+    command: ['run', '--quiet', '/scripts/read-load.js']
+    networks:
+      - quant-net
+    depends_on:
+      news-performance-app:
+        condition: service_healthy
+
+  # ── News 故障注入：独立 Redis + TCP proxy + fixture Provider ─────────────
+  news-fault-redis:
+    build:
+      context: ./dockerfiles/redis
+      dockerfile: Dockerfile
+    container_name: quant_news_fault_redis
+    profiles: ['news-fault']
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    tmpfs:
+      - /data
+      - /var/log/redis
+    networks:
+      - quant-net
+    healthcheck:
+      test: ['CMD-SHELL', 'redis-cli --no-auth-warning -h 127.0.0.1 -a "$REDIS_PASSWORD" ping']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+
+  news-fault-proxy:
+    image: node:22-alpine
+    container_name: quant_news_fault_proxy
+    profiles: ['news-fault']
+    environment:
+      NEWS_FAULT_DATABASE_TARGET: database:5432
+      NEWS_FAULT_REDIS_TARGET: news-fault-redis:6379
+    volumes:
+      - ./test/fault/news:/fault:ro
+    command: ['node', '/fault/network-proxy.js']
+    networks:
+      - quant-net
+    depends_on:
+      database:
+        condition: service_healthy
+      news-fault-redis:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -qO- http://127.0.0.1:8474/health > /dev/null 2>&1 || exit 1']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+  news-fault-bridge:
+    image: node:22-alpine
+    container_name: quant_news_fault_bridge
+    profiles: ['news-fault']
+    environment:
+      NEWS_FAULT_BRIDGE_TOKEN: ${NEWS_FAULT_BRIDGE_TOKEN:-news-fault-bridge-token-at-least-32-bytes}
+      NEWS_FAULT_BRIDGE_DELAY_MS: ${NEWS_FAULT_BRIDGE_DELAY_MS:-120000}
+    volumes:
+      - ./test/fault/news:/fault:ro
+    command: ['node', '/fault/provider-fixture.js']
+    networks:
+      - quant-net
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -qO- http://127.0.0.1:8080/healthz > /dev/null 2>&1 || exit 1']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+  news-fault-app:
+    build:
+      context: .
+      dockerfile: dockerfiles/app/Dockerfile
+    container_name: quant_news_fault_app
+    profiles: ['news-fault']
+    env_file: .env
+    environment:
+      NODE_ENV: development
+      PROCESS_ROLE: api
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@news-fault-proxy:15432/quant_db?schema=${NEWS_FAULT_DATABASE_SCHEMA:-news_perf_fault_round5}&connection_limit=10&pool_timeout=5&application_name=news-fault-app
+      REDIS_HOST: news-fault-proxy
+      REDIS_PORT: 16379
+      REDIS_USERNAME: default
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      NEWS_ENABLED: 'true'
+      NEWS_CURSOR_SECRET: ${NEWS_FAULT_CURSOR_SECRET:-news-fault-cursor-secret-at-least-32-bytes}
+      NEWS_AKSHARE_BRIDGE_ENABLED: 'true'
+      NEWS_AKSHARE_BRIDGE_BASE_URL: http://news-fault-bridge:8080
+      NEWS_AKSHARE_BRIDGE_ALLOWED_HOST: news-fault-bridge
+      NEWS_AKSHARE_BRIDGE_TOKEN: ${NEWS_FAULT_BRIDGE_TOKEN:-news-fault-bridge-token-at-least-32-bytes}
+      NEWS_AKSHARE_BRIDGE_TIMEOUT_MS: ${NEWS_FAULT_BRIDGE_TIMEOUT_MS:-5000}
+      NEWS_GDELT_ENABLED: 'false'
+      HTTP_THROTTLE_LIMIT: 1000000
+      HTTP_THROTTLE_TTL_MS: 10000
+      TUSHARE_SYNC_ENABLED: 'false'
+    volumes:
+      - .:/app
+      - /app/node_modules
+    command: sh -c "pnpm exec prisma generate && pnpm exec prisma migrate deploy && pnpm build && node dist/main"
+    networks:
+      - quant-net
+    depends_on:
+      news-fault-proxy:
+        condition: service_healthy
+      news-fault-bridge:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -qO- http://127.0.0.1:3000/health > /dev/null 2>&1 || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 90s
+
+  news-fault-worker:
+    build:
+      context: .
+      dockerfile: dockerfiles/app/Dockerfile
+    container_name: quant_news_fault_worker
+    profiles: ['news-fault']
+    env_file: .env
+    environment:
+      NODE_ENV: development
+      PROCESS_ROLE: worker
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@news-fault-proxy:15432/quant_db?schema=${NEWS_FAULT_DATABASE_SCHEMA:-news_perf_fault_round5}&connection_limit=10&pool_timeout=5&application_name=news-fault-worker
+      REDIS_HOST: news-fault-proxy
+      REDIS_PORT: 16379
+      REDIS_USERNAME: default
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      NEWS_ENABLED: 'true'
+      NEWS_CURSOR_SECRET: ${NEWS_FAULT_CURSOR_SECRET:-news-fault-cursor-secret-at-least-32-bytes}
+      NEWS_AKSHARE_BRIDGE_ENABLED: 'true'
+      NEWS_AKSHARE_BRIDGE_BASE_URL: http://news-fault-bridge:8080
+      NEWS_AKSHARE_BRIDGE_ALLOWED_HOST: news-fault-bridge
+      NEWS_AKSHARE_BRIDGE_TOKEN: ${NEWS_FAULT_BRIDGE_TOKEN:-news-fault-bridge-token-at-least-32-bytes}
+      NEWS_AKSHARE_BRIDGE_TIMEOUT_MS: ${NEWS_FAULT_BRIDGE_TIMEOUT_MS:-5000}
+      NEWS_GDELT_ENABLED: 'false'
+      NEWS_QUEUE_CONCURRENCY: 1
+      TUSHARE_SYNC_ENABLED: 'false'
+    volumes:
+      - .:/app
+      - /app/node_modules
+    command: sh -c "pnpm exec prisma generate && pnpm exec prisma migrate deploy && pnpm exec ts-node -r tsconfig-paths/register -T test/fault/news/fault-runtime.ts worker"
+    networks:
+      - quant-net
+    depends_on:
+      news-fault-app:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD-SHELL', 'node -e "process.kill(1, 0)"']
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 90s
+
+  news-fault-runner:
+    image: node:22-alpine
+    container_name: quant_news_fault_runner
+    profiles: ['news-fault']
+    environment:
+      NEWS_FAULT_BASE_URL: http://news-fault-app:3000
+      NEWS_FAULT_PROXY_URL: http://news-fault-proxy:8474
+      NEWS_FAULT_BRIDGE_URL: http://news-fault-bridge:8080
+      NEWS_FAULT_ACCESS_TOKEN_FILE: /reports/${NEWS_FAULT_RUN_ID:-news-fault-round5}-access-token
+      NEWS_FAULT_RUN_ID: ${NEWS_FAULT_RUN_ID:-news-fault-round5}
+    volumes:
+      - ./test/fault/news:/fault:ro
+      - ./storage/news-performance:/reports
+    command: ['node', '/fault/run-api-faults.js']
+    networks:
+      - quant-net
+    depends_on:
+      news-fault-app:
+        condition: service_healthy
+      news-fault-worker:
+        condition: service_healthy
+
+  # ── 真实 Provider 连续 Canary（显式 profile；默认关闭）─────────────
+  news-canary-monitor:
+    build:
+      context: .
+      dockerfile: dockerfiles/app/Dockerfile
+    container_name: quant_news_canary_monitor
+    profiles: ['news-canary']
+    env_file: .env
+    environment:
+      NODE_ENV: development
+      PROCESS_ROLE: news-canary-monitor
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@database:5432/quant_db?schema=public&connection_limit=2&application_name=news_canary_monitor
+      NEWS_CANARY_MONITOR_ENABLED: ${NEWS_CANARY_MONITOR_ENABLED:-false}
+      NEWS_CANARY_MONITOR_PROVIDERS: ${NEWS_CANARY_MONITOR_PROVIDERS:-AKSHARE}
+      NEWS_CANARY_MONITOR_AKSHARE_INTERVAL_MS: ${NEWS_CANARY_MONITOR_AKSHARE_INTERVAL_MS:-86400000}
+      NEWS_CANARY_MONITOR_GDELT_INTERVAL_MS: ${NEWS_CANARY_MONITOR_GDELT_INTERVAL_MS:-900000}
+      NEWS_CANARY_MONITOR_POLL_INTERVAL_MS: ${NEWS_CANARY_MONITOR_POLL_INTERVAL_MS:-60000}
+      NEWS_CANARY_MONITOR_STATE_DIR: /state
+      NEWS_CANARY_MONITOR_ONCE: ${NEWS_CANARY_MONITOR_ONCE:-false}
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - ./storage/news-canary:/state
+    command: sh -c "pnpm exec prisma generate && pnpm run news:canary:monitor"
+    networks:
+      - quant-net
+    depends_on:
+      database:
+        condition: service_healthy
+      news-source-bridge:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'node -e "const fs=require(''fs'');const p=''/state/state.json'';process.exit(fs.existsSync(p)&&Date.now()-fs.statSync(p).mtimeMs<180000?0:1)"',
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 90s
+    restart: on-failure:3
+
   # ── Agent BullMQ Worker（消费 AI 研究 Run）──────────────────────────────────
   agent-worker:
     build:
@@ -124,6 +448,8 @@ services:
       REDIS_PORT: 6379
       REDIS_USERNAME: default
       REDIS_PASSWORD: ${REDIS_PASSWORD}
+      NEWS_AKSHARE_BRIDGE_BASE_URL: http://news-source-bridge:8080
+      NEWS_AKSHARE_BRIDGE_ALLOWED_HOST: news-source-bridge
       TUSHARE_SYNC_ENABLED: 'false'
     command: sh -c "pnpm exec prisma generate && pnpm exec prisma migrate deploy && pnpm start:agent-worker:dev"
     volumes:
@@ -154,6 +480,8 @@ services:
       REDIS_USERNAME: default
       REDIS_PASSWORD: ${REDIS_PASSWORD}
       TUSHARE_SYNC_ENABLED: 'false'
+      NEWS_AKSHARE_BRIDGE_BASE_URL: http://news-source-bridge:8080
+      NEWS_AKSHARE_BRIDGE_ALLOWED_HOST: news-source-bridge
     command: sh -c "pnpm exec prisma generate && pnpm exec prisma migrate deploy && pnpm start:worker:dev"
     volumes:
       - .:/app
@@ -164,6 +492,8 @@ services:
       database:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      news-source-bridge:
         condition: service_healthy
     # Worker 无 HTTP listener；探测主进程存活，避免把端口探针误判为失败。
     healthcheck:
@@ -189,6 +519,8 @@ services:
       REDIS_PORT: 6379
       REDIS_USERNAME: default
       REDIS_PASSWORD: ${REDIS_PASSWORD}
+      NEWS_AKSHARE_BRIDGE_BASE_URL: http://news-source-bridge:8080
+      NEWS_AKSHARE_BRIDGE_ALLOWED_HOST: news-source-bridge
     command: sh -c "pnpm exec prisma generate && pnpm exec prisma migrate deploy && pnpm start:scheduler:dev"
     volumes:
       - .:/app

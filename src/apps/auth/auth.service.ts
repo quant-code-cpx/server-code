@@ -153,8 +153,8 @@ export class AuthService {
       throw new BusinessException(ErrorEnum.INVALID_REFRESH_TOKEN)
     })
 
-    // 校验 Redis 中该 Refresh Token 的状态
-    const validity = await this.tokenService.isRefreshTokenValid(payload.id, payload.jti)
+    // 原子消费 Redis 中的 Refresh Token，避免并发标签各自完成一次轮换
+    const validity = await this.tokenService.consumeRefreshToken(payload.id, payload.jti)
     if (validity === 'invalid') {
       throw new BusinessException(ErrorEnum.INVALID_REFRESH_TOKEN)
     }
@@ -176,8 +176,7 @@ export class AuthService {
       return { accessToken, refreshToken: null, refreshTokenTTL: 0 }
     }
 
-    // 首次使用：Token 轮换，旧 RT 标记为 used（宽限期内保留），签发新 Token 对
-    await this.tokenService.revokeRefreshToken(payload.id, payload.jti)
+    // 首次使用：旧 RT 已在原子消费中标记为 used，签发新 Token 对
     return this.tokenService.generateTokens({
       id: user.id,
       account: user.account,

@@ -20,6 +20,7 @@ import configs from 'src/config'
 import { AgentExecutionConfig } from 'src/config/agent-execution.config'
 import { AgentContextConfig } from 'src/config/agent-context.config'
 import { AgentToolsConfig } from 'src/config/agent-tools.config'
+import { MetricsModule } from 'src/shared/metrics/metrics.module'
 import { SharedModule } from 'src/shared/shared.module'
 import { PrismaService } from 'src/shared/prisma.service'
 import { AgentAuditModule } from '../../audit/agent-audit.module'
@@ -54,6 +55,7 @@ import { SynthesizeNode } from '../nodes/synthesize.node'
 import { ValidateCitationsNode } from '../nodes/validate-citations.node'
 import { ResearchPlanCompilerService } from '../research-plan-compiler.service'
 import { WorkflowBudgetService } from '../workflow-budget.service'
+import { ModelContextBudgetService } from '../model-context-budget.service'
 import { WorkflowContextService } from '../workflow-context.service'
 import { WorkflowEngineService } from '../workflow-engine.service'
 import { WorkflowFinalizationService } from '../workflow-finalization.service'
@@ -65,12 +67,20 @@ import { STOCK_RESEARCH_WORKFLOW_V1 } from '../workflows/stock-research.v1'
 
 const runIntegration = process.env.RUN_AGENT_DB_INTEGRATION === 'true'
 const integrationDescribe = runIntegration ? describe : describe.skip
+const TEST_ENVIRONMENT = {
+  AGENT_MODEL_CONFIG_SOURCE: 'env',
+  AGENT_MODEL_PROVIDER: 'fake',
+  AGENT_TOOLS_ENABLED: '',
+  TUSHARE_SYNC_ENABLED: 'false',
+  TUSHARE_BOOTSTRAP_ON_START: 'false',
+} as const
 
 integrationDescribe('Stock research workflow v1 - 真实 PostgreSQL + fake Model 集成', () => {
   let admin: PrismaClient | undefined
   let app: INestApplicationContext | undefined
   let databaseName = ''
   let originalDatabaseUrl: string | undefined
+  const originalEnvironment = new Map<string, string | undefined>()
 
   beforeAll(async () => {
     const urls = makeTemporaryDatabaseUrls()
@@ -86,16 +96,17 @@ integrationDescribe('Stock research workflow v1 - 真实 PostgreSQL + fake Model
       timeout: 180_000,
     })
     process.env.DATABASE_URL = urls.databaseUrl
-    process.env.AGENT_MODEL_PROVIDER = 'fake'
-    process.env.AGENT_TOOLS_ENABLED = ''
-    process.env.TUSHARE_SYNC_ENABLED = 'false'
-    process.env.TUSHARE_BOOTSTRAP_ON_START = 'false'
+    for (const [key, value] of Object.entries(TEST_ENVIRONMENT)) {
+      originalEnvironment.set(key, process.env[key])
+      process.env[key] = value
+    }
     const module = await Test.createTestingModule({
       imports: [
         ConfigModule.forRoot({ isGlobal: true, envFilePath: ['.env'], load: [...Object.values(configs)] }),
         ConfigModule.forFeature(AgentExecutionConfig),
         ConfigModule.forFeature(AgentContextConfig),
         ConfigModule.forFeature(AgentToolsConfig),
+        MetricsModule,
         SharedModule,
         ModelGatewayModule,
         AgentExecutionModule,
@@ -117,6 +128,7 @@ integrationDescribe('Stock research workflow v1 - 真实 PostgreSQL + fake Model
         ToolExecutorService,
         WorkflowRegistryService,
         WorkflowBudgetService,
+        ModelContextBudgetService,
         ResearchPlanCompilerService,
         WorkflowContextService,
         WorkflowModelService,
@@ -146,6 +158,10 @@ integrationDescribe('Stock research workflow v1 - 真实 PostgreSQL + fake Model
     await app?.close()
     if (originalDatabaseUrl) process.env.DATABASE_URL = originalDatabaseUrl
     else delete process.env.DATABASE_URL
+    for (const [key, value] of originalEnvironment) {
+      if (value == null) delete process.env[key]
+      else process.env[key] = value
+    }
     if (admin && databaseName) {
       await admin.$queryRaw(
         Prisma.sql`SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = ${databaseName} AND pid <> pg_backend_pid()`,
@@ -229,12 +245,14 @@ integrationDescribe('Stock research workflow v1 - 真实 PostgreSQL + fake Model
     })
 
     const terminal = await orchestrator.resume(run.id, { workerId: `worker_${randomUUID()}` })
+    const persistedRun = await prisma.aiAgentRun.findUniqueOrThrow({ where: { id: run.id } })
 
-    expect(terminal).toEqual({ status: 'COMPLETED', runId: run.id, finalMessageId: response.id })
-    expect(await prisma.aiAgentRun.findUniqueOrThrow({ where: { id: run.id } })).toMatchObject({
-      status: AiAgentRunStatus.COMPLETED,
-      leaseOwner: null,
+    expect({ terminal, errorCode: persistedRun.errorCode, errorMessage: persistedRun.errorMessage }).toEqual({
+      terminal: { status: 'COMPLETED', runId: run.id, finalMessageId: response.id },
+      errorCode: null,
+      errorMessage: null,
     })
+    expect(persistedRun).toMatchObject({ status: AiAgentRunStatus.COMPLETED, leaseOwner: null })
     expect(await prisma.aiAgentStep.count({ where: { runId: run.id } })).toBe(8)
     expect(await prisma.aiModelCall.count({ where: { runId: run.id } })).toBe(2)
     expect(await prisma.aiToolCall.count({ where: { runId: run.id } })).toBe(0)
@@ -372,7 +390,17 @@ integrationDescribe('Stock research workflow v1 - 真实 PostgreSQL + fake Model
       toolPolicyVersion: 'tool-policy-v1',
       modelPolicy: AiModelPolicy.AUTO,
       inputSnapshot: { allowedCapabilities: ['INTERNAL_DATA'], allowedScopes: ['MARKET_DATA'] },
-      budget: { maxInputTokens: 4_000 },
+      budget: {
+        runPolicy: {
+          schemaVersion: 1,
+          maxSteps: 8,
+          maxToolCalls: 10,
+          maxParallelTools: 3,
+          maxCumulativeInputTokens: 4_000,
+          maxCost: 10,
+          costCurrency: 'CNY',
+        },
+      },
       maxAttempts: 3,
       deadlineAt: new Date(Date.now() + 170_000),
     })

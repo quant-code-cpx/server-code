@@ -89,7 +89,10 @@ export class IndexResearchToolFacade {
     const [, latestDaily] = await this.repository.findDailyBounds(indexCode, requestedAsOf ?? undefined)
     if (!latestDaily) throw new MarketMultiAssetToolError('DATA_NOT_READY', `${indexCode} 在指定时点前没有行情`)
     const asOf = requestedAsOf ?? latestDaily.tradeDate
-    const endDate = parseIsoDate(input.endDate, 'endDate') ?? asOf
+    const requestedEndDate = parseIsoDate(input.endDate, 'endDate')
+    let endDate = requestedEndDate ?? asOf
+    const clampedToDataThrough = requestedAsOf == null && endDate > asOf
+    if (clampedToDataThrough) endDate = asOf
     if (endDate > asOf) throw new MarketMultiAssetToolError('INVALID_ARGUMENT', 'endDate 不能晚于 asOfDate')
     const defaultStart = new Date(endDate)
     defaultStart.setUTCFullYear(defaultStart.getUTCFullYear() - 1)
@@ -103,6 +106,13 @@ export class IndexResearchToolFacade {
       INDEX_RESEARCH_SECTIONS.map((section) => [section, null]),
     )
     const warnings: MarketMultiAssetWarning[] = []
+    if (clampedToDataThrough && requestedEndDate) {
+      warnings.push({
+        code: 'INDEX_END_DATE_CLAMPED_TO_DATA_THROUGH',
+        message: `请求结束日 ${toIsoDate(requestedEndDate)} 晚于最新可用交易日 ${toIsoDate(asOf)}，已按最新可用交易日查询`,
+        affectedFields: ['history', 'valuation'],
+      })
+    }
     let truncated = false
 
     let basic: ResearchSectionResult<IndexBasicData> = sectionNotRequested()

@@ -96,6 +96,12 @@ describe('IndustryRotationToolFacade', () => {
     await expect(facade.getRotation({ industryCodes: ['999999.TI'] })).rejects.toMatchObject({ code: 'DATA_NOT_FOUND' })
   })
 
+  it('研究工具接受 250 日周期并按 251 根行情上限查询', async () => {
+    await facade.getRotation({ sections: ['RETURN'], periods: [60, 120, 250] })
+
+    expect(repository.findBars).toHaveBeenCalledWith(expect.any(Date), 251)
+  })
+
   it('[BUDGET] 全 section 返回不超过 3,000 行，优先截断热力图', async () => {
     const largeCatalog = Array.from({ length: 50 }, (_, index) => ({
       tsCode: `${String(885_100 + index)}.TI`,

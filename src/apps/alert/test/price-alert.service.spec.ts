@@ -17,6 +17,7 @@ import { NotificationService } from 'src/apps/notification/notification.service'
 import { PrismaService } from 'src/shared/prisma.service'
 import { DistributedCronLockService } from 'src/shared/scheduler/distributed-cron-lock.service'
 import { EventsGateway } from 'src/websocket/events.gateway'
+import { AlertCalendarService } from '../alert-calendar.service'
 import { PriceAlertService } from '../price-alert.service'
 import { CreatePriceAlertRuleDto } from '../dto/price-alert-rule.dto'
 
@@ -68,12 +69,17 @@ function buildCronLockMock() {
   return { runIfScheduler: jest.fn(async (_key: string, task: () => Promise<void>) => task()) }
 }
 
-function createService(prismaMock = buildPrismaMock(), gatewayMock = buildGatewayMock()) {
+function createService(
+  prismaMock = buildPrismaMock(),
+  gatewayMock = buildGatewayMock(),
+  calendarMock = { getCalendar: jest.fn(async () => ({ startDate: '', endDate: '', totalCount: 0, events: [] })) },
+) {
   return new PriceAlertService(
     prismaMock as unknown as PrismaService,
     gatewayMock as unknown as EventsGateway,
     buildNotificationMock() as unknown as NotificationService,
     buildCronLockMock() as unknown as DistributedCronLockService,
+    calendarMock as unknown as AlertCalendarService,
   )
 }
 
@@ -159,6 +165,34 @@ describe('PriceAlertService (OPT-4.3)', () => {
       expect(prisma.priceAlertRule.create).toHaveBeenCalledWith({
         data: expect.objectContaining({ portfolioId: 'p-1', sourceName: '价值组合' }),
       })
+    })
+
+    it('CAL-B04: event rule only accepts 0/1/3/7-day trigger windows', async () => {
+      const svc = createService()
+
+      await expect(
+        svc.createRule(1, {
+          tsCode: '000001.SZ',
+          ruleType: PriceAlertRuleType.EVENT_DISCLOSURE,
+          threshold: 2,
+        } as CreatePriceAlertRuleDto),
+      ).rejects.toThrow('事件提醒时机仅支持事件当日或提前 1/3/7 天')
+    })
+
+    it('CAL-B04: duplicate active event subscriptions reuse the existing rule', async () => {
+      const prisma = buildPrismaMock()
+      const existing = { id: 42, ruleType: PriceAlertRuleType.EVENT_ANY }
+      prisma.priceAlertRule.findFirst.mockResolvedValue(existing)
+      const svc = createService(prisma)
+
+      await expect(
+        svc.createRule(1, {
+          tsCode: '000001.SZ',
+          ruleType: PriceAlertRuleType.EVENT_ANY,
+          threshold: 0,
+        } as CreatePriceAlertRuleDto),
+      ).resolves.toBe(existing)
+      expect(prisma.priceAlertRule.create).not.toHaveBeenCalled()
     })
   })
 
@@ -323,6 +357,67 @@ describe('PriceAlertService (OPT-4.3)', () => {
       expect(result).toEqual({ triggered: 0 })
       expect(prisma.priceAlertRule.update).not.toHaveBeenCalled()
       expect(gateway.emitToUser).not.toHaveBeenCalled()
+    })
+
+    it('CAL-B04: event scan triggers on target calendar date and deduplicates repeated scans', async () => {
+      const prisma = buildPrismaMock()
+      const rule = {
+        id: 9,
+        userId: 1,
+        tsCode: '000001.SZ',
+        stockName: '平安银行',
+        ruleType: PriceAlertRuleType.EVENT_DISCLOSURE,
+        threshold: 3,
+        status: PriceAlertRuleStatus.ACTIVE,
+        memo: null,
+        watchlistId: null,
+        portfolioId: null,
+        sourceName: null,
+        lastTriggeredAt: null,
+        triggerCount: 0,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }
+      prisma.priceAlertRule.findMany.mockResolvedValue([rule])
+      const calendar = {
+        getCalendar: jest.fn(async () => ({
+          startDate: '20260811',
+          endDate: '20260811',
+          totalCount: 1,
+          events: [
+            {
+              date: '20260811',
+              tsCode: '000001.SZ',
+              stockName: '平安银行',
+              type: 'DISCLOSURE',
+              title: '财报披露',
+              detail: {},
+              impactScore: 0,
+              impactLevel: 'LOW',
+              isInWatchlist: false,
+            },
+          ],
+        })),
+      }
+      const gateway = buildGatewayMock()
+      const svc = createService(prisma, gateway, calendar)
+
+      await expect(svc.runScan('20260808')).resolves.toEqual({ triggered: 1 })
+      prisma.priceAlertTriggerHistory.createMany.mockResolvedValueOnce({ count: 0 })
+      await expect(svc.runScan('20260808')).resolves.toEqual({ triggered: 0 })
+
+      expect(calendar.getCalendar).toHaveBeenCalledWith({
+        startDate: '20260811',
+        endDate: '20260811',
+        types: ['DISCLOSURE'],
+      })
+      expect(prisma.priceAlertRule.update).toHaveBeenCalledTimes(1)
+      expect(gateway.emitToUser).toHaveBeenCalledTimes(1)
+      expect(gateway.emitToUser).toHaveBeenCalledWith(
+        1,
+        'price-alert',
+        expect.objectContaining({ eventDate: '20260811', eventType: 'DISCLOSURE' }),
+      )
     })
   })
 

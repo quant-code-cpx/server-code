@@ -303,3 +303,50 @@ describe('SyncHelperService — getPeriodEndTradeDates', () => {
     await expect(svc.getPeriodEndTradeDates('20260701', '20260731', 'month')).resolves.toEqual(['20260730'])
   })
 })
+
+describe('SyncHelperService — upsertRowsByUnique', () => {
+  function createUpsertService() {
+    const stockBasic = {
+      upsert: jest.fn((args: Record<string, unknown>) => Promise.resolve(args)),
+    }
+    const prisma = {
+      stockBasic,
+      $transaction: jest.fn((operations: Promise<unknown>[]) => Promise.all(operations)),
+    }
+    const configService = {
+      get: jest.fn(() => ({ syncStartDate: '20100101', syncTimeZone: 'Asia/Shanghai' })),
+    }
+
+    return {
+      // @ts-expect-error: 局部 mock，只验证批量 upsert 契约
+      service: new SyncHelperService(prisma, configService, {}),
+      prisma,
+      stockBasic,
+    }
+  }
+
+  it('按唯一键更新主数据，不执行 deleteMany', async () => {
+    const { service, prisma, stockBasic } = createUpsertService()
+    const rows = [
+      { tsCode: '000001.SZ', name: '平安银行' },
+      { tsCode: '600000.SH', name: '浦发银行' },
+    ]
+
+    await expect(service.upsertRowsByUnique('stockBasic', 'tsCode', rows)).resolves.toBe(2)
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1)
+    expect(stockBasic.upsert).toHaveBeenNthCalledWith(1, {
+      where: { tsCode: '000001.SZ' },
+      create: rows[0],
+      update: rows[0],
+    })
+  })
+
+  it('超过 500 行时分批提交，避免单个事务过大', async () => {
+    const { service, prisma } = createUpsertService()
+    const rows = Array.from({ length: 501 }, (_, index) => ({ tsCode: `${index}.SZ` }))
+
+    await service.upsertRowsByUnique('stockBasic', 'tsCode', rows)
+
+    expect(prisma.$transaction).toHaveBeenCalledTimes(2)
+  })
+})

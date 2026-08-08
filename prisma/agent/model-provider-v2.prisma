@@ -1,0 +1,79 @@
+model AiModelConnection {
+  id                  String              @id @db.VarChar(128)
+  connectionKey       String              @unique(map: "ai_model_connections_connection_key_key") @map("connection_key") @db.VarChar(128)
+  adapterKind         String              @map("adapter_kind") @db.VarChar(48)
+  displayName         String              @map("display_name") @db.VarChar(128)
+  baseUrl             String              @map("base_url") @db.VarChar(2048)
+  encryptedApiKey     String?             @map("encrypted_api_key") @db.Text
+  apiKeyLastFour      String?             @map("api_key_last_four") @db.Char(4)
+  enabled             Boolean             @default(false)
+  configVersion       Int                 @default(1) @map("config_version")
+  lastProbeStatus     String?             @map("last_probe_status") @db.VarChar(32)
+  lastProbeAt         DateTime?           @map("last_probe_at") @db.Timestamptz(3)
+  lastProbeDurationMs Int?                @map("last_probe_duration_ms")
+  lastProbeSteps      Json?               @map("last_probe_steps")
+  createdAt           DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt           DateTime            @updatedAt @map("updated_at") @db.Timestamptz(3)
+  deployments         AiModelDeployment[]
+
+  @@index([enabled, adapterKind], map: "ai_model_connections_enabled_adapter_idx")
+  @@map("ai_model_connections")
+}
+
+model AiModelDeployment {
+  id                     String            @id @db.VarChar(128)
+  connectionId           String            @map("connection_id") @db.VarChar(128)
+  modelId                String            @map("model_id") @db.VarChar(256)
+  displayName            String            @map("display_name") @db.VarChar(128)
+  priority               Int               @default(0)
+  costTier               String            @default("MEDIUM") @map("cost_tier") @db.VarChar(16)
+  contextWindow          Int               @map("context_window")
+  maxOutputTokens        Int               @map("max_output_tokens")
+  capabilities           String[]
+  reasoningMode          String            @default("AUTO") @map("reasoning_mode") @db.VarChar(24)
+  reasoningEfforts       String[]          @map("reasoning_efforts")
+  defaultReasoningEffort String?           @map("default_reasoning_effort") @db.VarChar(64)
+  reasoningBudgetTokens  Int?              @map("reasoning_budget_tokens")
+  dataClasses            String[]          @map("data_classes")
+  timeoutMs              Int               @default(120000) @map("timeout_ms")
+  maxRetries             Int               @default(2) @map("max_retries")
+  retryBaseMs            Int               @default(200) @map("retry_base_ms")
+  enabled                Boolean           @default(false)
+  configVersion          Int               @default(1) @map("config_version")
+  lastProbeStatus        String?           @map("last_probe_status") @db.VarChar(32)
+  lastProbeAt            DateTime?         @map("last_probe_at") @db.Timestamptz(3)
+  lastProbeDurationMs    Int?              @map("last_probe_duration_ms")
+  createdAt              DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt              DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
+  connection             AiModelConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@unique([connectionId, modelId], map: "ai_model_deployments_connection_model_key")
+  @@index([enabled, priority, id], map: "ai_model_deployments_enabled_priority_idx")
+  @@map("ai_model_deployments")
+}
+
+model AiModelProbe {
+  id                String   @id @db.VarChar(128)
+  targetType        String   @map("target_type") @db.VarChar(24)
+  targetId          String   @map("target_id") @db.VarChar(128)
+  level             String   @db.VarChar(32)
+  status            String   @db.VarChar(32)
+  durationMs        Int      @map("duration_ms")
+  steps             Json
+  providerRequestId String?  @map("provider_request_id") @db.VarChar(256)
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([targetType, targetId, createdAt], map: "ai_model_probes_target_created_idx")
+  @@map("ai_model_probes")
+}
+
+model AiModelConfigVersion {
+  id            String   @id @db.VarChar(128)
+  status        String   @db.VarChar(24)
+  deploymentIds String[] @map("deployment_ids")
+  snapshot      Json
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([status, createdAt], map: "ai_model_config_versions_status_created_idx")
+  @@map("ai_model_config_versions")
+}

@@ -5,7 +5,7 @@ import { AgentEventRepository } from '../../execution/agent-event.repository'
 import { ModelAbortError, ModelGatewayError, MODEL_GATEWAY } from '../../model-gateway/model-gateway.port'
 import type { AgentExecutionRun } from '../../execution/agent-run.repository'
 import { WorkflowBudgetService } from '../workflow-budget.service'
-import { WorkflowCancelledError } from '../workflow.errors'
+import { WorkflowBudgetError, WorkflowCancelledError } from '../workflow.errors'
 import { WorkflowModelService, type WorkflowModelCommand } from '../workflow-model.service'
 import { ModelContextBudgetService } from '../model-context-budget.service'
 
@@ -33,6 +33,7 @@ describe('WorkflowModelService', () => {
 
   beforeEach(async () => {
     jest.clearAllMocks()
+    budgets.assertUsage.mockReset()
     audit.beginModelCall.mockResolvedValue({ id: 'model_call_1', status: AiModelCallStatus.PENDING })
     audit.cancelModelCall.mockResolvedValue({ id: 'model_call_1', status: AiModelCallStatus.CANCELLED })
     audit.failModelCall.mockResolvedValue({ id: 'model_call_1', status: AiModelCallStatus.FAILED })
@@ -84,6 +85,88 @@ describe('WorkflowModelService', () => {
     expect(audit.cancelModelCall).not.toHaveBeenCalled()
   })
 
+  it('[REG] 已耗尽 JSON repair 的结构化输出可切换到备用模型', async () => {
+    gateway.select.mockReturnValue({
+      candidates: [
+        { descriptor: { provider: 'flash', model: 'flash-v1', contextWindow: 32_768, reasoningEfforts: ['LOW'] } },
+        { descriptor: { provider: 'pro', model: 'pro-v1', contextWindow: 32_768, reasoningEfforts: ['LOW'] } },
+      ],
+      considered: [],
+      selected: { provider: 'flash', model: 'flash-v1', contextWindow: 32_768 },
+    })
+    audit.beginModelCall
+      .mockResolvedValueOnce({ id: 'model_call_flash', status: AiModelCallStatus.PENDING })
+      .mockResolvedValueOnce({ id: 'model_call_pro', status: AiModelCallStatus.PENDING })
+    gateway.generateStructuredForModel
+      .mockRejectedValueOnce(
+        new ModelGatewayError('INVALID_OUTPUT', true, '模型结构化输出校验失败 (length)', undefined, undefined, true),
+      )
+      .mockResolvedValueOnce({
+        data: { ok: true },
+        repaired: false,
+        completion: {
+          provider: 'pro',
+          model: 'pro-v1',
+          providerRequestId: null,
+          usage: { inputTokens: 12, outputTokens: 3 },
+          finishReason: 'stop',
+        },
+      })
+
+    const result = await service.generateStructured(command())
+
+    expect(result.data).toEqual({ ok: true })
+    expect(gateway.generateStructuredForModel).toHaveBeenCalledTimes(2)
+    expect(gateway.generateStructuredForModel.mock.calls.map((call) => call[1].model)).toEqual(['flash-v1', 'pro-v1'])
+    expect(audit.failModelCall).toHaveBeenCalledWith(
+      7,
+      'model_call_flash',
+      expect.objectContaining({ errorMessage: '模型结构化输出校验失败 (length)' }),
+    )
+  })
+
+  it('最终合成使用部署快照中的默认推理策略，不在节点内硬编码档位', async () => {
+    gateway.generateStructuredForModel.mockResolvedValue({
+      data: { ok: true },
+      repaired: false,
+      completion: {
+        provider: 'fake',
+        model: 'fake-v1',
+        providerRequestId: null,
+        usage: { inputTokens: 12, outputTokens: 3 },
+        finishReason: 'stop',
+      },
+    })
+    const input = command()
+    input.purpose = 'SYNTHESIZE'
+    input.modelProfile = {
+      selectedProvider: 'fake',
+      selectedModel: 'fake-v1',
+      candidates: [
+        {
+          provider: 'fake',
+          model: 'fake-v1',
+          contextWindow: 32_768,
+          maxOutputTokens: 4_096,
+          capabilities: ['STREAMING', 'STRUCTURED_OUTPUT'],
+          reasoningEfforts: ['LOW'],
+          defaultReasoning: { mode: 'EFFORT', effort: 'HIGH' },
+          dataClasses: ['USER_PRIVATE'],
+        },
+      ],
+    }
+
+    await service.generateStructured(input)
+
+    expect(gateway.generateStructuredForModel).toHaveBeenCalledWith(
+      expect.objectContaining({ reasoning: { mode: 'EFFORT', effort: 'HIGH' } }),
+      expect.any(Object),
+      undefined,
+      undefined,
+    )
+    expect(audit.beginModelCall.mock.calls[0][0].request.reasoning).toEqual({ mode: 'EFFORT', effort: 'HIGH' })
+  })
+
   it('ModelCall 审计只记录 context manifest，不记录模型消息正文', async () => {
     gateway.generateStructuredForModel.mockResolvedValue({
       data: { ok: true },
@@ -113,6 +196,12 @@ describe('WorkflowModelService', () => {
 
     const auditRequest = audit.beginModelCall.mock.calls[0][0].request
     expect(auditRequest.contextManifest).toEqual(input.contextManifest)
+    expect(auditRequest).toMatchObject({
+      maxOutputTokens: input.maxOutputTokens,
+      contextWindow: 32_768,
+      reasoning: { mode: 'AUTO' },
+      dataClass: 'USER_PRIVATE',
+    })
     expect(JSON.stringify(auditRequest)).not.toContain('MODEL_MESSAGE_CANARY_PRIVATE')
     expect(auditRequest).not.toHaveProperty('messages')
   })
@@ -188,7 +277,7 @@ describe('WorkflowModelService', () => {
     })
     const input = command()
     input.usage.inputTokens = 100
-    input.limits.maxInputTokens = 3_000
+    input.limits.maxCumulativeInputTokens = 3_000
 
     expect(service.resolveInputTokenBudget(modelProfile(), input.usage, input.limits)).toBe(2_900)
     expect(contextBudgets.resolve).toHaveBeenCalledWith(modelProfile(), input.usage, input.limits)
@@ -246,6 +335,175 @@ describe('WorkflowModelService', () => {
 
     await expect(service.generateStructured(input)).rejects.toMatchObject({ agentCode: 6048 })
     expect(audit.beginModelCall).not.toHaveBeenCalled()
+  })
+
+  it('模型成功后真实 usage 越过 Run 护栏时正确记账并保留成功结果', async () => {
+    gateway.generateStructuredForModel.mockResolvedValue({
+      data: { ok: true },
+      repaired: false,
+      completion: {
+        provider: 'fake',
+        model: 'fake-v1',
+        providerRequestId: null,
+        usage: { inputTokens: 12_000, outputTokens: 3 },
+        finishReason: 'stop',
+      },
+    })
+    await expect(service.generateStructured(command())).resolves.toMatchObject({
+      usage: {
+        inputTokens: 12_000,
+        accountingWarnings: [expect.stringContaining('后续模型调用将在发送前停止')],
+      },
+    })
+
+    expect(audit.finishModelCall).toHaveBeenCalledWith(7, 'model_call_1', expect.any(Object))
+    expect(audit.failModelCall).not.toHaveBeenCalled()
+    expect(audit.cancelModelCall).not.toHaveBeenCalled()
+  })
+
+  it('[REG][BUDGET] 从 SUCCEEDED 审计恢复时不把真实 usage 事后越界改成失败', async () => {
+    audit.beginModelCall.mockResolvedValue({
+      id: 'model_call_1',
+      status: AiModelCallStatus.SUCCEEDED,
+      outputSummary: { data: { ok: true }, repaired: false },
+      inputTokens: 12_000,
+      outputTokens: 3,
+      cost: null,
+      costCurrency: null,
+      model: 'fake-v1',
+    })
+    await expect(service.generateStructured(command())).resolves.toMatchObject({
+      usage: {
+        inputTokens: 12_000,
+        outputTokens: 3,
+        accountingWarnings: [expect.stringContaining('后续模型调用将在发送前停止')],
+      },
+    })
+
+    expect(gateway.generateStructuredForModel).not.toHaveBeenCalled()
+    expect(audit.failModelCall).not.toHaveBeenCalled()
+    expect(audit.cancelModelCall).not.toHaveBeenCalled()
+  })
+
+  it('[ERR][AUDIT] Provider 成功但 finishModelCall 失败时不伪造 FAILED/CANCELLED', async () => {
+    gateway.generateStructuredForModel.mockResolvedValue(successfulResult())
+    audit.finishModelCall.mockRejectedValueOnce(new Error('audit persistence unavailable'))
+
+    await expect(service.generateStructured(command())).rejects.toThrow('audit persistence unavailable')
+
+    expect(audit.failModelCall).not.toHaveBeenCalled()
+    expect(audit.cancelModelCall).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    [AiModelCallStatus.FAILED, 6007],
+    [AiModelCallStatus.CANCELLED, null],
+  ])('[DATA] 已有终态审计 %s 时不重复调用 Provider', async (status, errorCode) => {
+    audit.beginModelCall.mockResolvedValue({ id: 'model_call_1', status, errorCode })
+
+    await expect(service.generateStructured(command())).rejects.toMatchObject({
+      category: 'MODEL',
+      agentCode: errorCode ?? 6005,
+    })
+
+    expect(gateway.generateStructuredForModel).not.toHaveBeenCalled()
+    expect(audit.failModelCall).not.toHaveBeenCalled()
+  })
+
+  it('[DATA] SUCCEEDED 审计缺少结构化 data 时稳定拒绝恢复', async () => {
+    audit.beginModelCall.mockResolvedValue({
+      id: 'model_call_1',
+      status: AiModelCallStatus.SUCCEEDED,
+      outputSummary: { repaired: false },
+      inputTokens: 1,
+      outputTokens: 1,
+      cost: null,
+      costCurrency: null,
+      model: 'fake-v1',
+    })
+
+    await expect(service.generateStructured(command())).rejects.toMatchObject({ agentCode: 6005 })
+    expect(gateway.generateStructuredForModel).not.toHaveBeenCalled()
+  })
+
+  it('[BUDGET] SUCCEEDED 审计成本币种与 Run 不一致时拒绝恢复', async () => {
+    audit.beginModelCall.mockResolvedValue({
+      id: 'model_call_1',
+      status: AiModelCallStatus.SUCCEEDED,
+      outputSummary: { data: { ok: true }, repaired: false },
+      inputTokens: 1,
+      outputTokens: 1,
+      cost: { toNumber: () => 1 },
+      costCurrency: 'USD',
+      model: 'fake-v1',
+    })
+
+    await expect(service.generateStructured(command())).rejects.toBeInstanceOf(WorkflowBudgetError)
+    expect(gateway.generateStructuredForModel).not.toHaveBeenCalled()
+  })
+
+  it('[BUDGET] Provider 返回合法 CNY 成本时计入累计用量', async () => {
+    gateway.generateStructuredForModel.mockResolvedValue(
+      successfulResult({
+        providerCost: { amount: '1.25', currency: 'cny', estimated: false },
+      }),
+    )
+
+    const result = await service.generateStructured(command())
+
+    expect(result.usage.cost).toBe(1.25)
+    expect(result.usage.costCurrency).toBe('CNY')
+    expect(audit.finishModelCall).toHaveBeenCalledWith(
+      7,
+      'model_call_1',
+      expect.objectContaining({ cost: 1.25, costCurrency: 'CNY', costEstimated: false }),
+    )
+  })
+
+  it('[BUDGET] Provider 成本币种与 Run 不一致时不覆盖成功审计', async () => {
+    gateway.generateStructuredForModel.mockResolvedValue(
+      successfulResult({
+        providerCost: { amount: '1.25', currency: 'usd', estimated: false },
+      }),
+    )
+
+    await expect(service.generateStructured(command())).rejects.toBeInstanceOf(WorkflowBudgetError)
+
+    expect(audit.finishModelCall).toHaveBeenCalled()
+    expect(audit.failModelCall).not.toHaveBeenCalled()
+  })
+
+  it('[ERR] 路由与模型画像的 Gateway 错误映射为稳定 Agent 错误码', async () => {
+    gateway.select.mockImplementationOnce(() => {
+      throw new ModelGatewayError('RATE_LIMIT', true, 'route limited')
+    })
+    await expect(service.generateStructured(command())).rejects.toMatchObject({ agentCode: 6006, retryable: true })
+
+    gateway.select.mockImplementationOnce(() => {
+      throw new ModelGatewayError('TIMEOUT', true, 'route timeout')
+    })
+    await expect(() => service.resolveModelProfile(command().run)).toThrow(
+      expect.objectContaining({ agentCode: 6007, retryable: true }),
+    )
+  })
+
+  it('[SEC] 非 Gateway 异常只发布通用模型错误，不泄露内部详情', async () => {
+    gateway.generateStructuredForModel.mockRejectedValue(new Error('DATABASE_URL=secret internal detail'))
+    const input = command()
+    input.workerId = 'worker_1'
+
+    await expect(service.generateStructured(input)).rejects.toThrow('DATABASE_URL=secret internal detail')
+
+    expect(events.appendEvent).toHaveBeenCalledWith(
+      'run_1',
+      expect.objectContaining({
+        eventType: 'model.failed',
+        payload: expect.objectContaining({
+          error: { code: 6005, message: '模型调用失败', retryable: true, category: 'MODEL' },
+        }),
+      }),
+    )
+    expect(JSON.stringify(events.appendEvent.mock.calls)).not.toContain('DATABASE_URL=secret')
   })
 
   it('摘要调用可固定独立 Prompt 版本和 CAS 重算 attempt', async () => {
@@ -398,7 +656,8 @@ function command(): WorkflowModelCommand {
       maxSteps: 8,
       maxToolCalls: 4,
       maxParallelTools: 2,
-      maxInputTokens: 10_000,
+      maxCumulativeInputTokens: 10_000,
+      inputTokenGuardrailSource: 'RUN_SNAPSHOT',
       maxCost: 10,
       costCurrency: 'CNY',
     },
@@ -420,5 +679,19 @@ function modelProfile() {
         dataClasses: ['USER_PRIVATE'] as const,
       },
     ],
+  }
+}
+
+function successfulResult(usage: Record<string, unknown> = {}) {
+  return {
+    data: { ok: true },
+    repaired: false,
+    completion: {
+      provider: 'fake',
+      model: 'fake-v1',
+      providerRequestId: null,
+      usage: { inputTokens: 12, outputTokens: 3, ...usage },
+      finishReason: 'stop',
+    },
   }
 }

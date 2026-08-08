@@ -1,0 +1,28 @@
+[project]
+name = "news-source-bridge"
+version = "0.1.0"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "akshare==1.18.81",
+  "fastapi==0.116.1",
+  "gunicorn==23.0.0",
+  "pandas==2.3.1",
+  "pydantic==2.11.7",
+  "uvicorn[standard]==0.35.0",
+]
+
+[dependency-groups]
+dev = [
+  "httpx==0.28.1",
+  "pytest==8.4.1",
+  "pytest-cov==6.2.1",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"

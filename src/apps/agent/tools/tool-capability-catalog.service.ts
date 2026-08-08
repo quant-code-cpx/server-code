@@ -68,6 +68,7 @@ const PACK_BY_KEY: Readonly<Record<AgentToolKey, ToolCapabilityPackKey>> = Objec
   get_backtest_result: 'PRIVATE_ANALYTICS',
   get_backtest_analytics: 'PRIVATE_ANALYTICS',
   get_portfolio_analytics: 'PRIVATE_ANALYTICS',
+  get_market_news: 'EXTERNAL_EVENT',
   compute_performance_metrics: 'PRIVATE_ANALYTICS',
   save_research_report: 'PRIVATE_ANALYTICS',
 })
@@ -87,6 +88,7 @@ const PURPOSE_BY_KEY: Readonly<Record<AgentToolKey, string>> = Object.freeze({
   get_backtest_result: '读取回测结果',
   get_backtest_analytics: '分析回测 Monte Carlo、归因、成本和已持久化高级结果',
   get_portfolio_analytics: '分析组合点时绩效、盈亏、漂移和交易事件',
+  get_market_news: '查询本地已采集新闻、公告、快讯及覆盖水位',
   compute_performance_metrics: '计算收益和风险指标',
   compute_valuation_percentile: '计算估值历史分位',
   search_web: '搜索公开网页候选来源',
@@ -129,7 +131,7 @@ export class ToolCapabilityCatalogService {
       if (!latestVersion || !workflow.toolAllowlist.includes(key)) return []
       const definition = this.registry.get(key, latestVersion)
       const pack = PACK_BY_KEY[key]
-      const publicWeb = pack === 'EXTERNAL_EVENT'
+      const publicWeb = key === 'search_web' || key === 'fetch_web_page'
       const privateData = pack === 'PRIVATE_ANALYTICS'
       return [
         Object.freeze({
@@ -162,6 +164,8 @@ function requiredSecurityTypes(key: AgentToolKey): ToolCapabilityDescriptor['req
   if (
     [
       'get_market_snapshot',
+      'get_data_availability',
+      'screen_stocks',
       'get_industry_rotation',
       'get_factor_analysis',
       'get_macro_snapshot',
@@ -175,6 +179,7 @@ function requiredSecurityTypes(key: AgentToolKey): ToolCapabilityDescriptor['req
       'fetch_web_page',
       'save_research_report',
       'run_event_study',
+      'get_market_news',
     ].includes(key)
   ) {
     return []
@@ -198,6 +203,7 @@ function positiveExamples(key: AgentToolKey): string[] {
   if (key === 'run_event_study') return ['统计回购公告后 20 个交易日的异常收益']
   if (key === 'get_backtest_analytics') return ['复盘回测的 Monte Carlo、归因和成本敏感度']
   if (key === 'get_portfolio_analytics') return ['查看组合真实历史绩效、盈亏和仓位漂移']
+  if (key === 'get_market_news') return ['查询贵州茅台近期本地公告和新闻水位']
   return [PURPOSE_BY_KEY[key]]
 }
 
@@ -214,5 +220,6 @@ function negativeExamples(key: AgentToolKey): string[] {
   if (key === 'run_event_study') return ['查询原始事件明细或执行任意 SQL']
   if (key === 'get_backtest_analytics') return ['创建参数扫描、Walk Forward 或对比回测任务']
   if (key === 'get_portfolio_analytics') return ['修改持仓或生成调仓单']
+  if (key === 'get_market_news') return ['隐式联网核验或把搜索结果写入新闻库']
   return []
 }

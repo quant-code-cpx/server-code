@@ -472,6 +472,12 @@ function completedNodeEvent(
         intent: state.plan.intent,
         capabilities: state.context?.allowedCapabilities ?? [],
         planSummary: state.plan.summary,
+        decision: {
+          toolSelectionReason: state.toolSelection?.reason ?? '未触发额外工具能力预选。',
+          selectedTools: state.toolSelection?.toolKeys ?? [],
+          plannedTools: [...new Set(state.plan.toolCalls.map((call) => call.toolKey))],
+          fallback: state.toolSelection?.fallback ?? false,
+        },
       },
     }
   }

@@ -33,34 +33,36 @@ type AgentEvent<TType extends AgentEventType, TPayload> = {
 
 ## 3. 事件字典
 
-| 事件                  | 关键 payload                                                                    | 说明                                      |
-| --------------------- | ------------------------------------------------------------------------------- | ----------------------------------------- |
-| `message.created`     | `messageId, role, status`                                                       | assistant 占位消息已持久化                |
-| `agent.started`       | `workflowKey, workflowVersion, modelPolicy`                                     | Run 开始                                  |
-| `agent.planning`      | `intent, capabilities, planSummary`                                             | 仅公开阶段摘要，不暴露隐藏推理            |
-| `agent.progress`      | `stepKey, label, completed, total`                                              | 可确定进度；未知总量时 `total=null`       |
-| `context.compaction.started` | `model, reason, estimatedTokens, targetTokens`                         | 正在按目标模型整理历史会话                |
-| `context.compaction.completed` | `model, summaryVersion, sourceMessageCount, sourceTokenCount`          | 新摘要版本已安全提交                      |
-| `context.compaction.failed` | `model, code, retryable, message`                                      | 会话整理失败；不包含原始消息或摘要正文    |
-| `tool.started`        | `toolCallId, toolName, inputSummary, attempt`                                   | Tool 输入已校验、权限已通过               |
-| `tool.completed`      | `toolCallId, outputSummary, rowCount, truncated, asOf, citationIds, durationMs` | 结构化结果完成                            |
-| `tool.failed`         | `toolCallId, error, attempt, willRetry`                                         | 不允许模型补造数据                        |
-| `model.started`       | `modelCallId, provider, model, purpose`                                         | 一次模型调用开始                          |
-| `model.trace`         | 请求预算、首个供应商 chunk 类型、结构化修复、供应商完成原因                     | 可诊断生命周期；不含 Prompt、正文或推理   |
-| `model.fallback`      | `fromProvider, fromModel, toProvider, toModel, reasonCode`                      | 尚无可见正文时切换模型                    |
-| `model.activity`      | `modelCallId, phase, processedCharacters`                                       | 仅表示推理仍活跃，不含原始推理文字        |
-| `model.preview.reset` | `modelCallId, attempt`                                                          | 新建或修复重试前清空未校验草稿            |
-| `model.preview.delta` | `modelCallId, attempt, delta`                                                    | `markdown` 的未校验草稿增量，非最终答案   |
-| `model.completed`     | `modelCallId, provider, model, usage, durationMs, repaired, finishReason`       | 模型输出已通过结构化校验                  |
-| `model.failed`        | `modelCallId, provider, model, error, durationMs, willFallback`                 | 本次调用失败；可据此识别切换或最终失败    |
-| `model.delta`         | `modelCallId, blockIndex, delta`                                                | 引用校验、落库完成后的权威最终正文增量    |
-| `citation.created`    | `citation`                                                                      | 引用完成验证并持久化                      |
-| `report.generated`    | `reportId, title, format`                                                       | 研究报告已保存                            |
-| `agent.completed`     | `finalMessageId, usage, cost, dataCutoff, warnings`                             | 成功终态                                  |
-| `agent.failed`        | `error, failedStep, retryable`                                                  | 失败终态                                  |
-| `agent.cancelled`     | `cancelledBy, reason`                                                           | 取消终态                                  |
+| 事件                           | 关键 payload                                                                    | 说明                                               |
+| ------------------------------ | ------------------------------------------------------------------------------- | -------------------------------------------------- |
+| `message.created`              | `messageId, role, status`                                                       | assistant 占位消息已持久化                         |
+| `agent.started`                | `workflowKey, workflowVersion, modelPolicy`                                     | Run 开始                                           |
+| `agent.planning`               | `intent, capabilities, planSummary, decision`                                   | 公开工具选择理由、计划工具与计划摘要；不含隐藏推理 |
+| `agent.progress`               | `stepKey, label, completed, total`                                              | 可确定进度；未知总量时 `total=null`                |
+| `context.compaction.started`   | `model, reason, estimatedTokens, targetTokens`                                  | 正在按目标模型整理历史会话                         |
+| `context.compaction.completed` | `model, summaryVersion, sourceMessageCount, sourceTokenCount`                   | 新摘要版本已安全提交                               |
+| `context.compaction.failed`    | `model, code, retryable, message`                                               | 会话整理失败；不包含原始消息或摘要正文             |
+| `tool.started`                 | `toolCallId, toolName, inputSummary, attempt`                                   | Tool 输入已校验、权限已通过                        |
+| `tool.completed`               | `toolCallId, outputSummary, rowCount, truncated, asOf, citationIds, durationMs` | 结构化结果完成                                     |
+| `tool.failed`                  | `toolCallId, error, attempt, willRetry`                                         | 不允许模型补造数据                                 |
+| `model.started`                | `modelCallId, provider, model, purpose`                                         | 一次模型调用开始                                   |
+| `model.trace`                  | 单次模型窗口/输出、Token 计数来源和余量、Run 护栏/预留、首包与修复               | 可诊断生命周期；不含 Prompt、正文或推理            |
+| `model.fallback`               | `fromProvider, fromModel, toProvider, toModel, reasonCode`                      | 尚无可见正文时切换模型                             |
+| `model.activity`               | `modelCallId, phase, processedCharacters`                                       | 仅表示推理仍活跃，不含原始推理文字                 |
+| `model.preview.reset`          | `modelCallId, attempt`                                                          | 新建或修复重试前清空未校验草稿                     |
+| `model.preview.delta`          | `modelCallId, attempt, delta`                                                   | `markdown` 的未校验草稿增量，非最终答案            |
+| `model.completed`              | `modelCallId, provider, model, usage, usageSource, accountingWarnings, durationMs, repaired, finishReason` | 模型输出已通过结构化校验并完成记账 |
+| `model.failed`                 | `modelCallId, provider, model, error, durationMs, willFallback`                 | 本次调用失败；可据此识别切换或最终失败             |
+| `model.delta`                  | `modelCallId, blockIndex, delta`                                                | 引用校验、落库完成后的权威最终正文增量             |
+| `citation.created`             | `citation`                                                                      | 引用完成验证并持久化                               |
+| `report.generated`             | `reportId, title, format`                                                       | 研究报告已保存                                     |
+| `agent.completed`              | `finalMessageId, usage, cost, dataCutoff, warnings`                             | 成功终态                                           |
+| `agent.failed`                 | `error, failedStep, retryable`                                                  | 失败终态                                           |
+| `agent.cancelled`              | `cancelledBy, reason`                                                           | 取消终态                                           |
 
-`model.trace` 是可诊断执行轨迹，按 `modelCallId + attempt` 展示。`REQUEST_DISPATCHED` 仅含消息数、输入估算、输出上限和模型窗口；`FIRST_PROVIDER_CHUNK` 仅含 chunk 类别；`STRUCTURED_REPAIR` 表示上一轮结构化结果无效；`PROVIDER_COMPLETED` 仅含 finish reason。它不允许包含 `reasoning_content`、hidden reasoning、Prompt、模型正文或其摘要。
+`agent.planning.decision` 是模型已经返回的公开决策结果：`toolSelectionReason` 说明为什么选择这些数据能力，`selectedTools` 和 `plannedTools` 说明随后会做什么，`fallback` 标记是否走了安全回退。它不包含 Prompt、原始推理或其转述。
+
+`model.trace` 是可诊断执行轨迹，按 `modelCallId + attempt` 展示。`REQUEST_DISPATCHED` 分别记录 `contextWindow`、`maxOutputTokens`、`estimatedInputTokens`、`inputTokenCountSource/exact/safetyMarginTokens`、`runInputTokensUsedBeforeCall`、可空的 `runMaxCumulativeInputTokens`、策略来源和最坏结构化修复预留；这些字段不能互相替代。`FIRST_PROVIDER_CHUNK` 仅含 chunk 类别；`STRUCTURED_REPAIR` 表示上一轮结构化结果无效；`PROVIDER_COMPLETED` 仅含 finish reason。它不允许包含 `reasoning_content`、hidden reasoning、Prompt、模型正文或其摘要。
 
 `model.activity` 只允许保存规范化计数，不允许出现 `reasoning_content`、hidden reasoning、Prompt 或其摘要。`model.preview.*` 只用于等待体验，前端必须明确标注“引用校验前”，不得写入正式消息正文、引用或报告；收到首个 `model.delta` 或任一终态后立即清除。
 

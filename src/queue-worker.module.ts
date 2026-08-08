@@ -6,6 +6,7 @@ import { ScreenerSubscriptionModule } from './apps/screener-subscription/screene
 import { QueueModule } from './queue/queue.module'
 import { MetricsModule } from './shared/metrics/metrics.module'
 import { SharedModule } from './shared/shared.module'
+import { NewsModule } from './apps/news/news.module'
 
 /** Hosts non-Agent BullMQ processors without exposing an HTTP listener. */
 @Module({
@@ -16,6 +17,7 @@ import { SharedModule } from './shared/shared.module'
     QueueModule,
     EventStudyModule,
     ScreenerSubscriptionModule,
+    NewsModule,
   ],
 })
 export class QueueWorkerModule {}

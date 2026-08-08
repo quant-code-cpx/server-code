@@ -44,9 +44,26 @@ describe('MacroResearchToolFacade', () => {
     expect(result.warnings[0].code).toBe('OFFICIAL_PUBLICATION_DATE_UNAVAILABLE')
   })
 
-  it('多序列携带单一格式 period 时拒绝，避免歧义', async () => {
-    await expect(facade.getSnapshot({ series: ['CPI', 'GDP'], startPeriod: '202601' })).rejects.toMatchObject({
-      code: 'INVALID_ARGUMENT',
+  it('多序列携带统一 period 时忽略歧义过滤并给出可见警告', async () => {
+    const result = await facade.getSnapshot({
+      series: ['CPI', 'GDP'],
+      sections: ['LATEST', 'HISTORY'],
+      startPeriod: '202601',
+      endPeriod: '202608',
+      historyLimit: 500,
+    })
+
+    expect(repository.findCpi).toHaveBeenLastCalledWith(undefined, undefined, 100)
+    expect(repository.findGdp).toHaveBeenLastCalledWith(undefined, undefined, 100)
+    expect(result.warnings).toContainEqual({
+      code: 'MULTI_SERIES_PERIOD_FILTER_IGNORED',
+      message: '多序列的月、季、日周期格式不同，已忽略统一 startPeriod/endPeriod，并按各序列最近可用数据查询',
+      affectedFields: ['latest', 'history'],
+    })
+    expect(result.warnings).toContainEqual({
+      code: 'MULTI_SERIES_HISTORY_LIMIT_CLAMPED',
+      message: '多序列历史为控制结果体积，historyLimit 已从 500 收敛到每序列 100',
+      affectedFields: ['history'],
     })
   })
 })

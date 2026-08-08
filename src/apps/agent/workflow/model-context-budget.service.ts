@@ -38,12 +38,18 @@ export class ModelContextBudgetService {
     const contextWindow = Math.min(...profile.candidates.map((candidate) => candidate.contextWindow))
     const modelOutputLimit = Math.min(...profile.candidates.map((candidate) => candidate.maxOutputTokens))
     const safeContextWindow = Math.floor(contextWindow * (1 - this.config.safetyRatio))
-    const reserveBase = Math.min(contextWindow, limits.maxInputTokens)
+    // Run input budget limits what we send to the model; it must not silently cap the
+    // model's completion allowance. Otherwise a 1M-context / 384K-output deployment is
+    // reduced to 4,915 tokens merely because this run accepts at most 32,768 input tokens.
+    const reserveBase = safeContextWindow
     const maxOutputTokens = Math.max(
       1,
       Math.min(modelOutputLimit, Math.floor(reserveBase * this.config.outputReserveRatio)),
     )
-    const remainingRunInput = limits.maxInputTokens - usage.inputTokens
+    const remainingRunInput =
+      limits.maxCumulativeInputTokens == null
+        ? Number.POSITIVE_INFINITY
+        : limits.maxCumulativeInputTokens - usage.inputTokens
     const inputBudget = Math.min(remainingRunInput, safeContextWindow - maxOutputTokens)
     if (!Number.isInteger(inputBudget) || inputBudget < 1) {
       throw new WorkflowBudgetError('目标模型没有足够的上下文空间，请选择上下文更大的模型', 6048)
@@ -55,7 +61,9 @@ export class ModelContextBudgetService {
     )
     const summaryInputBudget = Math.min(
       safeContextWindow - summaryOutputTokens,
-      Math.floor(remainingRunInput * this.config.summaryRunInputRatio),
+      Number.isFinite(remainingRunInput)
+        ? Math.floor(remainingRunInput * this.config.summaryRunInputRatio)
+        : safeContextWindow - summaryOutputTokens,
     )
 
     return {

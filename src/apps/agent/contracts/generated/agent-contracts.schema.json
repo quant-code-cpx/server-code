@@ -263,6 +263,114 @@
                   "type": "string",
                   "minLength": 1,
                   "maxLength": 4000
+                },
+                "decision": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "toolSelectionReason",
+                    "selectedTools",
+                    "plannedTools",
+                    "fallback"
+                  ],
+                  "properties": {
+                    "toolSelectionReason": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 500
+                    },
+                    "selectedTools": {
+                      "type": "array",
+                      "maxItems": 18,
+                      "items": {
+                        "enum": [
+                          "resolve_security",
+                          "get_stock_price_history",
+                          "get_stock_overview",
+                          "screen_stocks",
+                          "get_financial_statements",
+                          "get_financial_indicators",
+                          "get_stock_moneyflow",
+                          "get_market_snapshot",
+                          "get_sector_membership",
+                          "get_user_watchlist",
+                          "get_portfolio_risk",
+                          "get_backtest_result",
+                          "compute_performance_metrics",
+                          "compute_valuation_percentile",
+                          "search_web",
+                          "fetch_web_page",
+                          "get_stock_technical_indicators",
+                          "get_stock_technical_signals",
+                          "get_data_availability",
+                          "get_stock_chip_profile",
+                          "get_stock_margin_history",
+                          "get_stock_relative_strength",
+                          "get_stock_events",
+                          "get_stock_shareholder_profile",
+                          "get_index_market_data",
+                          "get_fund_research",
+                          "get_industry_rotation",
+                          "get_factor_analysis",
+                          "get_macro_snapshot",
+                          "get_option_market",
+                          "get_convertible_bond_market",
+                          "run_event_study",
+                          "get_backtest_analytics",
+                          "get_portfolio_analytics",
+                          "get_market_news",
+                          "save_research_report"
+                        ]
+                      }
+                    },
+                    "plannedTools": {
+                      "type": "array",
+                      "maxItems": 20,
+                      "items": {
+                        "enum": [
+                          "resolve_security",
+                          "get_stock_price_history",
+                          "get_stock_overview",
+                          "screen_stocks",
+                          "get_financial_statements",
+                          "get_financial_indicators",
+                          "get_stock_moneyflow",
+                          "get_market_snapshot",
+                          "get_sector_membership",
+                          "get_user_watchlist",
+                          "get_portfolio_risk",
+                          "get_backtest_result",
+                          "compute_performance_metrics",
+                          "compute_valuation_percentile",
+                          "search_web",
+                          "fetch_web_page",
+                          "get_stock_technical_indicators",
+                          "get_stock_technical_signals",
+                          "get_data_availability",
+                          "get_stock_chip_profile",
+                          "get_stock_margin_history",
+                          "get_stock_relative_strength",
+                          "get_stock_events",
+                          "get_stock_shareholder_profile",
+                          "get_index_market_data",
+                          "get_fund_research",
+                          "get_industry_rotation",
+                          "get_factor_analysis",
+                          "get_macro_snapshot",
+                          "get_option_market",
+                          "get_convertible_bond_market",
+                          "run_event_study",
+                          "get_backtest_analytics",
+                          "get_portfolio_analytics",
+                          "get_market_news",
+                          "save_research_report"
+                        ]
+                      }
+                    },
+                    "fallback": {
+                      "type": "boolean"
+                    }
+                  }
                 }
               }
             }
@@ -730,6 +838,7 @@
                     "run_event_study",
                     "get_backtest_analytics",
                     "get_portfolio_analytics",
+                    "get_market_news",
                     "save_research_report"
                   ]
                 },
@@ -1130,7 +1239,14 @@
                     "messageCount",
                     "estimatedInputTokens",
                     "maxOutputTokens",
-                    "contextWindow"
+                    "contextWindow",
+                    "inputTokenCountSource",
+                    "inputTokenCountExact",
+                    "inputTokenSafetyMarginTokens",
+                    "runInputReservationTokens",
+                    "runMaxCumulativeInputTokens",
+                    "runInputTokensUsedBeforeCall",
+                    "runInputGuardrailSource"
                   ],
                   "properties": {
                     "modelCallId": {
@@ -1165,6 +1281,48 @@
                       "type": "integer",
                       "minimum": 1,
                       "maximum": 9007199254740991
+                    },
+                    "inputTokenCountSource": {
+                      "enum": [
+                        "OPENAI_INPUT_TOKENS_API",
+                        "ANTHROPIC_COUNT_TOKENS_API",
+                        "LOCAL_CONSERVATIVE_V1"
+                      ]
+                    },
+                    "inputTokenCountExact": {
+                      "type": "boolean"
+                    },
+                    "inputTokenSafetyMarginTokens": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "runInputReservationTokens": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 9007199254740991
+                    },
+                    "runMaxCumulativeInputTokens": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ],
+                      "minimum": 1,
+                      "maximum": 9007199254740991
+                    },
+                    "runInputTokensUsedBeforeCall": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "runInputGuardrailSource": {
+                      "enum": [
+                        "RUN_SNAPSHOT",
+                        "LEGACY_RUN",
+                        "ENV",
+                        "LEGACY_ENV",
+                        "DISABLED_BY_DEFAULT"
+                      ]
                     }
                   }
                 },
@@ -1665,7 +1823,9 @@
                 "durationMs",
                 "repaired",
                 "finishReason",
-                "usage"
+                "usage",
+                "usageSource",
+                "accountingWarnings"
               ],
               "properties": {
                 "modelCallId": {
@@ -1735,6 +1895,21 @@
                       "minimum": 0,
                       "maximum": 9007199254740991
                     }
+                  }
+                },
+                "usageSource": {
+                  "enum": [
+                    "PROVIDER_ACTUAL",
+                    "PREFLIGHT_ESTIMATE"
+                  ]
+                },
+                "accountingWarnings": {
+                  "type": "array",
+                  "maxItems": 20,
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 1000
                   }
                 }
               }
@@ -4021,6 +4196,7 @@
       "run_event_study",
       "get_backtest_analytics",
       "get_portfolio_analytics",
+      "get_market_news",
       "save_research_report"
     ]
   },
@@ -4146,10 +4322,10 @@
     },
     {
       "code": 6018,
-      "key": "AI_CONTEXT_TOO_LARGE",
+      "key": "AI_RUN_INPUT_TOKEN_GUARDRAIL_EXCEEDED",
       "httpStatus": 422,
       "retryable": false,
-      "message": "上下文超过模型限制"
+      "message": "Agent Run 累计输入 Token 成本护栏已达上限"
     },
     {
       "code": 6019,

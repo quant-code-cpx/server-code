@@ -29,6 +29,7 @@ function buildService() {
     set: jest.fn(async () => 'OK' as const),
     get: jest.fn(async () => null as string | null),
     del: jest.fn(async () => 1),
+    eval: jest.fn(async () => 'invalid' as string),
   }
   const service = new TokenService(jwtMock as any, configMock as any, redisMock as any)
   return { service, jwtMock, redisMock }
@@ -37,6 +38,34 @@ function buildService() {
 // ── 测试 ───────────────────────────────────────────────────────────────────────
 
 describe('TokenService', () => {
+  describe('consumeRefreshToken()', () => {
+    it('[RACE] 首个并发请求原子消费旧 Refresh Token', async () => {
+      const { service, redisMock } = buildService()
+      redisMock.eval.mockResolvedValue('valid')
+
+      await expect(service.consumeRefreshToken(1, 'refresh-jti')).resolves.toBe('valid')
+
+      expect(redisMock.eval).toHaveBeenCalledWith(expect.stringContaining("redis.call('SET', KEYS[1], 'used'"), {
+        keys: [REDIS_KEY.REFRESH_TOKEN(1, 'refresh-jti')],
+        arguments: [expect.any(String)],
+      })
+    })
+
+    it('[RACE] 并发重复请求进入 grace，不再签发第二份轮换 Token', async () => {
+      const { service, redisMock } = buildService()
+      redisMock.eval.mockResolvedValue('grace')
+
+      await expect(service.consumeRefreshToken(1, 'refresh-jti')).resolves.toBe('grace')
+    })
+
+    it('[SEC] Redis 无记录或返回未知值时 fail-closed', async () => {
+      const { service, redisMock } = buildService()
+      redisMock.eval.mockResolvedValue(null)
+
+      await expect(service.consumeRefreshToken(1, 'missing-jti')).resolves.toBe('invalid')
+    })
+  })
+
   // ── blacklistAccessToken ───────────────────────────────────────────────────
 
   describe('blacklistAccessToken()', () => {

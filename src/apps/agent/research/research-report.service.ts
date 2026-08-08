@@ -482,8 +482,10 @@ export class ResearchReportService {
     if (!encoded || !signature || extra) throw AgentHttpException.fromKey('AI_RESEARCH_REPORT_CONFIRMATION_INVALID')
     const expected = createHmac('sha256', this.config.confirmationSecret).update(encoded).digest()
     let actual: Buffer
+    let claimsBuffer: Buffer
     try {
-      actual = Buffer.from(signature, 'base64url')
+      actual = decodeCanonicalBase64Url(signature)
+      claimsBuffer = decodeCanonicalBase64Url(encoded)
     } catch {
       throw AgentHttpException.fromKey('AI_RESEARCH_REPORT_CONFIRMATION_INVALID')
     }
@@ -491,7 +493,7 @@ export class ResearchReportService {
       throw AgentHttpException.fromKey('AI_RESEARCH_REPORT_CONFIRMATION_INVALID')
     }
     try {
-      const claims = JSON.parse(Buffer.from(encoded, 'base64url').toString('utf8')) as Partial<ConfirmationClaims>
+      const claims = JSON.parse(claimsBuffer.toString('utf8')) as Partial<ConfirmationClaims>
       if (
         !Number.isInteger(claims.userId) ||
         !isAgentId(claims.runId) ||
@@ -509,6 +511,13 @@ export class ResearchReportService {
       throw AgentHttpException.fromKey('AI_RESEARCH_REPORT_CONFIRMATION_INVALID')
     }
   }
+}
+
+function decodeCanonicalBase64Url(value: string): Buffer {
+  if (!/^[A-Za-z0-9_-]+$/.test(value)) throw new Error('invalid base64url')
+  const decoded = Buffer.from(value, 'base64url')
+  if (decoded.toString('base64url') !== value) throw new Error('non-canonical base64url')
+  return decoded
 }
 
 function normalizeJournal(

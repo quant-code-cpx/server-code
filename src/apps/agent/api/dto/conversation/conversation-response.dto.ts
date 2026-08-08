@@ -98,6 +98,12 @@ export class AgentMessageRunSummaryDto {
 
   @ApiPropertyOptional({ nullable: true, format: 'date-time' })
   endedAt: string | null
+
+  @ApiPropertyOptional({ nullable: true })
+  errorCode: string | null
+
+  @ApiPropertyOptional({ nullable: true })
+  errorMessage: string | null
 }
 
 export class AgentCitationResponseDto {

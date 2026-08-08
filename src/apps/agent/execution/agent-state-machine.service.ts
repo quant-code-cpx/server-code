@@ -3,7 +3,7 @@ import { AiAgentRunStatus, AiAgentStepStatus } from '@prisma/client'
 import { AgentRunConflictError } from './agent-execution.errors'
 
 const RUN_TRANSITIONS: Readonly<Record<AiAgentRunStatus, readonly AiAgentRunStatus[]>> = {
-  QUEUED: [AiAgentRunStatus.RUNNING, AiAgentRunStatus.CANCELLED],
+  QUEUED: [AiAgentRunStatus.RUNNING, AiAgentRunStatus.FAILED, AiAgentRunStatus.CANCELLED],
   RUNNING: [AiAgentRunStatus.CANCEL_REQUESTED, AiAgentRunStatus.COMPLETED, AiAgentRunStatus.FAILED],
   CANCEL_REQUESTED: [AiAgentRunStatus.CANCELLED],
   COMPLETED: [],

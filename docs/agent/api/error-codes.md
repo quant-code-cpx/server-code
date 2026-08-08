@@ -21,7 +21,7 @@
 | 6015 | `AI_SEARCH_FAILED`                |  502 | 是         | 搜索供应商均失败                               |
 | 6016 | `AI_WEB_SOURCE_BLOCKED`           |  422 | 否         | SSRF、恶意内容、付费墙或 robots 策略拦截       |
 | 6017 | `AI_CITATION_INVALID`             |  422 | 否         | 引用无法验证，不允许生成事实性结论             |
-| 6018 | `AI_CONTEXT_TOO_LARGE`            |  422 | 否         | 裁剪后仍超过模型窗口                           |
+| 6018 | `AI_RUN_INPUT_TOKEN_GUARDRAIL_EXCEEDED` | 422 | 否 | 显式 Run 累计输入成本护栏将在下一次模型调用前超限 |
 | 6019 | `AI_COST_QUOTA_EXCEEDED`          |  429 | 否         | 用户单次/每日成本配额不足                      |
 | 6020 | `AI_RUN_TIMEOUT`                  |  504 | 是         | Run 总时限到达                                 |
 | 6021 | `AI_SCHEDULE_INVALID`             |  400 | 否         | Cron/时区/交易日规则无效                       |

@@ -1,4 +1,4 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
+import { ApiProperty } from '@nestjs/swagger'
 import { CalendarEventType } from './calendar-query.dto'
 
 export class CalendarEventDto {
@@ -6,6 +6,7 @@ export class CalendarEventDto {
   tsCode: string
   stockName: string | null
   type: CalendarEventType
+  subType?: string
   title: string
   detail: Record<string, unknown>
   impactScore: number | null

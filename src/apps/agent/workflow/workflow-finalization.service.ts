@@ -68,7 +68,10 @@ export class WorkflowFinalizationService {
                   citationIds,
                   asOf: { retrievedAt },
                   timezone: command.facts[0]?.timezone ?? 'Asia/Shanghai',
-                  qualityFlags: warnings.map((_, index) => `WORKFLOW_WARNING_${index + 1}`),
+                  qualityFlags:
+                    warnings.length > 0
+                      ? [`数据提示：本回答有 ${warnings.length} 项数据限制，具体说明见正文“数据限制”。`]
+                      : [],
                 },
               }
             : {}),

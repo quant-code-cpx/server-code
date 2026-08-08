@@ -125,9 +125,29 @@ describe('Auth — 真实 Redis 集成测试', () => {
       providers: [
         AuthService,
         { provide: PrismaService, useValue: prisma },
-        { provide: TokenService, useValue: { generateTokens: jest.fn(), verifyRefreshToken: jest.fn(), isRefreshTokenValid: jest.fn(), generateAccessToken: jest.fn(), revokeRefreshToken: jest.fn(), blacklistAccessToken: jest.fn(), deleteRefreshToken: jest.fn() } },
+        {
+          provide: TokenService,
+          useValue: {
+            generateTokens: jest.fn(),
+            verifyRefreshToken: jest.fn(),
+            consumeRefreshToken: jest.fn(),
+            generateAccessToken: jest.fn(),
+            blacklistAccessToken: jest.fn(),
+            deleteRefreshToken: jest.fn(),
+          },
+        },
         { provide: REDIS_CLIENT, useValue: redis },
-        { provide: LoggerService, useValue: { log: () => {}, warn: () => {}, error: () => {}, debug: () => {}, verbose: () => {}, devLog: () => {} } },
+        {
+          provide: LoggerService,
+          useValue: {
+            log: () => {},
+            warn: () => {},
+            error: () => {},
+            debug: () => {},
+            verbose: () => {},
+            devLog: () => {},
+          },
+        },
       ],
     }).compile()
     service = module.get<AuthService>(AuthService)
@@ -170,7 +190,11 @@ describe('Auth — 真实 Redis 集成测试', () => {
     if (skipWhenRedisUnavailable()) return
     const c = await service.generateCaptcha()
     const code = await redis.get(`auth:captcha:${c.captchaId}`)
-    try { await service.login({ account: 'qa_tester', password: 'wrong', captchaId: c.captchaId, captchaCode: code! }) } catch (e) { expect(e).toBeInstanceOf(BusinessException) }
+    try {
+      await service.login({ account: 'qa_tester', password: 'wrong', captchaId: c.captchaId, captchaCode: code! })
+    } catch (e) {
+      expect(e).toBeInstanceOf(BusinessException)
+    }
     expect(await redis.get('auth:login:fail:qa_tester')).toBe('1')
   })
 
@@ -181,14 +205,18 @@ describe('Auth — 真实 Redis 集成测试', () => {
     for (let i = 0; i < 4; i++) {
       const c = await service.generateCaptcha()
       const code = await redis.get(`auth:captcha:${c.captchaId}`)
-      try { await service.login({ account: 'qa_tester', password: 'wrong', captchaId: c.captchaId, captchaCode: code! }) } catch (e) {}
+      try {
+        await service.login({ account: 'qa_tester', password: 'wrong', captchaId: c.captchaId, captchaCode: code! })
+      } catch (e) {}
     }
     expect(Number(await redis.get('auth:login:fail:qa_tester'))).toBe(4)
     expect(await redis.exists('auth:login:lock:qa_tester')).toBe(0)
 
     const c = await service.generateCaptcha()
     const code = await redis.get(`auth:captcha:${c.captchaId}`)
-    try { await service.login({ account: 'qa_tester', password: 'wrong', captchaId: c.captchaId, captchaCode: code! }) } catch (e) {}
+    try {
+      await service.login({ account: 'qa_tester', password: 'wrong', captchaId: c.captchaId, captchaCode: code! })
+    } catch (e) {}
     expect(await redis.exists('auth:login:lock:qa_tester')).toBe(1)
     expect(await redis.get('auth:login:fail:qa_tester')).toBeNull()
   })
@@ -197,7 +225,9 @@ describe('Auth — 真实 Redis 集成测试', () => {
     if (skipWhenRedisUnavailable()) return
     const c = await service.generateCaptcha()
     const code = await redis.get(`auth:captcha:${c.captchaId}`)
-    try { await service.login({ account: 'no_user', password: 'any', captchaId: c.captchaId, captchaCode: code! }) } catch (e) {}
+    try {
+      await service.login({ account: 'no_user', password: 'any', captchaId: c.captchaId, captchaCode: code! })
+    } catch (e) {}
     expect(await redis.get('auth:login:fail:no_user')).toBeNull()
   })
 })

@@ -1,10 +1,19 @@
 import { Test, TestingModule } from '@nestjs/testing'
-import { INestApplication, ValidationPipe, ExecutionContext, UnauthorizedException } from '@nestjs/common'
+import {
+  INestApplication,
+  ValidationPipe,
+  ExecutionContext,
+  ForbiddenException,
+  UnauthorizedException,
+} from '@nestjs/common'
+import { Reflector } from '@nestjs/core'
 import request from 'supertest'
 import { UserRole } from '@prisma/client'
 import { TransformInterceptor } from 'src/lifecycle/interceptors/transform.interceptor'
 import { JwtAuthGuard } from 'src/lifecycle/guard/jwt-auth.guard'
 import { RolesGuard } from 'src/lifecycle/guard/roles.guard'
+import { ROLES_KEY } from 'src/common/decorators/roles.decorator'
+import { ROLE_LEVEL } from 'src/constant/user.constant'
 import { TushareAdminController } from '../tushare-admin.controller'
 import { TushareSyncService } from 'src/tushare/sync/sync.service'
 import { DataQualityService } from 'src/tushare/sync/quality/data-quality.service'
@@ -15,6 +24,7 @@ import { SyncStatusOverviewService } from 'src/tushare/sync/sync-status-overview
 import { PrismaService } from 'src/shared/prisma.service'
 
 const superAdminUser = { id: 1, account: 'admin', nickname: 'Admin', role: UserRole.SUPER_ADMIN, jti: 'jti-1' }
+let activeUserRole: UserRole = UserRole.SUPER_ADMIN
 
 const mockJwtGuard = {
   canActivate: jest.fn((context: ExecutionContext) => {
@@ -25,7 +35,20 @@ const mockJwtGuard = {
 }
 
 const mockRolesGuard = {
-  canActivate: jest.fn(() => true),
+  canActivate: jest.fn((context: ExecutionContext) => {
+    const request = context.switchToHttp().getRequest()
+    request.user = { ...superAdminUser, role: activeUserRole }
+    const required = new Reflector().getAllAndOverride<UserRole[]>(ROLES_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ])
+    if (!required?.length) return true
+    const userLevel = ROLE_LEVEL[activeUserRole] ?? 0
+    if (!required.some((role) => userLevel >= ROLE_LEVEL[role])) {
+      throw new ForbiddenException('权限不足')
+    }
+    return true
+  }),
 }
 
 const mockTushareSyncService = {
@@ -57,6 +80,7 @@ const mockSyncLogService = {
 
 const mockSyncStatusOverviewService = {
   getOverview: jest.fn(),
+  refresh: jest.fn(),
 }
 
 const mockPrismaService = {
@@ -101,7 +125,34 @@ describe('TushareAdminController', () => {
   })
 
   afterAll(async () => app.close())
-  beforeEach(() => jest.clearAllMocks())
+  beforeEach(() => {
+    jest.clearAllMocks()
+    activeUserRole = UserRole.SUPER_ADMIN
+  })
+
+  it('[OPS-B01] controller 默认允许 ADMIN 读取，写方法单独要求 SUPER_ADMIN', () => {
+    expect(Reflect.getMetadata(ROLES_KEY, TushareAdminController)).toEqual([UserRole.ADMIN])
+
+    const writeMethods: Array<keyof TushareAdminController> = [
+      'manualSync',
+      'triggerQualityCheck',
+      'runCrossTableCheck',
+      'triggerAutoRepair',
+      'resetRetryQueue',
+    ]
+    writeMethods.forEach((method) => {
+      expect(Reflect.getMetadata(ROLES_KEY, TushareAdminController.prototype[method])).toEqual([UserRole.SUPER_ADMIN])
+    })
+  })
+
+  it('[OPS-B01] ADMIN 可读取计划，但不能触发同步', async () => {
+    activeUserRole = UserRole.ADMIN
+    mockTushareSyncService.getAvailableSyncPlans.mockResolvedValueOnce([])
+
+    await request(app.getHttpServer()).post('/tushare/admin/plans').send({}).expect(201)
+    await request(app.getHttpServer()).post('/tushare/admin/sync').send({ mode: 'incremental' }).expect(403)
+    expect(mockTushareSyncService.triggerManualSyncAsync).not.toHaveBeenCalled()
+  })
 
   it('POST /tushare/admin/plans → 201 with code 200000', async () => {
     const mockPlans = [{ name: 'DAILY', description: '日线行情' }]
@@ -156,7 +207,19 @@ describe('TushareAdminController', () => {
   })
 
   // ── 补充：缺失端点冒烟 ──────────────────────────────────────────────
-  const eps: Array<[string, keyof typeof mockDataQualityService | keyof typeof mockSyncLogService | keyof typeof mockTushareSyncService | keyof typeof mockCrossTableCheckService | keyof typeof mockAutoRepairService, Record<string,unknown>]> = [
+  const eps: Array<
+    [
+      string,
+      (
+        | keyof typeof mockDataQualityService
+        | keyof typeof mockSyncLogService
+        | keyof typeof mockTushareSyncService
+        | keyof typeof mockCrossTableCheckService
+        | keyof typeof mockAutoRepairService
+      ),
+      Record<string, unknown>,
+    ]
+  > = [
     ['/tushare/admin/quality/report', 'getRecentChecks', {}],
     ['/tushare/admin/quality/gaps', 'getDataGaps', { dataSet: 'daily' }],
     ['/tushare/admin/quality/cross-check', 'runAllCrossChecks', {}],
@@ -180,7 +243,10 @@ describe('TushareAdminController', () => {
   eps.forEach(([path, svcKey]) => {
     it(`[BIZ] POST ${path} → 200/202`, async () => {
       const mockFn = qualityMocks[svcKey as string]
-      if (mockFn) mockFn.mockResolvedValueOnce(svcKey === 'summarizeLogs' || svcKey === 'getDataGaps' || svcKey === 'getRecentChecks' ? [] : {})
+      if (mockFn)
+        mockFn.mockResolvedValueOnce(
+          svcKey === 'summarizeLogs' || svcKey === 'getDataGaps' || svcKey === 'getRecentChecks' ? [] : {},
+        )
       const body = svcKey === 'getDataGaps' ? { dataSet: 'daily' } : {}
       const res = await request(app.getHttpServer()).post(path).send(body)
       expect(res.status).toBeGreaterThanOrEqual(200)
@@ -217,6 +283,30 @@ describe('TushareAdminController', () => {
     const res = await request(app.getHttpServer()).post('/tushare/admin/retry-queue').send({})
     expect(res.status).toBeGreaterThanOrEqual(200)
     expect(res.status).toBeLessThan(400)
+  })
+
+  it('[OPS-B03] retry task 条件参与服务端 count 与分页查询', async () => {
+    mockPrismaService.tushareSyncRetryQueue.count.mockResolvedValueOnce(1)
+    mockPrismaService.tushareSyncRetryQueue.findMany.mockResolvedValueOnce([])
+
+    await request(app.getHttpServer())
+      .post('/tushare/admin/retry-queue')
+      .send({ task: 'DAILY', page: 2, pageSize: 20 })
+      .expect(201)
+
+    const expectedWhere = { task: { in: expect.arrayContaining(['DAILY', 'DAILY_BASIC', 'DAILY_INFO']) } }
+    expect(mockPrismaService.tushareSyncRetryQueue.count).toHaveBeenCalledWith({ where: expectedWhere })
+    expect(mockPrismaService.tushareSyncRetryQueue.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expectedWhere, skip: 20, take: 20 }),
+    )
+  })
+
+  it('[OPS-B04] reset response 返回实际更新 count', async () => {
+    mockPrismaService.tushareSyncRetryQueue.updateMany.mockResolvedValueOnce({ count: 3 })
+
+    const res = await request(app.getHttpServer()).post('/tushare/admin/retry-queue/reset').send({}).expect(201)
+
+    expect(res.body.data).toEqual({ message: '已重置 3 条记录为 PENDING', count: 3 })
   })
 
   // DTO 校验

@@ -58,10 +58,9 @@ function buildTokenServiceMock() {
     })),
     generateAccessToken: jest.fn(async () => 'mock-access-token'),
     verifyRefreshToken: jest.fn(async () => ({ id: 1, account: 'admin', jti: 'mock-jti' })),
-    revokeRefreshToken: jest.fn(async () => undefined),
+    consumeRefreshToken: jest.fn(async () => 'valid' as const),
     deleteRefreshToken: jest.fn(async () => undefined),
     blacklistAccessToken: jest.fn(async () => undefined),
-    isRefreshTokenValid: jest.fn(async () => 'valid' as const),
   }
 }
 
@@ -342,7 +341,7 @@ describe('AuthService', () => {
     it('Redis 中 token 无效（invalid）→ 抛出 INVALID_REFRESH_TOKEN', async () => {
       const tokenService = buildTokenServiceMock()
       tokenService.verifyRefreshToken.mockResolvedValue({ id: 1, account: 'admin', jti: 'jti1' } as never)
-      tokenService.isRefreshTokenValid.mockResolvedValue('invalid' as never)
+      tokenService.consumeRefreshToken.mockResolvedValue('invalid' as never)
 
       const service = createService(undefined, tokenService)
       await expect(service.refreshToken('old-token')).rejects.toThrow(BusinessException)
@@ -351,13 +350,16 @@ describe('AuthService', () => {
     it('宽限期内（grace）→ 只返回新 accessToken，refreshToken 为 null', async () => {
       const prisma = buildPrismaMock()
       prisma.user.findUnique.mockResolvedValue({
-        id: 1, account: 'admin', status: UserStatus.ACTIVE,
-        nickname: 'Admin', role: 'ADMIN',
+        id: 1,
+        account: 'admin',
+        status: UserStatus.ACTIVE,
+        nickname: 'Admin',
+        role: 'ADMIN',
       } as never)
 
       const tokenService = buildTokenServiceMock()
       tokenService.verifyRefreshToken.mockResolvedValue({ id: 1, account: 'admin', jti: 'jti1' } as never)
-      tokenService.isRefreshTokenValid.mockResolvedValue('grace' as never)
+      tokenService.consumeRefreshToken.mockResolvedValue('grace' as never)
 
       const service = createService(prisma, tokenService)
       const result = await service.refreshToken('grace-token')
@@ -367,21 +369,24 @@ describe('AuthService', () => {
       expect(result.refreshTokenTTL).toBe(0)
     })
 
-    it('正常 token → 轮换：撤销旧 RT 并返回新 token 对', async () => {
+    it('正常 token → 原子消费旧 RT 并返回新 token 对', async () => {
       const prisma = buildPrismaMock()
       prisma.user.findUnique.mockResolvedValue({
-        id: 1, account: 'admin', status: UserStatus.ACTIVE,
-        nickname: 'Admin', role: 'ADMIN',
+        id: 1,
+        account: 'admin',
+        status: UserStatus.ACTIVE,
+        nickname: 'Admin',
+        role: 'ADMIN',
       } as never)
 
       const tokenService = buildTokenServiceMock()
       tokenService.verifyRefreshToken.mockResolvedValue({ id: 1, account: 'admin', jti: 'jti1' } as never)
-      tokenService.isRefreshTokenValid.mockResolvedValue('valid' as never)
+      tokenService.consumeRefreshToken.mockResolvedValue('valid' as never)
 
       const service = createService(prisma, tokenService)
       const result = await service.refreshToken('valid-refresh-token')
 
-      expect(tokenService.revokeRefreshToken).toHaveBeenCalledWith(1, 'jti1')
+      expect(tokenService.consumeRefreshToken).toHaveBeenCalledWith(1, 'jti1')
       expect(result.accessToken).toBeTruthy()
       expect(result.refreshToken).toBeTruthy()
     })
@@ -593,7 +598,7 @@ describe('AuthService', () => {
 
       const tokenService = buildTokenServiceMock()
       tokenService.verifyRefreshToken.mockResolvedValue({ id: 1, account: 'admin', jti: 'jti1' } as never)
-      tokenService.isRefreshTokenValid.mockResolvedValue('valid' as never)
+      tokenService.consumeRefreshToken.mockResolvedValue('valid' as never)
 
       const service = createService(prisma, tokenService)
       await expect(service.refreshToken('valid-token')).rejects.toThrow(BusinessException)
@@ -611,7 +616,7 @@ describe('AuthService', () => {
 
       const tokenService = buildTokenServiceMock()
       tokenService.verifyRefreshToken.mockResolvedValue({ id: 1, account: 'admin', jti: 'jti1' } as never)
-      tokenService.isRefreshTokenValid.mockResolvedValue('grace' as never)
+      tokenService.consumeRefreshToken.mockResolvedValue('grace' as never)
 
       const service = createService(prisma, tokenService)
       // 宽限期内但用户已被禁用，不得返回新 token

@@ -165,4 +165,16 @@ describe('PortfolioAnalyticsToolFacade', () => {
       facade.analyze(7, { portfolioId: 'p-1', sections: ['DRIFT'], targetWeights: { '000001.SZ': Number.NaN } }),
     ).rejects.toMatchObject({ code: 'INVALID_ARGUMENT' })
   })
+
+  it('[REG] 未提供目标权重时仅将 DRIFT 标记为未就绪，不阻断其他组合分析', async () => {
+    const { facade } = harness()
+
+    const result = await facade.analyze(7, {
+      portfolioId: 'p-1',
+      sections: ['OVERVIEW', 'DRIFT'],
+    })
+
+    expect(result.data.overview.status).toBe('OK')
+    expect(result.data.drift).toMatchObject({ status: 'NOT_READY' })
+  })
 })

@@ -2,8 +2,8 @@ import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { AiVersionStatus, Prisma, PrismaClient, UserRole } from '@prisma/client'
 import { WorkflowRegistryService } from 'src/apps/agent/workflow/workflow-registry.service'
-import { CONVERSATION_SUMMARY_PROMPT_V1 } from 'src/apps/agent/memory/conversation-summary.prompt'
-import { STOCK_RESEARCH_WORKFLOW_DEFINITIONS } from 'src/apps/agent/workflow/workflows/stock-research.v10'
+import { CONVERSATION_SUMMARY_PROMPT_V2 } from 'src/apps/agent/memory/conversation-summary.prompt'
+import { STOCK_RESEARCH_WORKFLOW_DEFINITIONS } from 'src/apps/agent/workflow/workflows/stock-research.v11'
 
 loadDatabaseUrl()
 const prisma = new PrismaClient()
@@ -30,7 +30,7 @@ async function main(): Promise<void> {
       seenPrompts.add(key)
       prompts.push(await ensurePromptVersion(tx, snapshot.prompt, publisher.id))
     }
-    const summaryPrompt = await ensurePromptVersion(tx, CONVERSATION_SUMMARY_PROMPT_V1, publisher.id)
+    const summaryPrompt = await ensurePromptVersion(tx, CONVERSATION_SUMMARY_PROMPT_V2, publisher.id)
     const workflows = []
     for (const snapshot of snapshots) workflows.push(await ensureWorkflowVersion(tx, snapshot, publisher.id))
     return { prompts, summaryPrompt, workflows }

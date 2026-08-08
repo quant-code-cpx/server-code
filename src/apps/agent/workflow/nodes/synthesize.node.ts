@@ -25,7 +25,7 @@ export class SynthesizeNode implements WorkflowNodeHandler {
       budget: this.models.resolveInputTokenBudget(modelProfile, state.budget, limits),
       purpose: 'SYNTHESIZE',
       instruction:
-        'Answer the latest user message concisely. Every factual claim must cite existing factIds. Never invent a factId. Search snippets are not citable evidence. For rankings, show at most the requested top N and do not repeat raw tool payloads.',
+        'Answer the latest user message concisely in Simplified Chinese. Every factual claim must cite existing factIds. Never invent a factId. Search snippets are not citable evidence. For rankings, show at most the requested top N and do not repeat raw tool payloads. All user-facing data limitations must explain the business impact in Chinese; never expose tool names, database tables, parameter names, workflow codes, fact IDs, or internal quality labels.',
       stageData: { planSummary: state.plan.summary, warnings: state.warnings },
       toolFacts: citableFacts,
     })

@@ -91,7 +91,7 @@ describe('ScheduledResearchService scanner', () => {
 function createService(repository: Record<string, jest.Mock>, runs: { sendScheduled: jest.Mock }) {
   return new ScheduledResearchService(
     repository as never,
-    { snapshot: jest.fn() } as never,
+    { snapshot: jest.fn().mockReturnValue({ maxModelCalls: 4 }) } as never,
     runs as never,
     { enabled: true, pollMs: 60_000, leaseMs: 120_000, batchSize: 100, maxTasksPerUser: 50 },
     { error: jest.fn(), log: jest.fn() } as never,

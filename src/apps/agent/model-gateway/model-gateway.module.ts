@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common'
 import { ConfigModule } from '@nestjs/config'
-import { ModelConfig, type AgentModelProviderConfig, type IModelConfig } from 'src/config/model.config'
+import { ModelConfig, type IModelConfig } from 'src/config/model.config'
 import { ModelCapabilityRegistry } from './model-capability.registry'
 import {
   MODEL_GATEWAY,
@@ -10,23 +10,24 @@ import {
   type ModelProvider,
 } from './model-gateway.port'
 import { ModelGatewayService } from './model-gateway.service'
-import { FakeModelProvider } from './providers/fake-model.provider'
-import { OpenAiCompatibleProvider } from './providers/openai-compatible.provider'
+import { createModelProvider } from './model-provider.factory'
 import { ModelRouterService } from './model-router.service'
 import { ProviderHealthService } from './provider-health.service'
 import { AgentObservabilityModule } from '../observability/agent-observability.module'
 import { AgentMetricsService } from '../observability/agent-metrics.service'
 import { ModelProviderConfigService } from './model-provider-config.service'
+import { ModelProviderConsoleService } from './model-provider-console.service'
 
 @Module({
   imports: [ConfigModule.forFeature(ModelConfig), AgentObservabilityModule],
   providers: [
     ModelProviderConfigService,
+    ModelProviderConsoleService,
     {
       provide: MODEL_PROVIDERS,
       inject: [ModelConfig.KEY],
       useFactory: (config: IModelConfig): ModelProvider[] =>
-        config.source === 'database' ? [] : config.providers.map(createProvider),
+        config.source === 'database' ? [] : config.providers.map(createModelProvider),
     },
     {
       provide: MODEL_PROVIDER,
@@ -47,10 +48,7 @@ import { ModelProviderConfigService } from './model-provider-config.service'
     ModelRouterService,
     ProviderHealthService,
     ModelProviderConfigService,
+    ModelProviderConsoleService,
   ],
 })
 export class ModelGatewayModule {}
-
-function createProvider(config: AgentModelProviderConfig): ModelProvider {
-  return config.kind === 'fake' ? new FakeModelProvider(config) : new OpenAiCompatibleProvider(config)
-}

@@ -57,7 +57,7 @@ export enum ErrorEnum {
   AI_SEARCH_FAILED = '6015:联网搜索失败',
   AI_WEB_SOURCE_BLOCKED = '6016:网页来源被安全策略拦截',
   AI_CITATION_INVALID = '6017:引用验证失败',
-  AI_CONTEXT_TOO_LARGE = '6018:上下文超过模型限制',
+  AI_RUN_INPUT_TOKEN_GUARDRAIL_EXCEEDED = '6018:Agent Run 累计输入 Token 成本护栏已达上限',
   AI_COST_QUOTA_EXCEEDED = '6019:Agent 成本额度不足',
   AI_RUN_TIMEOUT = '6020:Agent Run 超时',
   AI_SCHEDULE_INVALID = '6021:Agent 计划配置无效',
@@ -90,6 +90,21 @@ export enum ErrorEnum {
   AI_MODEL_CONTEXT_INCOMPATIBLE = '6048:当前会话无法装入所选模型的上下文窗口',
   AI_CURRENT_INPUT_TOO_LARGE = '6049:当前输入本身超过所选模型的上下文窗口',
   AI_INTERNAL_ERROR = '6099:Agent 内部错误',
+
+  NEWS_ARTICLE_NOT_FOUND = '7001:新闻文章不存在',
+  NEWS_CURSOR_INVALID = '7002:新闻分页游标无效',
+  NEWS_CURSOR_EXPIRED = '7003:新闻分页游标已过期',
+  NEWS_CURSOR_FILTER_MISMATCH = '7004:新闻分页条件已变化',
+  NEWS_DATE_RANGE_INVALID = '7005:新闻日期范围不合法',
+  NEWS_DATE_RANGE_TOO_LARGE = '7006:新闻日期范围超过 90 天',
+  NEWS_SCOPE_SECURITY_CODES_REQUIRED = '7007:指定证券范围必须提供证券代码',
+  NEWS_SCOPE_SECURITY_CODES_CONFLICT = '7008:当前新闻范围不允许提供证券代码',
+  NEWS_PROVIDER_OR_FEED_NOT_FOUND = '7009:新闻 Provider 或 Feed 未注册',
+  NEWS_PROVIDER_DISABLED = '7010:新闻 Provider 或 Feed 已关闭',
+  NEWS_INGESTION_COMMAND_NOT_FOUND = '7011:新闻采集命令不存在',
+  NEWS_IDEMPOTENCY_CONFLICT = '7012:新闻采集幂等请求冲突',
+  NEWS_TEMPORARILY_UNAVAILABLE = '7013:新闻服务暂时不可用',
+  NEWS_MODULE_DISABLED = '7014:新闻模块未启用',
 }
 
 export const SUCCESS_CODE = 0

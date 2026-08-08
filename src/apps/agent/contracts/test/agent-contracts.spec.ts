@@ -75,6 +75,18 @@ describe('Agent 公共契约', () => {
     }
   })
 
+  it('旧版 agent.planning 事件缺少公开决策字段时仍可回放', () => {
+    const fixture = AGENT_EVENT_FIXTURES.find((event) => event.type === 'agent.planning')
+    if (!fixture || fixture.type !== 'agent.planning') throw new Error('agent.planning fixture 缺失')
+    const { decision: _decision, ...legacyPayload } = fixture.payload
+    expect(_decision).toBeDefined()
+
+    expect(parseAgentSseEvent({ ...fixture, payload: legacyPayload })).toEqual({
+      ...fixture,
+      payload: legacyPayload,
+    })
+  })
+
   it('未知 SSE event type 返回 typed protocol error', () => {
     expect(() => parseAgentSseEvent({ ...AGENT_EVENT_FIXTURES[0], type: 'agent.unknown' })).toThrow(AgentProtocolError)
   })
@@ -94,6 +106,7 @@ describe('Agent 公共契约', () => {
 
   it('结构化块缺 provenance 时拒绝', () => {
     const { provenance: _provenance, ...invalid } = MESSAGE_BLOCK_FIXTURES[1]
+    expect(_provenance).toBeDefined()
     expect(() => parseMessageBlock(invalid)).toThrow(AgentProtocolError)
   })
 

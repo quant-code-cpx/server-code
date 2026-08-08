@@ -18,6 +18,7 @@ import { AgentObservabilityConfig, IAgentObservabilityConfig } from './agent-obs
 import { CronLockConfig, ICronLockConfig } from './cron-lock.config'
 import { ShutdownConfig, IShutdownConfig } from './shutdown.config'
 import { AgentRetrievalConfig, IAgentRetrievalConfig } from './agent-retrieval.config'
+import { NewsConfig, INewsConfig } from './news.config'
 
 export * from './app.config'
 export * from './token.config'
@@ -39,6 +40,7 @@ export * from './agent-observability.config'
 export * from './cron-lock.config'
 export * from './shutdown.config'
 export * from './agent-retrieval.config'
+export * from './news.config'
 
 export type AllConfigType = {
   app: IAppConfig
@@ -61,6 +63,7 @@ export type AllConfigType = {
   cronLock: ICronLockConfig
   shutdown: IShutdownConfig
   agentRetrieval: IAgentRetrievalConfig
+  news: INewsConfig
 }
 
 const configs = {
@@ -84,6 +87,7 @@ const configs = {
   CronLockConfig,
   ShutdownConfig,
   AgentRetrievalConfig,
+  NewsConfig,
 }
 
 export default configs

@@ -63,4 +63,26 @@ describe('SectorToolFacade', () => {
     ])
     expect(value.asOf).toBe('2024-06-30')
   })
+
+  it('[SMT-EDGE-006] 未指定类型的历史归属仅降级排除概念，保留行业与指数', async () => {
+    const prisma = {
+      indexMemberAll: { findMany: jest.fn().mockResolvedValue([]) },
+      indexWeight: { findMany: jest.fn().mockResolvedValue([]) },
+      thsMember: { findMany: jest.fn() },
+    }
+    const facade = new SectorToolFacade(prisma as never)
+
+    const value = await facade.membership({
+      mode: 'SECTORS_FOR_SECURITY',
+      tsCode: '300059.SZ',
+      effectiveDate: '2024-06-30',
+      limit: 100,
+    })
+
+    expect(value.warningCodes).toEqual(['THS_CONCEPT_HISTORY_OMITTED'])
+    expect(value.sourceModels).toEqual(['IndexMemberAll', 'IndexWeight', 'StockBasic'])
+    expect(prisma.indexMemberAll.findMany).toHaveBeenCalled()
+    expect(prisma.indexWeight.findMany).toHaveBeenCalled()
+    expect(prisma.thsMember.findMany).not.toHaveBeenCalled()
+  })
 })

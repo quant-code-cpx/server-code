@@ -22,7 +22,14 @@ import { PUBLIC_KEY } from 'src/constant/auth.constant'
 import { buildTestUser } from 'test/helpers/create-test-app'
 
 function createMockLoggerService(): LoggerService {
-  return { log: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn(), verbose: jest.fn(), devLog: jest.fn() } as unknown as LoggerService
+  return {
+    log: jest.fn(),
+    warn: jest.fn(),
+    error: jest.fn(),
+    debug: jest.fn(),
+    verbose: jest.fn(),
+    devLog: jest.fn(),
+  } as unknown as LoggerService
 }
 
 describe('AlertController — DTO校验 + Guard权限 + 接口契约', () => {
@@ -100,24 +107,15 @@ describe('AlertController — DTO校验 + Guard权限 + 接口契约', () => {
   // ══════════════════════════════════════════════════════════════════════════
   describe('事件日历', () => {
     it('calendar/list 正常查询', async () => {
-      await httpRequest
-        .post('/alert/calendar/list')
-        .send({ startDate: '20260501', endDate: '20260523' })
-        .expect(201)
+      await httpRequest.post('/alert/calendar/list').send({ startDate: '20260501', endDate: '20260523' }).expect(201)
     })
 
     it('calendar/list 缺少 startDate → 400', async () => {
-      await httpRequest
-        .post('/alert/calendar/list')
-        .send({ endDate: '20260523' })
-        .expect(400)
+      await httpRequest.post('/alert/calendar/list').send({ endDate: '20260523' }).expect(400)
     })
 
     it('calendar/list 日期格式错误 → 400', async () => {
-      await httpRequest
-        .post('/alert/calendar/list')
-        .send({ startDate: 'abc', endDate: '20260523' })
-        .expect(400)
+      await httpRequest.post('/alert/calendar/list').send({ startDate: 'abc', endDate: '20260523' }).expect(400)
     })
 
     it('calendar/list keyword 搜索', async () => {
@@ -141,6 +139,28 @@ describe('AlertController — DTO校验 + Guard权限 + 接口契约', () => {
         .expect(201)
     })
 
+    it('CAL-B01/B02 calendar/list 接受 7 类事件与范围字段且不被 whitelist 剥离', async () => {
+      await httpRequest
+        .post('/alert/calendar/list')
+        .send({
+          startDate: '20260501',
+          endDate: '20260523',
+          types: ['DISCLOSURE', 'FLOAT', 'DIVIDEND', 'FORECAST', 'IPO', 'CONVERTIBLE', 'SHAREHOLDER'],
+          scope: 'WATCHLIST',
+          watchlistId: 7,
+        })
+        .expect(201)
+
+      expect(mockCalendar.getCalendar).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          scope: 'WATCHLIST',
+          watchlistId: 7,
+          types: expect.arrayContaining(['IPO', 'CONVERTIBLE', 'SHAREHOLDER']),
+        }),
+        expect.any(Number),
+      )
+    })
+
     it('calendar/history-trend 正常查询', async () => {
       await httpRequest
         .post('/alert/calendar/history-trend')
@@ -149,17 +169,11 @@ describe('AlertController — DTO校验 + Guard权限 + 接口契约', () => {
     })
 
     it('calendar/history-trend 缺少 tsCode → 400', async () => {
-      await httpRequest
-        .post('/alert/calendar/history-trend')
-        .send({ type: 'DIVIDEND' })
-        .expect(400)
+      await httpRequest.post('/alert/calendar/history-trend').send({ type: 'DIVIDEND' }).expect(400)
     })
 
     it('calendar/history-trend 无效 type → 400', async () => {
-      await httpRequest
-        .post('/alert/calendar/history-trend')
-        .send({ tsCode: '000001.SZ', type: 'INVALID' })
-        .expect(400)
+      await httpRequest.post('/alert/calendar/history-trend').send({ tsCode: '000001.SZ', type: 'INVALID' }).expect(400)
     })
   })
 
@@ -168,45 +182,27 @@ describe('AlertController — DTO校验 + Guard权限 + 接口契约', () => {
   // ══════════════════════════════════════════════════════════════════════════
   describe('异动监控', () => {
     it('anomalies/list 正常查询', async () => {
-      await httpRequest
-        .post('/alert/anomalies/list')
-        .send({ tradeDate: '20260522' })
-        .expect(201)
+      await httpRequest.post('/alert/anomalies/list').send({ tradeDate: '20260522' }).expect(201)
     })
 
     it('anomalies/summary 查询', async () => {
-      await httpRequest
-        .post('/alert/anomalies/summary')
-        .send({ tradeDate: '20260522' })
-        .expect(201)
+      await httpRequest.post('/alert/anomalies/summary').send({ tradeDate: '20260522' }).expect(201)
     })
 
     it('anomalies/detail 查询', async () => {
-      await httpRequest
-        .post('/alert/anomalies/detail')
-        .send({ anomalyId: 1 })
-        .expect(201)
+      await httpRequest.post('/alert/anomalies/detail').send({ anomalyId: 1 }).expect(201)
     })
 
     it('anomalies/list 按 type 过滤', async () => {
-      await httpRequest
-        .post('/alert/anomalies/list')
-        .send({ type: 'VOLUME_SURGE' })
-        .expect(201)
+      await httpRequest.post('/alert/anomalies/list').send({ type: 'VOLUME_SURGE' }).expect(201)
     })
 
     it('anomalies/list 日期格式错误 → 400', async () => {
-      await httpRequest
-        .post('/alert/anomalies/list')
-        .send({ tradeDate: 'abc' })
-        .expect(400)
+      await httpRequest.post('/alert/anomalies/list').send({ tradeDate: 'abc' }).expect(400)
     })
 
     it('anomalies/list sortBy 无效 → 400', async () => {
-      await httpRequest
-        .post('/alert/anomalies/list')
-        .send({ sortBy: 'invalidField' })
-        .expect(400)
+      await httpRequest.post('/alert/anomalies/list').send({ sortBy: 'invalidField' }).expect(400)
     })
   })
 
@@ -215,52 +211,31 @@ describe('AlertController — DTO校验 + Guard权限 + 接口契约', () => {
   // ══════════════════════════════════════════════════════════════════════════
   describe('涨跌停', () => {
     it('limit-list 正常查询', async () => {
-      await httpRequest
-        .post('/alert/limit-list')
-        .send({ tradeDate: '20260522' })
-        .expect(201)
+      await httpRequest.post('/alert/limit-list').send({ tradeDate: '20260522' }).expect(201)
     })
 
     it('limit-list limitType=UP 过滤', async () => {
-      await httpRequest
-        .post('/alert/limit-list')
-        .send({ limitType: 'UP' })
-        .expect(201)
+      await httpRequest.post('/alert/limit-list').send({ limitType: 'UP' }).expect(201)
     })
 
     it('limit-list limitType=DOWN 过滤', async () => {
-      await httpRequest
-        .post('/alert/limit-list')
-        .send({ limitType: 'DOWN' })
-        .expect(201)
+      await httpRequest.post('/alert/limit-list').send({ limitType: 'DOWN' }).expect(201)
     })
 
     it('limit-list 日期格式错误 → 400', async () => {
-      await httpRequest
-        .post('/alert/limit-list')
-        .send({ tradeDate: 'abc' })
-        .expect(400)
+      await httpRequest.post('/alert/limit-list').send({ tradeDate: 'abc' }).expect(400)
     })
 
     it('limit-list pageSize=201 → 自动截断为 200（201 通过）', async () => {
-      await httpRequest
-        .post('/alert/limit-list')
-        .send({ pageSize: 201 })
-        .expect(201)
+      await httpRequest.post('/alert/limit-list').send({ pageSize: 201 }).expect(201)
     })
 
     it('limit-summary range 超限 → 400', async () => {
-      await httpRequest
-        .post('/alert/limit-summary')
-        .send({ range: 31 })
-        .expect(400)
+      await httpRequest.post('/alert/limit-summary').send({ range: 31 }).expect(400)
     })
 
     it('limit-next-day-perf 正常查询', async () => {
-      await httpRequest
-        .post('/alert/limit-next-day-perf')
-        .send({ tradeDate: '20260522' })
-        .expect(201)
+      await httpRequest.post('/alert/limit-next-day-perf').send({ tradeDate: '20260522' }).expect(201)
     })
   })
 
@@ -276,59 +251,42 @@ describe('AlertController — DTO校验 + Guard权限 + 接口契约', () => {
     })
 
     it('创建规则缺 tsCode 且无 watchlistId/portfolioId → 400', async () => {
-      await httpRequest
-        .post('/alert/price-rules')
-        .send({ ruleType: 'PRICE_ABOVE', threshold: 100 })
-        .expect(400)
+      await httpRequest.post('/alert/price-rules').send({ ruleType: 'PRICE_ABOVE', threshold: 100 }).expect(400)
     })
 
     it('创建规则缺 ruleType → 400', async () => {
+      await httpRequest.post('/alert/price-rules').send({ tsCode: '000001.SZ' }).expect(400)
+    })
+
+    it('CAL-B04 创建 EVENT_* 事件订阅规则', async () => {
       await httpRequest
         .post('/alert/price-rules')
-        .send({ tsCode: '000001.SZ' })
-        .expect(400)
+        .send({ tsCode: '000001.SZ', ruleType: 'EVENT_DISCLOSURE', threshold: 3 })
+        .expect(201)
     })
 
     it('列表查询', async () => {
-      await httpRequest
-        .post('/alert/price-rules/list')
-        .send({})
-        .expect(201)
+      await httpRequest.post('/alert/price-rules/list').send({}).expect(201)
     })
 
     it('列表查询按状态过滤', async () => {
-      await httpRequest
-        .post('/alert/price-rules/list')
-        .send({ status: 'ACTIVE' })
-        .expect(201)
+      await httpRequest.post('/alert/price-rules/list').send({ status: 'ACTIVE' }).expect(201)
     })
 
     it('更新规则', async () => {
-      await httpRequest
-        .post('/alert/price-rules/update')
-        .send({ id: 1, threshold: 50 })
-        .expect(201)
+      await httpRequest.post('/alert/price-rules/update').send({ id: 1, threshold: 50 }).expect(201)
     })
 
     it('更新规则缺 id → 400', async () => {
-      await httpRequest
-        .post('/alert/price-rules/update')
-        .send({ threshold: 50 })
-        .expect(400)
+      await httpRequest.post('/alert/price-rules/update').send({ threshold: 50 }).expect(400)
     })
 
     it('删除规则', async () => {
-      await httpRequest
-        .post('/alert/price-rules/delete')
-        .send({ id: 1 })
-        .expect(201)
+      await httpRequest.post('/alert/price-rules/delete').send({ id: 1 }).expect(201)
     })
 
     it('scan-status 查询', async () => {
-      await httpRequest
-        .post('/alert/price-rules/scan-status')
-        .send({})
-        .expect(201)
+      await httpRequest.post('/alert/price-rules/scan-status').send({}).expect(201)
     })
   })
 })

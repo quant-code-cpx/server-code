@@ -66,7 +66,17 @@ export type AgentStartedEvent = AgentEvent<
 >
 export type AgentPlanningEvent = AgentEvent<
   'agent.planning',
-  { intent: string; capabilities: string[]; planSummary: string }
+  {
+    intent: string
+    capabilities: string[]
+    planSummary: string
+    decision?: {
+      toolSelectionReason: string
+      selectedTools: AgentToolKey[]
+      plannedTools: AgentToolKey[]
+      fallback: boolean
+    }
+  }
 >
 export type AgentProgressEvent = AgentEvent<
   'agent.progress',
@@ -122,6 +132,13 @@ export type ModelTracePayload =
       estimatedInputTokens: number
       maxOutputTokens: number
       contextWindow: number
+      inputTokenCountSource: 'OPENAI_INPUT_TOKENS_API' | 'ANTHROPIC_COUNT_TOKENS_API' | 'LOCAL_CONSERVATIVE_V1'
+      inputTokenCountExact: boolean
+      inputTokenSafetyMarginTokens: number
+      runInputReservationTokens: number
+      runMaxCumulativeInputTokens: number | null
+      runInputTokensUsedBeforeCall: number
+      runInputGuardrailSource: 'RUN_SNAPSHOT' | 'LEGACY_RUN' | 'ENV' | 'LEGACY_ENV' | 'DISABLED_BY_DEFAULT'
     }
   | {
       modelCallId: string
@@ -156,6 +173,8 @@ export type ModelCompletedEvent = AgentEvent<
     repaired: boolean
     finishReason: string | null
     usage: { inputTokens: number; outputTokens: number; cachedTokens?: number; reasoningTokens?: number } | null
+    usageSource: 'PROVIDER_ACTUAL' | 'PREFLIGHT_ESTIMATE'
+    accountingWarnings: string[]
   }
 >
 export type ModelFailedEvent = AgentEvent<
@@ -301,6 +320,17 @@ const payloadSchemas: Record<AgentEventType, JsonSchema> = {
       intent: { type: 'string', minLength: 1, maxLength: 500 },
       capabilities: { type: 'array', maxItems: 20, items: { enum: [...AGENT_CAPABILITIES] } },
       planSummary: { type: 'string', minLength: 1, maxLength: 4000 },
+      decision: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['toolSelectionReason', 'selectedTools', 'plannedTools', 'fallback'],
+        properties: {
+          toolSelectionReason: { type: 'string', minLength: 1, maxLength: 500 },
+          selectedTools: { type: 'array', maxItems: 18, items: { enum: [...AGENT_TOOL_KEYS] } },
+          plannedTools: { type: 'array', maxItems: 20, items: { enum: [...AGENT_TOOL_KEYS] } },
+          fallback: { type: 'boolean' },
+        },
+      },
     },
   },
   'agent.progress': {
@@ -407,6 +437,13 @@ const payloadSchemas: Record<AgentEventType, JsonSchema> = {
           'estimatedInputTokens',
           'maxOutputTokens',
           'contextWindow',
+          'inputTokenCountSource',
+          'inputTokenCountExact',
+          'inputTokenSafetyMarginTokens',
+          'runInputReservationTokens',
+          'runMaxCumulativeInputTokens',
+          'runInputTokensUsedBeforeCall',
+          'runInputGuardrailSource',
         ],
         properties: {
           modelCallId: stringIdSchema,
@@ -416,6 +453,17 @@ const payloadSchemas: Record<AgentEventType, JsonSchema> = {
           estimatedInputTokens: nonNegativeIntegerSchema,
           maxOutputTokens: positiveIntegerSchema,
           contextWindow: positiveIntegerSchema,
+          inputTokenCountSource: {
+            enum: ['OPENAI_INPUT_TOKENS_API', 'ANTHROPIC_COUNT_TOKENS_API', 'LOCAL_CONSERVATIVE_V1'],
+          },
+          inputTokenCountExact: { type: 'boolean' },
+          inputTokenSafetyMarginTokens: nonNegativeIntegerSchema,
+          runInputReservationTokens: positiveIntegerSchema,
+          runMaxCumulativeInputTokens: { type: ['integer', 'null'], minimum: 1, maximum: Number.MAX_SAFE_INTEGER },
+          runInputTokensUsedBeforeCall: nonNegativeIntegerSchema,
+          runInputGuardrailSource: {
+            enum: ['RUN_SNAPSHOT', 'LEGACY_RUN', 'ENV', 'LEGACY_ENV', 'DISABLED_BY_DEFAULT'],
+          },
         },
       },
       {
@@ -496,7 +544,18 @@ const payloadSchemas: Record<AgentEventType, JsonSchema> = {
   'model.completed': {
     type: 'object',
     additionalProperties: false,
-    required: ['modelCallId', 'provider', 'model', 'purpose', 'durationMs', 'repaired', 'finishReason', 'usage'],
+    required: [
+      'modelCallId',
+      'provider',
+      'model',
+      'purpose',
+      'durationMs',
+      'repaired',
+      'finishReason',
+      'usage',
+      'usageSource',
+      'accountingWarnings',
+    ],
     properties: {
       modelCallId: stringIdSchema,
       provider: { type: 'string', minLength: 1, maxLength: 128 },
@@ -515,6 +574,12 @@ const payloadSchemas: Record<AgentEventType, JsonSchema> = {
           cachedTokens: nonNegativeIntegerSchema,
           reasoningTokens: nonNegativeIntegerSchema,
         },
+      },
+      usageSource: { enum: ['PROVIDER_ACTUAL', 'PREFLIGHT_ESTIMATE'] },
+      accountingWarnings: {
+        type: 'array',
+        maxItems: 20,
+        items: { type: 'string', minLength: 1, maxLength: 1_000 },
       },
     },
   },
@@ -652,7 +717,17 @@ export const AGENT_EVENT_FIXTURES: AgentSseEvent[] = [
   {
     ...eventBase,
     type: 'agent.planning',
-    payload: { intent: 'stock_research', capabilities: ['INTERNAL_DATA'], planSummary: '读取行情并计算指标' },
+    payload: {
+      intent: 'stock_research',
+      capabilities: ['INTERNAL_DATA'],
+      planSummary: '读取行情并计算指标',
+      decision: {
+        toolSelectionReason: '需要先读取行情，再核验技术指标。',
+        selectedTools: ['get_stock_price_history', 'get_stock_technical_indicators'],
+        plannedTools: ['get_stock_price_history', 'get_stock_technical_indicators'],
+        fallback: false,
+      },
+    },
   },
   {
     ...eventBase,
@@ -738,6 +813,13 @@ export const AGENT_EVENT_FIXTURES: AgentSseEvent[] = [
       estimatedInputTokens: 1_024,
       maxOutputTokens: 2_048,
       contextWindow: 32_768,
+      inputTokenCountSource: 'LOCAL_CONSERVATIVE_V1',
+      inputTokenCountExact: false,
+      inputTokenSafetyMarginTokens: 128,
+      runInputReservationTokens: 4_096,
+      runMaxCumulativeInputTokens: null,
+      runInputTokensUsedBeforeCall: 0,
+      runInputGuardrailSource: 'DISABLED_BY_DEFAULT',
     },
   },
   {
@@ -778,6 +860,8 @@ export const AGENT_EVENT_FIXTURES: AgentSseEvent[] = [
       repaired: false,
       finishReason: 'stop',
       usage: { inputTokens: 1_000, outputTokens: 500, reasoningTokens: 120 },
+      usageSource: 'PROVIDER_ACTUAL',
+      accountingWarnings: [],
     },
   },
   {

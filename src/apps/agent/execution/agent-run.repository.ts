@@ -147,6 +147,83 @@ export class AgentRunRepository {
     return run
   }
 
+  async expireOverdueRuns(limit = this.config.replayLimit): Promise<number> {
+    const startedAt = Date.now()
+    requirePositiveInteger(limit, 'limit', 1_000)
+    const rows = await this.prisma.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+      SELECT "id"
+      FROM "ai_agent_runs"
+      WHERE "deadline_at" <= clock_timestamp()
+        AND "status" IN ('QUEUED', 'RUNNING', 'CANCEL_REQUESTED')
+        AND ("lease_expires_at" IS NULL OR "lease_expires_at" <= clock_timestamp())
+      ORDER BY "deadline_at" ASC, "id" ASC
+      LIMIT ${limit}
+    `)
+    let expired = 0
+    for (const row of rows) {
+      const changed = await this.prisma.$transaction(async (tx) => {
+        const locked = await this.events.lockRun(tx, row.id)
+        if (!locked.deadlineExpired || locked.leaseValid || this.stateMachine.isTerminalRunStatus(locked.run.status)) {
+          return false
+        }
+        const now = new Date()
+        if (locked.run.status === AiAgentRunStatus.CANCEL_REQUESTED) {
+          this.stateMachine.assertRunTransition(locked.run.status, AiAgentRunStatus.CANCELLED)
+          await this.events.appendInTransaction(tx, locked.run, {
+            eventType: 'agent.cancelled',
+            traceId: locked.run.traceId,
+            payload: { cancelledBy: 'USER', reason: locked.run.cancelReason ?? '用户取消' },
+          })
+          await this.updateTerminalResponseMessage(tx, locked.run, AiAgentRunStatus.CANCELLED)
+          await tx.aiAgentRun.update({
+            where: { id: locked.run.id },
+            data: {
+              status: AiAgentRunStatus.CANCELLED,
+              statusVersion: { increment: 1 },
+              endedAt: now,
+              leaseOwner: null,
+              leaseExpiresAt: null,
+              heartbeatAt: null,
+            },
+          })
+          return true
+        }
+
+        const errorMessage = 'Agent Run 已超过执行 deadline'
+        this.stateMachine.assertRunTransition(locked.run.status, AiAgentRunStatus.FAILED)
+        await this.events.appendInTransaction(tx, locked.run, {
+          eventType: 'agent.failed',
+          traceId: locked.run.traceId,
+          payload: {
+            error: { code: 6007, message: errorMessage, retryable: false, category: 'TIMEOUT' },
+            failedStep: null,
+            retryable: false,
+          },
+        })
+        await this.updateTerminalResponseMessage(tx, locked.run, AiAgentRunStatus.FAILED, errorMessage)
+        await tx.aiAgentRun.update({
+          where: { id: locked.run.id },
+          data: {
+            status: AiAgentRunStatus.FAILED,
+            statusVersion: { increment: 1 },
+            startedAt: locked.run.startedAt ?? locked.run.queuedAt,
+            endedAt: now,
+            errorCode: 6007,
+            errorClass: 'TIMEOUT',
+            errorMessage,
+            leaseOwner: null,
+            leaseExpiresAt: null,
+            heartbeatAt: null,
+          },
+        })
+        return true
+      })
+      if (changed) expired += 1
+    }
+    if (expired > 0) this.logOperation('expireOverdueRuns', startedAt, expired, 'batch')
+    return expired
+  }
+
   async findForExecution(runId: string, workerId: string): Promise<AgentExecutionRun> {
     const id = requireText(runId, 'runId', 32)
     const owner = requireText(workerId, 'workerId', 128)

@@ -1,13 +1,14 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
 import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID } from 'node:crypto'
 import { Inject } from '@nestjs/common'
-import type { AiModelProvider } from '@prisma/client'
+import type { AiModelConnection, AiModelDeployment, AiModelProvider } from '@prisma/client'
 import {
   ModelConfig,
   type AgentModelCostTier,
   type AgentModelProviderConfig,
   type AgentModelProviderName,
   type IModelConfig,
+  type ModelDescriptorConfig,
 } from 'src/config/model.config'
 import { PrismaService } from 'src/shared/prisma.service'
 import {
@@ -16,7 +17,12 @@ import {
   type UpdateModelProviderDto,
 } from '../api/dto/model/model-provider-request.dto'
 
-const SUPPORTED_KINDS = new Set<AgentModelProviderName>(['openai-compatible'])
+const SUPPORTED_KINDS = new Set<AgentModelProviderName>([
+  'openai-compatible',
+  'openai-chat-compatible',
+  'openai-responses',
+  'anthropic-messages',
+])
 const COST_TIERS = new Set(['LOW', 'MEDIUM', 'HIGH'])
 const CAPABILITIES = new Set([
   'STREAMING',
@@ -26,9 +32,10 @@ const CAPABILITIES = new Set([
   'VISION',
   'REASONING_EFFORT',
 ])
-const REASONING_EFFORTS = new Set(['LOW', 'MEDIUM', 'HIGH'])
+const REASONING_EFFORT_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$/
 const DATA_CLASSES = new Set(['PUBLIC', 'USER_PRIVATE', 'PORTFOLIO_SENSITIVE'])
 const ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/
+const MODEL_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:/@-]{0,255}$/
 
 interface SecretEnvelope {
   iv: string
@@ -44,18 +51,38 @@ export class ModelProviderConfigService {
   ) {}
 
   async loadActive(): Promise<AgentModelProviderConfig[]> {
+    const deploymentCount = await this.prisma.aiModelDeployment.count()
+    if (deploymentCount > 0) {
+      const activeVersion = await this.prisma.aiModelConfigVersion.findFirst({
+        where: { status: 'ACTIVE' },
+        orderBy: { createdAt: 'desc' },
+      })
+      if (activeVersion && Array.isArray(activeVersion.snapshot)) {
+        return activeVersion.snapshot.map((item) => this.toSnapshotConfig(item))
+      }
+      throw new Error('[AgentModel] 已存在 V2 模型部署，但没有 ACTIVE 配置版本；请先验证并发布模型配置')
+    }
     await this.seedFromEnvironmentIfEmpty()
     const rows = await this.prisma.aiModelProvider.findMany({
-      where: { enabled: true, kind: 'openai-compatible' },
+      where: { enabled: true, kind: { in: [...SUPPORTED_KINDS] } },
       orderBy: [{ priority: 'asc' }, { id: 'asc' }],
     })
     return rows.map((row) => this.toConfig(row))
   }
 
+  async loadDraft(): Promise<AgentModelProviderConfig[]> {
+    const deployments = await this.prisma.aiModelDeployment.findMany({
+      where: { enabled: true, connection: { enabled: true } },
+      include: { connection: true },
+      orderBy: [{ priority: 'asc' }, { id: 'asc' }],
+    })
+    return deployments.map((row) => this.toDeploymentConfig(row))
+  }
+
   async listAdmin() {
     await this.seedFromEnvironmentIfEmpty()
     const rows = await this.prisma.aiModelProvider.findMany({
-      where: { kind: 'openai-compatible' },
+      where: { kind: { in: [...SUPPORTED_KINDS] } },
       orderBy: [{ priority: 'asc' }, { id: 'asc' }],
     })
     return { items: rows.map((row) => this.toAdminResponse(row)) }
@@ -72,7 +99,7 @@ export class ModelProviderConfigService {
     const current = await this.find(dto.id)
     if (current.enabled && dto.enabled === false) {
       const enabledCount = await this.prisma.aiModelProvider.count({
-        where: { enabled: true, kind: 'openai-compatible' },
+        where: { enabled: true, kind: { in: [...SUPPORTED_KINDS] } },
       })
       if (enabledCount <= 1) throw new BadRequestException('至少保留一个启用中的模型供应商')
     }
@@ -85,7 +112,7 @@ export class ModelProviderConfigService {
     const current = await this.find(dto.id)
     if (current.enabled) {
       const enabledCount = await this.prisma.aiModelProvider.count({
-        where: { enabled: true, kind: 'openai-compatible' },
+        where: { enabled: true, kind: { in: [...SUPPORTED_KINDS] } },
       })
       if (enabledCount <= 1) throw new BadRequestException('至少保留一个启用中的模型供应商')
     }
@@ -97,7 +124,7 @@ export class ModelProviderConfigService {
     const count = await this.prisma.aiModelProvider.count()
     if (count > 0) return
     if (this.modelConfig.source === 'database') return
-    const providers = this.modelConfig.providers.filter((provider) => provider.kind === 'openai-compatible')
+    const providers = this.modelConfig.providers.filter((provider) => SUPPORTED_KINDS.has(provider.kind))
     if (providers.length === 0) return
     await this.prisma.aiModelProvider.createMany({
       data: providers.map((provider) => ({
@@ -127,7 +154,8 @@ export class ModelProviderConfigService {
 
   private async find(id: string) {
     const row = await this.prisma.aiModelProvider.findUnique({ where: { id } })
-    if (!row || row.kind !== 'openai-compatible') throw new NotFoundException('模型供应商不存在')
+    if (!row || !SUPPORTED_KINDS.has(row.kind as AgentModelProviderName))
+      throw new NotFoundException('模型供应商不存在')
     return row
   }
 
@@ -172,8 +200,7 @@ export class ModelProviderConfigService {
       throw new BadRequestException(error instanceof Error ? error.message : '模型供应商配置非法')
     }
     const apiKey = dto.apiKey !== undefined ? dto.apiKey : current ? this.decrypt(current.encryptedApiKey) : null
-    if (kind === 'openai-compatible' && !apiKey)
-      throw new BadRequestException('openai-compatible provider 必须配置 apiKey')
+    if (kind !== 'fake' && !apiKey) throw new BadRequestException(`${kind} provider 必须配置 apiKey`)
     return {
       providerId,
       kind,
@@ -220,7 +247,7 @@ export class ModelProviderConfigService {
       row.maxRetries,
       row.retryBaseMs,
     )
-    if (kind === 'openai-compatible' && !apiKey) throw new Error(`[AgentModel] provider ${row.id} 缺少 apiKey`)
+    if (kind !== 'fake' && !apiKey) throw new Error(`[AgentModel] provider ${row.id} 缺少 apiKey`)
     return {
       id: row.id,
       kind,
@@ -239,6 +266,97 @@ export class ModelProviderConfigService {
         capabilities: row.capabilities,
         reasoningEfforts: row.reasoningEfforts,
         dataClasses: row.dataClasses,
+      },
+    }
+  }
+
+  private toDeploymentConfig(row: AiModelDeployment & { connection: AiModelConnection }): AgentModelProviderConfig {
+    const kind = row.connection.adapterKind as AgentModelProviderName
+    if (!SUPPORTED_KINDS.has(kind)) throw new Error(`[AgentModel] adapter ${kind} 不受支持`)
+    const apiKey = this.decrypt(row.connection.encryptedApiKey)
+    if (!apiKey) throw new Error(`[AgentModel] connection ${row.connection.connectionKey} 缺少 apiKey`)
+    const defaultReasoning = deploymentReasoning(row)
+    return {
+      id: row.id,
+      kind,
+      displayName: row.displayName,
+      defaultModel: row.modelId,
+      priority: row.priority,
+      costTier: row.costTier as AgentModelCostTier,
+      baseUrl: row.connection.baseUrl,
+      apiKey,
+      timeoutMs: row.timeoutMs,
+      maxRetries: row.maxRetries,
+      retryBaseMs: row.retryBaseMs,
+      descriptor: {
+        contextWindow: row.contextWindow,
+        maxOutputTokens: row.maxOutputTokens,
+        capabilities: row.capabilities,
+        reasoningEfforts: row.reasoningEfforts,
+        defaultReasoning,
+        dataClasses: row.dataClasses,
+      },
+    }
+  }
+
+  private toSnapshotConfig(value: unknown): AgentModelProviderConfig {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      throw new Error('[AgentModel] 活动配置快照格式非法')
+    }
+    const item = value as Record<string, unknown>
+    const kind = item.adapterKind as AgentModelProviderName
+    if (!SUPPORTED_KINDS.has(kind)) throw new Error(`[AgentModel] adapter ${kind} 不受支持`)
+    const encryptedApiKey = typeof item.encryptedApiKey === 'string' ? item.encryptedApiKey : null
+    const apiKey = this.decrypt(encryptedApiKey)
+    if (!apiKey) throw new Error(`[AgentModel] 活动配置 ${String(item.deploymentId)} 缺少 apiKey`)
+    const capabilities = stringArray(item.capabilities, 'capabilities')
+    const reasoningEfforts = stringArray(item.reasoningEfforts, 'reasoningEfforts', true)
+    const dataClasses = stringArray(item.dataClasses, 'dataClasses')
+    const id = requiredSnapshotString(item.deploymentId, 'deploymentId')
+    const displayName = requiredSnapshotString(item.displayName, 'displayName')
+    const defaultModel = requiredSnapshotString(item.modelId, 'modelId')
+    const priority = requiredSnapshotInteger(item.priority, 'priority')
+    const baseUrl = requiredSnapshotString(item.baseUrl, 'baseUrl')
+    const timeoutMs = requiredSnapshotInteger(item.timeoutMs, 'timeoutMs')
+    const maxRetries = requiredSnapshotInteger(item.maxRetries, 'maxRetries')
+    const retryBaseMs = requiredSnapshotInteger(item.retryBaseMs, 'retryBaseMs')
+    const contextWindow = requiredSnapshotInteger(item.contextWindow, 'contextWindow')
+    const maxOutputTokens = requiredSnapshotInteger(item.maxOutputTokens, 'maxOutputTokens')
+    validateProvider(
+      kind,
+      defaultModel,
+      displayName,
+      priority,
+      item.costTier,
+      baseUrl,
+      contextWindow,
+      maxOutputTokens,
+      capabilities,
+      reasoningEfforts,
+      dataClasses,
+      timeoutMs,
+      maxRetries,
+      retryBaseMs,
+    )
+    return {
+      id,
+      kind,
+      displayName,
+      defaultModel,
+      priority,
+      costTier: item.costTier as AgentModelCostTier,
+      baseUrl,
+      apiKey,
+      timeoutMs,
+      maxRetries,
+      retryBaseMs,
+      descriptor: {
+        contextWindow,
+        maxOutputTokens,
+        capabilities,
+        reasoningEfforts,
+        defaultReasoning: snapshotReasoning(item),
+        dataClasses,
       },
     }
   }
@@ -317,7 +435,7 @@ function validateProvider(
   if (typeof kind !== 'string' || !SUPPORTED_KINDS.has(kind as AgentModelProviderName))
     throw new Error('[AgentModel] provider kind 不支持')
   if (
-    !isIdentifier(model) ||
+    !isModelId(model) ||
     typeof displayName !== 'string' ||
     displayName.trim().length < 1 ||
     displayName.length > 128
@@ -336,13 +454,19 @@ function validateProvider(
     throw new Error('[AgentModel] maxRetries 非法')
   if (!Number.isInteger(retryBaseMs) || (retryBaseMs as number) < 0) throw new Error('[AgentModel] retryBaseMs 非法')
   validateList(capabilities, CAPABILITIES, 'capabilities')
-  validateList(reasoningEfforts, REASONING_EFFORTS, 'reasoningEfforts', true)
+  validateReasoningEfforts(reasoningEfforts)
   validateList(dataClasses, DATA_CLASSES, 'dataClasses')
   if (!Array.isArray(capabilities) || !capabilities.includes('STREAMING')) {
     throw new Error('[AgentModel] capabilities 必须包含 STREAMING')
   }
-  if (kind !== 'openai-compatible' || typeof baseUrl !== 'string' || !isSafeBaseUrl(baseUrl))
-    throw new Error('[AgentModel] openai-compatible baseUrl 必须是安全 HTTP(S) URL')
+  if (typeof baseUrl !== 'string' || !isSafeBaseUrl(baseUrl))
+    throw new Error(`[AgentModel] ${kind} baseUrl 必须是安全 HTTP(S) URL`)
+}
+
+function validateReasoningEfforts(value: unknown): void {
+  if (!Array.isArray(value) || value.some((item) => typeof item !== 'string' || !REASONING_EFFORT_PATTERN.test(item))) {
+    throw new Error('[AgentModel] reasoningEfforts 非法')
+  }
 }
 
 function validateList(value: unknown, allowed: Set<string>, name: string, allowEmpty = false): void {
@@ -357,6 +481,10 @@ function validateList(value: unknown, allowed: Set<string>, name: string, allowE
 
 function isIdentifier(value: unknown): value is string {
   return typeof value === 'string' && ID_PATTERN.test(value)
+}
+
+function isModelId(value: unknown): value is string {
+  return typeof value === 'string' && MODEL_ID_PATTERN.test(value)
 }
 
 function isSafeBaseUrl(value: string): boolean {
@@ -397,4 +525,48 @@ function encryptionKey(): Buffer {
 
 function lastFour(value: string): string {
   return value.slice(-4).padStart(4, '*')
+}
+
+function deploymentReasoning(row: AiModelDeployment): ModelDescriptorConfig['defaultReasoning'] {
+  if (row.reasoningMode === 'DISABLED') return { mode: 'DISABLED' }
+  if (row.reasoningMode === 'EFFORT' && row.defaultReasoningEffort) {
+    return { mode: 'EFFORT', effort: row.defaultReasoningEffort }
+  }
+  if (row.reasoningMode === 'TOKEN_BUDGET' && row.reasoningBudgetTokens) {
+    return {
+      mode: 'TOKEN_BUDGET',
+      budgetTokens: row.reasoningBudgetTokens,
+      ...(row.defaultReasoningEffort ? { effort: row.defaultReasoningEffort } : {}),
+    }
+  }
+  return { mode: 'AUTO' }
+}
+
+function snapshotReasoning(item: Record<string, unknown>): ModelDescriptorConfig['defaultReasoning'] {
+  const mode = item.reasoningMode
+  if (mode === 'DISABLED') return { mode: 'DISABLED' }
+  const effort = typeof item.defaultReasoningEffort === 'string' ? item.defaultReasoningEffort : undefined
+  if (mode === 'EFFORT' && effort) return { mode: 'EFFORT', effort }
+  const budgetTokens = item.reasoningBudgetTokens
+  if (mode === 'TOKEN_BUDGET' && Number.isInteger(budgetTokens) && (budgetTokens as number) > 0) {
+    return { mode: 'TOKEN_BUDGET', budgetTokens: budgetTokens as number, ...(effort ? { effort } : {}) }
+  }
+  return { mode: 'AUTO' }
+}
+
+function requiredSnapshotString(value: unknown, name: string): string {
+  if (typeof value !== 'string' || !value) throw new Error(`[AgentModel] 活动配置快照 ${name} 非法`)
+  return value
+}
+
+function requiredSnapshotInteger(value: unknown, name: string): number {
+  if (!Number.isInteger(value)) throw new Error(`[AgentModel] 活动配置快照 ${name} 非法`)
+  return value as number
+}
+
+function stringArray(value: unknown, name: string, allowEmpty = false): string[] {
+  if (!Array.isArray(value) || (!allowEmpty && value.length === 0) || value.some((item) => typeof item !== 'string')) {
+    throw new Error(`[AgentModel] 活动配置快照 ${name} 非法`)
+  }
+  return value as string[]
 }

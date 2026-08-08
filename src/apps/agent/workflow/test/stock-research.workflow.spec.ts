@@ -23,7 +23,7 @@ import { LoadContextNode } from '../nodes/load-context.node'
 import { PersistNode } from '../nodes/persist.node'
 import { PlanNode } from '../nodes/plan.node'
 import { SynthesizeNode } from '../nodes/synthesize.node'
-import { ValidateCitationsNode } from '../nodes/validate-citations.node'
+import { selectCitationRepairFacts, ValidateCitationsNode } from '../nodes/validate-citations.node'
 import { ResearchPlanCompilerService } from '../research-plan-compiler.service'
 import { WorkflowBudgetService } from '../workflow-budget.service'
 import { WorkflowContextService } from '../workflow-context.service'
@@ -225,10 +225,16 @@ describe('Stock research workflow v1', () => {
       maxSteps: 999,
       maxToolCalls: 999,
       maxParallelTools: 999,
-      maxInputTokens: 999_999,
+      maxCumulativeInputTokens: 999_999,
+      inputTokenGuardrailSource: 'ENV',
       maxCost: 999,
     })
-    expect(limits).toMatchObject({ maxSteps: 8, maxToolCalls: 20, maxParallelTools: 3, maxInputTokens: 32_768 })
+    expect(limits).toMatchObject({
+      maxSteps: 8,
+      maxToolCalls: 20,
+      maxParallelTools: 3,
+      maxCumulativeInputTokens: null,
+    })
     const usage = budgets.initialUsage(limits)
     for (let count = 0; count <= limits.maxToolCalls; count += 1) {
       expect(() => budgets.assertCanPlanToolCalls(usage, count, limits)).not.toThrow()
@@ -271,6 +277,25 @@ describe('Stock research workflow v1', () => {
       { purpose: 'PLAN', maxOutputTokens: 384_000 },
       { purpose: 'SYNTHESIZE', maxOutputTokens: 384_000 },
     ])
+  })
+
+  it('最终数据口径用中文说明数据限制，不暴露工作流告警码', () => {
+    const finalization = new WorkflowFinalizationService().build({
+      runId: 'run_finalization_fixture',
+      context: loadedContext(),
+      draft: answer('fact_overview'),
+      facts: [fact('fact_overview')],
+      warnings: ['行情数据只覆盖最近 250 个交易日'],
+      usage: { steps: 1, toolCalls: 1, inputTokens: 1, outputTokens: 1, cost: 0, costCurrency: 'CNY' },
+      modelName: 'fake-model',
+    })
+
+    expect(finalization.contentBlocks[0]).toMatchObject({
+      provenance: {
+        qualityFlags: ['数据提示：本回答有 1 项数据限制，具体说明见正文“数据限制”。'],
+      },
+    })
+    expect(JSON.stringify(finalization.contentBlocks[0])).not.toContain('WORKFLOW_WARNING_')
   })
 
   it('普通问答可零 Tool 完成；多只读 Tool 同层并行且可选失败降级为 warning', async () => {
@@ -357,11 +382,12 @@ describe('Stock research workflow v1', () => {
     })
     expect(maxActive).toBe(2)
     expect(result.facts).toHaveLength(1)
+    expect(result.facts[0]?.title).toBe('个股基础数据')
     expect(result.warnings).toEqual(['可选 Tool search_web 失败：搜索暂不可用'])
     expect(result.usage.toolCalls).toBe(2)
   })
 
-  it('同层已有行情事实时，required Tool 的 DATA_NOT_FOUND 降级为 warning；无替代事实时仍失败', async () => {
+  it('[DATA][ORACLE] 任一 required Tool 无数据都必须失败，不能被同层无关事实替代', async () => {
     const budgets = new WorkflowBudgetService(config)
     const workflow = createRegistry().resolve('stock_research', 1)
     const compiler = new ResearchPlanCompilerService()
@@ -425,9 +451,9 @@ describe('Stock research workflow v1', () => {
 
     await expect(
       execute([toolCall('today', 'get_stock_price_history'), toolCall('overview', 'get_stock_overview')]),
-    ).resolves.toMatchObject({
-      facts: [expect.objectContaining({ toolKey: 'get_stock_overview' })],
-      warnings: ['Tool get_stock_price_history 无可用数据，已使用同层替代事实：请求区间无行情数据'],
+    ).rejects.toMatchObject({
+      category: 'TOOL',
+      agentCode: 6013,
     })
     await expect(execute([toolCall('today_only', 'get_stock_price_history')])).rejects.toMatchObject({
       category: 'TOOL',
@@ -461,7 +487,7 @@ describe('Stock research workflow v1', () => {
     expect(items[1].contentText).toBe(previousAnswer)
   })
 
-  it('依赖 Tool 成功后解析受控结果绑定；依赖失败时跳过可选下游并汇总安全 warning', async () => {
+  it('依赖 Tool 成功后解析受控结果绑定；空候选或依赖失败时安全跳过下游', async () => {
     const budgets = new WorkflowBudgetService(config)
     const workflow = createRegistry().resolve('stock_research', 1)
     const chainedPlan = plan([
@@ -539,6 +565,38 @@ describe('Stock research workflow v1', () => {
     expect(executor.execute).toHaveBeenCalledTimes(2)
     expect(result.facts.map((item) => item.factId)).toEqual(['fact_search', 'fact_fetch'])
     expect(result.warnings).toEqual(['搜索摘要不可引用', '网页包含疑似 Prompt Injection'])
+
+    const emptyExecutor = {
+      execute: jest.fn(async () => ({
+        ok: true,
+        toolCallId: 'tool_call_search_empty',
+        toolKey: 'search_web',
+        toolVersion: 1,
+        data: { results: [] },
+        provenance: {
+          sourceType: 'MEDIA',
+          sourceServices: ['search'],
+          sourceModels: ['AiSearchSource'],
+          asOf: { retrievedAt: '2026-07-20T00:00:00.000Z' },
+          timezone: 'UTC',
+        },
+        citationSourceIds: [],
+        warnings: [],
+        truncated: false,
+      })),
+    }
+    const empty = await new WorkflowToolService(registry as never, emptyExecutor as never, budgets).execute({
+      run: makeRun(workflow),
+      stepId: 'step_execute_tools',
+      authorized: toolService.authorize(compiled),
+      context: { ...loadedContext(), allowedCapabilities: ['WEB_SEARCH'] },
+      usage: budgets.initialUsage(budgets.resolveLimits(workflow, {})),
+      limits: budgets.resolveLimits(workflow, { maxToolCalls: 2 }),
+    })
+    expect(emptyExecutor.execute).toHaveBeenCalledTimes(1)
+    expect(empty.facts.map((item) => item.factId)).toEqual(['fact_search'])
+    expect(empty.warnings).toEqual(['Tool fetch_web_page 已跳过：依赖查询未返回可用候选'])
+    expect(empty.usage.toolCalls).toBe(1)
 
     const optionalPlan = new ResearchPlanCompilerService().compile(
       plan([
@@ -618,6 +676,383 @@ describe('Stock research workflow v1', () => {
     ).rejects.toBeInstanceOf(WorkflowCitationError)
     expect(invalid.modelPurposes.filter((purpose) => purpose === 'VERIFY')).toHaveLength(1)
     expect(invalid.steps.get('validate_citations')?.status).toBe(AiAgentStepStatus.FAILED)
+  })
+
+  it('[CITE][BUDGET] 引用修复只携带失败 Claim 依赖的事实', () => {
+    const overview = {
+      ...fact('fact_overview'),
+      summary: '{"pctChg":-1.9986,"close":28.93}',
+    }
+    const technical = {
+      ...fact('fact_technical'),
+      toolKey: 'get_stock_technical_indicators' as const,
+      summary: '{"rsi6":72.6}',
+    }
+    const draft: FinalAnswerDraft = {
+      markdown: '今日下跌1.99%，RSI6为72.6点。',
+      claims: [
+        { claimKey: 'quote_today', text: '今日下跌1.99%', factIds: ['fact_overview'] },
+        { claimKey: 'technical', text: 'RSI6为72.6点', factIds: ['fact_technical'] },
+      ],
+      warnings: [],
+      dataCutoff: '2026-08-06',
+    }
+
+    const selected = selectCitationRepairFacts(
+      draft,
+      [overview, technical],
+      [
+        'Claim quote_today 包含无法由引用事实支持的数字或日期：1.99%',
+        '回答正文包含无法由已声明引用支持的数字或日期：1.99%',
+      ],
+    )
+
+    expect(selected.map((item) => item.factId)).toEqual(['fact_overview'])
+  })
+
+  it('[CITE][ORACLE] 引用 ID 存在但结论数字不受事实支持时仍必须拒绝', () => {
+    const coverage = new CitationCoverageService()
+    const citedFact = {
+      ...fact('fact_overview'),
+      summary: '{"name":"贵州茅台","pctChg":1.55,"tradeDate":"2026-08-05"}',
+    }
+
+    expect(
+      coverage.validate(
+        {
+          markdown: '贵州茅台上涨 99.9%。',
+          claims: [{ claimKey: 'price_move', text: '贵州茅台上涨 99.9%', factIds: ['fact_overview'] }],
+          warnings: [],
+          dataCutoff: '2026-08-05',
+        },
+        [citedFact],
+      ),
+    ).toMatchObject({
+      valid: false,
+      issues: expect.arrayContaining([expect.stringContaining('99.9')]),
+    })
+
+    expect(
+      coverage.validate(
+        {
+          markdown: '贵州茅台上涨 1.55%，数据日为 2026-08-05。',
+          claims: [
+            {
+              claimKey: 'price_move',
+              text: '贵州茅台上涨 1.55%，数据日为 2026-08-05',
+              factIds: ['fact_overview'],
+            },
+          ],
+          warnings: [],
+          dataCutoff: '2026-08-05',
+        },
+        [citedFact],
+      ),
+    ).toMatchObject({ valid: true })
+  })
+
+  it('[CITE][ORACLE] 支持基于事实值的四舍五入与金额单位换算，但拒绝超出展示精度的值', () => {
+    const coverage = new CitationCoverageService()
+    const citedFact = {
+      ...fact('fact_overview'),
+      summary:
+        '{"pctChg":1.2161,"amount":3239601.343,"turnoverRate":2.9949,"peTtm":17.7255,"pb":1.5196,"dividendYieldTtm":1.6529,"totalMarketValue":10934243.1864}',
+    }
+    const displayText =
+      '上涨1.22%，成交额32.40亿元，换手率2.99%，PE(TTM)17.7倍，PB1.52倍，股息率1.65%，总市值1093亿元。'
+
+    expect(
+      coverage.validate(
+        {
+          markdown: displayText,
+          claims: [{ claimKey: 'snapshot', text: displayText, factIds: ['fact_overview'] }],
+          warnings: [],
+          dataCutoff: '2026-08-05',
+        },
+        [citedFact],
+      ),
+    ).toMatchObject({ valid: true })
+
+    expect(
+      coverage.validate(
+        {
+          markdown: '成交额32.41亿元。',
+          claims: [{ claimKey: 'snapshot', text: '成交额32.41亿元。', factIds: ['fact_overview'] }],
+          warnings: [],
+          dataCutoff: '2026-08-05',
+        },
+        [citedFact],
+      ),
+    ).toMatchObject({
+      valid: false,
+      issues: expect.arrayContaining([expect.stringContaining('32.41亿元')]),
+    })
+  })
+
+  it('[CITE][ORACLE] 支持亿元原始值与小数百分比的展示换算', () => {
+    const coverage = new CitationCoverageService()
+    const citedFact = {
+      ...fact('fact_macro_and_performance'),
+      summary: '{"GDP":{"gdp":334192.9},"CAGR":10.83315016473197,"MAX_DRAWDOWN":-0.01980198019801982}',
+    }
+    const draft = {
+      markdown: 'GDP 为 334192.9亿元，CAGR 为 1083.3%，最大回撤为 -1.98%。',
+      claims: [
+        {
+          claimKey: 'macro_and_performance',
+          text: 'GDP 为 334192.9亿元，CAGR 为 1083.3%，最大回撤为 -1.98%。',
+          factIds: [citedFact.factId],
+        },
+      ],
+      warnings: [],
+      dataCutoff: null,
+    }
+
+    expect(coverage.validate(draft, [citedFact])).toMatchObject({ valid: true, issues: [] })
+  })
+
+  it('[CITE][ORACLE] 支持金额时间序列的可追溯累计与万元到亿元换算', () => {
+    const coverage = new CitationCoverageService()
+    const citedFact = {
+      ...fact('fact_moneyflow'),
+      toolKey: 'get_stock_moneyflow' as const,
+      summary: JSON.stringify({
+        data: {
+          days: [
+            { netAmount: -49304.82 },
+            { netAmount: -45332.04 },
+            { netAmount: 59796.96 },
+            { netAmount: -133056.89 },
+            { netAmount: -38842.99 },
+          ],
+          units: { amount: 'CNY_10K' },
+        },
+      }),
+    }
+    const displayText = '最近五日累计净流出20.67亿元（-206,739.78万元）。'
+
+    expect(
+      coverage.validate(
+        {
+          markdown: displayText,
+          claims: [{ claimKey: 'cumulative_net_outflow', text: displayText, factIds: [citedFact.factId] }],
+          warnings: [],
+          dataCutoff: '2026-08-07',
+        },
+        [citedFact],
+      ),
+    ).toMatchObject({ valid: true, issues: [] })
+
+    expect(
+      coverage.validate(
+        {
+          markdown: '最近五日累计净流出20.68亿元。',
+          claims: [
+            {
+              claimKey: 'wrong_cumulative_net_outflow',
+              text: '最近五日累计净流出20.68亿元。',
+              factIds: [citedFact.factId],
+            },
+          ],
+          warnings: [],
+          dataCutoff: '2026-08-07',
+        },
+        [citedFact],
+      ),
+    ).toMatchObject({ valid: false, issues: expect.arrayContaining([expect.stringContaining('20.68亿元')]) })
+  })
+
+  it('[CITE][ORACLE] 价格区间连字符不得被误识别为负号', () => {
+    const coverage = new CitationCoverageService()
+    const citedFact = {
+      ...fact('fact_history'),
+      summary: '{"min":35.91,"max":40.55,"otherMin":10.28,"otherMax":11.63}',
+    }
+    const displayText = '收盘价波动区间：招商银行35.91-40.55元，平安银行10.28-11.63元。'
+
+    expect(
+      coverage.validate(
+        {
+          markdown: displayText,
+          claims: [{ claimKey: 'price_range', text: displayText, factIds: [citedFact.factId] }],
+          warnings: [],
+          dataCutoff: '2026-08-07',
+        },
+        [citedFact],
+      ),
+    ).toMatchObject({ valid: true, issues: [] })
+  })
+
+  it('[CITE][ORACLE] 中文下行方向可支持负数事实的正数展示', () => {
+    const coverage = new CitationCoverageService()
+    const citedFact = { ...fact('fact_history'), summary: '{"minPctChange":-3.7688}' }
+    const displayText = '工商银行单日下行3.7688%。'
+
+    expect(
+      coverage.validate(
+        {
+          markdown: displayText,
+          claims: [{ claimKey: 'downside', text: displayText, factIds: [citedFact.factId] }],
+          warnings: [],
+          dataCutoff: '2026-08-07',
+        },
+        [citedFact],
+      ),
+    ).toMatchObject({ valid: true, issues: [] })
+  })
+
+  it('[CITE][ORACLE] 紧邻数字的“跌”可支持负涨跌幅，但“涨”不能反向匹配', () => {
+    const coverage = new CitationCoverageService()
+    const citedFact = { ...fact('fact_history'), summary: '{"pctChange":-0.4362}' }
+
+    expect(
+      coverage.validate(
+        {
+          markdown: '8月7日收38.80元、跌0.4362%。',
+          claims: [{ claimKey: 'daily_move', text: '8月7日收38.80元、跌0.4362%', factIds: [citedFact.factId] }],
+          warnings: [],
+          dataCutoff: '2026-08-07',
+        },
+        [citedFact],
+      ),
+    ).toMatchObject({ valid: false, issues: expect.arrayContaining([expect.stringContaining('38.80元')]) })
+
+    expect(
+      coverage.validate(
+        {
+          markdown: '跌0.4362%。',
+          claims: [{ claimKey: 'daily_move', text: '跌0.4362%', factIds: [citedFact.factId] }],
+          warnings: [],
+          dataCutoff: '2026-08-07',
+        },
+        [citedFact],
+      ),
+    ).toMatchObject({ valid: true, issues: [] })
+
+    expect(
+      coverage.validate(
+        {
+          markdown: '涨0.4362%。',
+          claims: [{ claimKey: 'wrong_direction', text: '涨0.4362%', factIds: [citedFact.factId] }],
+          warnings: [],
+          dataCutoff: '2026-08-07',
+        },
+        [citedFact],
+      ),
+    ).toMatchObject({ valid: false, issues: expect.arrayContaining([expect.stringContaining('0.4362%')]) })
+  })
+
+  it('[CITE][ORACLE] 支持紧凑日期和负值的中文方向展示', () => {
+    const coverage = new CitationCoverageService()
+    const citedFact = {
+      ...fact('fact_directional_values'),
+      summary: '{"tradeDate":"20250807","netAmount":-16172.27,"pctChg":-0.1469}',
+    }
+    const draft = {
+      markdown: '数据日为2025-08-07，主力资金净流出16172.27万元，指数下跌0.1469%。',
+      claims: [
+        {
+          claimKey: 'directional_values',
+          text: '数据日为2025-08-07，主力资金净流出16172.27万元，指数下跌0.1469%。',
+          factIds: [citedFact.factId],
+        },
+      ],
+      warnings: [],
+      dataCutoff: '2025-08-07',
+    }
+
+    expect(coverage.validate(draft, [citedFact])).toMatchObject({ valid: true, issues: [] })
+    expect(
+      coverage.validate(
+        {
+          ...draft,
+          markdown: '数据日为2025-08-07，指数上涨0.1469%。',
+          claims: [
+            {
+              claimKey: 'wrong_direction',
+              text: '数据日为2025-08-07，指数上涨0.1469%。',
+              factIds: [citedFact.factId],
+            },
+          ],
+        },
+        [citedFact],
+      ),
+    ).toMatchObject({ valid: false, issues: expect.arrayContaining([expect.stringContaining('0.1469%')]) })
+  })
+
+  it('[CITE][ORACLE] 同一数值多次出现时按各自位置识别负向语义，并支持低约差额', () => {
+    const coverage = new CitationCoverageService()
+    const citedFact = {
+      ...fact('fact_price_position'),
+      summary:
+        '{"last":1309.22,"max":1489.7034}\n[结构化数值摘要V1]\n{"series":[{"change":-180.4834,"changePct":-12.1153915605,"path":"$.bars[].close"}],"version":1}',
+    }
+    const markdown = '距最高收盘约-12.12%（低约180.48元）；半年内累计下跌约12.12%，当前仍低于区间高点。'
+
+    expect(
+      coverage.validate(
+        {
+          markdown,
+          claims: [{ claimKey: 'price_position', text: markdown, factIds: [citedFact.factId] }],
+          warnings: [],
+          dataCutoff: '2026-08-07',
+        },
+        [citedFact],
+      ),
+    ).toMatchObject({ valid: true, issues: [] })
+  })
+
+  it('[CITE][EDGE] 千分位价格按完整数字校验，不得截断为逗号后的尾数', () => {
+    const coverage = new CitationCoverageService()
+    const citedFact = { ...fact('fact_overview'), summary: '{"close":1500,"tradeDate":"2026-07-17"}' }
+    const displayText = '贵州茅台在 2026-07-17 的收盘价为 1,500 元。'
+
+    expect(
+      coverage.validate(
+        {
+          markdown: displayText,
+          claims: [{ claimKey: 'close', text: displayText, factIds: ['fact_overview'] }],
+          warnings: [],
+          dataCutoff: '2026-07-17',
+        },
+        [citedFact],
+      ),
+    ).toMatchObject({ valid: true, issues: [] })
+  })
+
+  it('[CITE][EDGE] Markdown 不能绕过 Claim 数字校验，研究窗口数量不误判成行情事实', () => {
+    const coverage = new CitationCoverageService()
+    const citedFact = {
+      ...fact('fact_overview'),
+      summary: '{"name":"贵州茅台","pctChg":1.55,"tradeDate":"2026-08-05"}',
+    }
+
+    expect(
+      coverage.validate(
+        {
+          markdown: '贵州茅台最近20日上涨 99.9%。',
+          claims: [{ claimKey: 'price_move', text: '涨幅为 1.55%', factIds: ['fact_overview'] }],
+          warnings: [],
+          dataCutoff: '2026-08-05',
+        },
+        [citedFact],
+      ),
+    ).toMatchObject({
+      valid: false,
+      issues: expect.arrayContaining([expect.stringContaining('99.9')]),
+    })
+
+    expect(
+      coverage.validate(
+        {
+          markdown: '贵州茅台最近20日上涨 1.55%。',
+          claims: [{ claimKey: 'price_move', text: '最近20日涨幅为 1.55%', factIds: ['fact_overview'] }],
+          warnings: [],
+          dataCutoff: '2026-08-05',
+        },
+        [citedFact],
+      ),
+    ).toMatchObject({ valid: true })
   })
 
   it('从 checkpoint 恢复时不重复 load/plan/authorize/Tool 副作用', async () => {
@@ -805,7 +1240,8 @@ function createHarness(options: {
     resolveModelProfile: jest.fn(() => modelProfile()),
     resolveMaxOutputTokens: jest.fn(() => 384_000),
     resolveInputTokenBudget: jest.fn(
-      (_run: unknown, usage: any, limits: any) => limits.maxInputTokens - usage.inputTokens,
+      (_run: unknown, usage: any, limits: any) =>
+        (limits.maxCumulativeInputTokens ?? Number.MAX_SAFE_INTEGER) - usage.inputTokens,
     ),
     generateStructured: jest.fn(async (command: any) => {
       modelPurposes.push(command.purpose)

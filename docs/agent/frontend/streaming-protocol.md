@@ -73,6 +73,7 @@ Agent 运行需要以 POST 携带结构化输入、幂等信息与页面上下�
 
 模型投影需分层处理：
 
+- `agent.planning.decision` 渲染为用户可读的“研究决策”：工具选择理由、将调用的工具和计划工具。它来自模型明确返回的受限结构化字段，不得虚构或扩写为思维链。
 - `model.trace`、`model.completed` 与 `model.failed` 按 `modelCallId` 聚合为“模型执行轨迹”。显示模型、阶段、耗时、用量、结构化修复和规范化错误；绝不显示 Prompt、原始推理或供应商原文。
 - `model.activity` 只更新运行阶段和安全说明，不渲染 `processedCharacters` 为推理文本，也不尝试反推思维链。
 - `model.preview.reset/delta` 写入运行级 `draftPreview`，以纯文本显示并明确标注“引用校验前”；只接受同一 `modelCallId + attempt` 的追加。

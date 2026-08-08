@@ -37,7 +37,9 @@ export class HeatmapController {
   }
 
   @Post('snapshot/history')
-  @ApiOperation({ summary: '查询指定日期热力图快照（优先读缓存，自动降级实时计算）' })
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: '查询指定日期热力图快照（管理员，缺失时只读实时计算）' })
   @ApiSuccessRawResponse({ type: 'object' })
   getSnapshotHistory(@Body() dto: HeatmapHistoryQueryDto) {
     return this.heatmapSnapshotService.queryHistory(dto)

@@ -63,7 +63,7 @@ export class ConvertibleBondToolFacade {
       take: pageSize,
     })
     const warnings: MarketMultiAssetWarning[] = []
-    const items = result.items.map((row) => mapBasic(row, warnings))
+    const items = result.items.map((row) => mapBasic(row, warnings, false))
     return {
       data: {
         operation: 'SEARCH' as const,
@@ -200,8 +200,9 @@ function rejectFields(
 function mapBasic(
   row: Awaited<ReturnType<ConvertibleBondRepository['findBasic']>> & {},
   warnings: MarketMultiAssetWarning[],
+  includeClauses = true,
 ) {
-  return {
+  const basic = {
     bondCode: row.tsCode,
     bondName: row.bondShortName,
     fullName: row.bondFullName,
@@ -219,6 +220,10 @@ function mapBasic(
     currentConversionPrice: finiteOrNull(row.convPrice),
     couponRate: finiteOrNull(row.couponRate),
     newestRating: row.newestRating,
+  }
+  if (!includeClauses) return basic
+  return {
+    ...basic,
     clauses: {
       redemption: truncateClause(row.callClause, 'clauses.redemption', warnings),
       put: truncateClause(row.putClause, 'clauses.put', warnings),

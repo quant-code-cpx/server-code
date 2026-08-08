@@ -9,6 +9,13 @@ const traceContext = {
   estimatedInputTokens: 1_024,
   maxOutputTokens: 2_048,
   contextWindow: 32_768,
+  inputTokenCountSource: 'LOCAL_CONSERVATIVE_V1' as const,
+  inputTokenCountExact: false,
+  inputTokenSafetyMarginTokens: 128,
+  runInputReservationTokens: 4_096,
+  runMaxCumulativeInputTokens: null,
+  runInputTokensUsedBeforeCall: 0,
+  runInputGuardrailSource: 'DISABLED_BY_DEFAULT' as const,
 }
 
 describe('ModelStreamPublicProjector', () => {

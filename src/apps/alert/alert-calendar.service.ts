@@ -1,19 +1,19 @@
-import { BadRequestException, Injectable } from '@nestjs/common'
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
 import dayjs from 'dayjs'
 import { PrismaService } from 'src/shared/prisma.service'
 import { EventStudyService } from 'src/apps/event-study/event-study.service'
 import { EventType, EVENT_TYPE_CONFIGS } from 'src/apps/event-study/event-type.registry'
-import {
-  CalendarEventDto,
-  CalendarHistoryTrendDto,
-  CalendarResultDto,
-} from './dto/calendar-response.dto'
-import { CalendarEventType, CalendarQueryDto, MarketCapBucket } from './dto/calendar-query.dto'
+import { CalendarEventDto, CalendarHistoryTrendDto, CalendarResultDto } from './dto/calendar-response.dto'
+import { CalendarEventType, CalendarQueryDto, CalendarScope, MarketCapBucket } from './dto/calendar-query.dto'
 
 /** 最大查询跨度（天） */
 const MAX_RANGE_DAYS = 90
 
-const CALENDAR_TO_EVENT_TYPE: Record<CalendarEventType, EventType> = {
+function toUtcCalendarDate(value: string): Date {
+  return new Date(Date.UTC(Number(value.slice(0, 4)), Number(value.slice(4, 6)) - 1, Number(value.slice(6, 8))))
+}
+
+const CALENDAR_TO_EVENT_TYPE: Partial<Record<CalendarEventType, EventType>> = {
   [CalendarEventType.DISCLOSURE]: EventType.DISCLOSURE,
   [CalendarEventType.FLOAT]: EventType.SHARE_FLOAT,
   [CalendarEventType.DIVIDEND]: EventType.DIVIDEND_EX,
@@ -41,16 +41,29 @@ export class AlertCalendarService {
       throw new BadRequestException('endDate 不能早于 startDate')
     }
 
-    const startDate = start.toDate()
-    const endDate = end.toDate()
+    // Prisma @db.Date must receive the same civil date carried by YYYYMMDD.
+    // A local-midnight Date serialises to the previous UTC day in Asia/Shanghai.
+    const startDate = toUtcCalendarDate(query.startDate)
+    const endDate = toUtcCalendarDate(query.endDate)
     const types = query.types ?? Object.values(CalendarEventType)
     const tsCode = query.tsCode
 
-    const [disclosureEvents, floatEvents, dividendEvents, forecastEvents] = await Promise.all([
+    const [
+      disclosureEvents,
+      floatEvents,
+      dividendEvents,
+      forecastEvents,
+      ipoEvents,
+      convertibleEvents,
+      shareholderEvents,
+    ] = await Promise.all([
       types.includes(CalendarEventType.DISCLOSURE) ? this.fetchDisclosure(startDate, endDate, tsCode) : [],
       types.includes(CalendarEventType.FLOAT) ? this.fetchFloat(start, end, tsCode) : [],
       types.includes(CalendarEventType.DIVIDEND) ? this.fetchDividend(startDate, endDate, tsCode) : [],
       types.includes(CalendarEventType.FORECAST) ? this.fetchForecast(startDate, endDate, tsCode) : [],
+      types.includes(CalendarEventType.IPO) ? this.fetchIpo(startDate, endDate, tsCode) : [],
+      types.includes(CalendarEventType.CONVERTIBLE) ? this.fetchConvertible(startDate, endDate, tsCode) : [],
+      types.includes(CalendarEventType.SHAREHOLDER) ? this.fetchShareholder(startDate, endDate, tsCode) : [],
     ])
 
     let allEvents: CalendarEventDto[] = [
@@ -58,13 +71,28 @@ export class AlertCalendarService {
       ...floatEvents,
       ...dividendEvents,
       ...forecastEvents,
-    ].sort((a, b) => a.date.localeCompare(b.date))
+      ...ipoEvents,
+      ...convertibleEvents,
+      ...shareholderEvents,
+    ]
+      // Keep the response contract exact even when a source row matched on an
+      // alternate date field or a database date was normalised in another TZ.
+      .filter((event) => event.date >= query.startDate && event.date <= query.endDate)
+      .sort((a, b) => a.date.localeCompare(b.date))
 
-    // keyword 过滤（股票代码 / 股票名称）
+    const scopeTsCodes = await this.resolveScopeTsCodes(query, userId)
+    if (scopeTsCodes) {
+      allEvents = allEvents.filter((event) => scopeTsCodes.has(event.tsCode))
+    }
+
+    // keyword 过滤（股票代码 / 股票名称 / 事件标题）
     if (query.keyword) {
       const kw = query.keyword.toLowerCase()
       allEvents = allEvents.filter(
-        (e) => e.tsCode.toLowerCase().includes(kw) || (e.stockName ?? '').toLowerCase().includes(kw),
+        (e) =>
+          e.tsCode.toLowerCase().includes(kw) ||
+          (e.stockName ?? '').toLowerCase().includes(kw) ||
+          e.title.toLowerCase().includes(kw),
       )
     }
 
@@ -75,7 +103,6 @@ export class AlertCalendarService {
 
     // isInWatchlist 填充
     if (userId != null && allEvents.length > 0) {
-      const tsCodes = [...new Set(allEvents.map((e) => e.tsCode))]
       const watchlists = await this.prisma.watchlist.findMany({
         where: { userId },
         select: { stocks: { select: { tsCode: true } } },
@@ -125,12 +152,21 @@ export class AlertCalendarService {
   async getHistoryTrend(dto: {
     tsCode: string
     type: string
+    subType?: string
     startDate?: string
     endDate?: string
   }): Promise<CalendarHistoryTrendDto> {
-    const eventType = CALENDAR_TO_EVENT_TYPE[dto.type as CalendarEventType]
+    const calendarType = dto.type as CalendarEventType
+    const eventType =
+      calendarType === CalendarEventType.SHAREHOLDER
+        ? dto.subType === 'IN'
+          ? EventType.HOLDER_INCREASE
+          : dto.subType === 'DE'
+            ? EventType.HOLDER_DECREASE
+            : undefined
+        : CALENDAR_TO_EVENT_TYPE[calendarType]
     if (!eventType) {
-      throw new BadRequestException(`不支持的事件类型: ${dto.type}`)
+      return { samples: [], average: {} }
     }
 
     const preDays = 5
@@ -176,13 +212,16 @@ export class AlertCalendarService {
     const average: Record<string, number | null> = {}
     for (const w of windows) {
       const valid = samples.map((s) => s.returns[w]).filter((v): v is number => v !== null)
-      average[w] = valid.length > 0 ? Math.round((valid.reduce((a, b) => a + b, 0) / valid.length) * 10000) / 10000 : null
+      average[w] =
+        valid.length > 0 ? Math.round((valid.reduce((a, b) => a + b, 0) / valid.length) * 10000) / 10000 : null
     }
 
     return { samples, average }
   }
 
   private async fetchDisclosure(startDate: Date, endDate: Date, tsCode?: string): Promise<CalendarEventDto[]> {
+    const startKey = dayjs(startDate).format('YYYYMMDD')
+    const endKey = dayjs(endDate).format('YYYYMMDD')
     const rows = await this.prisma.disclosureDate.findMany({
       where: {
         ...(tsCode ? { tsCode } : {}),
@@ -200,12 +239,17 @@ export class AlertCalendarService {
     const nameMap = await this.fetchStockNames(tsCodes)
 
     return rows.map((r) => {
-      const isActual = r.actualDate !== null
-      const date = isActual ? dayjs(r.actualDate!).format('YYYYMMDD') : dayjs(r.preDate!).format('YYYYMMDD')
+      const actualDate = r.actualDate ? dayjs(r.actualDate).format('YYYYMMDD') : null
+      const preDate = r.preDate ? dayjs(r.preDate).format('YYYYMMDD') : null
+      // A row can match by preDate while actualDate has already moved outside the
+      // requested range. Emit the date that satisfied this query, otherwise the
+      // client receives an event before startDate (CAL-B07).
+      const isActual = actualDate !== null && actualDate >= startKey && actualDate <= endKey
+      const date = isActual ? actualDate : preDate!
       const detail: Record<string, unknown> = {
         endDate: r.endDate ? dayjs(r.endDate).format('YYYYMMDD') : null,
-        actualDate: r.actualDate ? dayjs(r.actualDate).format('YYYYMMDD') : null,
-        preDate: r.preDate ? dayjs(r.preDate).format('YYYYMMDD') : null,
+        actualDate,
+        preDate,
       }
       return {
         date,
@@ -374,6 +418,145 @@ export class AlertCalendarService {
         isInWatchlist: null,
       }
     })
+  }
+
+  private async fetchIpo(startDate: Date, endDate: Date, tsCode?: string): Promise<CalendarEventDto[]> {
+    const rows = await this.prisma.stockBasic.findMany({
+      where: {
+        ...(tsCode ? { tsCode } : {}),
+        listDate: { gte: startDate, lte: endDate },
+      },
+      select: { tsCode: true, name: true, listDate: true, market: true, exchange: true },
+    })
+
+    return rows.map((row) => ({
+      date: dayjs(row.listDate!).format('YYYYMMDD'),
+      tsCode: row.tsCode,
+      stockName: row.name ?? null,
+      type: CalendarEventType.IPO,
+      title: '新股上市',
+      detail: { market: row.market, exchange: row.exchange },
+      impactScore: 50,
+      impactLevel: 'MEDIUM' as const,
+      isInWatchlist: null,
+    }))
+  }
+
+  private async fetchConvertible(startDate: Date, endDate: Date, tsCode?: string): Promise<CalendarEventDto[]> {
+    const rows = await this.prisma.cbBasic.findMany({
+      where: {
+        ...(tsCode ? { OR: [{ stkCode: tsCode }, { tsCode }] } : {}),
+        listDate: { gte: startDate, lte: endDate },
+      },
+      select: {
+        tsCode: true,
+        stkCode: true,
+        stkShortName: true,
+        bondShortName: true,
+        listDate: true,
+        issueSize: true,
+        issueRating: true,
+      },
+    })
+
+    return rows.map((row) => ({
+      date: dayjs(row.listDate!).format('YYYYMMDD'),
+      tsCode: row.stkCode ?? row.tsCode,
+      stockName: row.stkShortName ?? row.bondShortName ?? null,
+      type: CalendarEventType.CONVERTIBLE,
+      title: `${row.bondShortName ?? row.tsCode} 上市`,
+      detail: {
+        bondCode: row.tsCode,
+        bondName: row.bondShortName,
+        issueSize: row.issueSize,
+        issueRating: row.issueRating,
+      },
+      impactScore: 40,
+      impactLevel: 'MEDIUM' as const,
+      isInWatchlist: null,
+    }))
+  }
+
+  private async fetchShareholder(startDate: Date, endDate: Date, tsCode?: string): Promise<CalendarEventDto[]> {
+    const rows = await this.prisma.stkHolderTrade.findMany({
+      where: {
+        ...(tsCode ? { tsCode } : {}),
+        annDate: { gte: startDate, lte: endDate },
+      },
+      select: {
+        tsCode: true,
+        annDate: true,
+        holderName: true,
+        holderType: true,
+        inDe: true,
+        changeVol: true,
+        changeRatio: true,
+        avgPrice: true,
+      },
+    })
+
+    const nameMap = await this.fetchStockNames([...new Set(rows.map((row) => row.tsCode))])
+
+    return rows.map((row) => {
+      const changeRatio = row.changeRatio == null ? null : Number(row.changeRatio)
+      const impactScore = Math.min(100, Math.abs(changeRatio ?? 0))
+      return {
+        date: dayjs(row.annDate).format('YYYYMMDD'),
+        tsCode: row.tsCode,
+        stockName: nameMap.get(row.tsCode) ?? null,
+        type: CalendarEventType.SHAREHOLDER,
+        subType: row.inDe,
+        title: `股东${row.inDe === 'IN' ? '增持' : '减持'} · ${row.holderName}`,
+        detail: {
+          holderName: row.holderName,
+          holderType: row.holderType,
+          changeVol: row.changeVol,
+          changeRatio,
+          avgPrice: row.avgPrice,
+        },
+        impactScore,
+        impactLevel: impactScore >= 5 ? ('HIGH' as const) : impactScore >= 1 ? ('MEDIUM' as const) : ('LOW' as const),
+        isInWatchlist: null,
+      }
+    })
+  }
+
+  private async resolveScopeTsCodes(query: CalendarQueryDto, userId?: number): Promise<Set<string> | null> {
+    const scope = query.scope ?? CalendarScope.ALL
+    if (scope === CalendarScope.ALL) return null
+    if (userId == null) throw new BadRequestException('范围筛选需要登录用户')
+
+    if (scope === CalendarScope.WATCHLIST) {
+      if (query.watchlistId != null) {
+        const watchlist = await this.prisma.watchlist.findFirst({
+          where: { id: query.watchlistId, userId },
+          select: { stocks: { select: { tsCode: true } } },
+        })
+        if (!watchlist) throw new NotFoundException('自选股组不存在或无权访问')
+        return new Set(watchlist.stocks.map((stock) => stock.tsCode))
+      }
+
+      const watchlists = await this.prisma.watchlist.findMany({
+        where: { userId },
+        select: { stocks: { select: { tsCode: true } } },
+      })
+      return new Set(watchlists.flatMap((watchlist) => watchlist.stocks.map((stock) => stock.tsCode)))
+    }
+
+    if (query.portfolioId) {
+      const portfolio = await this.prisma.portfolio.findFirst({
+        where: { id: query.portfolioId, userId },
+        select: { holdings: { select: { tsCode: true } } },
+      })
+      if (!portfolio) throw new NotFoundException('投资组合不存在或无权访问')
+      return new Set(portfolio.holdings.map((holding) => holding.tsCode))
+    }
+
+    const portfolios = await this.prisma.portfolio.findMany({
+      where: { userId },
+      select: { holdings: { select: { tsCode: true } } },
+    })
+    return new Set(portfolios.flatMap((portfolio) => portfolio.holdings.map((holding) => holding.tsCode)))
   }
 
   private async fetchStockNames(tsCodes: string[]): Promise<Map<string, string>> {

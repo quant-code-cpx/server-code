@@ -50,7 +50,7 @@ export class IndustryRotationToolFacade {
     const topN = input.topN ?? 20
     const heatmapTradeDays = input.heatmapTradeDays ?? 20
     requireInteger(topN, 'topN', 1, 50)
-    requireInteger(heatmapTradeDays, 'heatmapTradeDays', 5, 60)
+    requireInteger(heatmapTradeDays, 'heatmapTradeDays', 5, 250)
     const requestedAsOf = parseIsoDate(input.asOfDate, 'asOfDate')
     const latest = await this.repository.findLatestTradeDate(requestedAsOf ?? undefined)
     if (!latest) throw new MarketMultiAssetToolError('DATA_NOT_READY', '本地库没有 THS 行业日线')
@@ -110,7 +110,7 @@ export class IndustryRotationToolFacade {
     let flow: ResearchSectionResult<unknown[]> = sectionNotRequested()
     if (sections.includes('FLOW')) {
       try {
-        const flowDays = Math.min(Math.max(...periods), 60)
+        const flowDays = Math.max(...periods)
         const flowRows = await this.repository.findFlows(
           allCatalog.map((item) => item.name),
           asOfDate,
@@ -301,9 +301,9 @@ function normalizePeriods(values: number[] | undefined): number[] {
     periods.length < 1 ||
     periods.length > 5 ||
     new Set(periods).size !== periods.length ||
-    periods.some((value) => !Number.isInteger(value) || value < 1 || value > 120)
+    periods.some((value) => !Number.isInteger(value) || value < 1 || value > 250)
   ) {
-    throw new MarketMultiAssetToolError('INVALID_ARGUMENT', 'periods 必须包含 1-5 个不重复的 1-120 整数')
+    throw new MarketMultiAssetToolError('INVALID_ARGUMENT', 'periods 必须包含 1-5 个不重复的 1-250 整数')
   }
   return periods.sort((left, right) => left - right)
 }

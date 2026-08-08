@@ -17,7 +17,7 @@ export class ReturnComparisonQueryDto {
   @ArrayMaxSize(5)
   @IsInt({ each: true })
   @Min(1, { each: true })
-  @Max(60, { each: true })
+  @Max(250, { each: true })
   @Type(() => Number)
   periods?: number[]
 
@@ -25,6 +25,7 @@ export class ReturnComparisonQueryDto {
   @IsOptional()
   @IsInt()
   @Min(1)
+  @Max(250)
   @Type(() => Number)
   sort_period?: number
 

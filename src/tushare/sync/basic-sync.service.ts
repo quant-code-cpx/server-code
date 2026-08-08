@@ -191,7 +191,8 @@ export class BasicSyncService {
       .filter((item): item is NonNullable<typeof item> => Boolean(item))
       .forEach((item) => deduped.set(item.tsCode, item))
 
-    const count = await this.helper.replaceAllRows('stockBasic', Array.from(deduped.values()))
+    // stock_basic 是新闻证券关联等业务表的被引用主数据，不能再先删后插。
+    const count = await this.helper.upsertRowsByUnique('stockBasic', 'tsCode', Array.from(deduped.values()))
 
     this.logger.log(`[股票列表] 同步完成，共 ${count} 条`)
     await this.helper.writeSyncLog(

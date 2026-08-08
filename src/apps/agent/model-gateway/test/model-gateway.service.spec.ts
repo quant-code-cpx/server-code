@@ -172,6 +172,38 @@ describe('Model Gateway provider contract 与 OpenAI-compatible adapter', () => 
     expect(result.data).toEqual({ cutoff: null, tradeDate: '2000-01-01' })
   })
 
+  it('[REG] Provider Token Count 不可用时回退完整请求保守估算，不阻断真实模型调用', async () => {
+    const fakeConfig = buildModelConfig({}, 'test') as IModelConfig
+    const delegate = new FakeModelProvider(fakeConfig)
+    const provider: ModelProvider = {
+      provider: delegate.provider,
+      listModels: () => delegate.listModels(),
+      supports: (model, required) => delegate.supports(model, required),
+      stream: (request, signal) => delegate.stream(request, signal),
+      countInputTokens: jest.fn().mockRejectedValue(new Error('count endpoint unavailable')),
+    }
+    const service = createService(provider, fakeConfig)
+    const request = baseRequest({
+      messages: [{ role: 'user', content: '比较两家公司最近一期收入和现金流。' }],
+      responseSchema: {
+        type: 'object',
+        properties: { answer: { type: 'string' } },
+        required: ['answer'],
+        additionalProperties: false,
+      },
+    })
+
+    const count = await service.countInputTokensForModel(request, delegate.listModels()[0])
+
+    expect(count).toMatchObject({ source: 'LOCAL_CONSERVATIVE_V1', exact: false })
+    expect(count.inputTokens).toBeGreaterThan(count.rawInputTokens)
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ operation: 'modelInputTokenCount', status: 'FALLBACK' }),
+      ModelGatewayService.name,
+    )
+    await expect(service.generateStructured(request)).resolves.toMatchObject({ repaired: false })
+  })
+
   it('SSE 跨 UTF-8 字节分片，并合并乱序 index 的 Tool fragments、usage 与 request ID', async () => {
     handler = async (_request, response, body) => {
       expect(body.stream).toBe(true)
@@ -283,6 +315,25 @@ describe('Model Gateway provider contract 与 OpenAI-compatible adapter', () => 
     expect(JSON.stringify(chunks)).not.toContain(reasoningCanary)
   })
 
+  it('未传请求级推理参数时使用模型部署配置的默认推理档位', async () => {
+    handler = (_request, response, body) => {
+      expect(body.reasoning_effort).toBe('high')
+      sendTextStream(response, 'configured-reasoning')
+    }
+    const baseConfig = makeOpenAiConfig(baseUrl)
+    const providerConfig = {
+      ...baseConfig.providers[0],
+      descriptor: { ...baseConfig.providers[0].descriptor, defaultReasoning: { mode: 'EFFORT', effort: 'HIGH' } },
+    } as IModelConfig['providers'][number]
+    const config = {
+      ...baseConfig,
+      descriptor: providerConfig.descriptor,
+      providers: [providerConfig],
+    } as IModelConfig
+
+    await collect(createService(new OpenAiCompatibleProvider(config), config).stream(baseRequest()))
+  })
+
   it.each([429, 503])('HTTP %i 在首个输出前有限重试，日志不含 key/prompt/raw body', async (status) => {
     let calls = 0
     handler = (_request, response) => {
@@ -341,7 +392,8 @@ describe('Model Gateway provider contract 与 OpenAI-compatible adapter', () => 
     const cases: Array<[string, ModelRequest]> = [
       ['modelPolicy', baseRequest({ modelPolicy: 'INVALID' as ModelRequest['modelPolicy'] })],
       ['purpose', baseRequest({ purpose: 'INVALID' as ModelRequest['purpose'] })],
-      ['reasoningEffort', baseRequest({ reasoningEffort: 'INVALID' as ModelRequest['reasoningEffort'] })],
+      // 推理档位允许供应商原生名称；这里只拒绝不符合安全字符集的值。
+      ['reasoningEffort', baseRequest({ reasoningEffort: 'INVALID SPACE' as ModelRequest['reasoningEffort'] })],
       ['dataClass', baseRequest({ dataClass: 'INVALID' as ModelRequest['dataClass'] })],
       [
         'message role',
@@ -528,7 +580,7 @@ describe('Model Gateway provider contract 与 OpenAI-compatible adapter', () => 
 
     await expect(createOpenAiService(baseUrl).generateStructured(structuredRequest())).rejects.toMatchObject({
       category: 'INVALID_OUTPUT',
-      retryable: false,
+      retryable: true,
     })
     expect(calls).toBe(2)
   })
@@ -601,6 +653,71 @@ describe('Model Gateway provider contract 与 OpenAI-compatible adapter', () => 
 
     expect(caught).toMatchObject({ category: 'CONTEXT_LENGTH', retryable: false, statusCode: 400 })
     expect(JSON.stringify(caught)).not.toContain('PRIVATE_INPUT_CANARY')
+  })
+
+  it('按管理员配置发送并行工具参数，并把供应商不支持错误映射为可操作提示', async () => {
+    handler = (_request, response, body) => {
+      expect(body.parallel_tool_calls).toBe(true)
+      response.writeHead(400, { 'content-type': 'application/json' })
+      response.end(
+        JSON.stringify({
+          error: {
+            message: 'Unsupported parameter: parallel_tool_calls PRIVATE_PROVIDER_CANARY',
+          },
+        }),
+      )
+    }
+
+    let caught: unknown
+    try {
+      await collect(
+        createOpenAiService(baseUrl, {
+          AGENT_MODEL_CAPABILITIES: 'STREAMING,STRUCTURED_OUTPUT,TOOL_CALLING,PARALLEL_TOOL_CALLING',
+        }).stream(
+          baseRequest({
+            tools: [
+              {
+                name: 'lookup',
+                description: 'lookup data',
+                parameters: { type: 'object', additionalProperties: false },
+              },
+            ],
+            metadata: { parallelToolCalls: true },
+          }),
+        ),
+      )
+    } catch (error) {
+      caught = error
+    }
+
+    expect(caught).toMatchObject({
+      category: 'CONTENT',
+      retryable: false,
+      statusCode: 400,
+      message: '模型供应商不支持并行工具调用，请关闭“并行工具”能力后重试',
+    })
+    expect(JSON.stringify(caught)).not.toContain('PRIVATE_PROVIDER_CANARY')
+  })
+
+  it('未声明并行工具能力时由模型配置自动发送 false，不再默认写死为 true', async () => {
+    handler = (_request, response, body) => {
+      expect(body.parallel_tool_calls).toBe(false)
+      sendTextStream(response, 'serial-tools')
+    }
+
+    await collect(
+      createOpenAiService(baseUrl).stream(
+        baseRequest({
+          tools: [
+            {
+              name: 'lookup',
+              description: 'lookup data',
+              parameters: { type: 'object', additionalProperties: false },
+            },
+          ],
+        }),
+      ),
+    )
   })
 
   function createOpenAiService(base: string, overrides: ModelConfigEnvironment = {}): ModelGatewayService {

@@ -105,6 +105,34 @@ describe('IndustryRotationService', () => {
       expect(result.industries[0].returns[60]).toBeNull()
       expect(result.industries[0].latestPctChange).toBeNull()
     })
+
+    it('250 日收益查询使用有界窗口并保留 1Y 原值', async () => {
+      const prisma = buildPrismaMock()
+      prisma.$queryRawUnsafe.mockResolvedValueOnce([
+        {
+          ts_code: 'BK0475',
+          name: '银行',
+          latest_close: 100,
+          latest_pct_change: 1,
+          return_60: 6,
+          return_120: 12,
+          return_250: 25,
+        },
+      ])
+      const svc = createService({ prisma })
+
+      const result = await svc.getReturnComparison({
+        trade_date: '20240628',
+        periods: [60, 120, 250],
+        sort_period: 250,
+      })
+      const queryCalls = prisma.$queryRawUnsafe.mock.calls as unknown[][]
+      const rawSql = queryCalls[0][0] as string
+
+      expect(rawSql).toContain('WHERE rn <= 251')
+      expect(rawSql).toContain('AS close_250')
+      expect(result.industries[0].returns).toEqual({ 60: 6, 120: 12, 250: 25 })
+    })
   })
 
   // ── getMomentumRanking ─────────────────────────────────────────────────────
@@ -240,6 +268,21 @@ describe('IndustryRotationService', () => {
         'ind-rotation:flow',
         expect.objectContaining({ days: 5, limit: null }),
       )
+    })
+
+    it.each([120, 250])('%s 日资金查询保持有界日期窗口', async (days) => {
+      const prisma = buildPrismaMock()
+      prisma.$queryRawUnsafe.mockResolvedValue([])
+      const svc = createService({ prisma })
+
+      await svc.getFlowAnalysis({ trade_date: '20240628', days })
+
+      const queryCalls = prisma.$queryRawUnsafe.mock.calls as unknown[][]
+      const flowSql = queryCalls[0][0] as string
+      const returnSql = queryCalls[1][0] as string
+      expect(flowSql).toContain(`LIMIT ${days * 2}`)
+      expect(flowSql).toContain(`r.day_rn <= ${days}`)
+      expect(returnSql).toContain(`r2.rn = ${days + 1}`)
     })
   })
 
@@ -538,6 +581,23 @@ describe('IndustryRotationService', () => {
       expect(result.tsCode).toBe('BK0475.DC')
       expect(result.industry).toBe('银行')
       expect(result.returnTrend).toHaveLength(1)
+    })
+
+    it('250 日详情趋势查询分别使用 LIMIT 250', async () => {
+      const prisma = buildPrismaMock()
+      prisma.dailyBasic.findFirst.mockResolvedValueOnce(null)
+      prisma.$queryRawUnsafe
+        .mockResolvedValueOnce([{ name: '银行' }])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+      const svc = createService({ prisma })
+
+      await svc.getDetail({ tsCode: 'BK0475.DC', days: 250 })
+
+      const queryCalls = prisma.$queryRawUnsafe.mock.calls as unknown[][]
+      expect(queryCalls[1][0]).toContain('LIMIT 250')
+      expect(queryCalls[2][0]).toContain('LIMIT 250')
     })
   })
 

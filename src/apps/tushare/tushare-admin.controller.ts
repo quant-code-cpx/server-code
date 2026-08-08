@@ -1,6 +1,6 @@
 import { Body, Controller, HttpCode, HttpStatus, Post, UseGuards } from '@nestjs/common'
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger'
-import { TushareSyncRetryStatus, UserRole } from '@prisma/client'
+import { Prisma, TushareSyncRetryStatus, TushareSyncTask, UserRole } from '@prisma/client'
 import { ApiSuccessRawResponse, ApiSuccessResponse } from 'src/common/decorators/api-success-response.decorator'
 import { ResponseModel } from 'src/common/models/response.model'
 import { Roles } from 'src/common/decorators/roles.decorator'
@@ -15,12 +15,13 @@ import { PrismaService } from 'src/shared/prisma.service'
 import { ManualSyncDto } from './dto/manual-sync.dto'
 import { CacheMetricsDataDto, TushareSyncPlanDto } from './dto/tushare-sync-response.dto'
 import { SyncLogQueryDto } from './dto/sync-log-query.dto'
+import { RetryQueueQueryDto } from './dto/retry-queue-query.dto'
 
 @ApiBearerAuth()
 @ApiTags('Tushare - 同步管理')
 @Controller('tushare/admin')
 @UseGuards(RolesGuard)
-@Roles(UserRole.SUPER_ADMIN)
+@Roles(UserRole.ADMIN)
 export class TushareAdminController {
   constructor(
     private readonly tushareSyncService: TushareSyncService,
@@ -47,6 +48,7 @@ export class TushareAdminController {
   }
 
   @Post('sync')
+  @Roles(UserRole.SUPER_ADMIN)
   @HttpCode(HttpStatus.ACCEPTED)
   @ApiOperation({
     summary: '手动触发 Tushare 同步（仅超级管理员）',
@@ -60,6 +62,7 @@ export class TushareAdminController {
   }
 
   @Post('quality/check')
+  @Roles(UserRole.SUPER_ADMIN)
   @HttpCode(HttpStatus.ACCEPTED)
   @ApiOperation({ summary: '手动触发数据质量检查（仅超级管理员）' })
   @ApiSuccessRawResponse({ type: 'null', nullable: true })
@@ -83,6 +86,7 @@ export class TushareAdminController {
   }
 
   @Post('quality/cross-check')
+  @Roles(UserRole.SUPER_ADMIN)
   @ApiOperation({ summary: '手动触发跨表一致性对账（仅超级管理员）' })
   @ApiSuccessRawResponse({ type: 'array', items: { type: 'object' } })
   async runCrossTableCheck(@Body() dto: { mode?: 'recent' | 'full' }) {
@@ -91,6 +95,7 @@ export class TushareAdminController {
   }
 
   @Post('quality/repair')
+  @Roles(UserRole.SUPER_ADMIN)
   @ApiOperation({ summary: '手动触发自动补数（基于最近一轮检查结果，仅超级管理员）' })
   @ApiSuccessRawResponse({ type: 'object' })
   async triggerAutoRepair() {
@@ -215,19 +220,19 @@ export class TushareAdminController {
     description: '分页查询同步失败后自动入队的重试记录，支持按状态过滤。',
   })
   @ApiSuccessRawResponse({ type: 'object' })
-  async getRetryQueue(
-    @Body()
-    dto: {
-      status?: TushareSyncRetryStatus
-      page?: number
-      pageSize?: number
-    },
-  ) {
+  async getRetryQueue(@Body() dto: RetryQueueQueryDto) {
     const page = dto.page ?? 1
     const pageSize = Math.min(dto.pageSize ?? 20, 100)
     const skip = (page - 1) * pageSize
 
-    const where = dto.status ? { status: dto.status } : {}
+    const normalizedTask = dto.task?.trim().toUpperCase()
+    const matchingTasks = normalizedTask
+      ? Object.values(TushareSyncTask).filter((task) => task.includes(normalizedTask))
+      : undefined
+    const where: Prisma.TushareSyncRetryQueueWhereInput = {
+      ...(dto.status ? { status: dto.status } : {}),
+      ...(matchingTasks ? { task: { in: matchingTasks } } : {}),
+    }
     const [total, items] = await Promise.all([
       this.prisma.tushareSyncRetryQueue.count({ where }),
       this.prisma.tushareSyncRetryQueue.findMany({
@@ -242,6 +247,7 @@ export class TushareAdminController {
   }
 
   @Post('retry-queue/reset')
+  @Roles(UserRole.SUPER_ADMIN)
   @ApiOperation({
     summary: '重置耗尽重试记录为 PENDING（仅超级管理员）',
     description: '将 EXHAUSTED 状态的记录重置为 PENDING 并更新下次重试时间，可选按任务过滤。',
@@ -260,7 +266,7 @@ export class TushareAdminController {
       },
     })
 
-    return { message: `已重置 ${result.count} 条记录为 PENDING` }
+    return { message: `已重置 ${result.count} 条记录为 PENDING`, count: result.count }
   }
 
   @Post('sync-status-overview')

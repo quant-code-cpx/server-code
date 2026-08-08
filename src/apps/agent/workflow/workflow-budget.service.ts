@@ -9,6 +9,21 @@ export class WorkflowBudgetService {
 
   resolveLimits(workflow: FrozenWorkflowDefinition, rawBudget: unknown): WorkflowBudgetLimits {
     const budget = asRecord(rawBudget)
+    const runPolicy = asRecord(budget.runPolicy)
+    if (runPolicy.schemaVersion === 1) {
+      return {
+        maxSteps: Math.min(workflow.maxSteps, readInteger(runPolicy.maxSteps, workflow.maxSteps)),
+        maxToolCalls: readInteger(runPolicy.maxToolCalls, this.config.maxToolCalls, true),
+        maxParallelTools: Math.min(
+          workflow.maxParallelTools,
+          readInteger(runPolicy.maxParallelTools, workflow.maxParallelTools),
+        ),
+        maxCumulativeInputTokens: readNullablePositiveInteger(runPolicy.maxCumulativeInputTokens),
+        inputTokenGuardrailSource: 'RUN_SNAPSHOT',
+        maxCost: readNumber(runPolicy.maxCost, this.config.maxCostPerRun),
+        costCurrency: readCurrency(runPolicy.costCurrency),
+      }
+    }
     return {
       maxSteps: Math.min(this.config.maxSteps, workflow.maxSteps, readInteger(budget.maxSteps, this.config.maxSteps)),
       maxToolCalls: Math.min(
@@ -20,10 +35,8 @@ export class WorkflowBudgetService {
         workflow.maxParallelTools,
         readInteger(budget.maxParallelTools, this.config.maxParallelTools),
       ),
-      maxInputTokens: Math.min(
-        this.config.maxInputTokens,
-        readInteger(budget.maxInputTokens, this.config.maxInputTokens),
-      ),
+      maxCumulativeInputTokens: readLegacyCumulativeInputLimit(budget, this.config.maxCumulativeInputTokens),
+      inputTokenGuardrailSource: budget.maxInputTokens == null ? this.config.inputTokenGuardrailSource : 'LEGACY_RUN',
       maxCost: Math.min(
         this.config.maxCostPerRun,
         readNumber(budget.maxCost ?? budget.maxCostPerRun, this.config.maxCostPerRun),
@@ -57,23 +70,23 @@ export class WorkflowBudgetService {
 
   assertCanCallModel(usage: WorkflowBudgetUsage, estimatedInputTokens: number, limits: WorkflowBudgetLimits): void {
     this.assertUsage(usage, limits)
-    if (usage.inputTokens + Math.max(0, estimatedInputTokens) > limits.maxInputTokens) {
-      throw new WorkflowBudgetError('Agent 模型输入 Token 超过预算', 6018)
+    if (usage.cost >= limits.maxCost) {
+      throw new WorkflowBudgetError('Agent Run 成本护栏已耗尽，已在模型调用前停止')
+    }
+    if (
+      limits.maxCumulativeInputTokens != null &&
+      usage.inputTokens + Math.max(0, estimatedInputTokens) > limits.maxCumulativeInputTokens
+    ) {
+      throw new WorkflowBudgetError('Agent Run 累计输入 Token 成本护栏将在本次调用前超限', 6018)
     }
   }
 
   assertUsage(usage: WorkflowBudgetUsage, limits: WorkflowBudgetLimits): void {
     if (usage.steps > limits.maxSteps) throw new WorkflowBudgetError('Agent 工作流步数超过预算')
     if (usage.toolCalls > limits.maxToolCalls) throw new WorkflowBudgetError('Agent Tool 调用次数超过预算')
-    if (usage.inputTokens > limits.maxInputTokens) {
-      throw new WorkflowBudgetError('Agent 模型输入 Token 超过预算', 6018)
-    }
     if (usage.costCurrency !== limits.costCurrency) throw new WorkflowBudgetError('Agent 成本预算币种不一致')
-    if (usage.cost > limits.maxCost) throw new WorkflowBudgetError('Agent 成本额度不足')
-  }
-
-  estimateInputTokens(messages: readonly { content: string }[]): number {
-    return Math.ceil(messages.reduce((sum, message) => sum + message.content.length, 0) / 4)
+    // 模型成功后只记账，不把真实 usage 的事后轻微越界伪装成模型失败。
+    // 下一次模型调用会由 assertCanCallModel 在发请求前停止。
   }
 }
 
@@ -96,6 +109,20 @@ function readNumber(value: unknown, fallback: number): number {
     throw new WorkflowBudgetError('成本预算必须为非负有限数值')
   }
   return value
+}
+
+function readNullablePositiveInteger(value: unknown): number | null {
+  if (value == null) return null
+  if (!Number.isInteger(value) || (value as number) < 1) {
+    throw new WorkflowBudgetError('Run 累计输入 Token 护栏必须为正整数或 null')
+  }
+  return value as number
+}
+
+function readLegacyCumulativeInputLimit(budget: Record<string, unknown>, configured: number | null): number | null {
+  const legacy = readNullablePositiveInteger(budget.maxInputTokens)
+  if (legacy == null) return configured
+  return configured == null ? legacy : Math.min(legacy, configured)
 }
 
 function readCurrency(value: unknown): string {

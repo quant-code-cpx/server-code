@@ -9,8 +9,29 @@ import {
   type ModelRequest,
 } from './model-gateway.port'
 import { ModelProviderConfigService } from './model-provider-config.service'
-import { FakeModelProvider } from './providers/fake-model.provider'
-import { OpenAiCompatibleProvider } from './providers/openai-compatible.provider'
+import { createModelProvider } from './model-provider.factory'
+
+export interface ModelExecutionBudgetConfig {
+  providerId: string
+  model: string
+  timeoutMs: number
+  maxRetries: number
+  retryBaseMs: number
+}
+
+export interface ModelRunProfileSnapshot {
+  schemaVersion: 1
+  snapshottedAt: string
+  source: 'RUN_CREATION'
+  selectedProvider: string
+  selectedModel: string
+  candidates: ModelDescriptor[]
+}
+
+export interface ModelRunProfileRequirements {
+  capabilities: readonly ModelCapability[]
+  dataClass: ModelDescriptor['dataClasses'][number]
+}
 
 @Injectable()
 export class ModelCapabilityRegistry implements OnModuleInit, OnModuleDestroy {
@@ -30,6 +51,10 @@ export class ModelCapabilityRegistry implements OnModuleInit, OnModuleDestroy {
 
   async onModuleInit(): Promise<void> {
     if (!this.configStore) return
+    // Fake providers are deliberately environment-only and cannot be persisted by
+    // ModelProviderConfigService. Reloading an empty DB in test mode would erase
+    // the deterministic provider before the first Agent Run starts.
+    if (this.modelConfig.providers?.some((provider) => provider.kind === 'fake')) return
     try {
       await this.reload()
     } catch (error) {
@@ -49,7 +74,18 @@ export class ModelCapabilityRegistry implements OnModuleInit, OnModuleDestroy {
   async reload(): Promise<void> {
     if (!this.configStore) return
     const configs = await this.configStore.loadActive()
-    this.replace(configs.map(createProvider))
+    this.replaceConfigs(configs)
+  }
+
+  async validateDraft(): Promise<void> {
+    if (!this.configStore) return
+    const configs = await this.configStore.loadDraft()
+    if (configs.length === 0) throw new ModelGatewayError('UNAVAILABLE', false, '至少需要一个可发布的模型部署')
+    configs.map(createModelProvider)
+  }
+
+  private replaceConfigs(configs: AgentModelProviderConfig[]): void {
+    this.replace(configs.map(createModelProvider))
     this.providerConfigs.clear()
     for (const config of configs) this.providerConfigs.set(config.id, config)
   }
@@ -67,6 +103,37 @@ export class ModelCapabilityRegistry implements OnModuleInit, OnModuleDestroy {
 
   list(): readonly ModelDescriptor[] {
     return [...this.models.values()].flatMap((entries) => entries.map((item) => item.descriptor))
+  }
+
+  snapshotRunProfile(
+    modelPolicy: 'AUTO' | 'MANUAL',
+    preferredModel: string | null,
+    requirements: ModelRunProfileRequirements = {
+      capabilities: ['STREAMING', 'STRUCTURED_OUTPUT'],
+      dataClass: 'USER_PRIVATE',
+    },
+  ): ModelRunProfileSnapshot {
+    const candidates = this.list().filter(
+      (descriptor) =>
+        (modelPolicy !== 'MANUAL' || descriptor.model === preferredModel) &&
+        requirements.capabilities.every((capability) => descriptor.capabilities.includes(capability)) &&
+        descriptor.dataClasses.includes(requirements.dataClass),
+    )
+    if (modelPolicy === 'MANUAL' && !preferredModel) {
+      throw new ModelGatewayError('UNAVAILABLE', false, 'MANUAL modelPolicy 必须指定 preferredModel')
+    }
+    if (candidates.length === 0) {
+      throw new ModelGatewayError('UNAVAILABLE', false, 'Run 创建时没有可冻结的模型部署')
+    }
+    const frozen = candidates.map(cloneDescriptor)
+    return {
+      schemaVersion: 1,
+      snapshottedAt: new Date().toISOString(),
+      source: 'RUN_CREATION',
+      selectedProvider: frozen[0].provider,
+      selectedModel: frozen[0].model,
+      candidates: frozen,
+    }
   }
 
   get(modelRef: string): ModelDescriptor {
@@ -91,6 +158,29 @@ export class ModelCapabilityRegistry implements OnModuleInit, OnModuleDestroy {
     return this.providerConfigs.get(providerId)
   }
 
+  executionBudgetConfigs(modelRef?: string | null): readonly ModelExecutionBudgetConfig[] {
+    const entries = modelRef ? (this.models.get(modelRef) ?? []) : [...this.models.values()].flat()
+    return this.executionBudgetConfigsForDescriptors(entries.map(({ descriptor }) => descriptor))
+  }
+
+  executionBudgetConfigsForDescriptors(descriptors: readonly ModelDescriptor[]): readonly ModelExecutionBudgetConfig[] {
+    const configs = new Map<string, ModelExecutionBudgetConfig>()
+    for (const descriptor of descriptors) {
+      const config =
+        this.providerConfigs.get(descriptor.provider) ??
+        this.modelConfig.providers?.find((provider) => provider.id === descriptor.provider)
+      if (!config) continue
+      configs.set(`${descriptor.provider}:${descriptor.model}`, {
+        providerId: descriptor.provider,
+        model: descriptor.model,
+        timeoutMs: config.timeoutMs,
+        maxRetries: config.maxRetries,
+        retryBaseMs: config.retryBaseMs,
+      })
+    }
+    return [...configs.values()]
+  }
+
   assertRequestSupported(modelRef: string, request: ModelRequest): ModelDescriptor {
     const descriptor = this.get(modelRef)
     return this.assertDescriptorSupported(descriptor, request)
@@ -105,7 +195,11 @@ export class ModelCapabilityRegistry implements OnModuleInit, OnModuleDestroy {
     if (request.maxOutputTokens > descriptor.maxOutputTokens) {
       throw new ModelGatewayError('CONTENT', false, 'maxOutputTokens 超过模型配置上限')
     }
-    if (request.reasoningEffort && !descriptor.reasoningEfforts.includes(request.reasoningEffort)) {
+    const requestedEffort =
+      request.reasoning?.mode === 'EFFORT' || request.reasoning?.mode === 'TOKEN_BUDGET'
+        ? request.reasoning.effort
+        : request.reasoningEffort
+    if (requestedEffort && !supportsEffort(descriptor.reasoningEfforts, requestedEffort)) {
       throw new ModelGatewayError('UNAVAILABLE', false, '模型不支持指定 reasoning effort')
     }
     const dataClass = request.dataClass ?? 'PUBLIC'
@@ -116,20 +210,34 @@ export class ModelCapabilityRegistry implements OnModuleInit, OnModuleDestroy {
   }
 }
 
+function cloneDescriptor(descriptor: ModelDescriptor): ModelDescriptor {
+  return {
+    ...descriptor,
+    ...(descriptor.defaultReasoning ? { defaultReasoning: { ...descriptor.defaultReasoning } } : {}),
+    capabilities: [...descriptor.capabilities],
+    reasoningEfforts: [...descriptor.reasoningEfforts],
+    dataClasses: [...descriptor.dataClasses],
+  }
+}
+
 export function requiredCapabilities(
-  request: Pick<ModelRequest, 'responseSchema' | 'tools' | 'reasoningEffort'>,
+  request: Pick<ModelRequest, 'responseSchema' | 'tools' | 'reasoning' | 'reasoningEffort' | 'metadata'>,
 ): ModelCapability[] {
   const required: ModelCapability[] = ['STREAMING']
   if (request.responseSchema) required.push('STRUCTURED_OUTPUT')
   if (request.tools?.length) required.push('TOOL_CALLING')
-  if (request.reasoningEffort) required.push('REASONING_EFFORT')
+  if (request.tools?.length && request.metadata?.parallelToolCalls === true) required.push('PARALLEL_TOOL_CALLING')
+  if (request.reasoningEffort || (request.reasoning && !['AUTO', 'DISABLED'].includes(request.reasoning.mode))) {
+    required.push('REASONING_EFFORT')
+  }
   return required
+}
+
+function supportsEffort(supported: readonly string[], effort: string): boolean {
+  const normalized = effort.trim().toLowerCase()
+  return supported.some((item) => item.trim().toLowerCase() === normalized)
 }
 
 function asProviderList(value: ModelProvider | readonly ModelProvider[]): readonly ModelProvider[] {
   return 'provider' in value ? [value] : value
-}
-
-function createProvider(config: AgentModelProviderConfig): ModelProvider {
-  return config.kind === 'fake' ? new FakeModelProvider(config) : new OpenAiCompatibleProvider(config)
 }

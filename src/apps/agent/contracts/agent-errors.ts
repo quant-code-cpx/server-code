@@ -24,7 +24,13 @@ export const AGENT_ERROR_DEFINITIONS = [
   { code: 6015, key: 'AI_SEARCH_FAILED', httpStatus: 502, retryable: true, message: '联网搜索失败' },
   { code: 6016, key: 'AI_WEB_SOURCE_BLOCKED', httpStatus: 422, retryable: false, message: '网页来源被安全策略拦截' },
   { code: 6017, key: 'AI_CITATION_INVALID', httpStatus: 422, retryable: false, message: '引用验证失败' },
-  { code: 6018, key: 'AI_CONTEXT_TOO_LARGE', httpStatus: 422, retryable: false, message: '上下文超过模型限制' },
+  {
+    code: 6018,
+    key: 'AI_RUN_INPUT_TOKEN_GUARDRAIL_EXCEEDED',
+    httpStatus: 422,
+    retryable: false,
+    message: 'Agent Run 累计输入 Token 成本护栏已达上限',
+  },
   { code: 6019, key: 'AI_COST_QUOTA_EXCEEDED', httpStatus: 429, retryable: false, message: 'Agent 成本额度不足' },
   { code: 6020, key: 'AI_RUN_TIMEOUT', httpStatus: 504, retryable: true, message: 'Agent Run 超时' },
   { code: 6021, key: 'AI_SCHEDULE_INVALID', httpStatus: 400, retryable: false, message: 'Agent 计划配置无效' },
@@ -161,7 +167,7 @@ export type AgentErrorKey =
   | 'AI_SEARCH_FAILED'
   | 'AI_WEB_SOURCE_BLOCKED'
   | 'AI_CITATION_INVALID'
-  | 'AI_CONTEXT_TOO_LARGE'
+  | 'AI_RUN_INPUT_TOKEN_GUARDRAIL_EXCEEDED'
   | 'AI_COST_QUOTA_EXCEEDED'
   | 'AI_RUN_TIMEOUT'
   | 'AI_SCHEDULE_INVALID'

@@ -40,6 +40,7 @@ import { AgentConversationRepository } from 'src/apps/agent/conversation/agent-c
 import { AgentMessageRepository } from 'src/apps/agent/conversation/agent-message.repository'
 import { ContextBuilderService } from 'src/apps/agent/memory/context-builder.service'
 import { ContextTokenEstimator } from 'src/apps/agent/memory/context-token-estimator'
+import { ConversationContextCompatibilityService } from 'src/apps/agent/memory/conversation-context-compatibility.service'
 import { ConversationSummaryRepository } from 'src/apps/agent/memory/conversation-summary.repository'
 import { ConversationSummaryService } from 'src/apps/agent/memory/conversation-summary.service'
 import { ConversationSummaryGeneratorService } from 'src/apps/agent/memory/conversation-summary-generator.service'
@@ -49,14 +50,17 @@ import { AgentExecutionModule } from 'src/apps/agent/execution/agent-execution.m
 import { AgentEventRepository } from 'src/apps/agent/execution/agent-event.repository'
 import { AgentRunCompletionRepository } from 'src/apps/agent/execution/agent-run-completion.repository'
 import { AgentRunClaimError } from 'src/apps/agent/execution/agent-execution.errors'
+import { ModelCapabilityRegistry } from 'src/apps/agent/model-gateway/model-capability.registry'
 import { MODEL_PROVIDER, MODEL_PROVIDERS } from 'src/apps/agent/model-gateway/model-gateway.port'
 import { ModelGatewayModule } from 'src/apps/agent/model-gateway/model-gateway.module'
+import { ModelConfig } from 'src/config/model.config'
 import { AgentOrchestratorService } from 'src/apps/agent/orchestrator/agent-orchestrator.service'
 import { AgentMetricsService } from 'src/apps/agent/observability/agent-metrics.service'
 import { AgentStreamMetricsService } from 'src/apps/agent/streaming/agent-stream-metrics.service'
 import { AgentStreamService } from 'src/apps/agent/streaming/agent-stream.service'
 import { TOOL_EXECUTION_OBSERVER } from 'src/apps/agent/tools/contracts/tool-observer'
 import { ToolExecutorService } from 'src/apps/agent/tools/tool-executor.service'
+import { ToolCapabilityCatalogService } from 'src/apps/agent/tools/tool-capability-catalog.service'
 import { ToolPolicyService } from 'src/apps/agent/tools/tool-policy.service'
 import { AGENT_TOOL_DEFINITIONS, ToolRegistryService } from 'src/apps/agent/tools/tool-registry.service'
 import { ToolRunLimiterService } from 'src/apps/agent/tools/tool-run-limiter.service'
@@ -68,9 +72,11 @@ import { ExecuteToolsNode } from 'src/apps/agent/workflow/nodes/execute-tools.no
 import { LoadContextNode } from 'src/apps/agent/workflow/nodes/load-context.node'
 import { PersistNode } from 'src/apps/agent/workflow/nodes/persist.node'
 import { PlanNode } from 'src/apps/agent/workflow/nodes/plan.node'
+import { SelectToolsNode } from 'src/apps/agent/workflow/nodes/select-tools.node'
 import { SynthesizeNode } from 'src/apps/agent/workflow/nodes/synthesize.node'
 import { ValidateCitationsNode } from 'src/apps/agent/workflow/nodes/validate-citations.node'
 import { ResearchPlanCompilerService } from 'src/apps/agent/workflow/research-plan-compiler.service'
+import { ModelContextBudgetService } from 'src/apps/agent/workflow/model-context-budget.service'
 import { WorkflowBudgetService } from 'src/apps/agent/workflow/workflow-budget.service'
 import { WorkflowContextService } from 'src/apps/agent/workflow/workflow-context.service'
 import { WorkflowEngineService } from 'src/apps/agent/workflow/workflow-engine.service'
@@ -78,10 +84,14 @@ import { WorkflowFinalizationService } from 'src/apps/agent/workflow/workflow-fi
 import { WorkflowModelService } from 'src/apps/agent/workflow/workflow-model.service'
 import { AGENT_WORKFLOW_DEFINITIONS, WorkflowRegistryService } from 'src/apps/agent/workflow/workflow-registry.service'
 import { WorkflowToolService } from 'src/apps/agent/workflow/workflow-tool.service'
-import { STOCK_RESEARCH_WORKFLOW_V1 } from 'src/apps/agent/workflow/workflows/stock-research.v1'
+import {
+  STOCK_RESEARCH_WORKFLOW_CURRENT,
+  STOCK_RESEARCH_WORKFLOW_DEFINITIONS,
+} from 'src/apps/agent/workflow/workflows/stock-research.v11'
 import { AgentQueueService } from 'src/queue/agent/agent-queue.service'
 import { AGENT_RUN_JOB_NAME } from 'src/queue/agent/agent.queue.constants'
 import { MetricsModule } from 'src/shared/metrics/metrics.module'
+import { LoggerService } from 'src/shared/logger/logger.service'
 import { AgentFaults } from './fault-injection/agent-faults'
 import { createAgentMvpTestTools } from './support/agent-test-tool'
 import { AGENT_TEST_LOGGER, AgentTestInfrastructureModule } from './support/agent-test-infrastructure.module'
@@ -146,6 +156,9 @@ integrationDescribe('Batch 018 Agent MVP - fresh DB + HTTP + inline Worker + POS
     originalDatabaseUrl = process.env.DATABASE_URL
     process.env.DATABASE_URL = temporaryDatabase.databaseUrl
     process.env.NODE_ENV = 'test'
+    delete process.env.AGENT_MAX_INPUT_TOKENS
+    delete process.env.AGENT_RUN_MAX_CUMULATIVE_INPUT_TOKENS
+    process.env.AGENT_MODEL_CONFIG_SOURCE = 'env'
     process.env.AGENT_MODEL_PROVIDER = 'fake'
     process.env.AGENT_TOOLS_ENABLED = 'get_stock_overview,search_web,fetch_web_page'
     process.env.AGENT_RUN_LEASE_MS = '2000'
@@ -179,6 +192,7 @@ integrationDescribe('Batch 018 Agent MVP - fresh DB + HTTP + inline Worker + POS
         ConversationSummaryRepository,
         ConversationSummaryService,
         ConversationSummaryGeneratorService,
+        ConversationContextCompatibilityService,
         UserMemoryRepository,
         ContextTokenEstimator,
         ContextBuilderService,
@@ -192,11 +206,13 @@ integrationDescribe('Batch 018 Agent MVP - fresh DB + HTTP + inline Worker + POS
         AgentStreamService,
         ToolSchemaValidator,
         ToolRegistryService,
+        ToolCapabilityCatalogService,
         ToolPolicyService,
         ToolRunLimiterService,
         ToolExecutorService,
         WorkflowRegistryService,
         WorkflowBudgetService,
+        ModelContextBudgetService,
         ResearchPlanCompilerService,
         WorkflowContextService,
         WorkflowModelService,
@@ -204,6 +220,7 @@ integrationDescribe('Batch 018 Agent MVP - fresh DB + HTTP + inline Worker + POS
         CitationCoverageService,
         WorkflowFinalizationService,
         LoadContextNode,
+        SelectToolsNode,
         PlanNode,
         AuthorizeToolsNode,
         ExecuteToolsNode,
@@ -215,7 +232,7 @@ integrationDescribe('Batch 018 Agent MVP - fresh DB + HTTP + inline Worker + POS
         AgentOrchestratorService,
         { provide: AgentQueueService, useClass: InlineAgentQueueService },
         { provide: InlineAgentQueueService, useExisting: AgentQueueService },
-        { provide: AGENT_WORKFLOW_DEFINITIONS, useValue: Object.freeze([STOCK_RESEARCH_WORKFLOW_V1]) },
+        { provide: AGENT_WORKFLOW_DEFINITIONS, useValue: STOCK_RESEARCH_WORKFLOW_DEFINITIONS },
         { provide: AGENT_TOOL_DEFINITIONS, useValue: createAgentMvpTestTools(faults, () => prisma) },
         {
           provide: TOOL_EXECUTION_OBSERVER,
@@ -228,11 +245,14 @@ integrationDescribe('Batch 018 Agent MVP - fresh DB + HTTP + inline Worker + POS
       .useValue(provider)
       .overrideProvider(MODEL_PROVIDERS)
       .useValue([provider])
+      .overrideProvider(LoggerService)
+      .useValue(AGENT_TEST_LOGGER)
       .overrideGuard(JwtAuthGuard)
       .useValue(testAuthGuard())
 
     const moduleRef = await moduleBuilder.compile()
     app = moduleRef.createNestApplication()
+    app.useLogger(false)
     app.setGlobalPrefix('api', { exclude: ['/metrics'] })
     app.useGlobalPipes(new ValidationPipe({ transform: true, whitelist: true, forbidNonWhitelisted: false }))
     app.useGlobalInterceptors(new TransformInterceptor())
@@ -240,6 +260,11 @@ integrationDescribe('Batch 018 Agent MVP - fresh DB + HTTP + inline Worker + POS
     await app.listen(0, '127.0.0.1')
 
     prisma = app.get(PrismaService)
+    const registeredModels = app.get(ModelCapabilityRegistry).list()
+    if (registeredModels.length === 0) {
+      const modelConfig = app.get(ModelConfig.KEY)
+      throw new Error(`E2E 模型注册表为空：source=${modelConfig.source}, providers=${modelConfig.providers.length}`)
+    }
     audit = app.get(AgentAuditRepository)
     eventRepository = app.get(AgentEventRepository)
     interactions = app.get(AgentInteractionRepository)
@@ -300,7 +325,9 @@ integrationDescribe('Batch 018 Agent MVP - fresh DB + HTTP + inline Worker + POS
         modelPolicy: AiModelPolicy.AUTO,
         allowedCapabilities: ['INTERNAL_DATA'],
       })
-      .expect(200)
+    if (response.status !== 200) {
+      throw new Error(`messages/send 返回 ${response.status}：${JSON.stringify(response.body)}`)
+    }
     expect(response.body).toMatchObject({ code: 0, data: { conversationId, runStatus: 'QUEUED' } })
     const runId = response.body.data.runId as string
     const terminal = await waitForTerminal(userA, runId)
@@ -344,9 +371,9 @@ integrationDescribe('Batch 018 Agent MVP - fresh DB + HTTP + inline Worker + POS
     expect(assistant.contentText).toContain('1,500 元')
     expect(assistant.citations).toHaveLength(1)
 
-    await expect(prisma.aiAgentStep.count({ where: { runId } })).resolves.toBe(8)
+    await expect(prisma.aiAgentStep.count({ where: { runId } })).resolves.toBe(STOCK_RESEARCH_WORKFLOW_CURRENT.maxSteps)
     await expect(prisma.aiToolCall.count({ where: { runId } })).resolves.toBe(1)
-    await expect(prisma.aiModelCall.count({ where: { runId } })).resolves.toBe(2)
+    await expect(prisma.aiModelCall.count({ where: { runId } })).resolves.toBe(3)
     await expect(
       prisma.aiCitation.count({ where: { messageId: response.body.data.assistantMessageId } }),
     ).resolves.toBe(1)
@@ -379,7 +406,9 @@ integrationDescribe('Batch 018 Agent MVP - fresh DB + HTTP + inline Worker + POS
           conversationId,
           role: index % 2 === 0 ? AiMessageRole.USER : AiMessageRole.ASSISTANT,
           status: AiMessageStatus.COMPLETED,
-          contentText: `${'中'.repeat(252)}-${index + 1}`,
+          // 以当前 fake 模型 32K context 和 75% 压缩阈值构造确定性超阈值历史；
+          // 不能依赖旧版较小模型窗口，否则模型能力升级后该 E2E 会静默失去摘要覆盖。
+          contentText: `${'中'.repeat(800)}-${index + 1}`,
           contentBlocks: [],
           version: 1,
           createdAt,
@@ -404,7 +433,14 @@ integrationDescribe('Batch 018 Agent MVP - fresh DB + HTTP + inline Worker + POS
       })
       .expect(200)
     const runId = response.body.data.runId as string
-    await expect(waitForTerminal(userA, runId)).resolves.toMatchObject({ status: 'COMPLETED' })
+    const terminal = await waitForTerminal(userA, runId)
+    if (terminal.status !== 'COMPLETED') {
+      const failed = await prisma.aiAgentRun.findUniqueOrThrow({
+        where: { id: runId },
+        select: { status: true, errorCode: true, errorClass: true, errorMessage: true },
+      })
+      throw new Error(`滚动摘要 E2E 失败：${JSON.stringify(failed)}`)
+    }
     await queue.wait(runId)
 
     const [conversation, summary, modelCalls] = await Promise.all([
@@ -416,8 +452,8 @@ integrationDescribe('Batch 018 Agent MVP - fresh DB + HTTP + inline Worker + POS
     expect(summary.throughMessageId).not.toBe(response.body.data.userMessageId)
     expect(summary.sourceMessageIds).not.toContain(response.body.data.userMessageId)
     expect(summary.summaryText).not.toContain('CURRENT_SUMMARY_TRIGGER_CANARY')
-    expect(modelCalls.map((call) => call.purpose)).toEqual(['SUMMARIZE', 'PLAN', 'SYNTHESIZE'])
-    const planCall = modelCalls.find((call) => call.purpose === 'PLAN')!
+    expect(modelCalls.map((call) => call.purpose)).toEqual(['SUMMARIZE', 'PLAN', 'PLAN', 'SYNTHESIZE'])
+    const planCall = modelCalls.filter((call) => call.purpose === 'PLAN').at(-1)!
     expect(JSON.stringify(planCall.requestSummary)).toContain(summary.id)
     expect(JSON.stringify(planCall.requestSummary)).not.toContain(summary.summaryText)
   }, 30_000)
@@ -583,6 +619,49 @@ integrationDescribe('Batch 018 Agent MVP - fresh DB + HTTP + inline Worker + POS
     expect(conflict.body.code).toBe(6004)
   }, 30_000)
 
+  it('AGT-BIZ-002：HTTP regenerate 创建新 Run 和 assistant 版本，旧回答保持不可变', async () => {
+    const conversationId = await createConversation(userA, '回答重新生成')
+    const sent = await api(userA)
+      .post('/api/agent/messages/send')
+      .send({
+        clientRequestId: randomUUID(),
+        conversationId,
+        content: '你能做什么？',
+        modelPolicy: AiModelPolicy.AUTO,
+        allowedCapabilities: [],
+      })
+      .expect(200)
+    const originalRunId = sent.body.data.runId as string
+    const originalMessageId = sent.body.data.assistantMessageId as string
+    await expect(waitForTerminal(userA, originalRunId)).resolves.toMatchObject({ status: 'COMPLETED' })
+    await queue.wait(originalRunId)
+    const original = await prisma.aiMessage.findUniqueOrThrow({ where: { id: originalMessageId } })
+
+    const regenerated = await api(userA)
+      .post('/api/agent/runs/regenerate')
+      .send({ clientRequestId: randomUUID(), messageId: originalMessageId, modelPolicy: AiModelPolicy.AUTO })
+      .expect(200)
+    const regeneratedRunId = regenerated.body.data.runId as string
+    const regeneratedMessageId = regenerated.body.data.assistantMessageId as string
+    await expect(waitForTerminal(userA, regeneratedRunId)).resolves.toMatchObject({ status: 'COMPLETED' })
+    await queue.wait(regeneratedRunId)
+
+    expect(regenerated.body.data).toMatchObject({ conversationId, sourceMessageId: originalMessageId })
+    expect(regeneratedRunId).not.toBe(originalRunId)
+    expect(regeneratedMessageId).not.toBe(originalMessageId)
+    const versions = await prisma.aiMessage.findMany({
+      where: { parentMessageId: original.parentMessageId },
+      orderBy: { version: 'asc' },
+    })
+    expect(versions.map((message) => message.version)).toEqual([1, 2])
+    expect(versions[0]).toMatchObject({
+      id: originalMessageId,
+      status: AiMessageStatus.COMPLETED,
+      contentText: original.contentText,
+    })
+    expect(versions[1]).toMatchObject({ id: regeneratedMessageId, status: AiMessageStatus.COMPLETED })
+  }, 30_000)
+
   it('AG-MVP-ERR-002：required Tool 数据不可用时 typed fail，禁止生成答案和引用', async () => {
     faults.failNextTool('get_stock_overview')
     const conversationId = await createConversation(userA, 'Tool 故障研究')
@@ -607,7 +686,10 @@ integrationDescribe('Batch 018 Agent MVP - fresh DB + HTTP + inline Worker + POS
       prisma.aiToolCall.findFirstOrThrow({ where: { runId } }),
     ])
     expect(toolCall.status).toBe('FAILED')
-    expect(assistant).toMatchObject({ status: 'FAILED', contentText: null })
+    expect(assistant).toMatchObject({
+      status: 'FAILED',
+      contentText: '执行失败：指定条件下没有可用数据\n\n可以直接点击重试。',
+    })
     expect(events.map((event) => event.eventType)).toEqual(expect.arrayContaining(['tool.failed', 'agent.failed']))
     expect(events.map((event) => event.eventType)).not.toEqual(
       expect.arrayContaining(['model.delta', 'citation.created', 'agent.completed']),
@@ -616,7 +698,9 @@ integrationDescribe('Batch 018 Agent MVP - fresh DB + HTTP + inline Worker + POS
   }, 30_000)
 
   it('AG-MVP-ERR-004：模型首个可见 delta 前失败，审计与消息统一 FAILED 且错误脱敏', async () => {
-    for (let attempt = 0; attempt < 3; attempt += 1) faults.failNextModel('PLAN')
+    // V11 在正式 PLAN 前新增 Tool 能力预选；两次调用各自最多尝试 3 次。
+    // 前 3 次验证预选安全回退，后 3 次确保正式 PLAN 仍按 typed error 失败。
+    for (let attempt = 0; attempt < 6; attempt += 1) faults.failNextModel('PLAN')
     const conversationId = await createConversation(userA, '模型故障研究')
     const sent = await api(userA)
       .post('/api/agent/messages/send')
@@ -639,7 +723,10 @@ integrationDescribe('Batch 018 Agent MVP - fresh DB + HTTP + inline Worker + POS
       prisma.aiModelCall.findFirstOrThrow({ where: { runId } }),
     ])
     expect(modelCall).toMatchObject({ status: 'FAILED', errorCode: 6005 })
-    expect(assistant).toMatchObject({ status: 'FAILED', contentText: null })
+    expect(assistant).toMatchObject({
+      status: 'FAILED',
+      contentText: '执行失败：模型供应商暂不可用\n\n可以直接点击重试。',
+    })
     expect(JSON.stringify(events.map((event) => event.payload))).not.toContain('responseSchema')
     expect(events.map((event) => event.eventType)).toEqual(expect.arrayContaining(['model.started', 'agent.failed']))
     expect(events.map((event) => event.eventType)).not.toEqual(
@@ -969,27 +1056,20 @@ integrationDescribe('Batch 018 Agent MVP - fresh DB + HTTP + inline Worker + POS
     })
 
     const tokenConversationId = await createConversation(stressUser.id, 'Token 预算压力')
-    const tokenInteraction = await createDirectInteraction(
-      stressUser.id,
-      tokenConversationId,
-      '分析贵州茅台估值并生成完整结论',
+    const tokenInteraction = await withExecutionLimits(
+      { maxCumulativeInputTokens: 1, inputTokenGuardrailSource: 'ENV' },
+      () => createDirectInteraction(stressUser.id, tokenConversationId, '分析贵州茅台估值并生成完整结论'),
     )
     await expect(
-      withExecutionLimits({ maxInputTokens: 1 }, () =>
-        orchestrator.resume(tokenInteraction.run.id, { workerId: 'stress-token-budget-worker' }),
-      ),
+      orchestrator.resume(tokenInteraction.run.id, { workerId: 'stress-token-budget-worker' }),
     ).resolves.toMatchObject({ status: 'FAILED' })
 
     const toolConversationId = await createConversation(stressUser.id, 'Tool 次数压力')
-    const toolInteraction = await createDirectInteraction(
-      stressUser.id,
-      toolConversationId,
-      '分析贵州茅台估值并调用必要数据工具',
+    const toolInteraction = await withExecutionLimits({ maxToolCalls: 0 }, () =>
+      createDirectInteraction(stressUser.id, toolConversationId, '分析贵州茅台估值并调用必要数据工具'),
     )
     await expect(
-      withExecutionLimits({ maxToolCalls: 0 }, () =>
-        orchestrator.resume(toolInteraction.run.id, { workerId: 'stress-tool-budget-worker' }),
-      ),
+      orchestrator.resume(toolInteraction.run.id, { workerId: 'stress-tool-budget-worker' }),
     ).resolves.toMatchObject({ status: 'FAILED' })
 
     const streamConversationId = await createConversation(stressUser.id, 'SSE 连接压力')
@@ -1038,14 +1118,20 @@ integrationDescribe('Batch 018 Agent MVP - fresh DB + HTTP + inline Worker + POS
         prisma.aiRunEvent.findMany({ where: { runId: streamInteraction.run.id }, orderBy: { sequence: 'asc' } }),
       ])
 
-    expect(tokenRun).toMatchObject({ status: 'FAILED', errorCode: 6018 })
-    expect(tokenAssistant).toMatchObject({ status: 'FAILED', contentText: null })
+    expect(tokenRun).toMatchObject({ status: 'FAILED', errorCode: 6049 })
+    expect(tokenAssistant).toMatchObject({
+      status: 'FAILED',
+      contentText: '执行失败：当前问题与必要系统上下文超过目标模型限制，请缩短输入或切换模型\n\n可以直接点击重试。',
+    })
     expect(tokenEvents.at(-1)?.eventType).toBe('agent.failed')
     expect(tokenEvents.map((event) => event.eventType)).not.toContain('agent.completed')
     await expect(prisma.aiToolCall.count({ where: { runId: tokenInteraction.run.id } })).resolves.toBe(0)
 
     expect(toolRun).toMatchObject({ status: 'FAILED', errorCode: 6019 })
-    expect(toolAssistant).toMatchObject({ status: 'FAILED', contentText: null })
+    expect(toolAssistant).toMatchObject({
+      status: 'FAILED',
+      contentText: '执行失败：研究计划 Tool 数量超过预算\n\n可以直接点击重试。',
+    })
     expect(toolEvents.at(-1)?.eventType).toBe('agent.failed')
     expect(toolEvents.map((event) => event.eventType)).not.toContain('agent.completed')
     await expect(prisma.aiToolCall.count({ where: { runId: toolInteraction.run.id } })).resolves.toBe(0)
@@ -1208,7 +1294,10 @@ integrationDescribe('Batch 018 Agent MVP - fresh DB + HTTP + inline Worker + POS
       prisma.aiRunEvent.findMany({ where: { runId: interaction.run.id }, orderBy: { sequence: 'asc' } }),
     ])
     expect(run).toMatchObject({ status: 'FAILED', errorCode: 6099 })
-    expect(assistant).toMatchObject({ status: 'FAILED', contentText: null })
+    expect(assistant).toMatchObject({
+      status: 'FAILED',
+      contentText: '执行失败：Agent 内部错误\n\n可以直接点击重试。',
+    })
     expect(citations).toBe(0)
     expect(events.map((event) => event.eventType)).not.toEqual(
       expect.arrayContaining(['citation.created', 'model.delta', 'agent.completed']),
@@ -1332,13 +1421,13 @@ integrationDescribe('Batch 018 Agent MVP - fresh DB + HTTP + inline Worker + POS
     ])
     expect(run).toMatchObject({ status: 'COMPLETED', attempt: 1 })
     expect(toolCalls).toBe(1)
-    expect(modelCalls).toBe(2)
+    expect(modelCalls).toBe(3)
     expect(events.filter((event) => event.eventType === 'agent.started')).toHaveLength(1)
     expect(events.filter((event) => event.eventType === 'agent.completed')).toHaveLength(1)
   }, 30_000)
 
   async function publishWorkflow(createdBy: number): Promise<void> {
-    const snapshot = registry.snapshot('stock_research', 1)
+    const snapshot = registry.snapshot(STOCK_RESEARCH_WORKFLOW_CURRENT.key, STOCK_RESEARCH_WORKFLOW_CURRENT.version)
     const promptDraft = await audit.createPromptDraft({
       promptKey: snapshot.prompt.promptKey,
       version: snapshot.prompt.version,
@@ -1384,7 +1473,7 @@ integrationDescribe('Batch 018 Agent MVP - fresh DB + HTTP + inline Worker + POS
     content: string,
     clientRequestId = randomUUID(),
   ) {
-    const snapshot = registry.snapshot('stock_research', 1)
+    const snapshot = registry.snapshot(STOCK_RESEARCH_WORKFLOW_CURRENT.key, STOCK_RESEARCH_WORKFLOW_CURRENT.version)
     return interactions.send({
       userId,
       clientRequestId,
@@ -1399,6 +1488,7 @@ integrationDescribe('Batch 018 Agent MVP - fresh DB + HTTP + inline Worker + POS
         workflowKey: snapshot.workflowKey,
         workflowVersion: snapshot.version,
         workflowContentHash: snapshot.contentHash,
+        maxModelCalls: snapshot.maxModelCalls,
         promptKey: snapshot.prompt.promptKey,
         promptVersion: snapshot.prompt.version,
         promptContentHash: snapshot.prompt.contentHash,
@@ -1406,8 +1496,8 @@ integrationDescribe('Batch 018 Agent MVP - fresh DB + HTTP + inline Worker + POS
     })
   }
 
-  async function withExecutionLimits<T>(overrides: Record<string, number>, action: () => Promise<T>): Promise<T> {
-    const config = (app.get(WorkflowBudgetService) as unknown as { config: Record<string, number> }).config
+  async function withExecutionLimits<T>(overrides: Record<string, unknown>, action: () => Promise<T>): Promise<T> {
+    const config = (app.get(WorkflowBudgetService) as unknown as { config: Record<string, unknown> }).config
     const previous = Object.fromEntries(Object.keys(overrides).map((key) => [key, config[key]]))
     Object.assign(config, overrides)
     try {

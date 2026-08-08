@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common'
 import { CitationCoverageService, isCitableFact } from '../citation-coverage.service'
 import { WorkflowCitationError, WorkflowValidationError } from '../workflow.errors'
 import { modelMessage, WorkflowModelService } from '../workflow-model.service'
-import type { FinalAnswerDraft } from '../workflow.types'
+import type { FactPacket, FinalAnswerDraft } from '../workflow.types'
 import type { WorkflowNodeExecutionContext, WorkflowNodeHandler } from './workflow-node'
 
 @Injectable()
@@ -20,6 +20,7 @@ export class ValidateCitationsNode implements WorkflowNodeHandler {
     const initial = this.coverage.validate(state.draft, state.facts)
     if (initial.valid) return state
     if (state.citationRepairAttempts >= 1) throw new WorkflowCitationError(initial.issues.join('；'))
+    const repairFacts = selectCitationRepairFacts(state.draft, state.facts, initial.issues)
 
     const repaired = await this.models.generateStructured<FinalAnswerDraft>({
       run,
@@ -32,10 +33,9 @@ export class ValidateCitationsNode implements WorkflowNodeHandler {
           JSON.stringify({
             invalidDraft: state.draft,
             validationIssues: initial.issues,
-            allowedFacts: state.facts
-              .filter(isCitableFact)
-              .map((fact) => ({ factId: fact.factId, summary: fact.summary })),
-            instruction: 'Repair citations once. Use only allowedFacts factIds.',
+            allowedFacts: repairFacts.map((fact) => ({ factId: fact.factId, summary: fact.summary })),
+            instruction:
+              'Repair only listed validation issues. Preserve already-valid claims, wording, and their existing factIds. For repaired claims use only allowedFacts factIds.',
           }),
         ),
       ],
@@ -59,4 +59,25 @@ export class ValidateCitationsNode implements WorkflowNodeHandler {
       citationRepairAttempts: state.citationRepairAttempts + 1,
     }
   }
+}
+
+export function selectCitationRepairFacts(
+  draft: FinalAnswerDraft,
+  facts: readonly FactPacket[],
+  issues: readonly string[],
+): FactPacket[] {
+  const citableFacts = facts.filter(isCitableFact)
+  const invalidClaimKeys = new Set(
+    issues.flatMap((issue) => {
+      const matched = /^Claim\s+(\S+)\s+/.exec(issue)
+      return matched ? [matched[1]] : []
+    }),
+  )
+  if (invalidClaimKeys.size === 0) return citableFacts
+
+  const requiredFactIds = new Set(
+    draft.claims.filter((claim) => invalidClaimKeys.has(claim.claimKey)).flatMap((claim) => claim.factIds),
+  )
+  const focusedFacts = citableFacts.filter((fact) => requiredFactIds.has(fact.factId))
+  return focusedFacts.length > 0 ? focusedFacts : citableFacts
 }

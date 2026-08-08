@@ -40,18 +40,19 @@ export class MacroResearchToolFacade {
   async getSnapshot(input: MacroSnapshotInput) {
     const series = normalizeSeries(input.series)
     const sections = normalizeSections(input.sections, MACRO_SECTIONS, ['LATEST'])
-    const historyLimit = input.historyLimit ?? 60
-    requireInteger(historyLimit, 'historyLimit', 1, 500)
-    if (series.length > 1 && (input.startPeriod || input.endPeriod)) {
-      throw new MarketMultiAssetToolError('INVALID_ARGUMENT', '多 series 查询不能传 startPeriod/endPeriod')
-    }
-    if (series.length === 1) validatePeriodRange(series[0], input.startPeriod, input.endPeriod)
+    const requestedHistoryLimit = input.historyLimit ?? 60
+    requireInteger(requestedHistoryLimit, 'historyLimit', 1, 500)
+    const historyLimit = series.length > 1 ? Math.min(requestedHistoryLimit, 100) : requestedHistoryLimit
+    const periodFilterIgnored = series.length > 1 && Boolean(input.startPeriod || input.endPeriod)
+    const startPeriod = periodFilterIgnored ? undefined : input.startPeriod
+    const endPeriod = periodFilterIgnored ? undefined : input.endPeriod
+    if (series.length === 1) validatePeriodRange(series[0], startPeriod, endPeriod)
 
     const requestedLimit = sections.includes('HISTORY') ? historyLimit : 1
     const observations = new Map<MacroSeries, MacroObservation[]>()
     await Promise.all(
       series.map(async (item) => {
-        observations.set(item, await this.loadSeries(item, input.startPeriod, input.endPeriod, requestedLimit))
+        observations.set(item, await this.loadSeries(item, startPeriod, endPeriod, requestedLimit))
       }),
     )
 
@@ -74,6 +75,20 @@ export class MacroResearchToolFacade {
         affectedFields: ['latest', 'history', 'officialPublicationDate', 'systemKnownAt'],
       },
     ]
+    if (periodFilterIgnored) {
+      warnings.push({
+        code: 'MULTI_SERIES_PERIOD_FILTER_IGNORED',
+        message: '多序列的月、季、日周期格式不同，已忽略统一 startPeriod/endPeriod，并按各序列最近可用数据查询',
+        affectedFields: ['latest', 'history'],
+      })
+    }
+    if (historyLimit < requestedHistoryLimit) {
+      warnings.push({
+        code: 'MULTI_SERIES_HISTORY_LIMIT_CLAMPED',
+        message: `多序列历史为控制结果体积，historyLimit 已从 ${requestedHistoryLimit} 收敛到每序列 ${historyLimit}`,
+        affectedFields: ['history'],
+      })
+    }
 
     return {
       data: {

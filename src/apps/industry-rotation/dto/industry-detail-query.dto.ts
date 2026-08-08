@@ -25,7 +25,7 @@ export class IndustryDetailQueryDto {
   @IsOptional()
   @IsInt()
   @Min(5)
-  @Max(60)
+  @Max(250)
   @Type(() => Number)
   days?: number
 }

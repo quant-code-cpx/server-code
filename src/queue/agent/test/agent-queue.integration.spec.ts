@@ -90,7 +90,13 @@ integrationDescribe('Agent BullMQ - 本机 Redis 集成测试', () => {
     expect(await queue.getJob('run_recovery')).toBeFalsy()
 
     prisma.recoverableRows = [{ id: 'run_recovery' }]
-    const reconciler = new AgentReconcilerService(prisma as never, queueService, config, logger as never)
+    const reconciler = new AgentReconcilerService(
+      prisma as never,
+      queueService,
+      { expireOverdueRuns: jest.fn().mockResolvedValue(0) } as never,
+      config,
+      logger as never,
+    )
     await expect(reconciler.requeueRecoverableRuns()).resolves.toBe(1)
     await expect(queue.getJob('run_recovery')).resolves.not.toBeNull()
   }, 20_000)

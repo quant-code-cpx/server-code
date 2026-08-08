@@ -384,14 +384,25 @@ export class FactorPrecomputeService implements OnApplicationBootstrap {
       FROM factor_snapshot_summaries
     `)
 
+    const latestTradeDate = await this.getLatestTradeDate()
+    const earliestFactorDate = rows.reduce<string | null>((earliest, row) => {
+      if (!row.latest_date) return earliest
+      if (!earliest || row.latest_date < earliest) return row.latest_date
+      return earliest
+    }, null)
+    const effectiveTradeDates =
+      earliestFactorDate && latestTradeDate ? await this.getTradeDates(earliestFactorDate, latestTradeDate) : []
+
     return {
       generatedAt: new Date().toISOString(),
       latestDate: overall[0]?.overall_latest ?? null,
+      latestTradeDate,
       totalDatesWithData: Number(overall[0]?.overall_total_dates ?? 0),
       byFactor: rows.map((r) => ({
         factorName: r.factor_name,
         latestDate: r.latest_date,
         totalDates: Number(r.total_dates),
+        staleDays: r.latest_date ? effectiveTradeDates.filter((tradeDate) => tradeDate > r.latest_date).length : null,
       })),
     }
   }

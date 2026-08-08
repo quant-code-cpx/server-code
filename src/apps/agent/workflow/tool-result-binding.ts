@@ -20,6 +20,13 @@ export class ToolResultBindingUnavailableError extends WorkflowValidationError {
   }
 }
 
+export class ToolResultBindingEmptyCollectionError extends ToolResultBindingUnavailableError {
+  constructor(dependencyCallId: string) {
+    super(dependencyCallId, '依赖查询未返回可用候选')
+    this.name = ToolResultBindingEmptyCollectionError.name
+  }
+}
+
 export function cloneAndValidateToolInput(
   input: Record<string, unknown>,
   directDependencies: readonly string[],
@@ -90,9 +97,22 @@ function resolveBinding(binding: ToolResultBinding, resultsByCallId: ReadonlyMap
   }
   let current: unknown = result.data
   for (const [index, rawSegment] of binding.path.entries()) {
+    const derivedPricePoints = resolvePriceHistoryPoints(current, rawSegment, index)
+    if (derivedPricePoints) {
+      current = derivedPricePoints
+      continue
+    }
+    const legacyMarketSnapshotDataDates = resolveLegacyMarketSnapshotDataDates(current, rawSegment, index)
+    if (legacyMarketSnapshotDataDates) {
+      current = legacyMarketSnapshotDataDates
+      continue
+    }
     const segment = resolveLegacyResultCollectionAlias(current, rawSegment, index)
     if (typeof segment === 'number') {
       if (!Array.isArray(current) || !Object.prototype.hasOwnProperty.call(current, segment)) {
+        if (Array.isArray(current) && current.length === 0) {
+          throw new ToolResultBindingEmptyCollectionError(binding.callId)
+        }
         throw missingPath(binding)
       }
       current = current[segment]
@@ -103,6 +123,26 @@ function resolveBinding(binding: ToolResultBinding, resultsByCallId: ReadonlyMap
   }
   if (current === undefined) throw missingPath(binding)
   return current
+}
+
+function resolvePriceHistoryPoints(
+  current: unknown,
+  segment: string | number,
+  index: number,
+): Array<{ date: string; value: number }> | null {
+  if (
+    index !== 0 ||
+    segment !== 'points' ||
+    !isRecord(current) ||
+    Object.prototype.hasOwnProperty.call(current, 'points') ||
+    !Array.isArray(current.bars)
+  ) {
+    return null
+  }
+  return current.bars.flatMap((bar) => {
+    if (!isRecord(bar) || typeof bar.tradeDate !== 'string' || typeof bar.close !== 'number') return []
+    return [{ date: bar.tradeDate, value: bar.close }]
+  })
 }
 
 function resolveLegacyResultCollectionAlias(
@@ -119,7 +159,38 @@ function resolveLegacyResultCollectionAlias(
   ) {
     return 'candidates'
   }
+  if (
+    index === 0 &&
+    segment === 'sectors' &&
+    isRecord(current) &&
+    !Object.prototype.hasOwnProperty.call(current, 'sectors') &&
+    Array.isArray(current.items)
+  ) {
+    return 'items'
+  }
   return segment
+}
+
+function resolveLegacyMarketSnapshotDataDates(
+  current: unknown,
+  segment: string | number,
+  index: number,
+): Record<string, unknown> | null {
+  if (index !== 0 || segment !== 'dataDates' || !isRecord(current) || !Array.isArray(current.sections)) return null
+
+  const dataDates = current.sections.find(
+    (item): item is Record<string, unknown> => isRecord(item) && item.section === 'DATA_DATES',
+  )
+  if (!dataDates) return null
+
+  const legacy: Record<string, unknown> = {}
+  if (typeof dataDates.asOf === 'string') legacy.latestTradeDate = dataDates.asOf
+  if (!Array.isArray(dataDates.facts)) return legacy
+  for (const fact of dataDates.facts) {
+    if (!isRecord(fact) || !isSafePathSegment(fact.key) || fact.key === 'latestTradeDate') continue
+    if (Object.prototype.hasOwnProperty.call(fact, 'value')) legacy[fact.key] = fact.value
+  }
+  return legacy
 }
 
 function missingPath(binding: ToolResultBinding): ToolResultBindingUnavailableError {

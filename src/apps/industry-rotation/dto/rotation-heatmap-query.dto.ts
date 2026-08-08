@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger'
-import { IsOptional, Matches, IsArray, IsInt } from 'class-validator'
+import { IsOptional, Matches, IsArray, ArrayMinSize, ArrayMaxSize, IsInt, Min, Max } from 'class-validator'
 import { Type } from 'class-transformer'
 
 export class RotationHeatmapQueryDto {
@@ -14,7 +14,11 @@ export class RotationHeatmapQueryDto {
   })
   @IsOptional()
   @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(5)
   @IsInt({ each: true })
+  @Min(1, { each: true })
+  @Max(250, { each: true })
   @Type(() => Number)
   periods?: number[]
 }

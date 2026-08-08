@@ -20,7 +20,14 @@ function buildTestUser(overrides: Partial<TokenPayload> = {}): TokenPayload {
 }
 
 function createMockLoggerService(): LoggerService {
-  return { log: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn(), verbose: jest.fn(), devLog: jest.fn() } as unknown as LoggerService
+  return {
+    log: jest.fn(),
+    warn: jest.fn(),
+    error: jest.fn(),
+    debug: jest.fn(),
+    verbose: jest.fn(),
+    devLog: jest.fn(),
+  } as unknown as LoggerService
 }
 
 // ── Mock data helpers ────────────────────────────────────────────────────────
@@ -29,8 +36,20 @@ function mockReturnComparisonData() {
   return {
     tradeDate: '20260523',
     industries: [
-      { tsCode: 'BK0475.DC', name: '银行', returns: { 5: 1.2, 20: 3.5, 60: 8.1 }, latestPctChange: 0.5, latestClose: 3500.0 },
-      { tsCode: 'BK0438.DC', name: '食品饮料', returns: { 5: -0.3, 20: -1.2, 60: 2.4 }, latestPctChange: -0.2, latestClose: 2800.0 },
+      {
+        tsCode: 'BK0475.DC',
+        name: '银行',
+        returns: { 5: 1.2, 20: 3.5, 60: 8.1 },
+        latestPctChange: 0.5,
+        latestClose: 3500.0,
+      },
+      {
+        tsCode: 'BK0438.DC',
+        name: '食品饮料',
+        returns: { 5: -0.3, 20: -1.2, 60: 2.4 },
+        latestPctChange: -0.2,
+        latestClose: 2800.0,
+      },
     ],
   }
 }
@@ -40,7 +59,16 @@ function mockMomentumRankingData() {
     tradeDate: '20260523',
     method: 'weighted',
     industries: [
-      { tsCode: 'BK0475.DC', name: '银行', momentumScore: 4.2, return5d: 1.2, return20d: 3.5, return60d: 8.1, latestPctChange: 0.5, rank: 1 },
+      {
+        tsCode: 'BK0475.DC',
+        name: '银行',
+        momentumScore: 4.2,
+        return5d: 1.2,
+        return20d: 3.5,
+        return60d: 8.1,
+        latestPctChange: 0.5,
+        rank: 1,
+      },
     ],
   }
 }
@@ -51,12 +79,25 @@ function mockFlowAnalysisData() {
     days: 5,
     industries: [
       {
-        tsCode: 'BK0475.DC', name: '银行', cumulativeNetAmount: 12345.67, avgDailyNetAmount: 2469.13,
-        cumulativeReturn: 1.5, flowMomentum: 500.0, flowAcceleration: 200.0,
-        cumulativeBuyElg: 8000.0, cumulativeBuyLg: 4000.0, mainForceRatio: 0.97, latestDayRank: 1,
+        tsCode: 'BK0475.DC',
+        name: '银行',
+        cumulativeNetAmount: 12345.67,
+        avgDailyNetAmount: 2469.13,
+        cumulativeReturn: 1.5,
+        flowMomentum: 500.0,
+        flowAcceleration: 200.0,
+        cumulativeBuyElg: 8000.0,
+        cumulativeBuyLg: 4000.0,
+        mainForceRatio: 0.97,
+        latestDayRank: 1,
       },
     ],
-    summary: { inflowCount: 15, outflowCount: 20, topInflowNames: ['银行', '非银金融'], topOutflowNames: ['传媒', '计算机'] },
+    summary: {
+      inflowCount: 15,
+      outflowCount: 20,
+      topInflowNames: ['银行', '非银金融'],
+      topOutflowNames: ['传媒', '计算机'],
+    },
   }
 }
 
@@ -65,8 +106,15 @@ function mockValuationData() {
     tradeDate: '20260523',
     industries: [
       {
-        industry: '银行', stockCount: 42, peTtmMedian: 5.5, pbMedian: 0.6,
-        peTtmPercentile1y: 15.2, peTtmPercentile3y: 10.8, pbPercentile1y: 20.1, pbPercentile3y: 15.5, valuationLabel: '低估',
+        industry: '银行',
+        stockCount: 42,
+        peTtmMedian: 5.5,
+        pbMedian: 0.6,
+        peTtmPercentile1y: 15.2,
+        peTtmPercentile3y: 10.8,
+        pbPercentile1y: 20.1,
+        pbPercentile3y: 15.5,
+        valuationLabel: '低估',
       },
     ],
   }
@@ -87,8 +135,16 @@ function mockDetailData() {
     industry: '银行',
     tsCode: 'BK0475.DC',
     returnTrend: [{ tradeDate: '20260523', close: 3500.0, pctChange: 0.5, cumulativeReturn: 3.5 }],
-    flowTrend: [{ tradeDate: '20260523', netAmount: 2469.13, cumulativeNet: 12345.67, buyElgAmount: 8000.0, buyLgAmount: 4000.0 }],
-    valuation: { peTtmMedian: 5.5, pbMedian: 0.6, peTtmPercentile1y: 15.2, pbPercentile1y: 20.1, valuationLabel: '低估' },
+    flowTrend: [
+      { tradeDate: '20260523', netAmount: 2469.13, cumulativeNet: 12345.67, buyElgAmount: 8000.0, buyLgAmount: 4000.0 },
+    ],
+    valuation: {
+      peTtmMedian: 5.5,
+      pbMedian: 0.6,
+      peTtmPercentile1y: 15.2,
+      pbPercentile1y: 20.1,
+      valuationLabel: '低估',
+    },
     topStocks: [{ tsCode: '601398.SH', name: '工商银行', pctChg: 0.3, peTtm: 5.2, pb: 0.55, totalMv: 1500000 }],
   }
 }
@@ -97,9 +153,7 @@ function mockHeatmapData() {
   return {
     tradeDate: '20260523',
     periods: [1, 5, 10, 20, 60],
-    industries: [
-      { tsCode: 'BK0475.DC', name: '银行', returns: { 1: 0.5, 5: 1.2, 10: 2.0, 20: 3.5, 60: 8.1 } },
-    ],
+    industries: [{ tsCode: 'BK0475.DC', name: '银行', returns: { 1: 0.5, 5: 1.2, 10: 2.0, 20: 3.5, 60: 8.1 } }],
   }
 }
 
@@ -125,9 +179,7 @@ describe('Industry-rotation API 测试', () => {
 
     const moduleRef: TestingModule = await Test.createTestingModule({
       controllers: [IndustryRotationController],
-      providers: [
-        { provide: IndustryRotationService, useValue: mockService },
-      ],
+      providers: [{ provide: IndustryRotationService, useValue: mockService }],
     }).compile()
 
     app = moduleRef.createNestApplication()
@@ -161,14 +213,25 @@ describe('Industry-rotation API 测试', () => {
     it('IR-BIZ-002: 指定 trade_date', async () => {
       const res = await req.post('/industry-rotation/return-comparison').send({ trade_date: '20260520' }).expect(201)
       expect(res.body.data).toHaveProperty('tradeDate')
-      expect(mockService.getReturnComparison).toHaveBeenCalledWith(
-        expect.objectContaining({ trade_date: '20260520' }),
-      )
+      expect(mockService.getReturnComparison).toHaveBeenCalledWith(expect.objectContaining({ trade_date: '20260520' }))
     })
 
     it('IR-BIZ-003: 自定义 periods', async () => {
-      const res = await req.post('/industry-rotation/return-comparison').send({ periods: [5, 20] }).expect(201)
+      const res = await req
+        .post('/industry-rotation/return-comparison')
+        .send({ periods: [5, 20] })
+        .expect(201)
       expect(res.body.data).toHaveProperty('tradeDate')
+    })
+
+    it('IR-BIZ-003B: 3M/6M/1Y 支持 60/120/250 日', async () => {
+      await req
+        .post('/industry-rotation/return-comparison')
+        .send({ periods: [60, 120, 250], sort_period: 250 })
+        .expect(201)
+      expect(mockService.getReturnComparison).toHaveBeenCalledWith(
+        expect.objectContaining({ periods: [60, 120, 250], sort_period: 250 }),
+      )
     })
 
     it('IR-ERR-001: trade_date 格式错误应 400', async () => {
@@ -176,15 +239,25 @@ describe('Industry-rotation API 测试', () => {
     })
 
     it('IR-ERR-002: periods 超过 5 个应 400', async () => {
-      await req.post('/industry-rotation/return-comparison').send({ periods: [1, 5, 10, 20, 30, 60] }).expect(400)
+      await req
+        .post('/industry-rotation/return-comparison')
+        .send({ periods: [1, 5, 10, 20, 30, 60] })
+        .expect(400)
     })
 
     it('IR-ERR-003: periods 元素超出范围应 400', async () => {
-      await req.post('/industry-rotation/return-comparison').send({ periods: [0, 5, 61] }).expect(400)
+      await req
+        .post('/industry-rotation/return-comparison')
+        .send({ periods: [0, 5, 251] })
+        .expect(400)
     })
 
     it('IR-ERR-004: sort_period < 1 应 400', async () => {
       await req.post('/industry-rotation/return-comparison').send({ sort_period: 0 }).expect(400)
+    })
+
+    it('IR-ERR-004B: sort_period > 250 应 400', async () => {
+      await req.post('/industry-rotation/return-comparison').send({ sort_period: 251 }).expect(400)
     })
 
     it('IR-ERR-005: order 无效值应 400', async () => {
@@ -192,11 +265,17 @@ describe('Industry-rotation API 测试', () => {
     })
 
     it('IR-EDGE-001: periods 单个元素', async () => {
-      await req.post('/industry-rotation/return-comparison').send({ periods: [20] }).expect(201)
+      await req
+        .post('/industry-rotation/return-comparison')
+        .send({ periods: [20] })
+        .expect(201)
     })
 
     it('IR-EDGE-002: periods 恰好 5 个', async () => {
-      await req.post('/industry-rotation/return-comparison').send({ periods: [1, 5, 10, 20, 60] }).expect(201)
+      await req
+        .post('/industry-rotation/return-comparison')
+        .send({ periods: [1, 5, 10, 20, 60] })
+        .expect(201)
     })
   })
 
@@ -212,9 +291,7 @@ describe('Industry-rotation API 测试', () => {
 
     it('IR-BIZ-005: 指定 method=simple', async () => {
       const res = await req.post('/industry-rotation/momentum-ranking').send({ method: 'simple' }).expect(201)
-      expect(mockService.getMomentumRanking).toHaveBeenCalledWith(
-        expect.objectContaining({ method: 'simple' }),
-      )
+      expect(mockService.getMomentumRanking).toHaveBeenCalledWith(expect.objectContaining({ method: 'simple' }))
     })
 
     it('IR-BIZ-006: 指定 limit', async () => {
@@ -230,11 +307,17 @@ describe('Industry-rotation API 测试', () => {
     })
 
     it('IR-ERR-008: weights 不是 3 个元素应 400', async () => {
-      await req.post('/industry-rotation/momentum-ranking').send({ weights: [0.5, 0.5] }).expect(400)
+      await req
+        .post('/industry-rotation/momentum-ranking')
+        .send({ weights: [0.5, 0.5] })
+        .expect(400)
     })
 
     it('IR-ERR-009: weights 元素低于 0.01 应 400', async () => {
-      await req.post('/industry-rotation/momentum-ranking').send({ weights: [0.0, 0.5, 0.5] }).expect(400)
+      await req
+        .post('/industry-rotation/momentum-ranking')
+        .send({ weights: [0.0, 0.5, 0.5] })
+        .expect(400)
     })
 
     it('IR-EDGE-003: limit=1（最小）', async () => {
@@ -258,14 +341,17 @@ describe('Industry-rotation API 测试', () => {
     })
 
     it('IR-BIZ-008: 指定 days+sort_by', async () => {
-      const res = await req.post('/industry-rotation/flow-analysis').send({ days: 10, sort_by: 'flow_momentum' }).expect(201)
+      const res = await req
+        .post('/industry-rotation/flow-analysis')
+        .send({ days: 10, sort_by: 'flow_momentum' })
+        .expect(201)
       expect(mockService.getFlowAnalysis).toHaveBeenCalledWith(
         expect.objectContaining({ days: 10, sort_by: 'flow_momentum' }),
       )
     })
 
     it('IR-ERR-010: days 超出范围应 400', async () => {
-      await req.post('/industry-rotation/flow-analysis').send({ days: 61 }).expect(400)
+      await req.post('/industry-rotation/flow-analysis').send({ days: 251 }).expect(400)
     })
 
     it('IR-ERR-011: sort_by 无效值应 400', async () => {
@@ -276,8 +362,8 @@ describe('Industry-rotation API 测试', () => {
       await req.post('/industry-rotation/flow-analysis').send({ days: 1 }).expect(201)
     })
 
-    it('IR-EDGE-006: days=60（最大）', async () => {
-      await req.post('/industry-rotation/flow-analysis').send({ days: 60 }).expect(201)
+    it.each([120, 250])('IR-EDGE-006: days=%s 长周期', async (days) => {
+      await req.post('/industry-rotation/flow-analysis').send({ days }).expect(201)
     })
   })
 
@@ -292,9 +378,7 @@ describe('Industry-rotation API 测试', () => {
 
     it('IR-BIZ-010: 指定 industry 筛选', async () => {
       const res = await req.post('/industry-rotation/valuation').send({ industry: '银行' }).expect(201)
-      expect(mockService.getIndustryValuation).toHaveBeenCalledWith(
-        expect.objectContaining({ industry: '银行' }),
-      )
+      expect(mockService.getIndustryValuation).toHaveBeenCalledWith(expect.objectContaining({ industry: '银行' }))
     })
 
     it('IR-ERR-012: sort_by 无效值应 400', async () => {
@@ -362,8 +446,8 @@ describe('Industry-rotation API 测试', () => {
       await req.post('/industry-rotation/detail').send({ tsCode: 'BK0475.DC', days: 5 }).expect(201)
     })
 
-    it('IR-EDGE-008: days=60（最大）', async () => {
-      await req.post('/industry-rotation/detail').send({ tsCode: 'BK0475.DC', days: 60 }).expect(201)
+    it('IR-EDGE-008: days=250（最大）', async () => {
+      await req.post('/industry-rotation/detail').send({ tsCode: 'BK0475.DC', days: 250 }).expect(201)
     })
   })
 
@@ -378,10 +462,31 @@ describe('Industry-rotation API 测试', () => {
     })
 
     it('IR-BIZ-017: 自定义 periods', async () => {
-      const res = await req.post('/industry-rotation/heatmap').send({ periods: [5, 20] }).expect(201)
-      expect(mockService.getHeatmap).toHaveBeenCalledWith(
-        expect.objectContaining({ periods: [5, 20] }),
-      )
+      const res = await req
+        .post('/industry-rotation/heatmap')
+        .send({ periods: [5, 20] })
+        .expect(201)
+      expect(mockService.getHeatmap).toHaveBeenCalledWith(expect.objectContaining({ periods: [5, 20] }))
+    })
+
+    it('IR-BIZ-018: 热力图支持 60/120/250 日', async () => {
+      await req
+        .post('/industry-rotation/heatmap')
+        .send({ periods: [60, 120, 250] })
+        .expect(201)
+      expect(mockService.getHeatmap).toHaveBeenCalledWith(expect.objectContaining({ periods: [60, 120, 250] }))
+    })
+
+    it('IR-ERR-016: 热力图拒绝空周期、超过 5 项和 251 日', async () => {
+      await req.post('/industry-rotation/heatmap').send({ periods: [] }).expect(400)
+      await req
+        .post('/industry-rotation/heatmap')
+        .send({ periods: [1, 5, 10, 20, 60, 120] })
+        .expect(400)
+      await req
+        .post('/industry-rotation/heatmap')
+        .send({ periods: [251] })
+        .expect(400)
     })
   })
 })

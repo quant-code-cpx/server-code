@@ -73,6 +73,8 @@ export class AgentRestReadRepository {
                 status: run.status,
                 statusVersion: run.statusVersion,
                 endedAt: run.endedAt?.toISOString() ?? null,
+                errorCode: run.errorCode ?? null,
+                errorMessage: run.errorMessage ?? null,
               }
             : null,
           citations: message.citations.map((citation) => ({

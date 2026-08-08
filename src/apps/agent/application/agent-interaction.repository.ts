@@ -29,6 +29,7 @@ import { AgentRunIdempotencyConflictError } from '../execution/agent-execution.e
 import { AgentEventRepository } from '../execution/agent-event.repository'
 import { WorkflowVersionError } from '../workflow/workflow.errors'
 import { ModelCapabilityRegistry } from '../model-gateway/model-capability.registry'
+import type { ModelDescriptor } from '../model-gateway/model-gateway.port'
 
 dayjs.extend(utc)
 dayjs.extend(timezone)
@@ -37,6 +38,7 @@ export interface AgentWorkflowPin {
   workflowKey: string
   workflowVersion: number
   workflowContentHash: string
+  maxModelCalls: number
   promptKey: string
   promptVersion: number
   promptContentHash: string
@@ -166,6 +168,7 @@ export class AgentInteractionRepository {
         traceId: command.traceId,
         modelPolicy: command.modelPolicy,
         preferredModel,
+        maxModelCalls: command.workflow.maxModelCalls,
         workflowVersionId: versions.workflowVersionId,
         promptVersionId: versions.promptVersionId,
         inputSnapshot: {
@@ -276,6 +279,7 @@ export class AgentInteractionRepository {
         traceId: command.traceId,
         modelPolicy: command.modelPolicy,
         preferredModel,
+        maxModelCalls: command.workflow.maxModelCalls,
         workflowVersionId: versions.workflowVersionId,
         promptVersionId: versions.promptVersionId,
         inputSnapshot: {
@@ -371,6 +375,7 @@ export class AgentInteractionRepository {
         traceId: command.traceId,
         modelPolicy: command.modelPolicy,
         preferredModel,
+        maxModelCalls: command.workflow.maxModelCalls,
         workflowVersionId: versions.workflowVersionId,
         promptVersionId: versions.promptVersionId,
         inputSnapshot: {
@@ -411,12 +416,32 @@ export class AgentInteractionRepository {
       traceId: string
       modelPolicy: AiModelPolicy
       preferredModel: string | null
+      maxModelCalls: number
       workflowVersionId: string
       promptVersionId: string
       inputSnapshot: Record<string, unknown>
       budget: Record<string, unknown>
     },
   ): Promise<AiAgentRun> {
+    const modelProfile = this.models.snapshotRunProfile(command.modelPolicy, command.preferredModel, {
+      capabilities: ['STREAMING', 'STRUCTURED_OUTPUT'],
+      dataClass: 'USER_PRIVATE',
+    })
+    const executionBudget = this.resolveExecutionBudget(modelProfile.candidates, command.maxModelCalls)
+    const runPolicy = {
+      schemaVersion: 1,
+      snapshottedAt: new Date().toISOString(),
+      source: 'SYSTEM_AND_USER_POLICY',
+      maxSteps: this.executionConfig.maxSteps,
+      maxToolCalls: this.executionConfig.maxToolCalls,
+      maxParallelTools: this.executionConfig.maxParallelTools,
+      maxCumulativeInputTokens: this.executionConfig.maxCumulativeInputTokens,
+      inputTokenGuardrailSource: this.executionConfig.inputTokenGuardrailSource,
+      overageBehavior: 'ACCOUNT_AND_STOP_BEFORE_NEXT_MODEL_CALL',
+      tokenEstimatePolicy: 'PROVIDER_COUNT_OR_CONSERVATIVE_V1',
+      maxCost: command.budget.maxCost,
+      costCurrency: command.budget.costCurrency,
+    }
     const run = await tx.aiAgentRun.create({
       data: {
         userId: command.userId,
@@ -432,9 +457,14 @@ export class AgentInteractionRepository {
         modelPolicy: command.modelPolicy,
         preferredModel: command.preferredModel,
         inputSnapshot: command.inputSnapshot as Prisma.InputJsonValue,
-        budget: command.budget as Prisma.InputJsonValue,
+        budget: {
+          ...command.budget,
+          execution: executionBudget,
+          runPolicy,
+          modelProfile,
+        } as unknown as Prisma.InputJsonValue,
         maxAttempts: 3,
-        deadlineAt: new Date(Date.now() + this.executionConfig.maxDurationMs),
+        deadlineAt: new Date(Date.now() + executionBudget.durationMs),
       },
     })
     await this.events.appendInTransaction(tx, run, {
@@ -447,6 +477,20 @@ export class AgentInteractionRepository {
       data: { aggregateId: run.id, kind: AGENT_JOB_OUTBOX_KIND, payloadHash: hashAgentJob(job) },
     })
     return tx.aiAgentRun.findUniqueOrThrow({ where: { id: run.id } })
+  }
+
+  private resolveExecutionBudget(candidates: readonly ModelDescriptor[], maxModelCalls: number) {
+    if (!Number.isInteger(maxModelCalls) || maxModelCalls < 1 || maxModelCalls > this.executionConfig.maxSteps) {
+      throw new WorkflowVersionError('工作流模型调用预算非法')
+    }
+    const configs = this.models.executionBudgetConfigsForDescriptors(candidates)
+    return resolveAgentRunExecutionBudget({
+      configs,
+      maxModelCalls,
+      fallbackDurationMs: this.executionConfig.fallbackDurationMs,
+      nonModelReserveMs: this.executionConfig.nonModelReserveMs,
+      maxDurationMs: this.executionConfig.maxDurationMs,
+    })
   }
 
   private async findWritableConversation(
@@ -471,6 +515,8 @@ export class AgentInteractionRepository {
       where: {
         userId,
         status: { in: [AiAgentRunStatus.QUEUED, AiAgentRunStatus.RUNNING, AiAgentRunStatus.CANCEL_REQUESTED] },
+        // 过期 Run 已不再可被 Worker 领取或继续执行，不能继续占用用户并发配额。
+        deadlineAt: { gt: new Date() },
       },
     })
     if (activeRuns >= this.apiConfig.maxActiveRunsPerUser) {
@@ -582,4 +628,39 @@ function asRecord(value: unknown): Record<string, unknown> {
 
 function asStringArray(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []
+}
+
+export function resolveAgentRunExecutionBudget(input: {
+  configs: readonly { timeoutMs: number; maxRetries: number; retryBaseMs: number }[]
+  maxModelCalls: number
+  fallbackDurationMs: number
+  nonModelReserveMs: number
+  maxDurationMs: number
+}) {
+  const perModelCallBudgetMs = input.configs.reduce(
+    (maximum, config) => Math.max(maximum, structuredModelCallBudgetMs(config)),
+    0,
+  )
+  const requestedDurationMs = perModelCallBudgetMs
+    ? perModelCallBudgetMs * input.maxModelCalls + input.nonModelReserveMs
+    : input.fallbackDurationMs
+  const durationMs = Math.min(input.maxDurationMs, Math.max(10_000, requestedDurationMs))
+  return {
+    durationMs,
+    requestedDurationMs,
+    maxDurationMs: input.maxDurationMs,
+    maxModelCalls: input.maxModelCalls,
+    perModelCallBudgetMs: perModelCallBudgetMs || null,
+    providerConfigCount: input.configs.length,
+    clippedBySystemMaximum: requestedDurationMs > input.maxDurationMs,
+  }
+}
+
+function structuredModelCallBudgetMs(config: { timeoutMs: number; maxRetries: number; retryBaseMs: number }): number {
+  const providerAttemptsMs = config.timeoutMs * (config.maxRetries + 1)
+  const maximumRetryDelayMs = Array.from({ length: config.maxRetries }, (_, index) =>
+    Math.ceil(config.retryBaseMs * 2 ** index * 1.25),
+  ).reduce((total, value) => total + value, 0)
+  // generateStructured 最多执行一次原始请求和一次结构化修复请求。
+  return (providerAttemptsMs + maximumRetryDelayMs) * 2
 }

@@ -14,6 +14,16 @@ import { DataQualityService } from '../data-quality.service'
 import { SyncHelperService } from '../../sync-helper.service'
 import { CrossTableCheckService } from '../cross-table-check.service'
 import { PrismaService } from 'src/shared/prisma.service'
+import type { RedisClientType } from 'redis'
+
+type StockBasicMock = {
+  count: jest.Mock
+  findFirst: jest.Mock
+}
+
+type DataQualityCheckMock = {
+  create: jest.Mock
+}
 
 // ── mock 工厂 ─────────────────────────────────────────────────────────────────
 
@@ -62,7 +72,11 @@ function buildHelperMock() {
     formatDate: jest.fn((d: Date) => d.toISOString().slice(0, 10).replace(/-/g, '')),
     toDate: jest.fn((s: string) => new Date(s.replace(/(\d{4})(\d{2})(\d{2})/, '$1-$2-$3'))),
     getCurrentShanghaiDateString: jest.fn(() => '20250401'),
-    addDays: jest.fn((_date: string, _n: number) => '20250301'),
+    addDays: jest.fn((date: string, days: number) => {
+      void date
+      void days
+      return '20250301'
+    }),
     buildRecentQuarterPeriods: jest.fn(() => ['20241231', '20240930']),
     getPeriodEndTradeDates: jest.fn(async () => []),
   }
@@ -88,8 +102,12 @@ function createService(
   crossTable = buildCrossTableMock(),
   redis = buildRedisMock(),
 ): DataQualityService {
-  // @ts-ignore 局部 mock，跳过 DI
-  return new DataQualityService(prisma as PrismaService, helper as SyncHelperService, crossTable as CrossTableCheckService, redis)
+  return new DataQualityService(
+    prisma as unknown as PrismaService,
+    helper as unknown as SyncHelperService,
+    crossTable as unknown as CrossTableCheckService,
+    redis as unknown as RedisClientType,
+  )
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -115,8 +133,9 @@ describe('DataQualityService', () => {
     it('full-refresh 数据集（stockBasic）→ 有数据时返回 pass', async () => {
       const prisma = buildPrismaMock()
       // stockBasic.count() 返回 100（非空），findFirst 返回最近同步记录
-      ;(prisma.stockBasic as any).count.mockResolvedValue(100)
-      ;(prisma.stockBasic as any).findFirst.mockResolvedValue({ syncedAt: new Date() })
+      const stockBasic = prisma.stockBasic as unknown as StockBasicMock
+      stockBasic.count.mockResolvedValue(100)
+      stockBasic.findFirst.mockResolvedValue({ syncedAt: new Date() })
       const service = createService(prisma)
       const report = await service.checkTimeliness('stockBasic')
       expect(report.status).toBe('pass')
@@ -125,7 +144,8 @@ describe('DataQualityService', () => {
 
     it('full-refresh 数据集（stockBasic）→ 空表时返回 fail', async () => {
       const prisma = buildPrismaMock()
-      ;(prisma.stockBasic as any).count.mockResolvedValue(0)
+      const stockBasic = prisma.stockBasic as unknown as StockBasicMock
+      stockBasic.count.mockResolvedValue(0)
       const service = createService(prisma)
       const report = await service.checkTimeliness('stockBasic')
       expect(report.status).toBe('fail')
@@ -218,8 +238,10 @@ describe('DataQualityService', () => {
 
       const prisma = buildPrismaMock()
       // indexDaily model 返回 3 条记录，覆盖所有日期
-      const dates = ['20250324', '20250325', '20250326'].map((d) => new Date(d.replace(/(\d{4})(\d{2})(\d{2})/, '$1-$2-$3')))
-      ;(prisma as any).indexDaily = {
+      const dates = ['20250324', '20250325', '20250326'].map(
+        (d) => new Date(d.replace(/(\d{4})(\d{2})(\d{2})/, '$1-$2-$3')),
+      )
+      ;(prisma as Record<string, unknown>).indexDaily = {
         count: jest.fn(async () => 3),
         findMany: jest.fn(async () => dates.map((d) => ({ tradeDate: d }))),
       }
@@ -237,12 +259,20 @@ describe('DataQualityService', () => {
       const helper = buildHelperMock()
       // 10 个交易日，返回 0 条已有记录 → 100% 缺失
       helper.getOpenTradeDatesBetween.mockResolvedValue([
-        '20250310', '20250311', '20250312', '20250313', '20250314',
-        '20250317', '20250318', '20250319', '20250320', '20250321',
+        '20250310',
+        '20250311',
+        '20250312',
+        '20250313',
+        '20250314',
+        '20250317',
+        '20250318',
+        '20250319',
+        '20250320',
+        '20250321',
       ])
 
       const prisma = buildPrismaMock()
-      ;(prisma as any).indexDaily = {
+      ;(prisma as Record<string, unknown>).indexDaily = {
         findMany: jest.fn(async () => []),
       }
 
@@ -256,8 +286,18 @@ describe('DataQualityService', () => {
     it('日频数据集（indexDaily）→ 缺失 ≤10% 时返回 warn', async () => {
       const helper = buildHelperMock()
       // 10 个交易日，返回 9 条记录 → 10% 缺失 (1/10) → ≤10% → warn
-      const tradeDates = ['20250310', '20250311', '20250312', '20250313', '20250314',
-        '20250317', '20250318', '20250319', '20250320', '20250321']
+      const tradeDates = [
+        '20250310',
+        '20250311',
+        '20250312',
+        '20250313',
+        '20250314',
+        '20250317',
+        '20250318',
+        '20250319',
+        '20250320',
+        '20250321',
+      ]
       helper.getOpenTradeDatesBetween.mockResolvedValue(tradeDates)
 
       const prisma = buildPrismaMock()
@@ -265,7 +305,7 @@ describe('DataQualityService', () => {
       const existing = tradeDates.slice(0, 9).map((d) => ({
         tradeDate: new Date(d.replace(/(\d{4})(\d{2})(\d{2})/, '$1-$2-$3')),
       }))
-      ;(prisma as any).indexDaily = {
+      ;(prisma as Record<string, unknown>).indexDaily = {
         findMany: jest.fn(async () => existing),
       }
       helper.formatDate.mockImplementation((d: Date) => d.toISOString().slice(0, 10).replace(/-/g, ''))
@@ -355,7 +395,7 @@ describe('DataQualityService', () => {
         status: 'pass',
         message: '测试写入',
       })
-      expect((prisma.dataQualityCheck as any).create).toHaveBeenCalledWith(
+      expect((prisma.dataQualityCheck as unknown as DataQualityCheckMock).create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
             dataSet: 'daily',

@@ -10,6 +10,8 @@
  * - getResult: 全部完成 + 正确识别最优参数
  */
 import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common'
+import type { Queue } from 'bullmq'
+import type { PrismaService } from 'src/shared/prisma.service'
 import { BacktestParamSensitivityService } from '../services/backtest-param-sensitivity.service'
 
 // ── Mock 工厂 ─────────────────────────────────────────────────────────────────
@@ -89,12 +91,8 @@ function buildQueueMock() {
   return { add: jest.fn(async () => ({ id: 'job-1' })) }
 }
 
-function createService(
-  prisma = buildPrismaMock(),
-  queue = buildQueueMock(),
-): BacktestParamSensitivityService {
-  // @ts-ignore 局部 mock，绕过 @InjectQueue DI
-  return new BacktestParamSensitivityService(prisma as any, queue as any)
+function createService(prisma = buildPrismaMock(), queue = buildQueueMock()): BacktestParamSensitivityService {
+  return new BacktestParamSensitivityService(prisma as unknown as PrismaService, queue as unknown as Queue)
 }
 
 const baseDto = {
@@ -182,7 +180,9 @@ describe('BacktestParamSensitivityService', () => {
     it('创建 child run 时正确注入参数 x/y 值到 strategyConfig', async () => {
       const prisma = buildPrismaMock()
       const queue = buildQueueMock()
-      prisma.backtestRun.findUnique.mockResolvedValue(buildRun({ strategyConfig: { topN: 20, shortWindow: 10, longWindow: 30 } }))
+      prisma.backtestRun.findUnique.mockResolvedValue(
+        buildRun({ strategyConfig: { topN: 20, shortWindow: 10, longWindow: 30 } }),
+      )
       prisma.paramSweep.count.mockResolvedValue(0)
       prisma.paramSweep.create.mockResolvedValue(buildSweep())
       prisma.backtestRun.create.mockResolvedValue({ id: 'child-x' })

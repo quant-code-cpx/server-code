@@ -13,7 +13,7 @@ function makeRedis(overrides: { isOpen?: boolean; quit?: jest.Mock } = {}) {
   return {
     isOpen: overrides.isOpen ?? true,
     quit: overrides.quit ?? jest.fn().mockResolvedValue(undefined),
-  } as unknown as ReturnType<typeof import('redis')['createClient']>
+  } as unknown as ReturnType<(typeof import('redis'))['createClient']>
 }
 
 describe('RedisShutdownService', () => {
@@ -41,7 +41,10 @@ describe('RedisShutdownService', () => {
 
   it('[EDGE] redis 为 null → 不崩溃', async () => {
     const logger = makeLogger()
-    const service = new RedisShutdownService(null as unknown as ReturnType<typeof import('redis')['createClient']>, logger)
+    const service = new RedisShutdownService(
+      null as unknown as ReturnType<(typeof import('redis'))['createClient']>,
+      logger,
+    )
 
     await expect(service.onApplicationShutdown('SIGTERM')).resolves.not.toThrow()
   })
@@ -53,11 +56,7 @@ describe('RedisShutdownService', () => {
 
     await expect(service.onApplicationShutdown('SIGTERM')).resolves.not.toThrow()
 
-    expect(logger.error).toHaveBeenCalledWith(
-      'Error closing Redis connection',
-      'timeout',
-      'RedisShutdownService',
-    )
+    expect(logger.error).toHaveBeenCalledWith('Error closing Redis connection', 'timeout', 'RedisShutdownService')
   })
 
   it('quit() 抛出字符串异常 → 日志记录原始字符串（已修复 P5-B14）', async () => {
@@ -85,10 +84,7 @@ describe('RedisShutdownService', () => {
 
     await service.onApplicationShutdown('SIGINT')
 
-    expect(logger.log).toHaveBeenCalledWith(
-      expect.stringContaining('SIGINT'),
-      'RedisShutdownService',
-    )
+    expect(logger.log).toHaveBeenCalledWith(expect.stringContaining('SIGINT'), 'RedisShutdownService')
   })
 
   it('[BIZ] 信号为 undefined → 日志包含 "unknown"', async () => {
@@ -98,9 +94,6 @@ describe('RedisShutdownService', () => {
 
     await service.onApplicationShutdown(undefined)
 
-    expect(logger.log).toHaveBeenCalledWith(
-      expect.stringContaining('unknown'),
-      'RedisShutdownService',
-    )
+    expect(logger.log).toHaveBeenCalledWith(expect.stringContaining('unknown'), 'RedisShutdownService')
   })
 })

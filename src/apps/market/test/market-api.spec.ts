@@ -20,7 +20,14 @@ function buildTestUser(overrides: Partial<TokenPayload> = {}): TokenPayload {
 }
 
 function createMockLoggerService(): LoggerService {
-  return { log: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn(), verbose: jest.fn(), devLog: jest.fn() } as unknown as LoggerService
+  return {
+    log: jest.fn(),
+    warn: jest.fn(),
+    error: jest.fn(),
+    debug: jest.fn(),
+    verbose: jest.fn(),
+    devLog: jest.fn(),
+  } as unknown as LoggerService
 }
 
 describe('Market API 测试', () => {
@@ -62,9 +69,7 @@ describe('Market API 测试', () => {
 
     const moduleRef: TestingModule = await Test.createTestingModule({
       controllers: [MarketController],
-      providers: [
-        { provide: MarketService, useValue: mockMarketService },
-      ],
+      providers: [{ provide: MarketService, useValue: mockMarketService }],
     }).compile()
 
     app = moduleRef.createNestApplication()

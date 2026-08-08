@@ -52,7 +52,7 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: str
 
 describe('Auth — 真实 Redis 集成测试', () => {
   let service: AuthService
-  let redis: any
+  let redis: ReturnType<typeof createClient>
   let redisAvailable = true
   let prisma: {
     user: {
@@ -68,7 +68,7 @@ describe('Auth — 真实 Redis 集成测试', () => {
         keys: async () => [],
         del: async () => 0,
         quit: async () => undefined,
-      }
+      } as unknown as ReturnType<typeof createClient>
       return
     }
 
@@ -118,7 +118,7 @@ describe('Auth — 真实 Redis 集成测试', () => {
         keys: async () => [],
         del: async () => 0,
         quit: async () => undefined,
-      }
+      } as unknown as ReturnType<typeof createClient>
     }
 
     const module: TestingModule = await Test.createTestingModule({
@@ -207,7 +207,7 @@ describe('Auth — 真实 Redis 集成测试', () => {
       const code = await redis.get(`auth:captcha:${c.captchaId}`)
       try {
         await service.login({ account: 'qa_tester', password: 'wrong', captchaId: c.captchaId, captchaCode: code! })
-      } catch (e) {}
+      } catch {}
     }
     expect(Number(await redis.get('auth:login:fail:qa_tester'))).toBe(4)
     expect(await redis.exists('auth:login:lock:qa_tester')).toBe(0)
@@ -216,7 +216,7 @@ describe('Auth — 真实 Redis 集成测试', () => {
     const code = await redis.get(`auth:captcha:${c.captchaId}`)
     try {
       await service.login({ account: 'qa_tester', password: 'wrong', captchaId: c.captchaId, captchaCode: code! })
-    } catch (e) {}
+    } catch {}
     expect(await redis.exists('auth:login:lock:qa_tester')).toBe(1)
     expect(await redis.get('auth:login:fail:qa_tester')).toBeNull()
   })
@@ -227,7 +227,7 @@ describe('Auth — 真实 Redis 集成测试', () => {
     const code = await redis.get(`auth:captcha:${c.captchaId}`)
     try {
       await service.login({ account: 'no_user', password: 'any', captchaId: c.captchaId, captchaCode: code! })
-    } catch (e) {}
+    } catch {}
     expect(await redis.get('auth:login:fail:no_user')).toBeNull()
   })
 })

@@ -26,7 +26,7 @@ function buildPrismaMock() {
 }
 
 function createService(prismaMock = buildPrismaMock()) {
-  return new PatternService(prismaMock as any)
+  return new PatternService(prismaMock as unknown as ConstructorParameters<typeof PatternService>[0])
 }
 
 // ── 数据构造助手 ───────────────────────────────────────────────────────────────

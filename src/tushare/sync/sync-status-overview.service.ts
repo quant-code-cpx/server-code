@@ -487,9 +487,7 @@ export class SyncStatusOverviewService {
 
     // 2. 并行查询所有表的统计信息（MIN/MAX 走索引，日期数量取 pg_stats 估算）
     const tableStats = await Promise.all(
-      TABLE_OVERVIEW_CONFIG.map((cfg) =>
-        this.queryTableStats(cfg, logMap, catalogMap, dateDistinctMap, tradingDaySet),
-      ),
+      TABLE_OVERVIEW_CONFIG.map((cfg) => this.queryTableStats(cfg, logMap, catalogMap, dateDistinctMap, tradingDaySet)),
     )
 
     // 3. 按 category 分组

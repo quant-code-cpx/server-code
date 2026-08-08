@@ -1,9 +1,9 @@
 import { existsSync, readFileSync } from 'fs'
 import { resolve } from 'path'
 import { MoneyflowContentType, PrismaClient } from '@prisma/client'
-import * as dayjs from 'dayjs'
-const utc = require('dayjs/plugin/utc')
-const timezone = require('dayjs/plugin/timezone')
+import dayjs from 'dayjs'
+import utc from 'dayjs/plugin/utc'
+import timezone from 'dayjs/plugin/timezone'
 
 dayjs.extend(utc)
 dayjs.extend(timezone)
@@ -227,7 +227,7 @@ async function resolveLatestCompletedTradeDate() {
     return parseDateString(override)
   }
 
-  const now = (dayjs as any)().tz(process.env.TUSHARE_SYNC_TIME_ZONE || 'Asia/Shanghai')
+  const now = dayjs().tz(process.env.TUSHARE_SYNC_TIME_ZONE || 'Asia/Shanghai')
   const today = parseDateString(now.format('YYYYMMDD'))
 
   const todayCalendar = await prisma.tradeCal.findUnique({

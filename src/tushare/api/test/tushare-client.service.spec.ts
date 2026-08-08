@@ -8,12 +8,13 @@
  * - call() 命中频控（code=40203）自动重试
  * - call() 超过 maxRetries 后停止重试
  * - call() 在 fetch 网络异常时向上抛出
- * - parseRecords 私有方法可通过 (client as any) 直接调用
+ * - parseRecords 私有方法可通过受限测试接口调用
  */
 
 import { ConfigService } from '@nestjs/config'
 import { TushareApiError, TushareClient } from '../tushare-client.service'
 import { TUSHARE_CONFIG_TOKEN } from 'src/config/tushare.config'
+import { TushareResponse } from 'src/tushare/tushare.interface'
 
 // ── 测试配置 ───────────────────────────────────────────────────────────────────
 
@@ -27,10 +28,13 @@ const MOCK_CONFIG = {
   stkFactorMinIntervalMs: 650,
 }
 
+type TushareClientInternals = {
+  parseRecords<T>(json: TushareResponse): T[]
+}
+
 // ── mock 工厂 ─────────────────────────────────────────────────────────────────
 
 function buildMockConfigService(): ConfigService {
-  // @ts-ignore
   return {
     get: jest.fn((token: string) => {
       if (token === TUSHARE_CONFIG_TOKEN) return MOCK_CONFIG
@@ -40,7 +44,6 @@ function buildMockConfigService(): ConfigService {
 }
 
 function createClient(configService = buildMockConfigService()): TushareClient {
-  // @ts-ignore 局部 mock，跳过 DI
   return new TushareClient(configService)
 }
 
@@ -255,16 +258,16 @@ describe('TushareClient', () => {
         },
       }
 
-      // @ts-ignore 访问私有方法
-      const result = (client as any).parseRecords(json)
+      const clientInternals = client as unknown as TushareClientInternals
+      const result = clientInternals.parseRecords(json)
 
       expect(result).toEqual([{ ts_code: '000001.SZ', name: '平安银行' }])
     })
 
     it('data 为 null 时应返回空数组', () => {
       const client = createClient()
-      // @ts-ignore
-      const result = (client as any).parseRecords({ code: 0, msg: '', data: null })
+      const clientInternals = client as unknown as TushareClientInternals
+      const result = clientInternals.parseRecords({ code: 0, msg: '', data: null })
       expect(result).toEqual([])
     })
   })

@@ -16,7 +16,6 @@
 
 import { NotFoundException } from '@nestjs/common'
 import { BusinessException } from 'src/common/exceptions/business.exception'
-import { ErrorEnum } from 'src/constant/response-code.constant'
 import { FactorBacktestService } from '../services/factor-backtest.service'
 import { SaveAsStrategyDto } from '../dto/save-as-strategy.dto'
 
@@ -36,7 +35,28 @@ function buildRegistryMock() {
 }
 
 function buildSvc(prismaMock: ReturnType<typeof buildPrismaMock>, registryMock: ReturnType<typeof buildRegistryMock>) {
-  return new FactorBacktestService(prismaMock as any, null as any, null as any, registryMock as any)
+  return new FactorBacktestService(
+    prismaMock as unknown as ConstructorParameters<typeof FactorBacktestService>[0],
+    null as unknown as ConstructorParameters<typeof FactorBacktestService>[1],
+    null as unknown as ConstructorParameters<typeof FactorBacktestService>[2],
+    registryMock as unknown as ConstructorParameters<typeof FactorBacktestService>[3],
+  )
+}
+
+interface SavedStrategyConfig {
+  topN: number
+  sortOrder: string
+  weightMethod: string
+}
+
+interface SavedBacktestDefaults {
+  initialCapital: number
+  rebalanceFrequency: string
+}
+
+interface SavedStrategyCreateData {
+  strategyConfig: SavedStrategyConfig
+  backtestDefaults: SavedBacktestDefaults
 }
 
 // ── 共用夹具 ──────────────────────────────────────────────────────────────────
@@ -163,11 +183,11 @@ describe('FactorBacktestService.saveAsStrategy', () => {
 
     await svc.saveAsStrategy(dto, 1)
 
-    const createData = prisma.strategy.create.mock.calls[0][0].data
-    expect((createData.strategyConfig as any).topN).toBe(20)
-    expect((createData.strategyConfig as any).sortOrder).toBe('desc')
-    expect((createData.strategyConfig as any).weightMethod).toBe('equal_weight')
-    expect((createData.backtestDefaults as any).initialCapital).toBe(1_000_000)
+    const createData = prisma.strategy.create.mock.calls[0][0].data as SavedStrategyCreateData
+    expect(createData.strategyConfig.topN).toBe(20)
+    expect(createData.strategyConfig.sortOrder).toBe('desc')
+    expect(createData.strategyConfig.weightMethod).toBe('equal_weight')
+    expect(createData.backtestDefaults.initialCapital).toBe(1_000_000)
   })
 
   // ── 9. rebalanceDays 映射 ─────────────────────────────────────────────────
@@ -186,8 +206,8 @@ describe('FactorBacktestService.saveAsStrategy', () => {
 
     await svc.saveAsStrategy(dto, 1)
 
-    const createData = prisma.strategy.create.mock.calls[0][0].data
-    expect((createData.backtestDefaults as any).rebalanceFrequency).toBe(expected)
+    const createData = prisma.strategy.create.mock.calls[0][0].data as SavedStrategyCreateData
+    expect(createData.backtestDefaults.rebalanceFrequency).toBe(expected)
   })
 
   // ── 10. universe 映射 ─────────────────────────────────────────────────────

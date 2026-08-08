@@ -17,12 +17,6 @@ function mean(arr: number[]): number {
   return arr.reduce((s, v) => s + v, 0) / arr.length
 }
 
-function stdDev(arr: number[], mu?: number): number {
-  if (arr.length < 2) return 0
-  const m = mu ?? mean(arr)
-  return Math.sqrt(arr.reduce((s, v) => s + (v - m) ** 2, 0) / (arr.length - 1))
-}
-
 const BACKTEST_UNIVERSE_BY_INDEX_CODE: Record<string, Universe> = {
   '000300.SH': 'HS300',
   '000905.SH': 'CSI500',

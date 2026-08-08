@@ -14,10 +14,7 @@ import {
   UpdateWatchlistDto,
   UpdateWatchlistStockDto,
 } from './dto/watchlist.dto'
-import {
-  MAX_STOCKS_PER_WATCHLIST,
-  WATCHLIST_QUOTE_CACHE_TTL,
-} from './constants/watchlist.constant'
+import { MAX_STOCKS_PER_WATCHLIST, WATCHLIST_QUOTE_CACHE_TTL } from './constants/watchlist.constant'
 
 export interface StockQuote {
   close: number | null

@@ -19,7 +19,7 @@ export function normalizeToUnitRange(prices: number[]): number[] {
   const max = Math.max(...prices)
   const range = max - min
   if (range === 0) return prices.map(() => 0.5)
-  return prices.map(p => (p - min) / range)
+  return prices.map((p) => (p - min) / range)
 }
 
 // ─── 归一化欧氏距离（NED） ─────────────────────────────────────────────────────

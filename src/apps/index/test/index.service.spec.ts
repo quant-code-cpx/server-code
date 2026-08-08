@@ -50,7 +50,10 @@ describe('IndexService', () => {
   beforeEach(() => {
     mockPrisma = buildPrismaMock()
     mockCache = buildCacheMock()
-    service = new IndexService(mockPrisma as any, mockCache as any)
+    service = new IndexService(
+      mockPrisma as unknown as ConstructorParameters<typeof IndexService>[0],
+      mockCache as unknown as ConstructorParameters<typeof IndexService>[1],
+    )
   })
 
   // ── getIndexList() ───────────────────────────────────────────────────────
@@ -153,8 +156,8 @@ describe('IndexService', () => {
 
       const result = await service.getIndexConstituents({ index_code: '000300.SH', trade_date: '20240101' })
 
-      expect(result.tradeDate).toBe('20240101')       // 权重日期
-      expect(result.dailyTradeDate).toBe('20240105')  // 行情日期
+      expect(result.tradeDate).toBe('20240101') // 权重日期
+      expect(result.dailyTradeDate).toBe('20240105') // 行情日期
       expect(result.total).toBe(2)
       expect(result.constituents[0].conCode).toBe('000001.SZ')
       expect(result.constituents[0].name).toBe('平安银行')
@@ -172,7 +175,9 @@ describe('IndexService', () => {
         { conCode: '000001.SZ', weight: 5.5, tradeDate: '20260401' },
       ])
       mockPrisma.daily.findFirst.mockResolvedValueOnce({ tradeDate: new Date('2026-04-03') })
-      mockPrisma.stockBasic.findMany.mockResolvedValueOnce([{ tsCode: '000001.SZ', name: '平安银行', industry: '银行' }])
+      mockPrisma.stockBasic.findMany.mockResolvedValueOnce([
+        { tsCode: '000001.SZ', name: '平安银行', industry: '银行' },
+      ])
       mockPrisma.daily.findMany.mockResolvedValueOnce([])
       mockPrisma.dailyBasic.findMany.mockResolvedValueOnce([])
 
@@ -204,7 +209,9 @@ describe('IndexService', () => {
         { conCode: '000001.SZ', weight: 5.5, tradeDate: '20240101' },
       ])
       mockPrisma.daily.findFirst.mockResolvedValueOnce({ tradeDate: new Date('2024-01-05') })
-      mockPrisma.stockBasic.findMany.mockResolvedValueOnce([{ tsCode: '000001.SZ', name: '平安银行', industry: '银行' }])
+      mockPrisma.stockBasic.findMany.mockResolvedValueOnce([
+        { tsCode: '000001.SZ', name: '平安银行', industry: '银行' },
+      ])
       mockPrisma.daily.findMany.mockResolvedValueOnce([])
       mockPrisma.dailyBasic.findMany.mockResolvedValueOnce([])
 

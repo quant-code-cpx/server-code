@@ -25,7 +25,7 @@ describe('SyncStatusOverviewService', () => {
       expect(prisma.$queryRawUnsafe).toHaveBeenCalledTimes(1)
       const sql = prisma.$queryRawUnsafe.mock.calls[0][0]
       expect(sql).toContain('FROM pg_stats s')
-      expect(sql).toContain('s.attname = \'trade_date\'')
+      expect(sql).toContain("s.attname = 'trade_date'")
       expect(sql).toContain('s.n_distinct')
       expect(sql).not.toContain('WITH RECURSIVE tdates AS')
       expect(sql).not.toContain('COUNT(DISTINCT trade_date)')

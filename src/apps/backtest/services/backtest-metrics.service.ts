@@ -7,6 +7,7 @@ const TRADING_DAYS_PER_YEAR = 252
 @Injectable()
 export class BacktestMetricsService {
   computeMetrics(navRecords: DailyNavRecord[], trades: TradeRecord[], config: BacktestConfig): BacktestMetrics {
+    void config
     if (navRecords.length < 2) {
       return this.emptyMetrics(trades.length)
     }

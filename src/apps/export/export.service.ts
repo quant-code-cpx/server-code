@@ -222,7 +222,6 @@ export class ExportService {
       vol: '成交量',
     }
 
-    const headerRow = Object.fromEntries(selectedCols.map((c) => [c, COL_LABEL[c]])) as Record<string, unknown>
     const dataRows = items.map((item) =>
       Object.fromEntries(
         selectedCols.map((col) => {
@@ -274,7 +273,6 @@ export class ExportService {
       orderBy: [{ anomalyType: 'asc' }, { value: 'desc' }],
     })
 
-    const columns = ['tradeDate', 'tsCode', 'stockName', 'anomalyType', 'value', 'threshold', 'strength', 'scannedAt']
     const columnLabels = ['交易日', '代码', '名称', '异动类型', '指标值', '触发阈值', '强度', '扫描时间']
 
     const dataRows = rows.map((r) => ({

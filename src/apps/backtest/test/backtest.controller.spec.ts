@@ -131,10 +131,14 @@ describe('BacktestController', () => {
 
   it('POST /backtests/runs → 201 with code 200000', async () => {
     mockRunService.createRun.mockResolvedValueOnce({ runId: 'run-1', status: 'PENDING' })
-    await request(app.getHttpServer()).post('/backtests/runs').send(baseBacktestBody).expect(201).expect((res) => {
-      expect(res.body.code).toBe(SUCCESS_CODE)
-      expect(res.body.data).toMatchObject({ runId: 'run-1', status: 'PENDING' })
-    })
+    await request(app.getHttpServer())
+      .post('/backtests/runs')
+      .send(baseBacktestBody)
+      .expect(201)
+      .expect((res) => {
+        expect(res.body.code).toBe(SUCCESS_CODE)
+        expect(res.body.data).toMatchObject({ runId: 'run-1', status: 'PENDING' })
+      })
   })
 
   it('POST /backtests/runs/list → 201', async () => {
@@ -174,22 +178,41 @@ describe('BacktestController', () => {
   })
 
   it("[VAL] POST /backtests/runs startDate='2024-01-01' → 400", async () => {
-    await request(app.getHttpServer()).post('/backtests/runs').send({
-      strategyType: 'MA_CROSS_SINGLE', strategyConfig: {}, startDate: '2024-01-01', endDate: '20231231', initialCapital: 100000,
-    }).expect(400)
+    await request(app.getHttpServer())
+      .post('/backtests/runs')
+      .send({
+        strategyType: 'MA_CROSS_SINGLE',
+        strategyConfig: {},
+        startDate: '2024-01-01',
+        endDate: '20231231',
+        initialCapital: 100000,
+      })
+      .expect(400)
   })
 
   it('[VAL] POST /backtests/runs initialCapital=500 → 400', async () => {
     await request(app.getHttpServer())
       .post('/backtests/runs')
-      .send({ strategyType: 'MA_CROSS_SINGLE', strategyConfig: {}, startDate: '20230101', endDate: '20231231', initialCapital: 500 })
+      .send({
+        strategyType: 'MA_CROSS_SINGLE',
+        strategyConfig: {},
+        startDate: '20230101',
+        endDate: '20231231',
+        initialCapital: 500,
+      })
       .expect(400)
   })
 
   it("[VAL] POST /backtests/runs strategyType='INVALID' → 400", async () => {
     await request(app.getHttpServer())
       .post('/backtests/runs')
-      .send({ strategyType: 'INVALID', strategyConfig: {}, startDate: '20230101', endDate: '20231231', initialCapital: 100000 })
+      .send({
+        strategyType: 'INVALID',
+        strategyConfig: {},
+        startDate: '20230101',
+        endDate: '20231231',
+        initialCapital: 100000,
+      })
       .expect(400)
   })
 
@@ -305,29 +328,53 @@ describe('BacktestController', () => {
 
   describe('[DTO 校验] CreateBacktestRunDto', () => {
     it('maxPositions=0 (<1) → 400', async () => {
-      await request(app.getHttpServer()).post('/backtests/runs').send({ ...baseBacktestBody, maxPositions: 0 }).expect(400)
+      await request(app.getHttpServer())
+        .post('/backtests/runs')
+        .send({ ...baseBacktestBody, maxPositions: 0 })
+        .expect(400)
     })
     it('maxPositions=501 (>500) → 400', async () => {
-      await request(app.getHttpServer()).post('/backtests/runs').send({ ...baseBacktestBody, maxPositions: 501 }).expect(400)
+      await request(app.getHttpServer())
+        .post('/backtests/runs')
+        .send({ ...baseBacktestBody, maxPositions: 501 })
+        .expect(400)
     })
     it('maxWeightPerStock=0.005 (<0.01) → 400', async () => {
-      await request(app.getHttpServer()).post('/backtests/runs').send({ ...baseBacktestBody, maxWeightPerStock: 0.005 }).expect(400)
+      await request(app.getHttpServer())
+        .post('/backtests/runs')
+        .send({ ...baseBacktestBody, maxWeightPerStock: 0.005 })
+        .expect(400)
     })
     it('maxWeightPerStock=1.1 (>1) → 400', async () => {
-      await request(app.getHttpServer()).post('/backtests/runs').send({ ...baseBacktestBody, maxWeightPerStock: 1.1 }).expect(400)
+      await request(app.getHttpServer())
+        .post('/backtests/runs')
+        .send({ ...baseBacktestBody, maxWeightPerStock: 1.1 })
+        .expect(400)
     })
     it('rebalanceFrequency="INVALID" → 400', async () => {
-      await request(app.getHttpServer()).post('/backtests/runs').send({ ...baseBacktestBody, rebalanceFrequency: 'INVALID' }).expect(400)
+      await request(app.getHttpServer())
+        .post('/backtests/runs')
+        .send({ ...baseBacktestBody, rebalanceFrequency: 'INVALID' })
+        .expect(400)
     })
     it('priceMode="INVALID" → 400', async () => {
-      await request(app.getHttpServer()).post('/backtests/runs').send({ ...baseBacktestBody, priceMode: 'INVALID' }).expect(400)
+      await request(app.getHttpServer())
+        .post('/backtests/runs')
+        .send({ ...baseBacktestBody, priceMode: 'INVALID' })
+        .expect(400)
     })
     it('universe="INVALID" → 400', async () => {
-      await request(app.getHttpServer()).post('/backtests/runs').send({ ...baseBacktestBody, universe: 'INVALID' }).expect(400)
+      await request(app.getHttpServer())
+        .post('/backtests/runs')
+        .send({ ...baseBacktestBody, universe: 'INVALID' })
+        .expect(400)
     })
     it('customUniverseTsCodes 超过500 → 400', async () => {
       const codes = Array.from({ length: 501 }, (_, i) => `${String(i).padStart(6, '0')}.SZ`)
-      await request(app.getHttpServer()).post('/backtests/runs').send({ ...baseBacktestBody, universe: 'CUSTOM', customUniverseTsCodes: codes }).expect(400)
+      await request(app.getHttpServer())
+        .post('/backtests/runs')
+        .send({ ...baseBacktestBody, universe: 'CUSTOM', customUniverseTsCodes: codes })
+        .expect(400)
     })
   })
 
@@ -352,11 +399,17 @@ describe('BacktestController', () => {
     })
     it('/backtests/runs/rename → 201', async () => {
       mockRunService.renameRun.mockResolvedValueOnce({ runId: 'run-1', name: 'newName' })
-      await request(app.getHttpServer()).post('/backtests/runs/rename').send({ runId: 'run-1', name: 'newName' }).expect(201)
+      await request(app.getHttpServer())
+        .post('/backtests/runs/rename')
+        .send({ runId: 'run-1', name: 'newName' })
+        .expect(201)
     })
     it('/backtests/runs/archive → 201', async () => {
       mockRunService.archiveRun.mockResolvedValueOnce({ archived: true })
-      await request(app.getHttpServer()).post('/backtests/runs/archive').send({ runId: 'run-1', archived: true }).expect(201)
+      await request(app.getHttpServer())
+        .post('/backtests/runs/archive')
+        .send({ runId: 'run-1', archived: true })
+        .expect(201)
     })
     it('/backtests/runs/delete → 201', async () => {
       mockRunService.deleteRun.mockResolvedValueOnce({ deleted: true })
@@ -364,7 +417,10 @@ describe('BacktestController', () => {
     })
     it('/backtests/runs/star → 201', async () => {
       mockRunService.starRun.mockResolvedValueOnce({ starred: true })
-      await request(app.getHttpServer()).post('/backtests/runs/star').send({ runId: 'run-1', starred: true }).expect(201)
+      await request(app.getHttpServer())
+        .post('/backtests/runs/star')
+        .send({ runId: 'run-1', starred: true })
+        .expect(201)
     })
     it('/backtests/runs/retry → 201', async () => {
       mockRunService.retryRun.mockResolvedValueOnce({ retried: true })
@@ -380,7 +436,10 @@ describe('BacktestController', () => {
     })
     it('/backtests/runs/monte-carlo → 201', async () => {
       mockMonteCarloService.runMonteCarloSimulation.mockResolvedValueOnce({ simulations: [] })
-      await request(app.getHttpServer()).post('/backtests/runs/monte-carlo').send({ runId: 'run-1', numSimulations: 100 }).expect(201)
+      await request(app.getHttpServer())
+        .post('/backtests/runs/monte-carlo')
+        .send({ runId: 'run-1', numSimulations: 100 })
+        .expect(201)
     })
     it('/backtests/runs/attribution → 201', async () => {
       mockAttributionService.brinson.mockResolvedValueOnce({ period: [], summary: {} })
@@ -392,23 +451,41 @@ describe('BacktestController', () => {
     })
     it('/backtests/runs/param-sensitivity → 201', async () => {
       mockParamSensitivityService.create.mockResolvedValueOnce({ sweepId: 'sw-1' })
-      await request(app.getHttpServer()).post('/backtests/runs/param-sensitivity').send({
-        runId: 'run-1', paramX: { paramKey: 'fast', values: [5, 10] }, paramY: { paramKey: 'slow', values: [20, 30] },
-      }).expect(201)
+      await request(app.getHttpServer())
+        .post('/backtests/runs/param-sensitivity')
+        .send({
+          runId: 'run-1',
+          paramX: { paramKey: 'fast', values: [5, 10] },
+          paramY: { paramKey: 'slow', values: [20, 30] },
+        })
+        .expect(201)
     })
     it('/backtests/runs/param-sensitivity/result → 201', async () => {
       mockParamSensitivityService.getResult.mockResolvedValueOnce({ sweepId: 'sw-1', grid: [] })
-      await request(app.getHttpServer()).post('/backtests/runs/param-sensitivity/result').send({ sweepId: 'sw-1' }).expect(201)
+      await request(app.getHttpServer())
+        .post('/backtests/runs/param-sensitivity/result')
+        .send({ sweepId: 'sw-1' })
+        .expect(201)
     })
 
     // Walk-Forward
     it('/backtests/walk-forward/runs → 201', async () => {
       mockWalkForwardService.createWalkForwardRun.mockResolvedValueOnce({ wfRunId: 'wf-1' })
-      await request(app.getHttpServer()).post('/backtests/walk-forward/runs').send({
-        name: 'WF Test', baseStrategyType: 'MA_CROSS_SINGLE', baseStrategyConfig: {},
-        paramSearchSpace: {}, fullStartDate: '20230101', fullEndDate: '20231231',
-        inSampleDays: 60, outOfSampleDays: 20, stepDays: 20, initialCapital: 100000,
-      }).expect(201)
+      await request(app.getHttpServer())
+        .post('/backtests/walk-forward/runs')
+        .send({
+          name: 'WF Test',
+          baseStrategyType: 'MA_CROSS_SINGLE',
+          baseStrategyConfig: {},
+          paramSearchSpace: {},
+          fullStartDate: '20230101',
+          fullEndDate: '20231231',
+          inSampleDays: 60,
+          outOfSampleDays: 20,
+          stepDays: 20,
+          initialCapital: 100000,
+        })
+        .expect(201)
     })
     it('/backtests/walk-forward/runs/list → 201', async () => {
       mockWalkForwardService.listWalkForwardRuns.mockResolvedValueOnce({ items: [], total: 0 })
@@ -416,41 +493,68 @@ describe('BacktestController', () => {
     })
     it('/backtests/walk-forward/runs/detail → 201', async () => {
       mockWalkForwardService.getWalkForwardRunDetail.mockResolvedValueOnce({ wfRunId: 'wf-1', windows: [] })
-      await request(app.getHttpServer()).post('/backtests/walk-forward/runs/detail').send({ wfRunId: 'wf-1' }).expect(201)
+      await request(app.getHttpServer())
+        .post('/backtests/walk-forward/runs/detail')
+        .send({ wfRunId: 'wf-1' })
+        .expect(201)
     })
     it('/backtests/walk-forward/runs/equity → 201', async () => {
       mockWalkForwardService.getWalkForwardEquity.mockResolvedValueOnce({ equityCurve: [] })
-      await request(app.getHttpServer()).post('/backtests/walk-forward/runs/equity').send({ wfRunId: 'wf-1' }).expect(201)
+      await request(app.getHttpServer())
+        .post('/backtests/walk-forward/runs/equity')
+        .send({ wfRunId: 'wf-1' })
+        .expect(201)
     })
     it('/backtests/walk-forward/runs/cancel → 201', async () => {
       mockWalkForwardService.cancelWalkForwardRun.mockResolvedValueOnce({ cancelled: true })
-      await request(app.getHttpServer()).post('/backtests/walk-forward/runs/cancel').send({ wfRunId: 'wf-1' }).expect(201)
+      await request(app.getHttpServer())
+        .post('/backtests/walk-forward/runs/cancel')
+        .send({ wfRunId: 'wf-1' })
+        .expect(201)
     })
     it('/backtests/walk-forward/runs/delete → 201', async () => {
       mockWalkForwardService.deleteWalkForwardRun.mockResolvedValueOnce({ deleted: true })
-      await request(app.getHttpServer()).post('/backtests/walk-forward/runs/delete').send({ wfRunId: 'wf-1' }).expect(201)
+      await request(app.getHttpServer())
+        .post('/backtests/walk-forward/runs/delete')
+        .send({ wfRunId: 'wf-1' })
+        .expect(201)
     })
 
     // Rolling
     it('/backtests/rolling/runs → 201', async () => {
       mockWalkForwardService.createWalkForwardRun.mockResolvedValueOnce({ wfRunId: 'wf-rolling' })
-      await request(app.getHttpServer()).post('/backtests/rolling/runs').send({
-        name: 'Rolling', strategyType: 'MA_CROSS_SINGLE', strategyConfig: {},
-        rollingParamSpace: {}, startDate: '20230101', endDate: '20231231',
-        lookbackDays: 60, holdingPeriodDays: 20, initialCapital: 100000,
-      }).expect(201)
+      await request(app.getHttpServer())
+        .post('/backtests/rolling/runs')
+        .send({
+          name: 'Rolling',
+          strategyType: 'MA_CROSS_SINGLE',
+          strategyConfig: {},
+          rollingParamSpace: {},
+          startDate: '20230101',
+          endDate: '20231231',
+          lookbackDays: 60,
+          holdingPeriodDays: 20,
+          initialCapital: 100000,
+        })
+        .expect(201)
     })
 
     // Comparison
     it('/backtests/comparisons → 201', async () => {
       mockComparisonService.createComparison.mockResolvedValueOnce({ groupId: 'grp-1' })
-      await request(app.getHttpServer()).post('/backtests/comparisons').send({
-        name: 'comp', strategies: [
-          { strategyType: 'MA_CROSS_SINGLE', strategyConfig: { fast: 5, slow: 20 }, label: 'S1' },
-          { strategyType: 'MA_CROSS_SINGLE', strategyConfig: { fast: 10, slow: 30 }, label: 'S2' },
-        ],
-        startDate: '20230101', endDate: '20231231', initialCapital: 100000,
-      }).expect(201)
+      await request(app.getHttpServer())
+        .post('/backtests/comparisons')
+        .send({
+          name: 'comp',
+          strategies: [
+            { strategyType: 'MA_CROSS_SINGLE', strategyConfig: { fast: 5, slow: 20 }, label: 'S1' },
+            { strategyType: 'MA_CROSS_SINGLE', strategyConfig: { fast: 10, slow: 30 }, label: 'S2' },
+          ],
+          startDate: '20230101',
+          endDate: '20231231',
+          initialCapital: 100000,
+        })
+        .expect(201)
     })
     it('/backtests/comparisons/detail → 201', async () => {
       mockComparisonService.getComparisonDetail.mockResolvedValueOnce({ groupId: 'grp-1', results: [] })
@@ -470,25 +574,53 @@ describe('BacktestController', () => {
 
   describe('[DTO 校验] Walk-Forward', () => {
     it('缺 baseStrategyType → 400', async () => {
-      await request(app.getHttpServer()).post('/backtests/walk-forward/runs').send({
-        name: 'WF', baseStrategyConfig: {}, paramSearchSpace: {},
-        fullStartDate: '20230101', fullEndDate: '20231231',
-        inSampleDays: 60, outOfSampleDays: 20, stepDays: 20, initialCapital: 100000,
-      }).expect(400)
+      await request(app.getHttpServer())
+        .post('/backtests/walk-forward/runs')
+        .send({
+          name: 'WF',
+          baseStrategyConfig: {},
+          paramSearchSpace: {},
+          fullStartDate: '20230101',
+          fullEndDate: '20231231',
+          inSampleDays: 60,
+          outOfSampleDays: 20,
+          stepDays: 20,
+          initialCapital: 100000,
+        })
+        .expect(400)
     })
     it('缺 fullStartDate → 400', async () => {
-      await request(app.getHttpServer()).post('/backtests/walk-forward/runs').send({
-        name: 'WF', baseStrategyType: 'MA_CROSS_SINGLE', baseStrategyConfig: {},
-        paramSearchSpace: {}, fullEndDate: '20231231',
-        inSampleDays: 60, outOfSampleDays: 20, stepDays: 20, initialCapital: 100000,
-      }).expect(400)
+      await request(app.getHttpServer())
+        .post('/backtests/walk-forward/runs')
+        .send({
+          name: 'WF',
+          baseStrategyType: 'MA_CROSS_SINGLE',
+          baseStrategyConfig: {},
+          paramSearchSpace: {},
+          fullEndDate: '20231231',
+          inSampleDays: 60,
+          outOfSampleDays: 20,
+          stepDays: 20,
+          initialCapital: 100000,
+        })
+        .expect(400)
     })
     it('inSampleDays=0 → 400', async () => {
-      await request(app.getHttpServer()).post('/backtests/walk-forward/runs').send({
-        name: 'WF', baseStrategyType: 'MA_CROSS_SINGLE', baseStrategyConfig: {},
-        paramSearchSpace: {}, fullStartDate: '20230101', fullEndDate: '20231231',
-        inSampleDays: 0, outOfSampleDays: 20, stepDays: 20, initialCapital: 100000,
-      }).expect(400)
+      await request(app.getHttpServer())
+        .post('/backtests/walk-forward/runs')
+        .send({
+          name: 'WF',
+          baseStrategyType: 'MA_CROSS_SINGLE',
+          baseStrategyConfig: {},
+          paramSearchSpace: {},
+          fullStartDate: '20230101',
+          fullEndDate: '20231231',
+          inSampleDays: 0,
+          outOfSampleDays: 20,
+          stepDays: 20,
+          initialCapital: 100000,
+        })
+        .expect(400)
     })
   })
 })

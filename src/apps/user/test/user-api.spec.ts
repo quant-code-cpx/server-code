@@ -4,7 +4,14 @@
  * 覆盖：用户 CRUD、个人资料、密码、偏好、审计日志、统计、搜索、角色管理
  * 方法：Test.createTestingModule + overrideGuard(RolesGuard) + mock services
  */
-import { CanActivate, ExecutionContext, INestApplication, ValidationPipe } from '@nestjs/common'
+import {
+  CanActivate,
+  ExecutionContext,
+  ForbiddenException,
+  INestApplication,
+  UnauthorizedException,
+  ValidationPipe,
+} from '@nestjs/common'
 import { Reflector } from '@nestjs/core'
 import { Test, TestingModule } from '@nestjs/testing'
 import request from 'supertest'
@@ -26,7 +33,14 @@ function buildSuperAdmin(): TokenPayload {
 }
 
 function createMockLoggerService(): LoggerService {
-  return { log: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn(), verbose: jest.fn(), devLog: jest.fn() } as unknown as LoggerService
+  return {
+    log: jest.fn(),
+    warn: jest.fn(),
+    error: jest.fn(),
+    debug: jest.fn(),
+    verbose: jest.fn(),
+    devLog: jest.fn(),
+  } as unknown as LoggerService
 }
 
 const sampleUser = {
@@ -63,11 +77,14 @@ describe('User API 测试', () => {
         const classRef = ctx.getClass()
         const requiredRoles = reflector.getAllAndOverride<UserRole[]>('roles', [handler, classRef])
         if (!requiredRoles || requiredRoles.length === 0) return true
-        const ROLE_LEVEL: Record<UserRole, number> = { [UserRole.USER]: 1, [UserRole.ADMIN]: 2, [UserRole.SUPER_ADMIN]: 3 }
+        const ROLE_LEVEL: Record<UserRole, number> = {
+          [UserRole.USER]: 1,
+          [UserRole.ADMIN]: 2,
+          [UserRole.SUPER_ADMIN]: 3,
+        }
         const userLevel = ROLE_LEVEL[user.role] ?? 0
         const meets = requiredRoles.some((role) => userLevel >= ROLE_LEVEL[role])
         if (!meets) {
-          const { ForbiddenException } = require('@nestjs/common')
           throw new ForbiddenException('权限不足')
         }
         return true
@@ -82,7 +99,6 @@ describe('User API 测试', () => {
       .useValue(mockRolesGuard)
       .compile()
 
-    const reflector = moduleRef.get(Reflector)
     app = moduleRef.createNestApplication()
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }))
     app.useGlobalInterceptors(new TransformInterceptor())
@@ -109,7 +125,9 @@ describe('User API 测试', () => {
       updateRole: jest.fn().mockResolvedValue({ ...sampleUser, role: UserRole.ADMIN }),
       restore: jest.fn().mockResolvedValue({ ...sampleUser, status: UserStatus.ACTIVE }),
       getStats: jest.fn().mockResolvedValue({ total: 10, todayNew: 2, active30d: 8, deactivated: 1 }),
-      search: jest.fn().mockResolvedValue({ items: [{ id: 2, account: 'zhangsan', nickname: '张三', role: UserRole.USER }] }),
+      search: jest
+        .fn()
+        .mockResolvedValue({ items: [{ id: 2, account: 'zhangsan', nickname: '张三', role: UserRole.USER }] }),
     }
   })
 
@@ -165,19 +183,31 @@ describe('User API 测试', () => {
     })
 
     it('US-ERR-005: create 无效 role 应 400', async () => {
-      await req.post('/user/create').send({ account: 'zhangsan', nickname: '张三', password: 'Abc12345', role: 'INVALID' }).expect(400)
+      await req
+        .post('/user/create')
+        .send({ account: 'zhangsan', nickname: '张三', password: 'Abc12345', role: 'INVALID' })
+        .expect(400)
     })
 
     it('US-ERR-006: create backtestQuota < -1 应 400', async () => {
-      await req.post('/user/create').send({ account: 'zhangsan', nickname: '张三', password: 'Abc12345', backtestQuota: -2 }).expect(400)
+      await req
+        .post('/user/create')
+        .send({ account: 'zhangsan', nickname: '张三', password: 'Abc12345', backtestQuota: -2 })
+        .expect(400)
     })
 
     it('US-EDGE-001: create account 64 字符', async () => {
-      await req.post('/user/create').send({ account: 'a'.repeat(64), nickname: '张三', password: 'Abc12345' }).expect(201)
+      await req
+        .post('/user/create')
+        .send({ account: 'a'.repeat(64), nickname: '张三', password: 'Abc12345' })
+        .expect(201)
     })
 
     it('US-EDGE-002: create account 65 字符应 400', async () => {
-      await req.post('/user/create').send({ account: 'a'.repeat(65), nickname: '张三', password: 'Abc12345' }).expect(400)
+      await req
+        .post('/user/create')
+        .send({ account: 'a'.repeat(65), nickname: '张三', password: 'Abc12345' })
+        .expect(400)
     })
   })
 
@@ -235,7 +265,10 @@ describe('User API 测试', () => {
     })
 
     it('US-BIZ-007: 修改密码', async () => {
-      await req.post('/user/profile/change-password').send({ oldPassword: 'OldPass123', newPassword: 'NewPass88' }).expect(201)
+      await req
+        .post('/user/profile/change-password')
+        .send({ oldPassword: 'OldPass123', newPassword: 'NewPass88' })
+        .expect(201)
       expect(mockUserService.changePassword).toHaveBeenCalledWith(
         expect.objectContaining({ id: 1 }),
         expect.objectContaining({ oldPassword: 'OldPass123', newPassword: 'NewPass88' }),
@@ -247,7 +280,10 @@ describe('User API 测试', () => {
     })
 
     it('US-ERR-011: change-password newPassword 不足 8 位应 400', async () => {
-      await req.post('/user/profile/change-password').send({ oldPassword: 'OldPass123', newPassword: 'short' }).expect(400)
+      await req
+        .post('/user/profile/change-password')
+        .send({ oldPassword: 'OldPass123', newPassword: 'short' })
+        .expect(400)
     })
 
     it('US-ERR-012: update-profile email 格式错误应 400', async () => {
@@ -255,7 +291,10 @@ describe('User API 测试', () => {
     })
 
     it('US-EDGE-003: update-profile nickname 64 字符', async () => {
-      await req.post('/user/profile/update').send({ nickname: 'a'.repeat(64) }).expect(201)
+      await req
+        .post('/user/profile/update')
+        .send({ nickname: 'a'.repeat(64) })
+        .expect(201)
     })
   })
 
@@ -275,12 +314,20 @@ describe('User API 测试', () => {
     it('US-BIZ-009: 管理员更新用户信息', async () => {
       const res = await req.post('/user/update').send({ id: 2, nickname: '管理员改' }).expect(201)
       expect(res.body.data.nickname).toBe('管理员改')
-      expect(mockUserService.adminUpdateUser).toHaveBeenCalledWith(2, { nickname: '管理员改' }, expect.objectContaining({ id: 1 }))
+      expect(mockUserService.adminUpdateUser).toHaveBeenCalledWith(
+        2,
+        { nickname: '管理员改' },
+        expect.objectContaining({ id: 1 }),
+      )
     })
 
     it('US-BIZ-010: 修改用户状态', async () => {
       await req.post('/user/update-status').send({ id: 2, status: 'DEACTIVATED' }).expect(201)
-      expect(mockUserService.updateStatus).toHaveBeenCalledWith(2, { status: 'DEACTIVATED' }, expect.objectContaining({ id: 1 }))
+      expect(mockUserService.updateStatus).toHaveBeenCalledWith(
+        2,
+        { status: 'DEACTIVATED' },
+        expect.objectContaining({ id: 1 }),
+      )
     })
 
     it('US-BIZ-011: 重置用户密码', async () => {
@@ -354,13 +401,19 @@ describe('User API 测试', () => {
     })
 
     it('US-BIZ-016: 更新偏好', async () => {
-      const res = await req.post('/user/preferences/update').send({ key: 'stockListColumns', value: ['tsCode', 'name', 'peTtm'] }).expect(201)
+      const res = await req
+        .post('/user/preferences/update')
+        .send({ key: 'stockListColumns', value: ['tsCode', 'name', 'peTtm'] })
+        .expect(201)
       expect(res.body.data.preferences).toHaveProperty('stockListColumns')
       expect(mockUserService.updatePreferences).toHaveBeenCalledWith(1, 'stockListColumns', ['tsCode', 'name', 'peTtm'])
     })
 
     it('US-ERR-020: preferences/update 缺 key 应 400', async () => {
-      await req.post('/user/preferences/update').send({ value: ['tsCode'] }).expect(400)
+      await req
+        .post('/user/preferences/update')
+        .send({ value: ['tsCode'] })
+        .expect(400)
     })
   })
 
@@ -420,7 +473,6 @@ describe('User API 测试', () => {
     it('US-SEC-001: 无 Token 应 401', async () => {
       const noAuthGuard: CanActivate = {
         canActivate(): boolean {
-          const { UnauthorizedException } = require('@nestjs/common')
           throw new UnauthorizedException()
         },
       }

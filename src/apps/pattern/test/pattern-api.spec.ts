@@ -151,47 +151,80 @@ describe('Pattern API 测试', () => {
     })
 
     it('PT-ERR-006: algorithm 无效值 → 400', async () => {
-      await req.post('/pattern/search').send({ ...validBody, algorithm: 'INVALID' }).expect(400)
+      await req
+        .post('/pattern/search')
+        .send({ ...validBody, algorithm: 'INVALID' })
+        .expect(400)
     })
 
     it('PT-ERR-007: scope 无效值 → 400', async () => {
-      await req.post('/pattern/search').send({ ...validBody, scope: 'INVALID' }).expect(400)
+      await req
+        .post('/pattern/search')
+        .send({ ...validBody, scope: 'INVALID' })
+        .expect(400)
     })
 
     it('PT-EDGE-002: topK=1（最小）→ 201', async () => {
-      await req.post('/pattern/search').send({ ...validBody, topK: 1 }).expect(201)
+      await req
+        .post('/pattern/search')
+        .send({ ...validBody, topK: 1 })
+        .expect(201)
     })
 
     it('PT-EDGE-003: topK=100（最大）→ 201', async () => {
-      await req.post('/pattern/search').send({ ...validBody, topK: 100 }).expect(201)
+      await req
+        .post('/pattern/search')
+        .send({ ...validBody, topK: 100 })
+        .expect(201)
     })
 
     it('PT-EDGE-004: topK=0 → 400', async () => {
-      await req.post('/pattern/search').send({ ...validBody, topK: 0 }).expect(400)
+      await req
+        .post('/pattern/search')
+        .send({ ...validBody, topK: 0 })
+        .expect(400)
     })
 
     it('PT-EDGE-005: topK=101 → 400', async () => {
-      await req.post('/pattern/search').send({ ...validBody, topK: 101 }).expect(400)
+      await req
+        .post('/pattern/search')
+        .send({ ...validBody, topK: 101 })
+        .expect(400)
     })
 
     it('PT-EDGE-006: lookbackYears=1（最小）→ 201', async () => {
-      await req.post('/pattern/search').send({ ...validBody, lookbackYears: 1 }).expect(201)
+      await req
+        .post('/pattern/search')
+        .send({ ...validBody, lookbackYears: 1 })
+        .expect(201)
     })
 
     it('PT-EDGE-007: lookbackYears=20（最大）→ 201', async () => {
-      await req.post('/pattern/search').send({ ...validBody, lookbackYears: 20 }).expect(201)
+      await req
+        .post('/pattern/search')
+        .send({ ...validBody, lookbackYears: 20 })
+        .expect(201)
     })
 
     it('PT-EDGE-008: lookbackYears=0 → 400', async () => {
-      await req.post('/pattern/search').send({ ...validBody, lookbackYears: 0 }).expect(400)
+      await req
+        .post('/pattern/search')
+        .send({ ...validBody, lookbackYears: 0 })
+        .expect(400)
     })
 
     it('PT-EDGE-009: lookbackYears=21 → 400', async () => {
-      await req.post('/pattern/search').send({ ...validBody, lookbackYears: 21 }).expect(400)
+      await req
+        .post('/pattern/search')
+        .send({ ...validBody, lookbackYears: 21 })
+        .expect(400)
     })
 
     it('PT-EDGE-010: excludeSelf=false → 201', async () => {
-      await req.post('/pattern/search').send({ ...validBody, excludeSelf: false }).expect(201)
+      await req
+        .post('/pattern/search')
+        .send({ ...validBody, excludeSelf: false })
+        .expect(201)
     })
   })
 
@@ -226,7 +259,10 @@ describe('Pattern API 测试', () => {
     })
 
     it('PT-ERR-009: series 不足 5 个 → 400', async () => {
-      await req.post('/pattern/search-by-series').send({ series: [10, 12, 15] }).expect(400)
+      await req
+        .post('/pattern/search-by-series')
+        .send({ series: [10, 12, 15] })
+        .expect(400)
     })
 
     it('PT-ERR-010: series 含非数字 → 400', async () => {
@@ -245,10 +281,7 @@ describe('Pattern API 测试', () => {
 
     it('PT-EDGE-012: series 长序列（50 个）→ 201', async () => {
       const longSeries = Array.from({ length: 50 }, (_, i) => 100 + i)
-      await req
-        .post('/pattern/search-by-series')
-        .send({ series: longSeries })
-        .expect(201)
+      await req.post('/pattern/search-by-series').send({ series: longSeries }).expect(201)
     })
   })
 

@@ -34,11 +34,11 @@ function createMockLoggerService(): LoggerService {
 
 describe('AlertController — DTO校验 + Guard权限 + 接口契约', () => {
   let app: INestApplication
-  let httpRequest: any
-  let mockCalendar: any
-  let mockPriceAlert: any
-  let mockAnomaly: any
-  let mockLimit: any
+  let httpRequest: ReturnType<typeof request>
+  let mockCalendar: Record<string, jest.Mock>
+  let mockPriceAlert: Record<string, jest.Mock>
+  let mockAnomaly: Record<string, jest.Mock>
+  let mockLimit: Record<string, jest.Mock>
 
   beforeAll(async () => {
     mockCalendar = {

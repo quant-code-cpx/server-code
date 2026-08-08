@@ -50,7 +50,14 @@ describe('Fund API 测试', () => {
     total_amount: 25000,
     avg_stk_float_ratio: 1.2,
     holders: [
-      { ts_code: '510300.SH', fund_name: '华泰柏瑞沪深300ETF', mkv: 2000000, amount: 10000, stk_mkv_ratio: 3.0, stk_float_ratio: 0.5 },
+      {
+        ts_code: '510300.SH',
+        fund_name: '华泰柏瑞沪深300ETF',
+        mkv: 2000000,
+        amount: 10000,
+        stk_mkv_ratio: 3.0,
+        stk_float_ratio: 0.5,
+      },
     ],
   }
 
@@ -99,24 +106,18 @@ describe('Fund API 测试', () => {
 
     it('FD-BIZ-002: 按 ts_code 查询持仓 → 201', async () => {
       const res = await req.post('/fund/holdings').send({ ts_code: '510300.SH' }).expect(201)
-      expect(mockFundService.getFundHoldings).toHaveBeenCalledWith(
-        expect.objectContaining({ ts_code: '510300.SH' }),
-      )
+      expect(mockFundService.getFundHoldings).toHaveBeenCalledWith(expect.objectContaining({ ts_code: '510300.SH' }))
       expect(res.body.data).toHaveLength(1)
     })
 
     it('FD-BIZ-003: 按 end_date 查询持仓 → 201', async () => {
       const res = await req.post('/fund/holdings').send({ end_date: '20231231' }).expect(201)
-      expect(mockFundService.getFundHoldings).toHaveBeenCalledWith(
-        expect.objectContaining({ end_date: '20231231' }),
-      )
+      expect(mockFundService.getFundHoldings).toHaveBeenCalledWith(expect.objectContaining({ end_date: '20231231' }))
       expect(res.body.data).toHaveLength(1)
     })
 
     it('FD-BIZ-004: 同时传 ts_code + end_date → 201', async () => {
-      const res = await req.post('/fund/holdings')
-        .send({ ts_code: '510300.SH', end_date: '20231231' })
-        .expect(201)
+      const res = await req.post('/fund/holdings').send({ ts_code: '510300.SH', end_date: '20231231' }).expect(201)
       expect(mockFundService.getFundHoldings).toHaveBeenCalledWith(
         expect.objectContaining({ ts_code: '510300.SH', end_date: '20231231' }),
       )
@@ -143,9 +144,7 @@ describe('Fund API 测试', () => {
     })
 
     it('FD-BIZ-006: 按 symbol 查询汇总 → 201', async () => {
-      const res = await req.post('/fund/institutional-summary')
-        .send({ symbol: '600519.SH' })
-        .expect(201)
+      const res = await req.post('/fund/institutional-summary').send({ symbol: '600519.SH' }).expect(201)
       expect(mockFundService.getInstitutionalSummary).toHaveBeenCalledWith(
         expect.objectContaining({ symbol: '600519.SH' }),
       )
@@ -153,9 +152,7 @@ describe('Fund API 测试', () => {
     })
 
     it('FD-BIZ-007: 按 end_date 查询汇总 → 201', async () => {
-      const res = await req.post('/fund/institutional-summary')
-        .send({ end_date: '20231231' })
-        .expect(201)
+      const res = await req.post('/fund/institutional-summary').send({ end_date: '20231231' }).expect(201)
       expect(mockFundService.getInstitutionalSummary).toHaveBeenCalledWith(
         expect.objectContaining({ end_date: '20231231' }),
       )
@@ -163,37 +160,25 @@ describe('Fund API 测试', () => {
     })
 
     it('FD-BIZ-008: 带 limit 查询汇总 → 201', async () => {
-      const res = await req.post('/fund/institutional-summary')
-        .send({ limit: 10 })
-        .expect(201)
-      expect(mockFundService.getInstitutionalSummary).toHaveBeenCalledWith(
-        expect.objectContaining({ limit: 10 }),
-      )
+      const res = await req.post('/fund/institutional-summary').send({ limit: 10 }).expect(201)
+      expect(mockFundService.getInstitutionalSummary).toHaveBeenCalledWith(expect.objectContaining({ limit: 10 }))
       expect(res.body.data).toHaveLength(1)
     })
 
     it('FD-ERR-002: end_date 格式错误应 400', async () => {
-      await req.post('/fund/institutional-summary')
-        .send({ end_date: '2023/12/31' })
-        .expect(400)
+      await req.post('/fund/institutional-summary').send({ end_date: '2023/12/31' }).expect(400)
     })
 
     it('FD-ERR-003: limit=0 应 400', async () => {
-      await req.post('/fund/institutional-summary')
-        .send({ limit: 0 })
-        .expect(400)
+      await req.post('/fund/institutional-summary').send({ limit: 0 }).expect(400)
     })
 
     it('FD-ERR-004: limit 非数字应 400', async () => {
-      await req.post('/fund/institutional-summary')
-        .send({ limit: 'abc' })
-        .expect(400)
+      await req.post('/fund/institutional-summary').send({ limit: 'abc' }).expect(400)
     })
 
     it('FD-EDGE-002: limit=1（最小）→ 201', async () => {
-      await req.post('/fund/institutional-summary')
-        .send({ limit: 1 })
-        .expect(201)
+      await req.post('/fund/institutional-summary').send({ limit: 1 }).expect(201)
     })
   })
 
@@ -208,63 +193,41 @@ describe('Fund API 测试', () => {
     })
 
     it('FD-BIZ-010: 按 ts_code 查询 ETF 流向 → 201', async () => {
-      const res = await req.post('/fund/etf-flow')
-        .send({ ts_code: '510300.SH' })
-        .expect(201)
-      expect(mockFundService.getEtfFlow).toHaveBeenCalledWith(
-        expect.objectContaining({ ts_code: '510300.SH' }),
-      )
+      const res = await req.post('/fund/etf-flow').send({ ts_code: '510300.SH' }).expect(201)
+      expect(mockFundService.getEtfFlow).toHaveBeenCalledWith(expect.objectContaining({ ts_code: '510300.SH' }))
       expect(res.body.data).toHaveLength(1)
     })
 
     it('FD-BIZ-011: 按 days 查询 ETF 流向 → 201', async () => {
-      const res = await req.post('/fund/etf-flow')
-        .send({ days: 14 })
-        .expect(201)
-      expect(mockFundService.getEtfFlow).toHaveBeenCalledWith(
-        expect.objectContaining({ days: 14 }),
-      )
+      const res = await req.post('/fund/etf-flow').send({ days: 14 }).expect(201)
+      expect(mockFundService.getEtfFlow).toHaveBeenCalledWith(expect.objectContaining({ days: 14 }))
       expect(res.body.data).toHaveLength(1)
     })
 
     it('FD-BIZ-012: 按 start_date 查询 ETF 流向 → 201', async () => {
-      const res = await req.post('/fund/etf-flow')
-        .send({ start_date: '20240101' })
-        .expect(201)
-      expect(mockFundService.getEtfFlow).toHaveBeenCalledWith(
-        expect.objectContaining({ start_date: '20240101' }),
-      )
+      const res = await req.post('/fund/etf-flow').send({ start_date: '20240101' }).expect(201)
+      expect(mockFundService.getEtfFlow).toHaveBeenCalledWith(expect.objectContaining({ start_date: '20240101' }))
       expect(res.body.data).toHaveLength(1)
     })
 
     it('FD-ERR-005: start_date 格式错误应 400', async () => {
-      await req.post('/fund/etf-flow')
-        .send({ start_date: '2024-01-01' })
-        .expect(400)
+      await req.post('/fund/etf-flow').send({ start_date: '2024-01-01' }).expect(400)
     })
 
     it('FD-ERR-006: days=0 应 400', async () => {
-      await req.post('/fund/etf-flow')
-        .send({ days: 0 })
-        .expect(400)
+      await req.post('/fund/etf-flow').send({ days: 0 }).expect(400)
     })
 
     it('FD-ERR-007: days 非数字应 400', async () => {
-      await req.post('/fund/etf-flow')
-        .send({ days: 'abc' })
-        .expect(400)
+      await req.post('/fund/etf-flow').send({ days: 'abc' }).expect(400)
     })
 
     it('FD-EDGE-003: days=1（最小）→ 201', async () => {
-      await req.post('/fund/etf-flow')
-        .send({ days: 1 })
-        .expect(201)
+      await req.post('/fund/etf-flow').send({ days: 1 }).expect(201)
     })
 
     it('FD-EDGE-004: start_date 格式正确 → 201', async () => {
-      await req.post('/fund/etf-flow')
-        .send({ start_date: '20240101' })
-        .expect(201)
+      await req.post('/fund/etf-flow').send({ start_date: '20240101' }).expect(201)
     })
   })
 })

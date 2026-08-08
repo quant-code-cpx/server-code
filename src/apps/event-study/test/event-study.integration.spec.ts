@@ -8,6 +8,7 @@
  * 4. BigInt 序列化无错误
  */
 import { Test, TestingModule } from '@nestjs/testing'
+import type { EventStudyResultDto } from '../dto/event-study-response.dto'
 import { EventStudyService } from '../event-study.service'
 import { PrismaService } from 'src/shared/prisma.service'
 import { LoggerService } from 'src/shared/logger/logger.service'
@@ -23,7 +24,17 @@ describe('EventStudy — 真实 DB 集成测试', () => {
       providers: [
         EventStudyService,
         PrismaService,
-        { provide: LoggerService, useValue: { log: () => {}, warn: () => {}, error: () => {}, debug: () => {}, verbose: () => {}, devLog: () => {} } },
+        {
+          provide: LoggerService,
+          useValue: {
+            log: () => {},
+            warn: () => {},
+            error: () => {},
+            debug: () => {},
+            verbose: () => {},
+            devLog: () => {},
+          },
+        },
       ],
     }).compile()
 
@@ -120,7 +131,9 @@ describe('EventStudy — 真实 DB 集成测试', () => {
   it('analyze 自定义窗口 preDays=0 postDays=10', async () => {
     if (skipWhenDbUnavailable()) return
     const result = await service.analyze({
-      eventType: EventType.FORECAST, preDays: 0, postDays: 10,
+      eventType: EventType.FORECAST,
+      preDays: 0,
+      postDays: 10,
     })
     verifyAnalyzeResult(result, 'FORECAST', 11)
   }, 60000)
@@ -128,24 +141,26 @@ describe('EventStudy — 真实 DB 集成测试', () => {
   it('analyze 指定 tsCode=000001.SZ', async () => {
     if (skipWhenDbUnavailable()) return
     const result = await service.analyze({
-      eventType: EventType.FORECAST, tsCode: '000001.SZ',
+      eventType: EventType.FORECAST,
+      tsCode: '000001.SZ',
     })
     if (result.sampleCount > 0 && result.topSamples) {
-      expect(result.topSamples.every((s: any) => s.tsCode === '000001.SZ')).toBe(true)
+      expect(result.topSamples.every((s) => s.tsCode === '000001.SZ')).toBe(true)
     }
   }, 60000)
 
   it('analyze 自定义基准中证500', async () => {
     if (skipWhenDbUnavailable()) return
     const result = await service.analyze({
-      eventType: EventType.FORECAST, benchmarkCode: '000905.SH',
+      eventType: EventType.FORECAST,
+      benchmarkCode: '000905.SH',
     })
     expect(result.benchmark).toBe('000905.SH')
     verifyAnalyzeResult(result, 'FORECAST', 26)
   }, 60000)
 })
 
-function verifyAnalyzeResult(result: any, expectedType: string, expectedWindowSize: number) {
+function verifyAnalyzeResult(result: EventStudyResultDto, expectedType: string, expectedWindowSize: number) {
   expect(result.eventType).toBe(expectedType)
   expect(result.eventLabel).toBeTruthy()
   expect(typeof result.sampleCount).toBe('number')

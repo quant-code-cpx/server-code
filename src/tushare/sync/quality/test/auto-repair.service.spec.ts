@@ -12,10 +12,15 @@
  */
 
 import { TushareSyncTask, TushareSyncRetryStatus } from '@prisma/client'
+import { Logger } from '@nestjs/common'
 import { AutoRepairService } from '../auto-repair.service'
 import { PrismaService } from 'src/shared/prisma.service'
 import { SyncHelperService } from '../../sync-helper.service'
 import { DataQualityReport } from '../data-quality.service'
+
+type AutoRepairServiceInternals = {
+  logger: Pick<Logger, 'error'>
+}
 
 // ── mock 工厂 ─────────────────────────────────────────────────────────────────
 
@@ -33,8 +38,7 @@ function buildHelperMock() {
 }
 
 function createService(prisma = buildPrismaMock(), helper = buildHelperMock()): AutoRepairService {
-  // @ts-ignore 局部 mock，跳过 DI
-  return new AutoRepairService(prisma as PrismaService, helper as SyncHelperService)
+  return new AutoRepairService(prisma as unknown as PrismaService, helper as unknown as SyncHelperService)
 }
 
 // ── 辅助：构建质量报告 ──────────────────────────────────────────────────────────
@@ -246,8 +250,7 @@ describe('AutoRepairService', () => {
   describe('告警阈值检查', () => {
     it('fail 数量 > maxFailDataSets(5) → 调用 logger.error', async () => {
       const service = createService()
-      // @ts-ignore 访问私有 logger
-      const loggerSpy = jest.spyOn(service['logger'], 'error')
+      const loggerSpy = jest.spyOn((service as unknown as AutoRepairServiceInternals).logger, 'error')
 
       // 构造 6 个 fail 报告（超出阈值 5）
       const reports: DataQualityReport[] = Array.from({ length: 6 }, (_, i) =>
@@ -260,8 +263,7 @@ describe('AutoRepairService', () => {
 
     it('fail 数量 ≤ maxFailDataSets(5) → 不调用 logger.error（针对数量阈值）', async () => {
       const service = createService()
-      // @ts-ignore
-      const loggerSpy = jest.spyOn(service['logger'], 'error')
+      const loggerSpy = jest.spyOn((service as unknown as AutoRepairServiceInternals).logger, 'error')
 
       const reports: DataQualityReport[] = Array.from({ length: 5 }, (_, i) =>
         buildReport({ dataSet: `dataset${i}`, checkType: 'timeliness', status: 'fail' }),

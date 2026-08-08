@@ -23,7 +23,7 @@ interface PriceRow {
 }
 
 interface AdjustedPoint {
-  date: string   // YYYYMMDD
+  date: string // YYYYMMDD
   close: number
 }
 
@@ -60,13 +60,11 @@ export class PatternService {
     if (queryPoints.length < 5) {
       throw new BusinessException('查询形态至少需要 5 个交易日数据')
     }
-    const queryNorm = normalizeToUnitRange(queryPoints.map(p => p.close))
+    const queryNorm = normalizeToUnitRange(queryPoints.map((p) => p.close))
 
     // 确定候选股票池
     const candidates = await this.getCandidateStocks(dto.scope ?? PatternScope.ALL, dto.indexCode)
-    const filtered = (dto.excludeSelf ?? true)
-      ? candidates.filter(c => c.tsCode !== dto.tsCode)
-      : candidates
+    const filtered = (dto.excludeSelf ?? true) ? candidates.filter((c) => c.tsCode !== dto.tsCode) : candidates
 
     // 全市场滑动窗口搜索
     const matches = await this.slidingWindowSearch(
@@ -82,7 +80,7 @@ export class PatternService {
       algorithm: dto.algorithm ?? PatternAlgorithm.NED,
       candidateCount: filtered.length,
       elapsedMs: Date.now() - startTime,
-      querySeries: queryNorm.map(v => round(v, 4)),
+      querySeries: queryNorm.map((v) => round(v, 4)),
       matches,
     }
   }
@@ -93,10 +91,7 @@ export class PatternService {
 
     const queryNorm = normalizeToUnitRange(dto.series)
 
-    const candidates = await this.getCandidateStocks(
-      dto.scope ?? PatternScope.ALL,
-      dto.indexCode,
-    )
+    const candidates = await this.getCandidateStocks(dto.scope ?? PatternScope.ALL, dto.indexCode)
 
     const matches = await this.slidingWindowSearch(
       queryNorm,
@@ -111,7 +106,7 @@ export class PatternService {
       algorithm: dto.algorithm ?? PatternAlgorithm.NED,
       candidateCount: candidates.length,
       elapsedMs: Date.now() - startTime,
-      querySeries: queryNorm.map(v => round(v, 4)),
+      querySeries: queryNorm.map((v) => round(v, 4)),
       matches,
     }
   }
@@ -141,8 +136,8 @@ export class PatternService {
 
     for (let b = 0; b < candidates.length; b += BATCH_SIZE) {
       const batch = candidates.slice(b, b + BATCH_SIZE)
-      const tsCodes = batch.map(c => c.tsCode)
-      const nameMap = new Map(batch.map(c => [c.tsCode, c.name]))
+      const tsCodes = batch.map((c) => c.tsCode)
+      const nameMap = new Map(batch.map((c) => [c.tsCode, c.name]))
 
       const batchData = await this.batchLoadAdjustedCloses(tsCodes, cutoffDate)
 
@@ -156,7 +151,7 @@ export class PatternService {
 
         // 步长 1 的滑动窗口
         for (let i = 0; i <= priceData.length - windowLen; i++) {
-          const windowCloses = priceData.slice(i, i + windowLen).map(p => p.close)
+          const windowCloses = priceData.slice(i, i + windowLen).map((p) => p.close)
           const windowNorm = normalizeToUnitRange(windowCloses)
           const dist = distanceFn(queryNorm, windowNorm)
 
@@ -180,7 +175,7 @@ export class PatternService {
           distance: round(bestDistance, 6),
           similarity: round(distanceToSimilarity(bestDistance), 2),
           futureReturns,
-          normalizedSeries: normalizeToUnitRange(matchSlice.map(p => p.close)).map(v => round(v, 4)),
+          normalizedSeries: normalizeToUnitRange(matchSlice.map((p) => p.close)).map((v) => round(v, 4)),
         })
       }
     }
@@ -214,10 +209,7 @@ export class PatternService {
    * 前复权公式：adjClose = close × (latestAdjFactor / rowAdjFactor)
    * 每只股票以该股最新一条 adjFactor 作为基准。
    */
-  private async batchLoadAdjustedCloses(
-    tsCodes: string[],
-    cutoffDate: string,
-  ): Promise<Map<string, AdjustedPoint[]>> {
+  private async batchLoadAdjustedCloses(tsCodes: string[], cutoffDate: string): Promise<Map<string, AdjustedPoint[]>> {
     if (tsCodes.length === 0) return new Map()
 
     const rows = await this.prisma.$queryRawUnsafe<PriceRow[]>(
@@ -242,14 +234,14 @@ export class PatternService {
     // 逐只股票前复权处理
     const result = new Map<string, AdjustedPoint[]>()
     for (const [tsCode, stockRows] of grouped) {
-      const valid = stockRows.filter(r => r.close !== null)
+      const valid = stockRows.filter((r) => r.close !== null)
       if (valid.length === 0) continue
 
       const latestAdj = valid[valid.length - 1]?.adjFactor ?? 1
 
       result.set(
         tsCode,
-        valid.map(r => {
+        valid.map((r) => {
           const factor = r.adjFactor ?? 1
           const multiplier = factor > 0 ? latestAdj / factor : 1
           return {
@@ -266,11 +258,7 @@ export class PatternService {
   /**
    * 加载单只股票指定日期区间的前复权收盘价（用于提取查询形态）。
    */
-  private async loadAdjustedCloses(
-    tsCode: string,
-    startDate: string,
-    endDate: string,
-  ): Promise<AdjustedPoint[]> {
+  private async loadAdjustedCloses(tsCode: string, startDate: string, endDate: string): Promise<AdjustedPoint[]> {
     const rows = await this.prisma.$queryRawUnsafe<PriceRow[]>(
       `SELECT d.ts_code AS "tsCode", d.trade_date AS "tradeDate", d.close, af.adj_factor AS "adjFactor"
        FROM stock_daily_prices d
@@ -283,12 +271,12 @@ export class PatternService {
       endDate,
     )
 
-    const valid = rows.filter(r => r.close !== null)
+    const valid = rows.filter((r) => r.close !== null)
     if (valid.length === 0) return []
 
     const latestAdj = valid[valid.length - 1]?.adjFactor ?? 1
 
-    return valid.map(r => {
+    return valid.map((r) => {
       const factor = r.adjFactor ?? 1
       const multiplier = factor > 0 ? latestAdj / factor : 1
       return {

@@ -86,17 +86,17 @@ describe('RolesGuard', () => {
     // 实际逻辑：some(role => userLevel >= ROLE_LEVEL[role])
     // USER (level=1) vs ADMIN (level=2): 1 >= 2 → false; USER (level=1) vs SUPER_ADMIN (level=3): 1 >= 3 → false
     // → ForbiddenException（both fail）
-    const { guard: guardFail, ctx: ctxFail } = makeGuardAndCtx(
-      { role: UserRole.USER } as TokenPayload,
-      [UserRole.ADMIN, UserRole.SUPER_ADMIN],
-    )
+    const { guard: guardFail, ctx: ctxFail } = makeGuardAndCtx({ role: UserRole.USER } as TokenPayload, [
+      UserRole.ADMIN,
+      UserRole.SUPER_ADMIN,
+    ])
     expect(() => guardFail.canActivate(ctxFail)).toThrow(ForbiddenException)
 
     // ADMIN (level=2) vs ADMIN (level=2): 2 >= 2 → true (some → true)
-    const { guard: guardPass, ctx: ctxPass } = makeGuardAndCtx(
-      { role: UserRole.ADMIN } as TokenPayload,
-      [UserRole.ADMIN, UserRole.SUPER_ADMIN],
-    )
+    const { guard: guardPass, ctx: ctxPass } = makeGuardAndCtx({ role: UserRole.ADMIN } as TokenPayload, [
+      UserRole.ADMIN,
+      UserRole.SUPER_ADMIN,
+    ])
     expect(guardPass.canActivate(ctxPass)).toBe(true)
   })
 })

@@ -22,7 +22,6 @@ import { AuditAction, UserRole, UserStatus } from '@prisma/client'
 import { BusinessException } from 'src/common/exceptions/business.exception'
 import { TokenPayload } from 'src/shared/token.interface'
 import { UserService } from '../user.service'
-import { AuditLogService } from '../audit-log.service'
 
 const bcryptCompare = bcrypt.compare as jest.Mock
 const bcryptHash = bcrypt.hash as jest.Mock
@@ -80,8 +79,18 @@ function buildAuditLogMock() {
 }
 
 function createService(prismaMock = buildPrismaMock(), auditMock = buildAuditLogMock()): UserService {
-  // @ts-ignore 局部 mock
-  return new UserService(prismaMock as any, auditMock as AuditLogService)
+  return new UserService(
+    prismaMock as unknown as ConstructorParameters<typeof UserService>[0],
+    auditMock as unknown as ConstructorParameters<typeof UserService>[1],
+  )
+}
+
+type UserServicePrivateApi = {
+  hasHigherRole(operatorRole: UserRole, targetRole: UserRole): boolean
+}
+
+function getUserServicePrivateApi(service: UserService): UserServicePrivateApi {
+  return service as unknown as UserServicePrivateApi
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -250,9 +259,7 @@ describe('UserService', () => {
 
       await svc.updateStatus(2, { status: UserStatus.DEACTIVATED }, buildOperator({ id: 99, role: UserRole.ADMIN }))
 
-      expect(prisma.user.update).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { id: 2 } }),
-      )
+      expect(prisma.user.update).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 2 } }))
     })
 
     it('USER 不能更改 ADMIN 状态', async () => {
@@ -312,19 +319,19 @@ describe('UserService', () => {
     })
 
     it('SUPER_ADMIN > ADMIN', () => {
-      expect((svc as any).hasHigherRole(UserRole.SUPER_ADMIN, UserRole.ADMIN)).toBe(true)
+      expect(getUserServicePrivateApi(svc).hasHigherRole(UserRole.SUPER_ADMIN, UserRole.ADMIN)).toBe(true)
     })
 
     it('ADMIN > USER', () => {
-      expect((svc as any).hasHigherRole(UserRole.ADMIN, UserRole.USER)).toBe(true)
+      expect(getUserServicePrivateApi(svc).hasHigherRole(UserRole.ADMIN, UserRole.USER)).toBe(true)
     })
 
     it('USER 不高于 ADMIN', () => {
-      expect((svc as any).hasHigherRole(UserRole.USER, UserRole.ADMIN)).toBe(false)
+      expect(getUserServicePrivateApi(svc).hasHigherRole(UserRole.USER, UserRole.ADMIN)).toBe(false)
     })
 
     it('同级不算高于', () => {
-      expect((svc as any).hasHigherRole(UserRole.ADMIN, UserRole.ADMIN)).toBe(false)
+      expect(getUserServicePrivateApi(svc).hasHigherRole(UserRole.ADMIN, UserRole.ADMIN)).toBe(false)
     })
   })
 
@@ -343,9 +350,7 @@ describe('UserService', () => {
         buildOperator({ role: UserRole.ADMIN }),
       )
 
-      expect(audit.record).toHaveBeenCalledWith(
-        expect.objectContaining({ action: AuditAction.USER_CREATE }),
-      )
+      expect(audit.record).toHaveBeenCalledWith(expect.objectContaining({ action: AuditAction.USER_CREATE }))
     })
   })
 })

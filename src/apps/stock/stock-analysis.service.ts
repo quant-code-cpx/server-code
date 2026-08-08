@@ -963,8 +963,6 @@ export class StockAnalysisService {
     for (let b = 0; b < BINS; b++) {
       const priceLow = low + b * binWidth
       const priceHigh = priceLow + binWidth
-      const priceMid = (priceLow + priceHigh) / 2
-
       // 通过分位数插值估算该价格对应的累积概率密度
       let cdfLow = 0
       let cdfHigh = 0
@@ -990,7 +988,6 @@ export class StockAnalysisService {
 
     return bins
   }
-
 
   // ─── 预计算技术因子（基于 stk_factor 表）────────────────────────────────────
 

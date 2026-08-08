@@ -15,6 +15,10 @@ export class CustomPoolRebalanceStrategy implements IBacktestStrategy<'CUSTOM_PO
     _historicalBars: Map<string, DailyBar[]>,
     _prisma: PrismaService,
   ): Promise<SignalOutput> {
+    void _signalDate
+    void _barData
+    void _historicalBars
+    void _prisma
     const cfg: CustomPoolRebalanceStrategyConfig = config.strategyConfig
     const { tsCodes = [], weightMode = 'EQUAL', customWeights = [] } = cfg
 

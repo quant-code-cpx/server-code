@@ -22,11 +22,6 @@ function isValidNumber(v: number | null | undefined): v is number {
   return v !== null && v !== undefined && Number.isFinite(v)
 }
 
-function safeDiv(a: number, b: number): number | null {
-  if (!isValidNumber(b) || b === 0) return null
-  return a / b
-}
-
 // ─── 移动平均线 ────────────────────────────────────────────────────────────────
 
 /** Simple Moving Average */

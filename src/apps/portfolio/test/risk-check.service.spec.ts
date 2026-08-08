@@ -9,7 +9,6 @@
  */
 
 import { PortfolioRiskRuleType } from '@prisma/client'
-import { Decimal } from '@prisma/client/runtime/library'
 import { RiskCheckService } from '../risk-check.service'
 
 // ── Mock 工厂 ─────────────────────────────────────────────────────────────────
@@ -74,13 +73,36 @@ function buildRule(overrides: Record<string, unknown> = {}) {
   }
 }
 
+type RiskCheckServiceDependencies = ConstructorParameters<typeof RiskCheckService>
+
+type RiskCheckServicePrivateApi = {
+  formatDate(date: Date): string
+  checkMaxDrawdown(
+    portfolioId: string,
+    rule: { id: string; ruleType: PortfolioRiskRuleType; threshold: number },
+    userId: number,
+  ): Promise<{ actualValue?: number } | null>
+}
+
+type RiskRuleFindManyCall = { where: { ruleType?: { in?: PortfolioRiskRuleType[] } } }
+type RiskViolationCreateManyCall = { data: Array<{ ruleId: string }> }
+
 function createService(
   prismaMock = buildPrismaMock(),
   portfolioSvcMock = buildPortfolioServiceMock(),
   riskSvcMock = buildRiskServiceMock(),
   eventsGatewayMock = buildEventsGatewayMock(),
 ) {
-  return new RiskCheckService(prismaMock as any, portfolioSvcMock as any, riskSvcMock as any, eventsGatewayMock as any)
+  return new RiskCheckService(
+    prismaMock as unknown as RiskCheckServiceDependencies[0],
+    portfolioSvcMock as unknown as RiskCheckServiceDependencies[1],
+    riskSvcMock as unknown as RiskCheckServiceDependencies[2],
+    eventsGatewayMock as unknown as RiskCheckServiceDependencies[3],
+  )
+}
+
+function getRiskCheckServicePrivateApi(service: RiskCheckService): RiskCheckServicePrivateApi {
+  return service as unknown as RiskCheckServicePrivateApi
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -468,7 +490,7 @@ describe('RiskCheckService', () => {
     it('formatDate 对 2025-03-01T00:00:00Z 返回 "20250301"（上海与 UTC 同日）', () => {
       const svc = createService()
       // UTC midnight = 上海 08:00 → 同为 2025-03-01
-      const result = (svc as any).formatDate(new Date('2025-03-01T00:00:00.000Z'))
+      const result = getRiskCheckServicePrivateApi(svc).formatDate(new Date('2025-03-01T00:00:00.000Z'))
       expect(result).toBe('20250301')
     })
 
@@ -476,7 +498,7 @@ describe('RiskCheckService', () => {
       // 修复后：dayjs.tz('Asia/Shanghai') 正确识别这是上海 3月2日
       const svc = createService()
       const shanghaiMidnight = new Date('2025-03-01T16:00:00.000Z') // 上海 2025-03-02 00:00:00
-      const result = (svc as any).formatDate(shanghaiMidnight)
+      const result = getRiskCheckServicePrivateApi(svc).formatDate(shanghaiMidnight)
       expect(result).toBe('20250302')
     })
   })
@@ -539,7 +561,7 @@ describe('RiskCheckService', () => {
       })
       const svc = createService(prisma, portfolioSvc)
 
-      const result = await (svc as any).checkMaxDrawdown('portfolio-001', rule, 10)
+      const result = await getRiskCheckServicePrivateApi(svc).checkMaxDrawdown('portfolio-001', rule, 10)
 
       // 修复后：maxDrawdown=0.20 < 0.25 → 不触发
       expect(result).toBeNull()
@@ -564,7 +586,7 @@ describe('RiskCheckService', () => {
       })
       const svc = createService(prisma, portfolioSvc)
 
-      const result = await (svc as any).checkMaxDrawdown('portfolio-001', rule, 10)
+      const result = await getRiskCheckServicePrivateApi(svc).checkMaxDrawdown('portfolio-001', rule, 10)
 
       // 修复后：正确触发
       expect(result).not.toBeNull()
@@ -590,7 +612,7 @@ describe('RiskCheckService', () => {
       expect(prisma.$queryRaw).not.toHaveBeenCalled()
 
       // 验证：findMany 请求过滤了 ruleType，不含 MAX_DRAWDOWN_STOP
-      const findManyCall = (prisma.portfolioRiskRule.findMany.mock.calls as any)[0][0]
+      const findManyCall = (prisma.portfolioRiskRule.findMany.mock.calls[0] as unknown as [RiskRuleFindManyCall])[0]
       expect(findManyCall.where.ruleType?.in).not.toContain(PortfolioRiskRuleType.MAX_DRAWDOWN_STOP)
     })
   })
@@ -640,7 +662,9 @@ describe('RiskCheckService', () => {
 
       // 手算：rule-pos(0.35>0.3) 违规 + rule-pos2(0.35<0.5) 不违规 + rule-ind(0.3<0.4) 不违规
       // → 只有 1 条违规
-      const createManyCall = (prisma.riskViolationLog.createMany.mock.calls as any)[0][0]
+      const createManyCall = (
+        prisma.riskViolationLog.createMany.mock.calls[0] as unknown as [RiskViolationCreateManyCall]
+      )[0]
       expect(createManyCall.data).toHaveLength(1)
       expect(createManyCall.data[0].ruleId).toBe('rule-pos')
     })

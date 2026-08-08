@@ -3,7 +3,6 @@ import { ConfigService } from '@nestjs/config'
 import { BusinessException } from 'src/common/exceptions/business.exception'
 import { ErrorEnum } from 'src/constant/response-code.constant'
 import {
-  MoneyflowContentType,
   TUSHARE_MONEYFLOW_CONTENT_TYPES,
   TUSHARE_MONEYFLOW_RECENT_TRADE_DAYS,
   TushareSyncExecutionStatus,
@@ -43,7 +42,7 @@ export class MoneyflowSyncService {
     private readonly helper: SyncHelperService,
     private readonly configService: ConfigService,
   ) {
-    const cfg = this.configService.get<ITushareConfig>(TUSHARE_CONFIG_TOKEN, { infer: true })
+    this.configService.get<ITushareConfig>(TUSHARE_CONFIG_TOKEN, { infer: true })
     this.fullHistory = process.env.TUSHARE_MONEYFLOW_FULL_HISTORY === 'true'
     if (this.fullHistory) {
       this.logger.log('资金流向模式: 全量历史')

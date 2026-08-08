@@ -4,7 +4,16 @@
  * 覆盖：草稿 CRUD、提交回测、DTO 校验、错误处理、安全
  * 方法：Test.createTestingModule + overrideGuard(JwtAuthGuard) + mock services
  */
-import { CanActivate, ExecutionContext, INestApplication, ValidationPipe } from '@nestjs/common'
+import {
+  BadRequestException,
+  CanActivate,
+  ConflictException,
+  ExecutionContext,
+  INestApplication,
+  NotFoundException,
+  UnauthorizedException,
+  ValidationPipe,
+} from '@nestjs/common'
 import { Test, TestingModule } from '@nestjs/testing'
 import request from 'supertest'
 import { TransformInterceptor } from 'src/lifecycle/interceptors/transform.interceptor'
@@ -121,7 +130,6 @@ describe('StrategyDraft API 测试', () => {
     })
 
     it('SD-ERR-001: 草稿不存在应 404', async () => {
-      const { NotFoundException } = require('@nestjs/common')
       mockDraftService.getDraft.mockRejectedValueOnce(new NotFoundException('草稿不存在'))
       await req.post('/strategy-draft/detail').send({ id: 999 }).expect(404)
     })
@@ -152,18 +160,12 @@ describe('StrategyDraft API 测试', () => {
     })
 
     it('SD-ERR-003: 创建缺 config 应 400', async () => {
-      await req
-        .post('/strategy-draft/create')
-        .send({ name: 'test' })
-        .expect(400)
+      await req.post('/strategy-draft/create').send({ name: 'test' }).expect(400)
       expect(mockDraftService.createDraft).not.toHaveBeenCalled()
     })
 
     it('SD-ERR-004: 创建 name 空字符串应 400', async () => {
-      await req
-        .post('/strategy-draft/create')
-        .send({ name: '', config: {} })
-        .expect(400)
+      await req.post('/strategy-draft/create').send({ name: '', config: {} }).expect(400)
       expect(mockDraftService.createDraft).not.toHaveBeenCalled()
     })
 
@@ -176,31 +178,18 @@ describe('StrategyDraft API 测试', () => {
     })
 
     it('SD-ERR-006: 创建 config 非对象应 400', async () => {
-      await req
-        .post('/strategy-draft/create')
-        .send({ name: 'test', config: 'not-an-object' })
-        .expect(400)
+      await req.post('/strategy-draft/create').send({ name: 'test', config: 'not-an-object' }).expect(400)
       expect(mockDraftService.createDraft).not.toHaveBeenCalled()
     })
 
     it('SD-ERR-007: 创建重名草稿应 409', async () => {
-      const { ConflictException } = require('@nestjs/common')
       mockDraftService.createDraft.mockRejectedValueOnce(new ConflictException('同名草稿已存在'))
-      await req
-        .post('/strategy-draft/create')
-        .send({ name: 'dup', config: {} })
-        .expect(409)
+      await req.post('/strategy-draft/create').send({ name: 'dup', config: {} }).expect(409)
     })
 
     it('SD-ERR-008: 超过 20 个草稿上限应 400', async () => {
-      const { BadRequestException } = require('@nestjs/common')
-      mockDraftService.createDraft.mockRejectedValueOnce(
-        new BadRequestException('草稿数量已达上限（最多 20 个）'),
-      )
-      await req
-        .post('/strategy-draft/create')
-        .send({ name: 'new', config: {} })
-        .expect(400)
+      mockDraftService.createDraft.mockRejectedValueOnce(new BadRequestException('草稿数量已达上限（最多 20 个）'))
+      await req.post('/strategy-draft/create').send({ name: 'new', config: {} }).expect(400)
     })
 
     it('SD-EDGE-001: name 恰好 100 字符应 201', async () => {
@@ -211,10 +200,7 @@ describe('StrategyDraft API 测试', () => {
     })
 
     it('SD-EDGE-002: name 恰好 1 字符应 201', async () => {
-      await req
-        .post('/strategy-draft/create')
-        .send({ name: 'x', config: {} })
-        .expect(201)
+      await req.post('/strategy-draft/create').send({ name: 'x', config: {} }).expect(201)
     })
   })
 
@@ -222,12 +208,13 @@ describe('StrategyDraft API 测试', () => {
 
   describe('更新草稿', () => {
     it('SD-BIZ-005: 更新草稿名称', async () => {
-      const res = await req
-        .post('/strategy-draft/update')
-        .send({ id: 1, name: '更新后的草稿' })
-        .expect(201)
+      const res = await req.post('/strategy-draft/update').send({ id: 1, name: '更新后的草稿' }).expect(201)
       expect(res.body.data.name).toBe('更新后的草稿')
-      expect(mockDraftService.updateDraft).toHaveBeenCalledWith(1, 1, expect.objectContaining({ id: 1, name: '更新后的草稿' }))
+      expect(mockDraftService.updateDraft).toHaveBeenCalledWith(
+        1,
+        1,
+        expect.objectContaining({ id: 1, name: '更新后的草稿' }),
+      )
     })
 
     it('SD-BIZ-006: 更新草稿配置', async () => {
@@ -243,12 +230,8 @@ describe('StrategyDraft API 测试', () => {
     })
 
     it('SD-ERR-009: 更新不存在的草稿应 404', async () => {
-      const { NotFoundException } = require('@nestjs/common')
       mockDraftService.updateDraft.mockRejectedValueOnce(new NotFoundException('草稿不存在'))
-      await req
-        .post('/strategy-draft/update')
-        .send({ id: 999, name: 'x' })
-        .expect(404)
+      await req.post('/strategy-draft/update').send({ id: 999, name: 'x' }).expect(404)
     })
 
     it('SD-ERR-010: 更新 name 超 100 字符应 400', async () => {
@@ -260,20 +243,13 @@ describe('StrategyDraft API 测试', () => {
     })
 
     it('SD-ERR-011: 更新 config 非对象应 400', async () => {
-      await req
-        .post('/strategy-draft/update')
-        .send({ id: 1, config: 'bad' })
-        .expect(400)
+      await req.post('/strategy-draft/update').send({ id: 1, config: 'bad' }).expect(400)
       expect(mockDraftService.updateDraft).not.toHaveBeenCalled()
     })
 
     it('SD-ERR-012: 更新重名草稿应 409', async () => {
-      const { ConflictException } = require('@nestjs/common')
       mockDraftService.updateDraft.mockRejectedValueOnce(new ConflictException('同名草稿已存在'))
-      await req
-        .post('/strategy-draft/update')
-        .send({ id: 1, name: 'dup' })
-        .expect(409)
+      await req.post('/strategy-draft/update').send({ id: 1, name: 'dup' }).expect(409)
     })
   })
 
@@ -281,21 +257,14 @@ describe('StrategyDraft API 测试', () => {
 
   describe('删除草稿', () => {
     it('SD-BIZ-007: 删除存在的草稿', async () => {
-      const res = await req
-        .post('/strategy-draft/delete')
-        .send({ id: 1 })
-        .expect(201)
+      const res = await req.post('/strategy-draft/delete').send({ id: 1 }).expect(201)
       expect(res.body.data.message).toBe('删除成功')
       expect(mockDraftService.deleteDraft).toHaveBeenCalledWith(1, 1)
     })
 
     it('SD-ERR-013: 删除不存在的草稿应 404', async () => {
-      const { NotFoundException } = require('@nestjs/common')
       mockDraftService.deleteDraft.mockRejectedValueOnce(new NotFoundException('草稿不存在'))
-      await req
-        .post('/strategy-draft/delete')
-        .send({ id: 999 })
-        .expect(404)
+      await req.post('/strategy-draft/delete').send({ id: 999 }).expect(404)
     })
   })
 
@@ -303,10 +272,7 @@ describe('StrategyDraft API 测试', () => {
 
   describe('提交回测', () => {
     it('SD-BIZ-008: 正常提交草稿回测', async () => {
-      const res = await req
-        .post('/strategy-draft/submit')
-        .send({ id: 1 })
-        .expect(201)
+      const res = await req.post('/strategy-draft/submit').send({ id: 1 }).expect(201)
       expect(res.body.data.id).toBe('run-1')
       expect(res.body.data.status).toBe('PENDING')
       expect(mockDraftService.submitDraft).toHaveBeenCalledWith(1, 1, expect.objectContaining({ id: 1 }))
@@ -314,10 +280,7 @@ describe('StrategyDraft API 测试', () => {
 
     it('SD-BIZ-009: 提交时指定回测名称', async () => {
       mockDraftService.submitDraft.mockResolvedValueOnce({ id: 'run-2', status: 'PENDING' })
-      const res = await req
-        .post('/strategy-draft/submit')
-        .send({ id: 1, name: '自定义回测名称' })
-        .expect(201)
+      const res = await req.post('/strategy-draft/submit').send({ id: 1, name: '自定义回测名称' }).expect(201)
       expect(res.body.data.id).toBe('run-2')
       expect(mockDraftService.submitDraft).toHaveBeenCalledWith(
         1,
@@ -327,23 +290,15 @@ describe('StrategyDraft API 测试', () => {
     })
 
     it('SD-ERR-014: 提交不存在的草稿应 404', async () => {
-      const { NotFoundException } = require('@nestjs/common')
       mockDraftService.submitDraft.mockRejectedValueOnce(new NotFoundException('草稿不存在'))
-      await req
-        .post('/strategy-draft/submit')
-        .send({ id: 999 })
-        .expect(404)
+      await req.post('/strategy-draft/submit').send({ id: 999 }).expect(404)
     })
 
     it('SD-ERR-015: 提交缺 strategyType 应 400', async () => {
-      const { BadRequestException } = require('@nestjs/common')
       mockDraftService.submitDraft.mockRejectedValueOnce(
         new BadRequestException('草稿中未指定 strategyType，无法提交回测'),
       )
-      await req
-        .post('/strategy-draft/submit')
-        .send({ id: 2 })
-        .expect(400)
+      await req.post('/strategy-draft/submit').send({ id: 2 }).expect(400)
     })
 
     it('SD-ERR-016: 提交 name 超 128 字符应 400', async () => {
@@ -361,7 +316,6 @@ describe('StrategyDraft API 测试', () => {
     it('SD-SEC-001: 无 Token 访问 list 应 401', async () => {
       const mockJwtGuardNoAuth: CanActivate = {
         canActivate(): boolean {
-          const { UnauthorizedException } = require('@nestjs/common')
           throw new UnauthorizedException()
         },
       }
@@ -380,9 +334,7 @@ describe('StrategyDraft API 测试', () => {
       unauthApp.useGlobalFilters(new GlobalExceptionsFilter(true, createMockLoggerService()))
       await unauthApp.init()
 
-      await request(unauthApp.getHttpServer())
-        .post('/strategy-draft/list')
-        .expect(401)
+      await request(unauthApp.getHttpServer()).post('/strategy-draft/list').expect(401)
       await unauthApp.close()
     })
   })

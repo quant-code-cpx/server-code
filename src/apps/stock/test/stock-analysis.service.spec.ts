@@ -13,6 +13,8 @@
  */
 
 import { StockAnalysisService } from '../stock-analysis.service'
+import type { PrismaService } from 'src/shared/prisma.service'
+import type { OhlcvBar, TechnicalDataPoint } from '../utils/technical-indicators'
 
 // ── Mock 工厂 ─────────────────────────────────────────────────────────────────
 
@@ -23,7 +25,49 @@ function buildPrismaMock() {
 }
 
 function createService(prismaMock = buildPrismaMock()) {
-  return new StockAnalysisService(prismaMock as any)
+  return new StockAnalysisService(prismaMock as unknown as PrismaService)
+}
+
+type OhlcvRow = {
+  tradeDate: Date
+  open: number | null
+  high: number | null
+  low: number | null
+  close: number | null
+  preClose: number | null
+  pctChg: number | null
+  vol: number | null
+  amount: number | null
+  adjFactor: number | null
+}
+
+type RelativeStrengthHistoryPoint = {
+  stockCumReturn: number
+  benchmarkCumReturn: number
+  excessReturn: number
+}
+
+type RelativeStrengthRow = { pctChg: number | null; close: number | null }
+
+type StockAnalysisTestApi = {
+  applyAdjFactor(rows: OhlcvRow[]): OhlcvBar[]
+  buildMaStatus(history: TechnicalDataPoint[]): {
+    bullishAlign: boolean | null
+    bearishAlign: boolean | null
+    aboveMa20: boolean | null
+    aboveMa60: boolean | null
+    aboveMa250: boolean | null
+    latestCross: string | null
+  }
+  buildRelativeStrengthSummary(
+    history: RelativeStrengthHistoryPoint[],
+    stockRows: RelativeStrengthRow[],
+    benchmarkRows: RelativeStrengthRow[],
+  ): { informationRatio: number | null; annualizedVol: number | null; beta: number | null }
+}
+
+function getStockAnalysisTestApi(service: StockAnalysisService): StockAnalysisTestApi {
+  return service as unknown as StockAnalysisTestApi
 }
 
 /** 构造一条 OhlcvRow（匹配 fetchOhlcvRows 返回结构） */
@@ -142,7 +186,7 @@ describe('StockAnalysisService', () => {
       const svc = createService()
       const rows = [makeOhlcvRow({ close: 20, open: 20, high: 21, low: 19, adjFactor: 1.0 })]
 
-      const bars = (svc as any).applyAdjFactor(rows)
+      const bars = getStockAnalysisTestApi(svc).applyAdjFactor(rows)
 
       expect(bars).toHaveLength(1)
       expect(bars[0].close).toBe(20)
@@ -157,7 +201,7 @@ describe('StockAnalysisService', () => {
         makeOhlcvRow({ tradeDate: new Date('2024-01-02'), close: 10, open: 10, high: 11, low: 9, adjFactor: 1.0 }),
       ]
 
-      const bars = (svc as any).applyAdjFactor(rows)
+      const bars = getStockAnalysisTestApi(svc).applyAdjFactor(rows)
 
       expect(bars).toHaveLength(2)
       // 历史行：close=20 * (2.0/1.0) = 40
@@ -170,7 +214,7 @@ describe('StockAnalysisService', () => {
       const svc = createService()
       const rows = [makeOhlcvRow({ close: 15, open: 15, high: 16, low: 14, adjFactor: null })]
 
-      const bars = (svc as any).applyAdjFactor(rows)
+      const bars = getStockAnalysisTestApi(svc).applyAdjFactor(rows)
 
       expect(bars).toHaveLength(1)
       expect(bars[0].close).toBe(15)
@@ -183,7 +227,7 @@ describe('StockAnalysisService', () => {
         makeOhlcvRow({ close: 10, open: 10, high: 11, low: 9, adjFactor: 1.0 }),
       ]
 
-      const bars = (svc as any).applyAdjFactor(rows)
+      const bars = getStockAnalysisTestApi(svc).applyAdjFactor(rows)
 
       // null close 的行被过滤
       expect(bars).toHaveLength(1)
@@ -192,7 +236,7 @@ describe('StockAnalysisService', () => {
     it('空数组输入返回空数组', () => {
       const svc = createService()
 
-      const bars = (svc as any).applyAdjFactor([])
+      const bars = getStockAnalysisTestApi(svc).applyAdjFactor([])
 
       expect(bars).toHaveLength(0)
     })
@@ -201,7 +245,7 @@ describe('StockAnalysisService', () => {
       const svc = createService()
       const rows = [makeOhlcvRow({ close: 10, open: 10, high: 11, low: 9, adjFactor: 0 })]
 
-      const bars = (svc as any).applyAdjFactor(rows)
+      const bars = getStockAnalysisTestApi(svc).applyAdjFactor(rows)
 
       expect(bars).toHaveLength(1)
       // factor=0 → multiplier=1 → close 不变
@@ -215,7 +259,7 @@ describe('StockAnalysisService', () => {
     it('history 为空时所有字段为 null', () => {
       const svc = createService()
 
-      const status = (svc as any).buildMaStatus([])
+      const status = getStockAnalysisTestApi(svc).buildMaStatus([])
 
       expect(status.bullishAlign).toBeNull()
       expect(status.bearishAlign).toBeNull()
@@ -353,7 +397,7 @@ describe('StockAnalysisService', () => {
       // stockRows/benchmarkRows only needs pctChg for annualizedVol / beta
       const pctRows = Array.from({ length: 6 }, (_, i) => ({ pctChg: 1 + i * 0.1, close: 100 + i }))
 
-      const result = (svc as any).buildRelativeStrengthSummary(history, pctRows, pctRows)
+      const result = getStockAnalysisTestApi(svc).buildRelativeStrengthSummary(history, pctRows, pctRows)
 
       // Verify informationRatio is not null for n>5
       expect(result.informationRatio).not.toBeNull()
@@ -372,9 +416,6 @@ describe('StockAnalysisService', () => {
     it('annualizedVol 使用总体方差（/n）计算', () => {
       const svc = createService()
 
-      //  所有 pctChg 均为 1.0（%），mean=0.01, variance_population=0
-      const constReturns = Array.from({ length: 10 }, () => ({ pctChg: 1.0, close: 100 }))
-
       // 手动构造数据：有两种 pctChg，mean 已知
       // pctChg: 5 次 0.02, 5 次 -0.02 → mean=0
       // variance_population = (5*0.0004 + 5*0.0004) / 10 = 0.0004
@@ -390,7 +431,7 @@ describe('StockAnalysisService', () => {
         excessReturn: 0,
       }))
 
-      const result = (svc as any).buildRelativeStrengthSummary(history3, mixedReturns, mixedReturns)
+      const result = getStockAnalysisTestApi(svc).buildRelativeStrengthSummary(history3, mixedReturns, mixedReturns)
 
       // annualizedVol should be a positive number
       expect(result.annualizedVol).not.toBeNull()
@@ -408,7 +449,7 @@ describe('StockAnalysisService', () => {
         excessReturn: 0,
       }))
 
-      const result = (svc as any).buildRelativeStrengthSummary(history20, returns, returns)
+      const result = getStockAnalysisTestApi(svc).buildRelativeStrengthSummary(history20, returns, returns)
 
       expect(result.beta).not.toBeNull()
       expect(result.beta).toBeCloseTo(1.0, 1)
@@ -427,28 +468,30 @@ function buildStkFactorPrismaMock() {
   }
 }
 
-function makeStkFactorRow(overrides: Partial<{
-  tsCode: string
-  tradeDate: Date
-  close: number | null
-  macdDif: number | null
-  macdDea: number | null
-  macd: number | null
-  kdjK: number | null
-  kdjD: number | null
-  kdjJ: number | null
-  rsi6: number | null
-  rsi12: number | null
-  rsi24: number | null
-  bollUpper: number | null
-  bollMid: number | null
-  bollLower: number | null
-  cci14: number | null
-  cci20: number | null
-  atr14: number | null
-  atr20: number | null
-  vr26: number | null
-}> = {}) {
+function makeStkFactorRow(
+  overrides: Partial<{
+    tsCode: string
+    tradeDate: Date
+    close: number | null
+    macdDif: number | null
+    macdDea: number | null
+    macd: number | null
+    kdjK: number | null
+    kdjD: number | null
+    kdjJ: number | null
+    rsi6: number | null
+    rsi12: number | null
+    rsi24: number | null
+    bollUpper: number | null
+    bollMid: number | null
+    bollLower: number | null
+    cci14: number | null
+    cci20: number | null
+    atr14: number | null
+    atr20: number | null
+    vr26: number | null
+  }> = {},
+) {
   return {
     tsCode: '000001.SZ',
     tradeDate: new Date('2026-04-01'),
@@ -477,7 +520,7 @@ function makeStkFactorRow(overrides: Partial<{
 describe('getTechnicalFactors()', () => {
   it('无数据 → count=0, items=[]', async () => {
     const prisma = buildStkFactorPrismaMock()
-    const svc = new StockAnalysisService(prisma as any)
+    const svc = new StockAnalysisService(prisma as unknown as PrismaService)
     const result = await svc.getTechnicalFactors({ tsCode: '000001.SZ', days: 120 })
     expect(result.count).toBe(0)
     expect(result.items).toHaveLength(0)
@@ -491,7 +534,7 @@ describe('getTechnicalFactors()', () => {
       makeStkFactorRow({ tradeDate: new Date('2026-04-02'), rsi6: 70.0 }),
       makeStkFactorRow({ rsi6: 60.5 }),
     ])
-    const svc = new StockAnalysisService(prisma as any)
+    const svc = new StockAnalysisService(prisma as unknown as PrismaService)
     const result = await svc.getTechnicalFactors({ tsCode: '000001.SZ', days: 120 })
     expect(result.count).toBe(2)
     // reverse 后 items[0] 是较早的 2026-04-01 (rsi6=60.5)
@@ -503,7 +546,7 @@ describe('getTechnicalFactors()', () => {
 describe('getLatestFactors()', () => {
   it('无数据 → 全 null 字段', async () => {
     const prisma = buildStkFactorPrismaMock()
-    const svc = new StockAnalysisService(prisma as any)
+    const svc = new StockAnalysisService(prisma as unknown as PrismaService)
     const result = await svc.getLatestFactors({ tsCode: '000001.SZ' })
     expect(result.tradeDate).toBeNull()
     expect(result.close).toBeNull()
@@ -518,34 +561,32 @@ describe('getLatestFactors()', () => {
     prisma.stkFactor.findMany.mockResolvedValue([
       makeStkFactorRow({ tradeDate: new Date('2026-04-02'), macdDif: 0.3, macdDea: 0.1 }),
       makeStkFactorRow({ tradeDate: new Date('2026-04-01'), macdDif: 0.1, macdDea: 0.3 }),
-    ] as any)
-    const svc = new StockAnalysisService(prisma as any)
+    ])
+    const svc = new StockAnalysisService(prisma as unknown as PrismaService)
     const result = await svc.getLatestFactors({ tsCode: '000001.SZ' })
     expect(result.macdSignal).toBe('golden_cross')
   })
 
   it('macdDif<0 且无前日数据 → macdSignal=below_zero', async () => {
     const prisma = buildStkFactorPrismaMock()
-    prisma.stkFactor.findMany.mockResolvedValue([
-      makeStkFactorRow({ macdDif: -0.5, macdDea: -0.2 }),
-    ] as any)
-    const svc = new StockAnalysisService(prisma as any)
+    prisma.stkFactor.findMany.mockResolvedValue([makeStkFactorRow({ macdDif: -0.5, macdDea: -0.2 })])
+    const svc = new StockAnalysisService(prisma as unknown as PrismaService)
     const result = await svc.getLatestFactors({ tsCode: '000001.SZ' })
     expect(result.macdSignal).toBe('below_zero')
   })
 
   it('rsi6>80 → rsiSignal=overbought', async () => {
     const prisma = buildStkFactorPrismaMock()
-    prisma.stkFactor.findMany.mockResolvedValue([makeStkFactorRow({ rsi6: 85 })] as any)
-    const svc = new StockAnalysisService(prisma as any)
+    prisma.stkFactor.findMany.mockResolvedValue([makeStkFactorRow({ rsi6: 85 })])
+    const svc = new StockAnalysisService(prisma as unknown as PrismaService)
     const result = await svc.getLatestFactors({ tsCode: '000001.SZ' })
     expect(result.rsiSignal).toBe('overbought')
   })
 
   it('rsi6<20 → rsiSignal=oversold', async () => {
     const prisma = buildStkFactorPrismaMock()
-    prisma.stkFactor.findMany.mockResolvedValue([makeStkFactorRow({ rsi6: 15 })] as any)
-    const svc = new StockAnalysisService(prisma as any)
+    prisma.stkFactor.findMany.mockResolvedValue([makeStkFactorRow({ rsi6: 15 })])
+    const svc = new StockAnalysisService(prisma as unknown as PrismaService)
     const result = await svc.getLatestFactors({ tsCode: '000001.SZ' })
     expect(result.rsiSignal).toBe('oversold')
   })
@@ -554,8 +595,8 @@ describe('getLatestFactors()', () => {
     const prisma = buildStkFactorPrismaMock()
     prisma.stkFactor.findMany.mockResolvedValue([
       makeStkFactorRow({ close: 12.0, bollUpper: 11.0, bollMid: 10.0, bollLower: 9.0 }),
-    ] as any)
-    const svc = new StockAnalysisService(prisma as any)
+    ])
+    const svc = new StockAnalysisService(prisma as unknown as PrismaService)
     const result = await svc.getLatestFactors({ tsCode: '000001.SZ' })
     expect(result.bollPosition).toBe('above_upper')
   })

@@ -81,7 +81,7 @@ function createService(
   tokenService = buildTokenServiceMock(),
   redis = buildRedisMock(),
 ): AuthService {
-  // @ts-ignore 局部 mock，跳过 DI
+  // @ts-expect-error 局部 mock，跳过 DI
   return new AuthService(prisma as PrismaService, tokenService as TokenService, redis)
 }
 

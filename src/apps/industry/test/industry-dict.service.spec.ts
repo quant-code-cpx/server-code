@@ -22,9 +22,7 @@ function buildPrismaMock() {
 function buildCacheMock() {
   return {
     buildKey: jest.fn((_prefix: string, obj: Record<string, unknown>) => JSON.stringify(obj)),
-    rememberJson: jest.fn(
-      async ({ loader }: { loader: () => Promise<unknown> }) => loader(),
-    ),
+    rememberJson: jest.fn(async ({ loader }: { loader: () => Promise<unknown> }) => loader()),
   }
 }
 
@@ -54,7 +52,10 @@ describe('IndustryDictService', () => {
   beforeEach(() => {
     mockPrisma = buildPrismaMock()
     mockCache = buildCacheMock()
-    service = new IndustryDictService(mockPrisma as any, mockCache as any)
+    service = new IndustryDictService(
+      mockPrisma as unknown as ConstructorParameters<typeof IndustryDictService>[0],
+      mockCache as unknown as ConstructorParameters<typeof IndustryDictService>[1],
+    )
   })
 
   /** 设置默认的三阶段 $queryRawUnsafe 返回值 */
@@ -62,8 +63,8 @@ describe('IndustryDictService', () => {
     const sw = opts?.swRows ?? swL1Rows
     const dc = opts?.dcRows ?? dcRows
     mockPrisma.$queryRawUnsafe
-      .mockResolvedValueOnce(sw)        // 申万 L1
-      .mockResolvedValueOnce(dc)        // 东财行业板块
+      .mockResolvedValueOnce(sw) // 申万 L1
+      .mockResolvedValueOnce(dc) // 东财行业板块
       .mockResolvedValueOnce(stockCountRows) // 股票覆盖率
   }
 
@@ -177,8 +178,8 @@ describe('IndustryDictService', () => {
 
   it('无数据时返回空 items 和零覆盖率', async () => {
     mockPrisma.$queryRawUnsafe
-      .mockResolvedValueOnce([])   // 空申万
-      .mockResolvedValueOnce([])   // 空东财
+      .mockResolvedValueOnce([]) // 空申万
+      .mockResolvedValueOnce([]) // 空东财
       .mockResolvedValueOnce([{ total: 0n, mapped: 0n }])
 
     const result = await service.getDictMapping({})

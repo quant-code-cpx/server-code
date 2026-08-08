@@ -1,4 +1,4 @@
-import { Test, TestingModule } from '@nestjs/testing'
+import { Test } from '@nestjs/testing'
 import { INestApplication, ValidationPipe, ExecutionContext } from '@nestjs/common'
 import request from 'supertest'
 import { TransformInterceptor } from 'src/lifecycle/interceptors/transform.interceptor'
@@ -9,17 +9,30 @@ import { ExportService } from '../export.service'
 
 const testUser = { id: 1, account: 'test', nickname: 'Test', role: UserRole.USER, jti: 'jti-1' }
 const mockExportService = {
-  exportBacktestTrades: jest.fn(), exportFactorValues: jest.fn(), exportPortfolioHoldings: jest.fn(),
-  exportStockList: jest.fn(), exportAlertAnomalies: jest.fn(), exportFactorScreening: jest.fn(),
+  exportBacktestTrades: jest.fn(),
+  exportFactorValues: jest.fn(),
+  exportPortfolioHoldings: jest.fn(),
+  exportStockList: jest.fn(),
+  exportAlertAnomalies: jest.fn(),
+  exportFactorScreening: jest.fn(),
 }
-const mockJwtGuard = { canActivate: jest.fn((ctx: ExecutionContext) => { ctx.switchToHttp().getRequest().user = testUser; return true }) }
+const mockJwtGuard = {
+  canActivate: jest.fn((ctx: ExecutionContext) => {
+    ctx.switchToHttp().getRequest().user = testUser
+    return true
+  }),
+}
 
 describe('ExportController', () => {
   let app: INestApplication
   beforeAll(async () => {
     const m = await Test.createTestingModule({
-      controllers: [ExportController], providers: [{ provide: ExportService, useValue: mockExportService }],
-    }).overrideGuard(JwtAuthGuard).useValue(mockJwtGuard).compile()
+      controllers: [ExportController],
+      providers: [{ provide: ExportService, useValue: mockExportService }],
+    })
+      .overrideGuard(JwtAuthGuard)
+      .useValue(mockJwtGuard)
+      .compile()
     app = m.createNestApplication()
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }))
     app.useGlobalInterceptors(new TransformInterceptor())
@@ -44,5 +57,8 @@ describe('ExportController', () => {
   ep('portfolio-holdings', 'exportPortfolioHoldings', { portfolioId: 'p-1' })
   ep('stock-list', 'exportStockList', {})
   ep('alert-anomalies', 'exportAlertAnomalies', {})
-    ep('factor-screening', 'exportFactorScreening', { conditions: [{ factorName: 'pe_ttm', operator: 'gt', value: 0 }], tradeDate: '20240101' })
+  ep('factor-screening', 'exportFactorScreening', {
+    conditions: [{ factorName: 'pe_ttm', operator: 'gt', value: 0 }],
+    tradeDate: '20240101',
+  })
 })

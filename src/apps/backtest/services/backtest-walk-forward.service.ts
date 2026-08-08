@@ -409,7 +409,7 @@ export class BacktestWalkForwardService {
     }
 
     // Compute aggregated OOS metrics
-    const aggregatedMetrics = this.computeAggregatedOosMetrics(oosNavRecordsAll, oosTradesAll)
+    const aggregatedMetrics = this.computeAggregatedOosMetrics(oosNavRecordsAll)
 
     // Compute IS/OOS return ratio
     const allWindows = await this.prisma.backtestWalkForwardWindow.findMany({ where: { wfRunId } })
@@ -508,7 +508,7 @@ export class BacktestWalkForwardService {
     return typeof val === 'number' ? val : -Infinity
   }
 
-  private computeAggregatedOosMetrics(navRecords: DailyNavRecord[], _trades: TradeRecord[]): BacktestMetrics {
+  private computeAggregatedOosMetrics(navRecords: DailyNavRecord[]): BacktestMetrics {
     if (navRecords.length === 0) {
       return {
         totalReturn: 0,
@@ -574,7 +574,8 @@ export class BacktestWalkForwardService {
 
   async cancelWalkForwardRun(wfRunId: string, userId: number) {
     const run = await this.prisma.backtestWalkForwardRun.findUnique({ where: { id: wfRunId } })
-    if (!run || run.deletedAt || run.userId !== userId) throw new NotFoundException(`WalkForwardRun ${wfRunId} not found`)
+    if (!run || run.deletedAt || run.userId !== userId)
+      throw new NotFoundException(`WalkForwardRun ${wfRunId} not found`)
     if (['COMPLETED', 'FAILED', 'CANCELLED'].includes(run.status)) {
       throw new BadRequestException(`Cannot cancel run with status ${run.status}`)
     }

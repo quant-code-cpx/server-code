@@ -46,9 +46,7 @@ async function readRunEvidence(runId: string): Promise<RunEvidence> {
   const terminalEvents = run.events
     .map((event) => event.eventType)
     .filter((eventType) => ['agent.completed', 'agent.failed', 'agent.cancelled'].includes(eventType))
-  const blocks = Array.isArray(run.responseMessage.contentBlocks)
-    ? run.responseMessage.contentBlocks
-    : []
+  const blocks = Array.isArray(run.responseMessage.contentBlocks) ? run.responseMessage.contentBlocks : []
 
   return {
     runId,

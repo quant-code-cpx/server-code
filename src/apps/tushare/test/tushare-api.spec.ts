@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing'
 import { INestApplication, ValidationPipe, ExecutionContext, UnauthorizedException } from '@nestjs/common'
 import request from 'supertest'
-import { UserRole, TushareSyncRetryStatus } from '@prisma/client'
+import { UserRole } from '@prisma/client'
 import { TransformInterceptor } from 'src/lifecycle/interceptors/transform.interceptor'
 import { JwtAuthGuard } from 'src/lifecycle/guard/jwt-auth.guard'
 import { RolesGuard } from 'src/lifecycle/guard/roles.guard'
@@ -142,10 +142,7 @@ describe('TushareAdminController (tushare-api)', () => {
       ]
       mockTushareSyncService.getAvailableSyncPlans.mockResolvedValueOnce(mockPlans)
 
-      const res = await request(app.getHttpServer())
-        .post('/tushare/admin/plans')
-        .send({})
-        .expect(201)
+      const res = await request(app.getHttpServer()).post('/tushare/admin/plans').send({}).expect(201)
 
       expect(res.body.code).toBe(SUCCESS_CODE)
       expect(res.body.data).toBeDefined()
@@ -176,10 +173,7 @@ describe('TushareAdminController (tushare-api)', () => {
       }
       mockTushareSyncService.getCacheStats.mockResolvedValueOnce(mockStats)
 
-      const res = await request(app.getHttpServer())
-        .post('/tushare/admin/cache/stats')
-        .send({})
-        .expect(201)
+      const res = await request(app.getHttpServer()).post('/tushare/admin/cache/stats').send({}).expect(201)
 
       expect(res.body.code).toBe(SUCCESS_CODE)
       expect(res.body.data).toBeDefined()
@@ -208,10 +202,7 @@ describe('TushareAdminController (tushare-api)', () => {
     it('[BIZ] TA-BIZ-004 全量同步 → 202', async () => {
       mockTushareSyncService.triggerManualSyncAsync.mockReturnValueOnce(undefined)
 
-      const res = await request(app.getHttpServer())
-        .post('/tushare/admin/sync')
-        .send({ mode: 'full' })
-        .expect(202)
+      const res = await request(app.getHttpServer()).post('/tushare/admin/sync').send({ mode: 'full' }).expect(202)
 
       expect(res.body.code).toBe(SUCCESS_CODE)
       expect(mockTushareSyncService.triggerManualSyncAsync).toHaveBeenCalledWith({ mode: 'full' })
@@ -233,19 +224,13 @@ describe('TushareAdminController (tushare-api)', () => {
     })
 
     it('[ERR] TA-ERR-001 mode 缺失 → 400', async () => {
-      await request(app.getHttpServer())
-        .post('/tushare/admin/sync')
-        .send({})
-        .expect(400)
+      await request(app.getHttpServer()).post('/tushare/admin/sync').send({}).expect(400)
 
       expect(mockTushareSyncService.triggerManualSyncAsync).not.toHaveBeenCalled()
     })
 
     it('[ERR] TA-ERR-002 mode 非法值 → 400', async () => {
-      await request(app.getHttpServer())
-        .post('/tushare/admin/sync')
-        .send({ mode: 'INVALID' })
-        .expect(400)
+      await request(app.getHttpServer()).post('/tushare/admin/sync').send({ mode: 'INVALID' }).expect(400)
 
       expect(mockTushareSyncService.triggerManualSyncAsync).not.toHaveBeenCalled()
     })
@@ -268,10 +253,7 @@ describe('TushareAdminController (tushare-api)', () => {
     it('[BIZ] TA-BIZ-006 触发质量检查 → 202', async () => {
       mockDataQualityService.runAllChecks.mockResolvedValueOnce(undefined)
 
-      const res = await request(app.getHttpServer())
-        .post('/tushare/admin/quality/check')
-        .send({})
-        .expect(202)
+      const res = await request(app.getHttpServer()).post('/tushare/admin/quality/check').send({}).expect(202)
 
       expect(res.body.code).toBe(SUCCESS_CODE)
       expect(res.body.message).toContain('数据质量检查已提交')
@@ -282,10 +264,7 @@ describe('TushareAdminController (tushare-api)', () => {
     it('[BIZ] TA-BIZ-007 查询质量报告（默认 7 天）→ 200', async () => {
       mockDataQualityService.getRecentChecks.mockResolvedValueOnce([])
 
-      const res = await request(app.getHttpServer())
-        .post('/tushare/admin/quality/report')
-        .send({})
-        .expect(201)
+      const res = await request(app.getHttpServer()).post('/tushare/admin/quality/report').send({}).expect(201)
 
       expect(res.body.code).toBe(SUCCESS_CODE)
       expect(mockDataQualityService.getRecentChecks).toHaveBeenCalledWith(7)
@@ -322,10 +301,7 @@ describe('TushareAdminController (tushare-api)', () => {
     it('[BIZ] TA-BIZ-010 跨表一致性对账（recent 模式）→ 200', async () => {
       mockCrossTableCheckService.runAllCrossChecks.mockResolvedValueOnce([])
 
-      const res = await request(app.getHttpServer())
-        .post('/tushare/admin/quality/cross-check')
-        .send({})
-        .expect(201)
+      const res = await request(app.getHttpServer()).post('/tushare/admin/quality/cross-check').send({}).expect(201)
 
       expect(res.body.code).toBe(SUCCESS_CODE)
       expect(mockCrossTableCheckService.runAllCrossChecks).toHaveBeenCalledWith('recent')
@@ -349,10 +325,7 @@ describe('TushareAdminController (tushare-api)', () => {
       mockDataQualityService.getRecentReportsAsQualityReports.mockResolvedValueOnce([])
       mockAutoRepairService.analyzeAndRepair.mockResolvedValueOnce({ repaired: 0 })
 
-      const res = await request(app.getHttpServer())
-        .post('/tushare/admin/quality/repair')
-        .send({})
-        .expect(201)
+      const res = await request(app.getHttpServer()).post('/tushare/admin/quality/repair').send({}).expect(201)
 
       expect(res.body.code).toBe(SUCCESS_CODE)
       expect(mockAutoRepairService.analyzeAndRepair).toHaveBeenCalled()
@@ -362,15 +335,12 @@ describe('TushareAdminController (tushare-api)', () => {
   describe('POST /tushare/admin/quality/repair-status', () => {
     it('[BIZ] TA-BIZ-013 查看补数队列状态 → 200', async () => {
       mockPrismaService.tushareSyncRetryQueue.count
-        .mockResolvedValueOnce(5)  // pending
-        .mockResolvedValueOnce(2)  // retrying
+        .mockResolvedValueOnce(5) // pending
+        .mockResolvedValueOnce(2) // retrying
         .mockResolvedValueOnce(10) // succeeded
-        .mockResolvedValueOnce(1)  // exhausted
+        .mockResolvedValueOnce(1) // exhausted
 
-      const res = await request(app.getHttpServer())
-        .post('/tushare/admin/quality/repair-status')
-        .send({})
-        .expect(201)
+      const res = await request(app.getHttpServer()).post('/tushare/admin/quality/repair-status').send({}).expect(201)
 
       expect(res.body.code).toBe(SUCCESS_CODE)
       expect(res.body.data).toEqual({ pending: 5, retrying: 2, succeeded: 10, exhausted: 1 })
@@ -385,10 +355,7 @@ describe('TushareAdminController (tushare-api)', () => {
       ]
       mockPrismaService.dataQualityCheck.findMany.mockResolvedValueOnce(mockChecks)
 
-      const res = await request(app.getHttpServer())
-        .post('/tushare/admin/quality/summary')
-        .send({})
-        .expect(201)
+      const res = await request(app.getHttpServer()).post('/tushare/admin/quality/summary').send({}).expect(201)
 
       expect(res.body.code).toBe(SUCCESS_CODE)
       expect(res.body.data.totalChecks).toBe(2)
@@ -402,10 +369,7 @@ describe('TushareAdminController (tushare-api)', () => {
       mockPrismaService.dataQualityCheck.findMany.mockResolvedValueOnce([])
       mockPrismaService.tushareSyncRetryQueue.count.mockResolvedValueOnce(0)
 
-      const res = await request(app.getHttpServer())
-        .post('/tushare/admin/quality/health')
-        .send({})
-        .expect(201)
+      const res = await request(app.getHttpServer()).post('/tushare/admin/quality/health').send({}).expect(201)
 
       expect(res.body.code).toBe(SUCCESS_CODE)
       expect(res.body.data.status).toBe('healthy')
@@ -420,10 +384,7 @@ describe('TushareAdminController (tushare-api)', () => {
       mockPrismaService.dataQualityCheck.findMany.mockResolvedValueOnce(mockChecks)
       mockPrismaService.tushareSyncRetryQueue.count.mockResolvedValueOnce(0)
 
-      const res = await request(app.getHttpServer())
-        .post('/tushare/admin/quality/health')
-        .send({})
-        .expect(201)
+      const res = await request(app.getHttpServer()).post('/tushare/admin/quality/health').send({}).expect(201)
 
       expect(res.body.data.status).toBe('degraded')
       expect(res.body.data.failCount).toBe(1)
@@ -440,10 +401,7 @@ describe('TushareAdminController (tushare-api)', () => {
       mockPrismaService.dataQualityCheck.findMany.mockResolvedValueOnce(mockChecks)
       mockPrismaService.tushareSyncRetryQueue.count.mockResolvedValueOnce(0)
 
-      const res = await request(app.getHttpServer())
-        .post('/tushare/admin/quality/health')
-        .send({})
-        .expect(201)
+      const res = await request(app.getHttpServer()).post('/tushare/admin/quality/health').send({}).expect(201)
 
       expect(res.body.data.status).toBe('unhealthy')
     })
@@ -453,10 +411,7 @@ describe('TushareAdminController (tushare-api)', () => {
     it('[BIZ] TA-BIZ-016 查询校验异常日志 → 200', async () => {
       mockDataQualityService.getValidationLogs.mockResolvedValueOnce([])
 
-      const res = await request(app.getHttpServer())
-        .post('/tushare/admin/validation-logs')
-        .send({})
-        .expect(201)
+      const res = await request(app.getHttpServer()).post('/tushare/admin/validation-logs').send({}).expect(201)
 
       expect(res.body.code).toBe(SUCCESS_CODE)
       expect(mockDataQualityService.getValidationLogs).toHaveBeenCalledWith({ task: undefined, limit: undefined })
@@ -483,10 +438,7 @@ describe('TushareAdminController (tushare-api)', () => {
     it('[BIZ] TA-BIZ-017 查询同步日志（无过滤）→ 200', async () => {
       mockSyncLogService.queryLogs.mockResolvedValueOnce({ items: [], total: 0 })
 
-      const res = await request(app.getHttpServer())
-        .post('/tushare/admin/sync-logs')
-        .send({})
-        .expect(201)
+      const res = await request(app.getHttpServer()).post('/tushare/admin/sync-logs').send({}).expect(201)
 
       expect(res.body.code).toBe(SUCCESS_CODE)
       expect(mockSyncLogService.queryLogs).toHaveBeenCalled()
@@ -504,10 +456,7 @@ describe('TushareAdminController (tushare-api)', () => {
     })
 
     it('[ERR] TA-ERR-004 startDate 格式错误 → 400', async () => {
-      await request(app.getHttpServer())
-        .post('/tushare/admin/sync-logs')
-        .send({ startDate: 'not-a-date' })
-        .expect(400)
+      await request(app.getHttpServer()).post('/tushare/admin/sync-logs').send({ startDate: 'not-a-date' }).expect(400)
 
       expect(mockSyncLogService.queryLogs).not.toHaveBeenCalled()
     })
@@ -524,10 +473,7 @@ describe('TushareAdminController (tushare-api)', () => {
     })
 
     it('[EDGE] TA-EDGE-002 pageSize=101 → 400', async () => {
-      await request(app.getHttpServer())
-        .post('/tushare/admin/sync-logs')
-        .send({ pageSize: 101 })
-        .expect(400)
+      await request(app.getHttpServer()).post('/tushare/admin/sync-logs').send({ pageSize: 101 }).expect(400)
 
       expect(mockSyncLogService.queryLogs).not.toHaveBeenCalled()
     })
@@ -537,10 +483,7 @@ describe('TushareAdminController (tushare-api)', () => {
     it('[BIZ] TA-BIZ-019 同步日志汇总 → 200', async () => {
       mockSyncLogService.summarizeLogs.mockResolvedValueOnce([])
 
-      const res = await request(app.getHttpServer())
-        .post('/tushare/admin/sync-logs/summary')
-        .send({})
-        .expect(201)
+      const res = await request(app.getHttpServer()).post('/tushare/admin/sync-logs/summary').send({}).expect(201)
 
       expect(res.body.code).toBe(SUCCESS_CODE)
       expect(mockSyncLogService.summarizeLogs).toHaveBeenCalledTimes(1)
@@ -556,10 +499,7 @@ describe('TushareAdminController (tushare-api)', () => {
       mockPrismaService.tushareSyncRetryQueue.count.mockResolvedValueOnce(0)
       mockPrismaService.tushareSyncRetryQueue.findMany.mockResolvedValueOnce([])
 
-      const res = await request(app.getHttpServer())
-        .post('/tushare/admin/retry-queue')
-        .send({})
-        .expect(201)
+      const res = await request(app.getHttpServer()).post('/tushare/admin/retry-queue').send({}).expect(201)
 
       expect(res.body.code).toBe(SUCCESS_CODE)
       expect(res.body.data.total).toBe(0)
@@ -603,10 +543,7 @@ describe('TushareAdminController (tushare-api)', () => {
     it('[BIZ] TA-BIZ-022 重置耗尽重试记录 → 200', async () => {
       mockPrismaService.tushareSyncRetryQueue.updateMany.mockResolvedValueOnce({ count: 5 })
 
-      const res = await request(app.getHttpServer())
-        .post('/tushare/admin/retry-queue/reset')
-        .send({})
-        .expect(201)
+      const res = await request(app.getHttpServer()).post('/tushare/admin/retry-queue/reset').send({}).expect(201)
 
       expect(res.body.code).toBe(SUCCESS_CODE)
       expect(res.body.data.message).toContain('5')
@@ -654,10 +591,7 @@ describe('TushareAdminController (tushare-api)', () => {
     it('[BIZ] TA-BIZ-024 获取同步状态总览（默认缓存）→ 200', async () => {
       mockSyncStatusOverviewService.getOverview.mockResolvedValueOnce(mockOverview)
 
-      const res = await request(app.getHttpServer())
-        .post('/tushare/admin/sync-status-overview')
-        .send({})
-        .expect(201)
+      const res = await request(app.getHttpServer()).post('/tushare/admin/sync-status-overview').send({}).expect(201)
 
       expect(res.body.code).toBe(SUCCESS_CODE)
       expect(res.body.data.healthStatus).toBeDefined()
@@ -703,10 +637,7 @@ describe('TushareAdminController (tushare-api)', () => {
       }
       mockSyncStatusOverviewService.getOverview.mockResolvedValueOnce(overviewWithMissing)
 
-      const res = await request(app.getHttpServer())
-        .post('/tushare/admin/sync-status-overview')
-        .send({})
-        .expect(201)
+      const res = await request(app.getHttpServer()).post('/tushare/admin/sync-status-overview').send({}).expect(201)
 
       expect(res.body.data.healthStatus).toBe('DEGRADED')
       expect(res.body.data.syncStats.totalTables).toBe(1)
@@ -724,10 +655,7 @@ describe('TushareAdminController (tushare-api)', () => {
         throw new UnauthorizedException()
       })
 
-      await request(app.getHttpServer())
-        .post('/tushare/admin/plans')
-        .send({})
-        .expect(401)
+      await request(app.getHttpServer()).post('/tushare/admin/plans').send({}).expect(401)
 
       expect(mockTushareSyncService.getAvailableSyncPlans).not.toHaveBeenCalled()
     })
@@ -735,10 +663,7 @@ describe('TushareAdminController (tushare-api)', () => {
     it('[SEC] TA-SEC-002 非 SUPER_ADMIN 访问 → 403', async () => {
       mockRolesGuard.canActivate.mockImplementationOnce(() => false)
 
-      await request(app.getHttpServer())
-        .post('/tushare/admin/plans')
-        .send({})
-        .expect(403)
+      await request(app.getHttpServer()).post('/tushare/admin/plans').send({}).expect(403)
 
       expect(mockTushareSyncService.getAvailableSyncPlans).not.toHaveBeenCalled()
     })

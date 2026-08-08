@@ -61,8 +61,9 @@ function createMockLoggerService(): LoggerService {
 
 export async function createTestApp(options: CreateTestAppOptions = {}) {
   // 与 main.ts 保持一致：统一处理 BigInt JSON 序列化
-  if (!(BigInt.prototype as any).toJSON) {
-    ;(BigInt.prototype as any).toJSON = function () {
+  const bigintPrototype = BigInt.prototype as typeof BigInt.prototype & { toJSON?: () => number }
+  if (!bigintPrototype.toJSON) {
+    bigintPrototype.toJSON = function toJSON() {
       return Number(this)
     }
   }

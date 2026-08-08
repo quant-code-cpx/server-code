@@ -45,7 +45,7 @@ const mockNotificationService = {
   markRead: jest.fn(async () => undefined),
   markAllRead: jest.fn(async () => undefined),
   deleteNotification: jest.fn(async () => undefined),
-  getPreferences: jest.fn(async () => []),
+  getPreferences: jest.fn<Promise<Array<{ type: string; enabled: boolean }>>, []>(async () => []),
   updatePreference: jest.fn(async () => undefined),
 }
 
@@ -121,7 +121,7 @@ describe('NotificationController (integration)', () => {
   })
 
   it('POST /notification/preferences → 201, data 是数组', async () => {
-    mockNotificationService.getPreferences.mockResolvedValueOnce([{ type: 'SYSTEM', enabled: true }] as any)
+    mockNotificationService.getPreferences.mockResolvedValueOnce([{ type: 'SYSTEM', enabled: true }])
     const res = await request(app.getHttpServer()).post('/notification/preferences').send({}).expect(201)
     expect(res.body.code).toBe(0)
     expect(Array.isArray(res.body.data)).toBe(true)

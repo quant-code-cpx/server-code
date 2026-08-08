@@ -11,6 +11,9 @@
 
 import { TokenService } from '../token.service'
 import { REDIS_KEY } from 'src/constant/auth.constant'
+import { ConfigService } from '@nestjs/config'
+import { JwtService } from '@nestjs/jwt'
+import { RedisClientType } from 'redis'
 
 // ── Mock 工厂 ─────────────────────────────────────────────────────────────────
 
@@ -31,7 +34,11 @@ function buildService() {
     del: jest.fn(async () => 1),
     eval: jest.fn(async () => 'invalid' as string),
   }
-  const service = new TokenService(jwtMock as any, configMock as any, redisMock as any)
+  const service = new TokenService(
+    jwtMock as unknown as JwtService,
+    configMock as unknown as ConfigService,
+    redisMock as unknown as RedisClientType,
+  )
   return { service, jwtMock, redisMock }
 }
 

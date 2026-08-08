@@ -32,11 +32,6 @@ function vecAdd(a: number[], b: number[], scale = 1): number[] {
   return a.map((v, i) => v + scale * b[i])
 }
 
-/** 样本均值 */
-function mean(arr: number[]): number {
-  return arr.reduce((s, v) => s + v, 0) / arr.length
-}
-
 /** 投影到单纯形：sum=1，minW ≤ w_i ≤ maxW（Iterative Clipping 方法） */
 function projectToSimplex(w: number[], minW: number, maxW: number, n: number): number[] {
   // 先 clip 到 [minW, maxW]，再把超出 sum=1 的部分迭代裁剪

@@ -89,7 +89,11 @@ function buildMockHelper(prismaMock = buildPrismaMock()) {
         const d = String(date.getUTCDate()).padStart(2, '0')
         return `${y}${m}${d}`
       }),
-      addDays: jest.fn((_date: string, _n: number) => '20260101'),
+      addDays: jest.fn((date: string, days: number) => {
+        void date
+        void days
+        return '20260101'
+      }),
       flushValidationLogs: jest.fn(async () => undefined),
     },
     { prisma: prismaMock },
@@ -125,8 +129,7 @@ function buildMockApi() {
 }
 
 function createService(api = buildMockApi(), helper = buildMockHelper()): FinancialSyncService {
-  // @ts-ignore 局部 mock，跳过 DI
-  return new FinancialSyncService(api as FinancialApiService, helper as SyncHelperService)
+  return new FinancialSyncService(api as unknown as FinancialApiService, helper as unknown as SyncHelperService)
 }
 
 // ── 测试套件 ──────────────────────────────────────────────────────────────────

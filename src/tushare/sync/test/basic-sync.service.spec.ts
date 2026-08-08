@@ -71,8 +71,7 @@ function buildMockApi() {
 }
 
 function createService(api = buildMockApi(), helper = buildMockHelper()): BasicSyncService {
-  // @ts-ignore 局部 mock，跳过 DI
-  return new BasicSyncService(api as BasicApiService, helper as SyncHelperService)
+  return new BasicSyncService(api as unknown as BasicApiService, helper as unknown as SyncHelperService)
 }
 
 // ── 测试套件 ──────────────────────────────────────────────────────────────────

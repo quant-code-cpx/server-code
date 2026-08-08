@@ -11,7 +11,14 @@ const mockIndustryRotationService = {
   getFlowAnalysis: jest.fn(async () => []),
   getIndustryValuation: jest.fn(async () => []),
   getOverview: jest.fn(async () => ({ heatData: [], summary: {} })),
-  getDetail: jest.fn(async () => ({ industry: '银行', tsCode: 'BK1283.DC', returnTrend: [], flowTrend: [], valuation: null, topStocks: [] })),
+  getDetail: jest.fn(async () => ({
+    industry: '银行',
+    tsCode: 'BK1283.DC',
+    returnTrend: [],
+    flowTrend: [],
+    valuation: null,
+    topStocks: [],
+  })),
   getHeatmap: jest.fn(async () => ({ matrix: [] })),
 }
 
@@ -36,20 +43,14 @@ describe('IndustryRotationController', () => {
   beforeEach(() => jest.clearAllMocks())
 
   it('POST /industry-rotation/overview → 201', async () => {
-    const res = await request(app.getHttpServer())
-      .post('/industry-rotation/overview')
-      .send({})
-      .expect(201)
+    const res = await request(app.getHttpServer()).post('/industry-rotation/overview').send({}).expect(201)
     expect(res.body.code).toBe(SUCCESS_CODE)
     expect(res.body.data).toBeDefined()
     expect(mockIndustryRotationService.getOverview).toHaveBeenCalledTimes(1)
   })
 
   it('POST /industry-rotation/return-comparison → 201', async () => {
-    const res = await request(app.getHttpServer())
-      .post('/industry-rotation/return-comparison')
-      .send({})
-      .expect(201)
+    const res = await request(app.getHttpServer()).post('/industry-rotation/return-comparison').send({}).expect(201)
     expect(res.body.code).toBe(SUCCESS_CODE)
     expect(res.body.data).toBeDefined()
     expect(mockIndustryRotationService.getReturnComparison).toHaveBeenCalledTimes(1)
@@ -66,10 +67,7 @@ describe('IndustryRotationController', () => {
   })
 
   it('POST /industry-rotation/flow-analysis → 201', async () => {
-    const res = await request(app.getHttpServer())
-      .post('/industry-rotation/flow-analysis')
-      .send({})
-      .expect(201)
+    const res = await request(app.getHttpServer()).post('/industry-rotation/flow-analysis').send({}).expect(201)
     expect(res.body.code).toBe(SUCCESS_CODE)
     expect(mockIndustryRotationService.getFlowAnalysis).toHaveBeenCalledTimes(1)
   })
@@ -85,10 +83,7 @@ describe('IndustryRotationController', () => {
       topStocks: [],
     })
 
-    const res = await request(app.getHttpServer())
-      .post('/industry-rotation/detail')
-      .send({})
-      .expect(201)
+    const res = await request(app.getHttpServer()).post('/industry-rotation/detail').send({}).expect(201)
 
     expect(res.body.code).toBe(SUCCESS_CODE)
     expect(res.body.data.returnTrend).toEqual([])
@@ -102,9 +97,7 @@ describe('IndustryRotationController', () => {
       .expect(201)
 
     expect(res.body.code).toBe(SUCCESS_CODE)
-    expect(mockIndustryRotationService.getDetail).toHaveBeenCalledWith(
-      expect.objectContaining({ tsCode: 'BK0438.DC' }),
-    )
+    expect(mockIndustryRotationService.getDetail).toHaveBeenCalledWith(expect.objectContaining({ tsCode: 'BK0438.DC' }))
   })
 
   // 同时传 tsCode 和 industry 时，tsCode 优先
@@ -131,10 +124,7 @@ describe('IndustryRotationController', () => {
 
   it('[ERR] POST /industry-rotation/detail NotFoundException → 404', async () => {
     mockIndustryRotationService.getDetail.mockRejectedValueOnce(new NotFoundException('industry not found'))
-    await request(app.getHttpServer())
-      .post('/industry-rotation/detail')
-      .send({ industry: 'unknown' })
-      .expect(404)
+    await request(app.getHttpServer()).post('/industry-rotation/detail').send({ industry: 'unknown' }).expect(404)
     expect(mockIndustryRotationService.getDetail).toHaveBeenCalledTimes(1)
   })
 })

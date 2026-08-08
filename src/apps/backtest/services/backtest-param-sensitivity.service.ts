@@ -11,7 +11,11 @@ import { Queue } from 'bullmq'
 import type { Prisma } from '@prisma/client'
 import { PrismaService } from 'src/shared/prisma.service'
 import { BACKTESTING_QUEUE, BacktestingJobName } from 'src/constant/queue.constant'
-import { ParamSensitivityDto, ParamSensitivityCreateResponseDto, ParamSensitivityResultDto } from '../dto/param-sensitivity.dto'
+import {
+  ParamSensitivityDto,
+  ParamSensitivityCreateResponseDto,
+  ParamSensitivityResultDto,
+} from '../dto/param-sensitivity.dto'
 import {
   backtestPendingReproducibilityData,
   isVerifiedBacktestCreationEnabled,

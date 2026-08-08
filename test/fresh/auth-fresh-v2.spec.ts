@@ -22,10 +22,13 @@ describe('Auth Fresh V2', () => {
       providers: [{ provide: AuthService, useValue: mockAuthService }],
     })
 
-    await request.post('/auth/captcha').expect(201).expect(({ body }) => {
-      expect(body.data.captchaId).toBe('cid-1')
-      expect(body.data.svgImage).toContain('svg')
-    })
+    await request
+      .post('/auth/captcha')
+      .expect(201)
+      .expect(({ body }) => {
+        expect(body.data.captchaId).toBe('cid-1')
+        expect(body.data.svgImage).toContain('svg')
+      })
 
     await app.close()
   })
@@ -49,9 +52,13 @@ describe('Auth Fresh V2', () => {
       providers: [{ provide: AuthService, useValue: mockAuthService }],
     })
 
-    await request.post('/auth/refresh').send({}).expect(200).expect(({ body }) => {
-      expect(body.code).not.toBe(0)
-    })
+    await request
+      .post('/auth/refresh')
+      .send({})
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body.code).not.toBe(0)
+      })
 
     await app.close()
   })

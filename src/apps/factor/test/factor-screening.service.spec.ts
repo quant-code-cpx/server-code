@@ -7,7 +7,18 @@
  * - rankStocks(): desc 和 asc 排序
  */
 import { FactorScreeningService } from '../services/factor-screening.service'
-import { FactorScreeningDto } from '../dto/factor-screening.dto'
+import { FactorCondition, FactorScreeningDto } from '../dto/factor-screening.dto'
+
+type FactorScreeningCondition = Pick<FactorCondition, 'operator' | 'value' | 'min' | 'max'>
+
+type FactorScreeningPrivateApi = {
+  passesCondition(value: number, condition: FactorScreeningCondition): boolean
+  rankStocks(factorMap: Map<string, number | null>, order: 'asc' | 'desc'): Array<{ tsCode: string; val: number }>
+}
+
+function getPrivateFactorScreeningService(service: FactorScreeningService): FactorScreeningPrivateApi {
+  return service as unknown as FactorScreeningPrivateApi
+}
 
 // ── Mock 工厂 ─────────────────────────────────────────────────────────────────
 
@@ -54,7 +65,11 @@ describe('FactorScreeningService', () => {
     mockPrisma = buildPrismaMock()
     mockCompute = buildComputeMock()
     mockRedis = buildRedisMock()
-    service = new FactorScreeningService(mockPrisma as any, mockCompute as any, mockRedis as any)
+    service = new FactorScreeningService(
+      mockPrisma as unknown as ConstructorParameters<typeof FactorScreeningService>[0],
+      mockCompute as unknown as ConstructorParameters<typeof FactorScreeningService>[1],
+      mockRedis as unknown as ConstructorParameters<typeof FactorScreeningService>[2],
+    )
   })
 
   // ── screening() ──────────────────────────────────────────────────────────
@@ -71,9 +86,7 @@ describe('FactorScreeningService', () => {
     it('单因子 gt 条件 → 仅保留因子值大于阈值的股票', async () => {
       mockCompute.getRawFactorValuesForDate.mockResolvedValueOnce(THREE_STOCKS)
 
-      const result = await service.screening(
-        buildDto({ conditions: [{ factorName: 'pe', operator: 'gt', value: 5 }] }),
-      )
+      const result = await service.screening(buildDto({ conditions: [{ factorName: 'pe', operator: 'gt', value: 5 }] }))
 
       expect(result.total).toBe(1)
       expect(result.items[0].tsCode).toBe('000001.SZ')
@@ -174,42 +187,51 @@ describe('FactorScreeningService', () => {
 
   describe('passesCondition() 私有方法', () => {
     it('gt: 10 > 5 → true', () => {
-      expect((service as any).passesCondition(10, { operator: 'gt', value: 5 })).toBe(true)
+      expect(getPrivateFactorScreeningService(service).passesCondition(10, { operator: 'gt', value: 5 })).toBe(true)
     })
 
     it('gt: 5 > 5 → false（不包含等号）', () => {
-      expect((service as any).passesCondition(5, { operator: 'gt', value: 5 })).toBe(false)
+      expect(getPrivateFactorScreeningService(service).passesCondition(5, { operator: 'gt', value: 5 })).toBe(false)
     })
 
     it('lt: 1 < 5 → true', () => {
-      expect((service as any).passesCondition(1, { operator: 'lt', value: 5 })).toBe(true)
+      expect(getPrivateFactorScreeningService(service).passesCondition(1, { operator: 'lt', value: 5 })).toBe(true)
     })
 
     it('gte: 5 >= 5 → true', () => {
-      expect((service as any).passesCondition(5, { operator: 'gte', value: 5 })).toBe(true)
+      expect(getPrivateFactorScreeningService(service).passesCondition(5, { operator: 'gte', value: 5 })).toBe(true)
     })
 
     it('lte: 5 <= 5 → true', () => {
-      expect((service as any).passesCondition(5, { operator: 'lte', value: 5 })).toBe(true)
+      expect(getPrivateFactorScreeningService(service).passesCondition(5, { operator: 'lte', value: 5 })).toBe(true)
     })
 
     it('between: 5 in [3,7] → true', () => {
-      expect((service as any).passesCondition(5, { operator: 'between', min: 3, max: 7 })).toBe(true)
+      expect(
+        getPrivateFactorScreeningService(service).passesCondition(5, { operator: 'between', min: 3, max: 7 }),
+      ).toBe(true)
     })
     it('between: 2 in [3,7] → false', () => {
-      expect((service as any).passesCondition(2, { operator: 'between', min: 3, max: 7 })).toBe(false)
+      expect(
+        getPrivateFactorScreeningService(service).passesCondition(2, { operator: 'between', min: 3, max: 7 }),
+      ).toBe(false)
     })
     it('between: 边界 3 in [3,7] → true（闭区间）', () => {
-      expect((service as any).passesCondition(3, { operator: 'between', min: 3, max: 7 })).toBe(true)
+      expect(
+        getPrivateFactorScreeningService(service).passesCondition(3, { operator: 'between', min: 3, max: 7 }),
+      ).toBe(true)
     })
     it('[BUG?] between: min=null max=7 → 应返回 false（不等式的短路结果）', () => {
       // between 分支: cond.min != null && cond.max != null && val >= cond.min && val <= cond.max
       // min=null 时整个表达式为 false
-      expect((service as any).passesCondition(5, { operator: 'between', min: null as any, max: 7 })).toBe(false)
+      const invalidCondition = { operator: 'between', min: null, max: 7 } as unknown as FactorScreeningCondition
+      expect(getPrivateFactorScreeningService(service).passesCondition(5, invalidCondition)).toBe(false)
     })
 
     it('gt 且 condition.value 为 undefined → false', () => {
-      expect((service as any).passesCondition(10, { operator: 'gt', value: undefined })).toBe(false)
+      expect(getPrivateFactorScreeningService(service).passesCondition(10, { operator: 'gt', value: undefined })).toBe(
+        false,
+      )
     })
   })
 
@@ -222,7 +244,7 @@ describe('FactorScreeningService', () => {
         ['B', 1],
         ['C', 5],
       ])
-      const result: Array<{ tsCode: string; val: number }> = (service as any).rankStocks(fMap, 'desc')
+      const result = getPrivateFactorScreeningService(service).rankStocks(fMap, 'desc')
       expect(result.map((r) => r.tsCode)).toEqual(['A', 'C', 'B'])
     })
 
@@ -232,7 +254,7 @@ describe('FactorScreeningService', () => {
         ['B', 1],
         ['C', 5],
       ])
-      const result: Array<{ tsCode: string; val: number }> = (service as any).rankStocks(fMap, 'asc')
+      const result = getPrivateFactorScreeningService(service).rankStocks(fMap, 'asc')
       expect(result.map((r) => r.tsCode)).toEqual(['B', 'C', 'A'])
     })
 
@@ -242,7 +264,7 @@ describe('FactorScreeningService', () => {
         ['B', null],
         ['C', 5],
       ])
-      const result: Array<{ tsCode: string; val: number }> = (service as any).rankStocks(fMap, 'desc')
+      const result = getPrivateFactorScreeningService(service).rankStocks(fMap, 'desc')
       expect(result.map((r) => r.tsCode)).toEqual(['A', 'C'])
     })
   })

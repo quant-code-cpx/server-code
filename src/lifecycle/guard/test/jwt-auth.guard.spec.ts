@@ -129,7 +129,13 @@ describe('JwtAuthGuard', () => {
   // ── [EDGE] user.id 边界 ───────────────────────────────────────────────────
 
   it('[EDGE P5-B5] user.id 为 undefined → 不调用 setUserId', async () => {
-    const user = { id: undefined, account: 'test', nickname: 'Test', role: UserRole.USER, jti: 'jti-x' } as unknown as TokenPayload
+    const user = {
+      id: undefined,
+      account: 'test',
+      nickname: 'Test',
+      role: UserRole.USER,
+      jti: 'jti-x',
+    } as unknown as TokenPayload
     const { ctx, mockReflector } = makeContext({ user })
     const setUserIdSpy = jest.spyOn(RequestContextService, 'setUserId').mockImplementation(() => undefined)
     const guard = new JwtAuthGuard(mockReflector)
@@ -142,7 +148,13 @@ describe('JwtAuthGuard', () => {
   })
 
   it('[EDGE P5-B5] user.id 为 0（falsy）→ 不调用 setUserId', async () => {
-    const user = { id: 0, account: 'test', nickname: 'Test', role: UserRole.USER, jti: 'jti-x' } as unknown as TokenPayload
+    const user = {
+      id: 0,
+      account: 'test',
+      nickname: 'Test',
+      role: UserRole.USER,
+      jti: 'jti-x',
+    } as unknown as TokenPayload
     const { ctx, mockReflector } = makeContext({ user })
     const setUserIdSpy = jest.spyOn(RequestContextService, 'setUserId').mockImplementation(() => undefined)
     const guard = new JwtAuthGuard(mockReflector)
@@ -164,4 +176,3 @@ describe('JwtAuthGuard', () => {
     expect(superCanActivateSpy).toHaveBeenCalled()
   })
 })
-

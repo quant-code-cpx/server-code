@@ -220,9 +220,7 @@ describe('PortfolioPerformanceService', () => {
       // 第1天无收盘价 → portfolioMV = cashBalance + 0 = 500_000 → NAV = 0.5
       const { svc, mockPrisma } = createService()
 
-      mockPrisma.portfolioHolding.findMany.mockResolvedValue([
-        { tsCode: '000001.SZ', quantity: 100000, avgCost: 5 },
-      ])
+      mockPrisma.portfolioHolding.findMany.mockResolvedValue([{ tsCode: '000001.SZ', quantity: 100000, avgCost: 5 }])
       mockPrisma.daily.findMany.mockResolvedValue([
         { tsCode: '000001.SZ', tradeDate: new Date('2025-01-02'), close: 8 },
         { tsCode: '000001.SZ', tradeDate: new Date('2025-01-03'), close: 8 },

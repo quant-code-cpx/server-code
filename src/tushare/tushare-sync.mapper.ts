@@ -1,6 +1,6 @@
 import dayjs from 'dayjs'
-const timezone = require('dayjs/plugin/timezone')
-const utc = require('dayjs/plugin/utc')
+import timezone from 'dayjs/plugin/timezone'
+import utc from 'dayjs/plugin/utc'
 import {
   MoneyflowContentType as PrismaMoneyflowContentType,
   Prisma,

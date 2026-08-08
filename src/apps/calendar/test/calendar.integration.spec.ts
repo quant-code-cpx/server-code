@@ -14,8 +14,19 @@ describe('Calendar — 真实 DB 集成测试', () => {
   beforeAll(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
-        CalendarService, PrismaService,
-        { provide: LoggerService, useValue: { log: () => {}, warn: () => {}, error: () => {}, debug: () => {}, verbose: () => {}, devLog: () => {} } },
+        CalendarService,
+        PrismaService,
+        {
+          provide: LoggerService,
+          useValue: {
+            log: () => {},
+            warn: () => {},
+            error: () => {},
+            debug: () => {},
+            verbose: () => {},
+            devLog: () => {},
+          },
+        },
       ],
     }).compile()
     service = module.get<CalendarService>(CalendarService)

@@ -424,6 +424,7 @@ export class UserService implements OnApplicationBootstrap {
 
   /** 断言操作者角色严格高于目标用户角色 */
   private assertHigherRole(operator: TokenPayload, targetRole: UserRole, _targetId: number): void {
+    void _targetId
     if (!this.hasHigherRole(operator.role, targetRole)) {
       throw new BusinessException(ErrorEnum.CANNOT_OPERATE_HIGHER_ROLE)
     }

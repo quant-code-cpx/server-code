@@ -33,7 +33,7 @@ function buildPrismaMock() {
 }
 
 function createService(prismaMock = buildPrismaMock()) {
-  // @ts-ignore 局部 mock，跳过 DI
+  // @ts-expect-error 局部 mock，跳过 DI
   return { svc: new BacktestAttributionService(prismaMock), prisma: prismaMock }
 }
 

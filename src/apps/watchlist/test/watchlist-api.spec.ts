@@ -4,7 +4,7 @@
  * 覆盖：自选组 CRUD / 成员管理 / 批量操作 / 汇总 / 安全
  * 方法：Test.createTestingModule + overrideGuard(JwtAuthGuard) + mock services + supertest
  */
-import { CanActivate, ExecutionContext, INestApplication, ValidationPipe } from '@nestjs/common'
+import { ExecutionContext, INestApplication, UnauthorizedException, ValidationPipe } from '@nestjs/common'
 import { Test, TestingModule } from '@nestjs/testing'
 import request from 'supertest'
 import { TransformInterceptor } from 'src/lifecycle/interceptors/transform.interceptor'
@@ -78,7 +78,16 @@ describe('Watchlist API 测试', () => {
             isDefault: true,
             sortOrder: 0,
             stockCount: 1,
-            summary: { stockCount: 1, upCount: 1, downCount: 0, flatCount: 0, avgPctChg: 1.5, totalMv: 100000, latestTradeDate: '20260523', staleCount: 0 },
+            summary: {
+              stockCount: 1,
+              upCount: 1,
+              downCount: 0,
+              flatCount: 0,
+              avgPctChg: 1.5,
+              totalMv: 100000,
+              latestTradeDate: '20260523',
+              staleCount: 0,
+            },
           },
         ],
       }),
@@ -150,10 +159,7 @@ describe('Watchlist API 测试', () => {
     })
 
     it('WL-BIZ-004: 更新自选组', async () => {
-      const res = await req
-        .post('/watchlist/update')
-        .send({ id: 1, name: '更新后' })
-        .expect(201)
+      const res = await req.post('/watchlist/update').send({ id: 1, name: '更新后' }).expect(201)
       expect(res.body.data).toHaveProperty('name')
     })
 
@@ -165,7 +171,12 @@ describe('Watchlist API 测试', () => {
     it('WL-BIZ-006: 重排自选组', async () => {
       const res = await req
         .post('/watchlist/reorder')
-        .send({ items: [{ id: 1, sortOrder: 0 }, { id: 2, sortOrder: 1 }] })
+        .send({
+          items: [
+            { id: 1, sortOrder: 0 },
+            { id: 2, sortOrder: 1 },
+          ],
+        })
         .expect(201)
       expect(res.body.data).toHaveProperty('message')
     })
@@ -179,7 +190,10 @@ describe('Watchlist API 测试', () => {
     })
 
     it('WL-ERR-003: create name 超 50 字符应 400', async () => {
-      await req.post('/watchlist/create').send({ name: 'a'.repeat(51) }).expect(400)
+      await req
+        .post('/watchlist/create')
+        .send({ name: 'a'.repeat(51) })
+        .expect(400)
     })
 
     it('WL-ERR-004: create description 超 200 字符应 400', async () => {
@@ -194,7 +208,10 @@ describe('Watchlist API 测试', () => {
     })
 
     it('WL-EDGE-001: create name 恰好 50 字符', async () => {
-      await req.post('/watchlist/create').send({ name: 'a'.repeat(50) }).expect(201)
+      await req
+        .post('/watchlist/create')
+        .send({ name: 'a'.repeat(50) })
+        .expect(201)
     })
 
     it('WL-EDGE-002: create description 恰好 200 字符', async () => {
@@ -215,10 +232,7 @@ describe('Watchlist API 测试', () => {
     })
 
     it('WL-BIZ-008: 添加单只股票', async () => {
-      const res = await req
-        .post('/watchlist/stocks')
-        .send({ id: 1, tsCode: '000001.SZ' })
-        .expect(201)
+      const res = await req.post('/watchlist/stocks').send({ id: 1, tsCode: '000001.SZ' }).expect(201)
       expect(res.body.data).toHaveProperty('tsCode')
     })
 
@@ -227,10 +241,7 @@ describe('Watchlist API 测试', () => {
         .post('/watchlist/stocks/batch')
         .send({
           id: 1,
-          stocks: [
-            { tsCode: '000001.SZ' },
-            { tsCode: '000002.SZ' },
-          ],
+          stocks: [{ tsCode: '000001.SZ' }, { tsCode: '000002.SZ' }],
         })
         .expect(201)
       expect(res.body.data).toHaveProperty('added')
@@ -238,18 +249,12 @@ describe('Watchlist API 测试', () => {
     })
 
     it('WL-BIZ-010: 更新股票备注', async () => {
-      const res = await req
-        .post('/watchlist/stocks/update')
-        .send({ id: 1, stockId: 1, notes: '备注' })
-        .expect(201)
+      const res = await req.post('/watchlist/stocks/update').send({ id: 1, stockId: 1, notes: '备注' }).expect(201)
       expect(res.body.data).toHaveProperty('notes')
     })
 
     it('WL-BIZ-011: 移除股票', async () => {
-      const res = await req
-        .post('/watchlist/stocks/delete')
-        .send({ id: 1, stockId: 1 })
-        .expect(201)
+      const res = await req.post('/watchlist/stocks/delete').send({ id: 1, stockId: 1 }).expect(201)
       expect(res.body.data).toHaveProperty('message')
     })
 
@@ -274,17 +279,11 @@ describe('Watchlist API 测试', () => {
     })
 
     it('WL-ERR-007: addStock tsCode 格式错误应 400', async () => {
-      await req
-        .post('/watchlist/stocks')
-        .send({ id: 1, tsCode: 'INVALID' })
-        .expect(400)
+      await req.post('/watchlist/stocks').send({ id: 1, tsCode: 'INVALID' }).expect(400)
     })
 
     it('WL-ERR-008: addStock targetPrice 负数应 400', async () => {
-      await req
-        .post('/watchlist/stocks')
-        .send({ id: 1, tsCode: '000001.SZ', targetPrice: -1 })
-        .expect(400)
+      await req.post('/watchlist/stocks').send({ id: 1, tsCode: '000001.SZ', targetPrice: -1 }).expect(400)
     })
 
     it('WL-ERR-009: addStock notes 超 500 字符应 400', async () => {
@@ -295,43 +294,28 @@ describe('Watchlist API 测试', () => {
     })
 
     it('WL-ERR-010: batchAdd stocks 空数组应 400', async () => {
-      await req
-        .post('/watchlist/stocks/batch')
-        .send({ id: 1, stocks: [] })
-        .expect(400)
+      await req.post('/watchlist/stocks/batch').send({ id: 1, stocks: [] }).expect(400)
     })
 
     it('WL-ERR-011: batchAdd stocks 超 50 个应 400', async () => {
       const stocks = Array.from({ length: 51 }, (_, i) => ({
         tsCode: `${String(i).padStart(6, '0')}.SZ`,
       }))
-      await req
-        .post('/watchlist/stocks/batch')
-        .send({ id: 1, stocks })
-        .expect(400)
+      await req.post('/watchlist/stocks/batch').send({ id: 1, stocks }).expect(400)
     })
 
     it('WL-ERR-012: batchRemove stockIds 空数组应 400', async () => {
-      await req
-        .post('/watchlist/stocks/batch/delete')
-        .send({ id: 1, stockIds: [] })
-        .expect(400)
+      await req.post('/watchlist/stocks/batch/delete').send({ id: 1, stockIds: [] }).expect(400)
     })
 
     it('WL-ERR-013: batchRemove stockIds 超 50 个应 400', async () => {
       const stockIds = Array.from({ length: 51 }, (_, i) => i + 1)
-      await req
-        .post('/watchlist/stocks/batch/delete')
-        .send({ id: 1, stockIds })
-        .expect(400)
+      await req.post('/watchlist/stocks/batch/delete').send({ id: 1, stockIds }).expect(400)
     })
 
     it('WL-ERR-014: addStock tags 超 10 个应 400', async () => {
       const tags = Array.from({ length: 11 }, (_, i) => `tag${i}`)
-      await req
-        .post('/watchlist/stocks')
-        .send({ id: 1, tsCode: '000001.SZ', tags })
-        .expect(400)
+      await req.post('/watchlist/stocks').send({ id: 1, tsCode: '000001.SZ', tags }).expect(400)
     })
 
     it('WL-ERR-015: addStock tag 超 30 字符应 400', async () => {
@@ -342,36 +326,24 @@ describe('Watchlist API 测试', () => {
     })
 
     it('WL-EDGE-003: addStock tsCode 北交所格式', async () => {
-      await req
-        .post('/watchlist/stocks')
-        .send({ id: 1, tsCode: '830799.BJ' })
-        .expect(201)
+      await req.post('/watchlist/stocks').send({ id: 1, tsCode: '830799.BJ' }).expect(201)
     })
 
     it('WL-EDGE-004: batchAdd 恰好 50 个', async () => {
       const stocks = Array.from({ length: 50 }, (_, i) => ({
         tsCode: `${String(i).padStart(6, '0')}.SZ`,
       }))
-      await req
-        .post('/watchlist/stocks/batch')
-        .send({ id: 1, stocks })
-        .expect(201)
+      await req.post('/watchlist/stocks/batch').send({ id: 1, stocks }).expect(201)
     })
 
     it('WL-EDGE-005: batchRemove 恰好 50 个', async () => {
       const stockIds = Array.from({ length: 50 }, (_, i) => i + 1)
-      await req
-        .post('/watchlist/stocks/batch/delete')
-        .send({ id: 1, stockIds })
-        .expect(201)
+      await req.post('/watchlist/stocks/batch/delete').send({ id: 1, stockIds }).expect(201)
     })
 
     it('WL-EDGE-006: addStock tags 恰好 10 个', async () => {
       const tags = Array.from({ length: 10 }, (_, i) => `tag${i}`)
-      await req
-        .post('/watchlist/stocks')
-        .send({ id: 1, tsCode: '000001.SZ', tags })
-        .expect(201)
+      await req.post('/watchlist/stocks').send({ id: 1, tsCode: '000001.SZ', tags }).expect(201)
     })
 
     it('WL-EDGE-007: addStock tag 恰好 30 字符', async () => {
@@ -404,7 +376,6 @@ describe('Watchlist API 测试', () => {
         .overrideGuard(JwtAuthGuard)
         .useValue({
           canActivate(): boolean {
-            const { UnauthorizedException } = require('@nestjs/common')
             throw new UnauthorizedException()
           },
         })
@@ -428,7 +399,6 @@ describe('Watchlist API 测试', () => {
         .overrideGuard(JwtAuthGuard)
         .useValue({
           canActivate(): boolean {
-            const { UnauthorizedException } = require('@nestjs/common')
             throw new UnauthorizedException()
           },
         })
@@ -440,10 +410,7 @@ describe('Watchlist API 测试', () => {
       unauthApp.useGlobalFilters(new GlobalExceptionsFilter(true, createMockLoggerService()))
       await unauthApp.init()
 
-      await request(unauthApp.getHttpServer())
-        .post('/watchlist/create')
-        .send({ name: 'test' })
-        .expect(401)
+      await request(unauthApp.getHttpServer()).post('/watchlist/create').send({ name: 'test' }).expect(401)
       await unauthApp.close()
     })
 
@@ -455,7 +422,6 @@ describe('Watchlist API 测试', () => {
         .overrideGuard(JwtAuthGuard)
         .useValue({
           canActivate(): boolean {
-            const { UnauthorizedException } = require('@nestjs/common')
             throw new UnauthorizedException()
           },
         })

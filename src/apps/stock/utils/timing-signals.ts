@@ -38,25 +38,6 @@ function isValidNumber(v: number | null | undefined): v is number {
   return v !== null && v !== undefined && Number.isFinite(v)
 }
 
-/** 检测最近 lookback 根 bar 内的穿越事件 */
-function detectRecentCross(
-  fast: (number | null)[],
-  slow: (number | null)[],
-  lookback: number,
-): 'golden_cross' | 'death_cross' | null {
-  const n = fast.length
-  for (let i = n - 1; i >= Math.max(1, n - lookback); i--) {
-    const fn = fast[i]
-    const sn = slow[i]
-    const fp = fast[i - 1]
-    const sp = slow[i - 1]
-    if (!isValidNumber(fn) || !isValidNumber(sn) || !isValidNumber(fp) || !isValidNumber(sp)) continue
-    if (fp <= sp && fn > sn) return 'golden_cross'
-    if (fp >= sp && fn < sn) return 'death_cross'
-  }
-  return null
-}
-
 // ─── 信号生成 ─────────────────────────────────────────────────────────────────
 
 export function generateTimingSignals(points: TechnicalDataPoint[], lookbackDays: number): TimingSignalItem[] {

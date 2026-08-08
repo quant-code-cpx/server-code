@@ -533,6 +533,7 @@ export class FactorOrthogonalService {
 
   /** Approximate two-tailed p-value from t-statistic via normal distribution */
   private tStatToPValue(t: number, df: number): number {
+    void df
     // For df > 30, approximate with standard normal
     const z = Math.abs(t)
     // Approximation: 2 * (1 - Φ(z))

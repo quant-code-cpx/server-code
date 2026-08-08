@@ -17,8 +17,7 @@ import { BusinessException } from 'src/common/exceptions/business.exception'
 import { ReportDataCollectorService } from '../services/report-data-collector.service'
 import { ReportService } from '../report.service'
 import { CreateStrategyResearchReportDto, ReportFormatEnum } from '../dto/create-report.dto'
-import { ReportFormat, ReportStatus, ReportType } from '@prisma/client'
-import dayjs from 'dayjs'
+import { ReportStatus, ReportType } from '@prisma/client'
 
 // ─── Prisma Mock ─────────────────────────────────────────────────────────────
 
@@ -92,6 +91,13 @@ function buildPrismaMock(overrides: Record<string, unknown> = {}) {
   }
 }
 
+type ReportDataCollectorDependencies = ConstructorParameters<typeof ReportDataCollectorService>
+type ReportServiceDependencies = ConstructorParameters<typeof ReportService>
+
+function createDataCollector(prisma = buildPrismaMock()): ReportDataCollectorService {
+  return new ReportDataCollectorService(prisma as unknown as ReportDataCollectorDependencies[0])
+}
+
 // ─── ReportDataCollectorService Tests ────────────────────────────────────────
 
 describe('ReportDataCollectorService.collectStrategyResearchData()', () => {
@@ -100,14 +106,14 @@ describe('ReportDataCollectorService.collectStrategyResearchData()', () => {
     prisma.backtestRun.findFirstOrThrow = jest.fn(async () => {
       throw new Error('Not found')
     })
-    const svc = new ReportDataCollectorService(prisma as any)
+    const svc = createDataCollector(prisma)
 
     await expect(svc.collectStrategyResearchData('bad-id', 1, {})).rejects.toThrow()
   })
 
   it('should return overview with correct strategy name', async () => {
     const prisma = buildPrismaMock()
-    const svc = new ReportDataCollectorService(prisma as any)
+    const svc = createDataCollector(prisma)
 
     const result = await svc.collectStrategyResearchData('run-1', 1, {})
 
@@ -120,7 +126,7 @@ describe('ReportDataCollectorService.collectStrategyResearchData()', () => {
 
   it('should include backtestPerformance by default', async () => {
     const prisma = buildPrismaMock()
-    const svc = new ReportDataCollectorService(prisma as any)
+    const svc = createDataCollector(prisma)
 
     const result = await svc.collectStrategyResearchData('run-1', 1, {})
 
@@ -130,7 +136,7 @@ describe('ReportDataCollectorService.collectStrategyResearchData()', () => {
 
   it('should skip backtestPerformance when sections.performance=false', async () => {
     const prisma = buildPrismaMock()
-    const svc = new ReportDataCollectorService(prisma as any)
+    const svc = createDataCollector(prisma)
 
     const result = await svc.collectStrategyResearchData('run-1', 1, {
       sections: { performance: false },
@@ -141,7 +147,7 @@ describe('ReportDataCollectorService.collectStrategyResearchData()', () => {
 
   it('should include holdingsAnalysis by default (top10 + industry)', async () => {
     const prisma = buildPrismaMock()
-    const svc = new ReportDataCollectorService(prisma as any)
+    const svc = createDataCollector(prisma)
 
     const result = await svc.collectStrategyResearchData('run-1', 1, {})
 
@@ -152,7 +158,7 @@ describe('ReportDataCollectorService.collectStrategyResearchData()', () => {
 
   it('should return null tradeLogs when portfolioId not provided', async () => {
     const prisma = buildPrismaMock()
-    const svc = new ReportDataCollectorService(prisma as any)
+    const svc = createDataCollector(prisma)
 
     const result = await svc.collectStrategyResearchData('run-1', 1, {})
 
@@ -161,7 +167,7 @@ describe('ReportDataCollectorService.collectStrategyResearchData()', () => {
 
   it('should return tradeLogs when portfolioId + tradeLog=true', async () => {
     const prisma = buildPrismaMock()
-    const svc = new ReportDataCollectorService(prisma as any)
+    const svc = createDataCollector(prisma)
 
     const result = await svc.collectStrategyResearchData('run-1', 1, {
       portfolioId: 'port-1',
@@ -177,7 +183,7 @@ describe('ReportDataCollectorService.collectStrategyResearchData()', () => {
 
   it('should skip tradeLogs when tradeLog=false even with portfolioId', async () => {
     const prisma = buildPrismaMock()
-    const svc = new ReportDataCollectorService(prisma as any)
+    const svc = createDataCollector(prisma)
 
     const result = await svc.collectStrategyResearchData('run-1', 1, {
       portfolioId: 'port-1',
@@ -190,7 +196,7 @@ describe('ReportDataCollectorService.collectStrategyResearchData()', () => {
 
   it('should include generatedAt in ISO-like format', async () => {
     const prisma = buildPrismaMock()
-    const svc = new ReportDataCollectorService(prisma as any)
+    const svc = createDataCollector(prisma)
 
     const result = await svc.collectStrategyResearchData('run-1', 1, {})
 
@@ -202,13 +208,21 @@ describe('ReportDataCollectorService.collectStrategyResearchData()', () => {
 
 describe('ReportService.createStrategyResearchReport()', () => {
   function buildService(prisma = buildPrismaMock()) {
-    const dataCollector = new ReportDataCollectorService(prisma as any)
+    const dataCollector = createDataCollector(prisma)
     const rendererMock = {
       isPdfRenderingEnabled: jest.fn(() => true),
       renderToHtmlFile: jest.fn(async () => ({ filePath: '/tmp/test.html', fileSize: 100 })),
       renderToPdf: jest.fn(async () => ({ filePath: '/tmp/test.pdf', fileSize: 200 })),
     }
-    return { svc: new ReportService(prisma as any, dataCollector, rendererMock as any), prisma, rendererMock }
+    return {
+      svc: new ReportService(
+        prisma as unknown as ReportServiceDependencies[0],
+        dataCollector,
+        rendererMock as unknown as ReportServiceDependencies[2],
+      ),
+      prisma,
+      rendererMock,
+    }
   }
 
   it('should throw BusinessException if backtestRun not owned', async () => {

@@ -32,7 +32,7 @@ function buildCacheServiceMock() {
 }
 
 function createService(prisma = buildPrismaMock(), cache = buildCacheServiceMock()): StockListService {
-  // @ts-ignore — 局部 mock，跳过完整 DI 类型检查
+  // @ts-expect-error — 局部 mock，跳过完整 DI 类型检查
   return new StockListService(prisma as PrismaService, cache as CacheService)
 }
 

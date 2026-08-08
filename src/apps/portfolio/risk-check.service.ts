@@ -268,6 +268,7 @@ export class RiskCheckService {
     rule: { id: string; ruleType: PortfolioRiskRuleType; threshold: number },
     userId: number,
   ) {
+    void userId
     // 查近 250 个交易日内的历史净值
     const latestDate = await this.portfolioService.getLatestTradeDate()
     if (!latestDate) return null

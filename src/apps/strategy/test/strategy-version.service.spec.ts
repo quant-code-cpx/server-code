@@ -60,13 +60,13 @@ function buildSchemaValidatorMock() {
   }
 }
 
-function createService(
-  prisma = buildPrismaMock(),
-  schemaValidator = buildSchemaValidatorMock(),
-): StrategyService {
+function createService(prisma = buildPrismaMock(), schemaValidator = buildSchemaValidatorMock()): StrategyService {
   const backtestRunService = { createRun: jest.fn() }
-  // @ts-ignore 局部 mock，绕过 NestJS DI
-  return new StrategyService(prisma as any, backtestRunService as any, schemaValidator as any)
+  return new StrategyService(
+    prisma as unknown as ConstructorParameters<typeof StrategyService>[0],
+    backtestRunService as unknown as ConstructorParameters<typeof StrategyService>[1],
+    schemaValidator as unknown as ConstructorParameters<typeof StrategyService>[2],
+  )
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -135,8 +135,20 @@ describe('StrategyService — 版本管理 (OPT-2.4)', () => {
       const prisma = buildPrismaMock()
       prisma.strategy.findFirst.mockResolvedValue(buildStrategy({ version: 3 }))
       prisma.strategyVersion.findMany.mockResolvedValue([
-        { version: 1, strategyConfig: { topN: 10 }, backtestDefaults: null, changelog: null, createdAt: new Date('2025-01-01') },
-        { version: 2, strategyConfig: { topN: 15 }, backtestDefaults: null, changelog: null, createdAt: new Date('2025-03-01') },
+        {
+          version: 1,
+          strategyConfig: { topN: 10 },
+          backtestDefaults: null,
+          changelog: null,
+          createdAt: new Date('2025-01-01'),
+        },
+        {
+          version: 2,
+          strategyConfig: { topN: 15 },
+          backtestDefaults: null,
+          changelog: null,
+          createdAt: new Date('2025-03-01'),
+        },
       ])
       const svc = createService(prisma)
 
@@ -228,7 +240,7 @@ describe('StrategyService — 版本管理 (OPT-2.4)', () => {
         })
         .mockResolvedValueOnce({
           id: 'run-b',
-          totalReturn: 0.20,
+          totalReturn: 0.2,
           annualizedReturn: 0.16,
           sharpeRatio: 1.5,
           maxDrawdown: -0.06,
@@ -241,7 +253,7 @@ describe('StrategyService — 版本管理 (OPT-2.4)', () => {
       expect(result.metricsA?.runId).toBe('run-a')
       expect(result.metricsA?.sharpeRatio).toBe(1.2)
       expect(result.metricsB?.runId).toBe('run-b')
-      expect(result.metricsB?.totalReturn).toBe(0.20)
+      expect(result.metricsB?.totalReturn).toBe(0.2)
     })
   })
 })

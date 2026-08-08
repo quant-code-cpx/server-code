@@ -27,7 +27,7 @@ describe('HeatmapService', () => {
 
   beforeEach(() => {
     mockPrisma = buildPrismaMock()
-    service = new HeatmapService(mockPrisma as any)
+    service = new HeatmapService(mockPrisma as unknown as ConstructorParameters<typeof HeatmapService>[0])
   })
 
   // ── resolveTradeDate() ───────────────────────────────────────────────────

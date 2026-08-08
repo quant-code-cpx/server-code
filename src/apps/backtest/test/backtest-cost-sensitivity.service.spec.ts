@@ -23,7 +23,7 @@ function buildPrismaMock() {
 }
 
 function createService(mock = buildPrismaMock()) {
-  // @ts-ignore 局部 mock
+  // @ts-expect-error 局部 mock
   return { svc: new BacktestCostSensitivityService(mock), prisma: mock }
 }
 
@@ -55,7 +55,7 @@ function makeTrades(n: number, amount = 100000) {
       amount: String(amount),
       commission: String(Math.max(amount * 0.0003, 5)),
       stampDuty: String(i % 2 === 0 ? 0 : amount * 0.0005),
-      slippageCost: String(amount * 5 / 10000),
+      slippageCost: String((amount * 5) / 10000),
     }
   })
 }
@@ -142,7 +142,7 @@ describe('BacktestCostSensitivityService', () => {
       { runId: RUN_ID, commissionRates: [0, 0.0003, 0.001], slippageBpsList: [0] },
       USER_ID,
     )
-    const returns = result.points.map(p => p.totalReturn)
+    const returns = result.points.map((p) => p.totalReturn)
     // 费率越高，收益越低（或相等）
     expect(returns[0]).toBeGreaterThanOrEqual(returns[1])
     expect(returns[1]).toBeGreaterThanOrEqual(returns[2])
@@ -153,10 +153,7 @@ describe('BacktestCostSensitivityService', () => {
     prisma.backtestTrade.findMany.mockResolvedValue(makeTrades(5, 100000))
     prisma.backtestDailyNav.findMany.mockResolvedValue(makeNavRows(10))
 
-    const result = await svc.analyze(
-      { runId: RUN_ID, commissionRates: [0.0003], slippageBpsList: [5] },
-      USER_ID,
-    )
+    const result = await svc.analyze({ runId: RUN_ID, commissionRates: [0.0003], slippageBpsList: [5] }, USER_ID)
     const p = result.points[0]
     expect(p.costCapitalRatio).toBeCloseTo(p.totalCost / 1000000, 8)
   })

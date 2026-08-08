@@ -40,10 +40,14 @@ describe('Event-study Fresh V2', () => {
       ],
     })
 
-    await request.post('/event-study/event-types/list').send({}).expect(201).expect(({ body }) => {
-      expect(Array.isArray(body.data)).toBe(true)
-      expect(body.data.length).toBeGreaterThan(0)
-    })
+    await request
+      .post('/event-study/event-types/list')
+      .send({})
+      .expect(201)
+      .expect(({ body }) => {
+        expect(Array.isArray(body.data)).toBe(true)
+        expect(body.data.length).toBeGreaterThan(0)
+      })
 
     await app.close()
   })

@@ -16,7 +16,7 @@ describe('StrategySchemaValidatorService', () => {
 
   beforeEach(() => {
     mockRegistry = { validateStrategyConfig: jest.fn() }
-    // @ts-ignore - 只注入单方法的局部 mock，DI 跳过
+    // @ts-expect-error - 只注入单方法的局部 mock，DI 跳过
     service = new StrategySchemaValidatorService(mockRegistry)
   })
 
@@ -41,7 +41,7 @@ describe('StrategySchemaValidatorService', () => {
 
     it('返回的是拷贝，对结果的修改不影响内部 map', () => {
       const schemas = service.getAllSchemas()
-      // @ts-ignore 故意写入非法 key 验证隔离性
+      // @ts-expect-error 故意写入非法 key 验证隔离性
       schemas['SHOULD_NOT_EXIST'] = { type: 'object', properties: {} }
       const schemas2 = service.getAllSchemas()
       expect(Object.keys(schemas2)).toHaveLength(5)

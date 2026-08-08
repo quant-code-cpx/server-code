@@ -3,7 +3,7 @@ import { Test } from '@nestjs/testing'
 import { CalendarController } from 'src/apps/calendar/calendar.controller'
 import { CalendarService } from 'src/apps/calendar/calendar.service'
 import { JwtAuthGuard } from 'src/lifecycle/guard/jwt-auth.guard'
-import { createTestApp } from 'test/helpers/create-test-app'
+import { LoggerService } from 'src/shared/logger/logger.service'
 
 describe('Calendar Fresh V2', () => {
   const mockCalendarService = {
@@ -28,19 +28,18 @@ describe('Calendar Fresh V2', () => {
 
     const app = moduleRef.createNestApplication()
     app.useGlobalPipes(new (await import('@nestjs/common')).ValidationPipe({ whitelist: true, transform: true }))
-    app.useGlobalInterceptors(new (await import('src/lifecycle/interceptors/transform.interceptor')).TransformInterceptor())
+    app.useGlobalInterceptors(
+      new (await import('src/lifecycle/interceptors/transform.interceptor')).TransformInterceptor(),
+    )
     app.useGlobalFilters(
-      new (await import('src/lifecycle/filters/global.exception')).GlobalExceptionsFilter(
-        true,
-        {
-          log: jest.fn(),
-          warn: jest.fn(),
-          error: jest.fn(),
-          debug: jest.fn(),
-          verbose: jest.fn(),
-          devLog: jest.fn(),
-        } as any,
-      ),
+      new (await import('src/lifecycle/filters/global.exception')).GlobalExceptionsFilter(true, {
+        log: jest.fn(),
+        warn: jest.fn(),
+        error: jest.fn(),
+        debug: jest.fn(),
+        verbose: jest.fn(),
+        devLog: jest.fn(),
+      } as unknown as LoggerService),
     )
     await app.init()
     return {

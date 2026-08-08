@@ -93,7 +93,10 @@ describe('BacktestingProcessor', () => {
     expect(engineService.runBacktest).toHaveBeenCalled()
     expect(reportService.saveReport).toHaveBeenCalledWith('run-1', expect.anything())
     expect(eventsGateway.emitBacktestProgress).toHaveBeenCalled()
-    expect(eventsGateway.emitBacktestCompleted).toHaveBeenCalledWith('job-1', expect.objectContaining({ runId: 'run-1' }))
+    expect(eventsGateway.emitBacktestCompleted).toHaveBeenCalledWith(
+      'job-1',
+      expect.objectContaining({ runId: 'run-1' }),
+    )
     expect(result).toMatchObject({ runId: 'run-1' })
     expect(result.completedAt).toBeDefined()
   })
@@ -130,7 +133,10 @@ describe('BacktestingProcessor', () => {
     const result = await processor.process(job)
 
     expect(walkForwardService.runWalkForward).toHaveBeenCalledWith('wf-1', expect.any(Function))
-    expect(eventsGateway.emitBacktestCompleted).toHaveBeenCalledWith('job-1', expect.objectContaining({ runId: 'wf-1' }))
+    expect(eventsGateway.emitBacktestCompleted).toHaveBeenCalledWith(
+      'job-1',
+      expect.objectContaining({ runId: 'wf-1' }),
+    )
     expect(result.runId).toBe('wf-1')
   })
 
@@ -153,7 +159,10 @@ describe('BacktestingProcessor', () => {
     const result = await processor.process(job)
 
     expect(comparisonService.runComparison).toHaveBeenCalledWith('grp-1', expect.any(Function))
-    expect(eventsGateway.emitBacktestCompleted).toHaveBeenCalledWith('job-1', expect.objectContaining({ runId: 'grp-1' }))
+    expect(eventsGateway.emitBacktestCompleted).toHaveBeenCalledWith(
+      'job-1',
+      expect.objectContaining({ runId: 'grp-1' }),
+    )
     expect(result.runId).toBe('grp-1')
   })
 
@@ -186,7 +195,9 @@ describe('BacktestingProcessor', () => {
 
     expect(eventsGateway.emitBacktestFailed).toHaveBeenCalledWith('job-1', 'job failed reason')
     expect(prisma.backtestRun.update).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ status: 'FAILED', failedReason: 'job failed reason' }) }),
+      expect.objectContaining({
+        data: expect.objectContaining({ status: 'FAILED', failedReason: 'job failed reason' }),
+      }),
     )
   })
 
@@ -275,4 +286,3 @@ describe('BacktestingProcessor', () => {
     expect(eventsGateway.emitBacktestProgress).toHaveBeenCalledWith('job-1', 5, 'loading-data')
   })
 })
-

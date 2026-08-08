@@ -1,4 +1,10 @@
 import { NotFoundException } from '@nestjs/common'
+import type { Queue } from 'bullmq'
+import type { PrismaService } from 'src/shared/prisma.service'
+import type { BacktestDataService } from '../services/backtest-data.service'
+import type { BacktestEngineService } from '../services/backtest-engine.service'
+import type { BacktestMetricsService } from '../services/backtest-metrics.service'
+import type { BacktestReportService } from '../services/backtest-report.service'
 import { BacktestWalkForwardService } from '../services/backtest-walk-forward.service'
 
 function buildPrismaMock() {
@@ -23,12 +29,12 @@ function buildQueueMock() {
 
 function createService(prisma = buildPrismaMock(), queue = buildQueueMock()) {
   return new BacktestWalkForwardService(
-    prisma as any,
-    {} as any,
-    {} as any,
-    {} as any,
-    {} as any,
-    queue as any,
+    prisma as unknown as PrismaService,
+    {} as unknown as BacktestEngineService,
+    {} as unknown as BacktestMetricsService,
+    {} as unknown as BacktestReportService,
+    {} as unknown as BacktestDataService,
+    queue as unknown as Queue,
   )
 }
 

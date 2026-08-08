@@ -37,11 +37,21 @@ function buildMockApi() {
     getFundNavByTsCode: jest.fn(async () => []),
     getFundDailyByTradeDate: jest.fn(async () => []),
     getFundPortfolioByTsCode: jest.fn(async () => []),
-    getFundShareByTsCode: jest.fn(async (_tsCode?: string, _startDate?: string, _endDate?: string) => []),
+    getFundShareByTsCode: jest.fn(async (tsCode?: string, startDate?: string, endDate?: string) => {
+      void tsCode
+      void startDate
+      void endDate
+      return []
+    }),
     getFundShareByMarketAndDateRange: jest.fn(async (market: 'SH' | 'SZ', startDate: string) => [
       { ts_code: market === 'SH' ? '510300.SH' : '159915.SZ', trade_date: startDate, fd_share: 1000 },
     ]),
-    getFundAdjByTsCode: jest.fn(async (_tsCode?: string, _startDate?: string, _endDate?: string) => []),
+    getFundAdjByTsCode: jest.fn(async (tsCode?: string, startDate?: string, endDate?: string) => {
+      void tsCode
+      void startDate
+      void endDate
+      return []
+    }),
     getFundAdjByTradeDate: jest.fn(async (tradeDate: string) => [
       { ts_code: '510300.SH', trade_date: tradeDate, adj_factor: 1.2345 },
       { ts_code: '159915.SZ', trade_date: tradeDate, adj_factor: 0.9876 },

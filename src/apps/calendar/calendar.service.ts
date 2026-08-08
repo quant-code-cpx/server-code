@@ -47,7 +47,6 @@ export class CalendarService {
 
     // Fill isInWatchlist
     if (userId != null) {
-      const tscodes = [...new Set(events.map((e) => e.tsCode))]
       const watchlists = await this.prisma.watchlist.findMany({
         where: { userId },
         select: { stocks: { select: { tsCode: true } } },

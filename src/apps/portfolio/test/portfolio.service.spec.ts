@@ -70,7 +70,11 @@ function buildCacheMock() {
 
 function createService(prismaMock = buildPrismaMock(), cacheMock = buildCacheMock()) {
   const tradeLogMock = { log: jest.fn(async () => {}) }
-  return new PortfolioService(prismaMock as any, cacheMock as any, tradeLogMock as any)
+  return new PortfolioService(
+    prismaMock as unknown as ConstructorParameters<typeof PortfolioService>[0],
+    cacheMock as unknown as ConstructorParameters<typeof PortfolioService>[1],
+    tradeLogMock as unknown as ConstructorParameters<typeof PortfolioService>[2],
+  )
 }
 
 function buildPortfolio(overrides: Record<string, unknown> = {}) {
@@ -368,8 +372,8 @@ describe('PortfolioService', () => {
       const result = await svc.getPnlToday('portfolio-001', 10)
 
       // 手算：A: (1100/1.1)*0.1 = 100, B: (1800/0.9)*(-0.1) = -200
-      const pnlA = (11 * 100 / 1.1) * 0.1
-      const pnlB = (9 * 200 / 0.9) * (-0.1)
+      const pnlA = ((11 * 100) / 1.1) * 0.1
+      const pnlB = ((9 * 200) / 0.9) * -0.1
       expect(result.todayPnl).toBeCloseTo(pnlA + pnlB, 5)
       expect(result.byHolding).toHaveLength(2)
     })
@@ -457,7 +461,13 @@ describe('PortfolioService', () => {
       prisma.tradeCal.findFirst.mockResolvedValue({ calDate: new Date() })
       prisma.portfolioHolding.findMany.mockResolvedValue([
         buildHolding({ tsCode: '000001.SZ', quantity: 100, avgCost: new Decimal('10.00') }),
-        buildHolding({ id: 'h2', tsCode: '000002.SZ', quantity: 200, avgCost: new Decimal('20.00'), stockName: '万科A' }),
+        buildHolding({
+          id: 'h2',
+          tsCode: '000002.SZ',
+          quantity: 200,
+          avgCost: new Decimal('20.00'),
+          stockName: '万科A',
+        }),
       ])
       prisma.dailyBasic.findMany.mockResolvedValue([
         { tsCode: '000001.SZ', close: 12, totalMv: null },
@@ -486,12 +496,16 @@ describe('PortfolioService', () => {
       prisma.tradeCal.findFirst.mockResolvedValue({ calDate: new Date() })
       prisma.portfolioHolding.findMany.mockResolvedValue([
         buildHolding({ tsCode: '000001.SZ', quantity: 100, avgCost: new Decimal('10.00') }),
-        buildHolding({ id: 'h2', tsCode: '000002.SZ', quantity: 200, avgCost: new Decimal('5.00'), stockName: '停牌股' }),
+        buildHolding({
+          id: 'h2',
+          tsCode: '000002.SZ',
+          quantity: 200,
+          avgCost: new Decimal('5.00'),
+          stockName: '停牌股',
+        }),
       ])
       // 只有 000001 有价格，000002 停牌无价格
-      prisma.dailyBasic.findMany.mockResolvedValue([
-        { tsCode: '000001.SZ', close: 12, totalMv: null },
-      ])
+      prisma.dailyBasic.findMany.mockResolvedValue([{ tsCode: '000001.SZ', close: 12, totalMv: null }])
       prisma.stockBasic.findMany.mockResolvedValue([
         { tsCode: '000001.SZ', industry: '银行' },
         { tsCode: '000002.SZ', industry: '停牌行业' },

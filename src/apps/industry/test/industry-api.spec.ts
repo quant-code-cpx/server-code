@@ -122,10 +122,7 @@ describe('Industry API 测试', () => {
       }
       mockDictService.getDictMapping.mockResolvedValueOnce(filteredData)
 
-      const res = await req
-        .post('/industry/dict-mapping')
-        .send({ includeUnmatched: false })
-        .expect(201)
+      const res = await req.post('/industry/dict-mapping').send({ includeUnmatched: false }).expect(201)
 
       expect(res.body.data.items).toHaveLength(1)
       expect(res.body.data.items[0].matchType).toBe('exact')
@@ -168,16 +165,11 @@ describe('Industry API 测试', () => {
 
     it('IN-ERR-004: includeUnmatched 任意值经 @Type(Boolean) 均被接受（DTO 设计特征）', async () => {
       // @Type(() => Boolean) 将任意值转为 boolean，@IsBoolean() 始终通过
-      const res = await req
-        .post('/industry/dict-mapping')
-        .send({ includeUnmatched: 'truthy_string' })
-        .expect(201)
+      const res = await req.post('/industry/dict-mapping').send({ includeUnmatched: 'truthy_string' }).expect(201)
 
       expect(res.body.code).toBe(SUCCESS_CODE)
       // 验证 transform 后为 boolean true
-      expect(mockDictService.getDictMapping).toHaveBeenCalledWith(
-        expect.objectContaining({ includeUnmatched: true }),
-      )
+      expect(mockDictService.getDictMapping).toHaveBeenCalledWith(expect.objectContaining({ includeUnmatched: true }))
     })
 
     it('IN-EDGE-001: service 抛异常 → 500', async () => {
@@ -192,7 +184,15 @@ describe('Industry API 测试', () => {
         target: 'dc_industry',
         version: null,
         tradeDate: null,
-        coverage: { total: 0, matched: 0, unmatched: 0, matchRate: 0, listedStockCount: 0, listedStockMappedCount: 0, listedStockMappedRate: 0 },
+        coverage: {
+          total: 0,
+          matched: 0,
+          unmatched: 0,
+          matchRate: 0,
+          listedStockCount: 0,
+          listedStockMappedCount: 0,
+          listedStockMappedRate: 0,
+        },
         items: [],
       })
 

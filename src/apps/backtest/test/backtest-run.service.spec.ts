@@ -9,8 +9,12 @@
  * - validateRun: 调用 dataReadinessService.checkReadiness 并返回结果
  */
 import { NotFoundException } from '@nestjs/common'
+import type { Queue } from 'bullmq'
 import { BusinessException } from 'src/common/exceptions/business.exception'
+import type { PrismaService } from 'src/shared/prisma.service'
+import type { BacktestDataReadinessService } from '../services/backtest-data-readiness.service'
 import { BacktestRunService } from '../services/backtest-run.service'
+import type { BacktestStrategyRegistryService } from '../services/backtest-strategy-registry.service'
 
 // ── Mock 工厂 ─────────────────────────────────────────────────────────────────
 
@@ -74,9 +78,7 @@ function buildPrismaMock() {
     },
     backtestRebalanceLog: { findMany: jest.fn(async () => []) },
     stockBasic: { findMany: jest.fn(async () => []) },
-    $transaction: jest.fn(async (fn: unknown) =>
-      typeof fn === 'function' ? fn(mockPrisma) : fn,
-    ),
+    $transaction: jest.fn(async (fn: unknown) => (typeof fn === 'function' ? fn(mockPrisma) : fn)),
   }
   return mockPrisma
 }
@@ -114,8 +116,16 @@ function createService(
   strategyRegistry = buildStrategyRegistryMock(),
   queue = buildQueueMock(),
 ): BacktestRunService {
-  // @ts-ignore 局部 mock，绕过 @InjectQueue 依赖注入
-  return new BacktestRunService(prisma as any, dataReadiness as any, strategyRegistry as any, queue as any)
+  return new BacktestRunService(
+    prisma as unknown as PrismaService,
+    dataReadiness as unknown as BacktestDataReadinessService,
+    strategyRegistry as unknown as BacktestStrategyRegistryService,
+    queue as unknown as Queue,
+  )
+}
+
+type BacktestRunTestApi = {
+  assertValidDateRange(startDate: string, endDate: string): { startDate: Date; endDate: Date }
 }
 
 const baseCreateDto = {
@@ -183,17 +193,17 @@ describe('BacktestRunService', () => {
     it('开始日期 >= 结束日期 → 抛 BusinessException', async () => {
       const svc = createService()
 
-      await expect(
-        svc.createRun({ ...baseCreateDto, startDate: '20231231', endDate: '20230101' }, 1),
-      ).rejects.toThrow(BusinessException)
+      await expect(svc.createRun({ ...baseCreateDto, startDate: '20231231', endDate: '20230101' }, 1)).rejects.toThrow(
+        BusinessException,
+      )
     })
 
     it('开始日期 = 结束日期 → 抛 BusinessException', async () => {
       const svc = createService()
 
-      await expect(
-        svc.createRun({ ...baseCreateDto, startDate: '20230101', endDate: '20230101' }, 1),
-      ).rejects.toThrow(BusinessException)
+      await expect(svc.createRun({ ...baseCreateDto, startDate: '20230101', endDate: '20230101' }, 1)).rejects.toThrow(
+        BusinessException,
+      )
     })
 
     it('prisma.backtestRun.update 写入 jobId', async () => {
@@ -214,30 +224,32 @@ describe('BacktestRunService', () => {
 
   describe('assertValidDateRange() [private]', () => {
     let svc: BacktestRunService
+    let runTestApi: BacktestRunTestApi
 
     beforeEach(() => {
       svc = createService()
+      runTestApi = svc as unknown as BacktestRunTestApi
     })
 
     it('合法区间 → 返回 { startDate, endDate } Date 对象', () => {
-      const result = (svc as any).assertValidDateRange('20230101', '20231231')
+      const result = runTestApi.assertValidDateRange('20230101', '20231231')
       expect(result.startDate).toBeInstanceOf(Date)
       expect(result.endDate).toBeInstanceOf(Date)
     })
 
     it('YYYYMMDD 格式正确解析（startDate 为 2023-01-01）', () => {
-      const { startDate } = (svc as any).assertValidDateRange('20230101', '20231231')
+      const { startDate } = runTestApi.assertValidDateRange('20230101', '20231231')
       expect(startDate.getFullYear()).toBe(2023)
       expect(startDate.getMonth()).toBe(0) // 一月
       expect(startDate.getDate()).toBe(1)
     })
 
     it('开始 > 结束 → 抛 BusinessException', () => {
-      expect(() => (svc as any).assertValidDateRange('20231231', '20230101')).toThrow(BusinessException)
+      expect(() => runTestApi.assertValidDateRange('20231231', '20230101')).toThrow(BusinessException)
     })
 
     it('开始 = 结束 → 抛 BusinessException', () => {
-      expect(() => (svc as any).assertValidDateRange('20230101', '20230101')).toThrow(BusinessException)
+      expect(() => runTestApi.assertValidDateRange('20230101', '20230101')).toThrow(BusinessException)
     })
   })
 
@@ -281,7 +293,7 @@ describe('BacktestRunService', () => {
       prisma.backtestRun.findMany.mockResolvedValue([])
       const svc = createService(prisma)
 
-      await svc.listRuns({ status: 'COMPLETED' as any, page: 1, pageSize: 20 }, 1)
+      await svc.listRuns({ status: 'COMPLETED' as const, page: 1, pageSize: 20 }, 1)
 
       const countCall = prisma.backtestRun.count.mock.calls[0][0]
       expect(countCall.where).toHaveProperty('status', 'COMPLETED')
@@ -486,9 +498,9 @@ describe('BacktestRunService', () => {
       const dataReadiness = buildDataReadinessMock()
       const svc = createService(buildPrismaMock(), dataReadiness)
 
-      await expect(
-        svc.validateRun({ ...validateDto, startDate: '20231231', endDate: '20230101' }),
-      ).rejects.toThrow(BusinessException)
+      await expect(svc.validateRun({ ...validateDto, startDate: '20231231', endDate: '20230101' })).rejects.toThrow(
+        BusinessException,
+      )
 
       expect(dataReadiness.checkReadiness).not.toHaveBeenCalled()
     })

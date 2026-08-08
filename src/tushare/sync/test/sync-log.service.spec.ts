@@ -1,4 +1,5 @@
 import { TushareSyncTaskName } from 'src/constant/tushare.constant'
+import { PrismaService } from 'src/shared/prisma.service'
 import { SyncLogService } from '../sync-log.service'
 
 function buildPrismaMock() {
@@ -25,7 +26,7 @@ describe('SyncLogService', () => {
           consecutive_failures: 2,
         },
       ])
-      const service = new SyncLogService(prisma as any)
+      const service = new SyncLogService(prisma as unknown as PrismaService)
 
       const result = await service.summarizeLogs()
 

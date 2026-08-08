@@ -60,7 +60,7 @@ function computeMetrics(navs: number[]): {
 
   // Sharpe
   const rfDaily = RISK_FREE_RATE / TRADING_DAYS_PER_YEAR
-  const excesses = dailyRets.map(r => r - rfDaily)
+  const excesses = dailyRets.map((r) => r - rfDaily)
   const mean = excesses.reduce((a, b) => a + b, 0) / excesses.length
   const variance = excesses.reduce((a, b) => a + (b - mean) ** 2, 0) / excesses.length
   const annualizedStd = Math.sqrt(variance) * Math.sqrt(TRADING_DAYS_PER_YEAR)
@@ -139,8 +139,8 @@ export class BacktestCostSensitivityService {
     for (const n of navRows) {
       navMap.set(toDateStr(n.tradeDate), Number(n.nav))
     }
-    const tradeDates = navRows.map(n => toDateStr(n.tradeDate))
-    const originalNavs = tradeDates.map(ds => navMap.get(ds) ?? 0)
+    const tradeDates = navRows.map((n) => toDateStr(n.tradeDate))
+    const originalNavs = tradeDates.map((ds) => navMap.get(ds) ?? 0)
 
     // ── Step 5: Build per-day original cost for each trade ────────────────────
     // Map: YYYYMMDD → original total cost
@@ -196,9 +196,10 @@ export class BacktestCostSensitivityService {
       runId,
       originalCommissionRate: origCommissionRate,
       originalSlippageBps: origSlippageBps,
-      baselineTotalReturn: run.totalReturn ?? originalNavs.length >= 2
-        ? (originalNavs[originalNavs.length - 1] - originalNavs[0]) / originalNavs[0]
-        : 0,
+      baselineTotalReturn:
+        (run.totalReturn ?? originalNavs.length >= 2)
+          ? (originalNavs[originalNavs.length - 1] - originalNavs[0]) / originalNavs[0]
+          : 0,
       points,
     }
   }

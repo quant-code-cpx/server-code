@@ -62,7 +62,11 @@ function buildService(
   cacheMock: ReturnType<typeof buildCacheServiceMock>,
 ) {
   const tradeLogMock = { log: jest.fn(async () => {}) }
-  return new BacktestPortfolioBridgeService(prismaMock as any, cacheMock as any, tradeLogMock as any)
+  return new BacktestPortfolioBridgeService(
+    prismaMock as unknown as ConstructorParameters<typeof BacktestPortfolioBridgeService>[0],
+    cacheMock as unknown as ConstructorParameters<typeof BacktestPortfolioBridgeService>[1],
+    tradeLogMock as unknown as ConstructorParameters<typeof BacktestPortfolioBridgeService>[2],
+  )
 }
 
 // ── 共用夹具 ──────────────────────────────────────────────────────────────────

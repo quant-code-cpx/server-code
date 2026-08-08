@@ -4,12 +4,11 @@
  * 覆盖：列表/搜索/详情/图表/资金流/财务/股东/融资/分析/选股/策略/字典
  * 方法：Test.createTestingModule + mock services + supertest
  */
-import { CanActivate, ExecutionContext, INestApplication, ValidationPipe } from '@nestjs/common'
+import { ExecutionContext, INestApplication, UnauthorizedException, ValidationPipe } from '@nestjs/common'
 import { Test, TestingModule } from '@nestjs/testing'
 import request from 'supertest'
 import { TransformInterceptor } from 'src/lifecycle/interceptors/transform.interceptor'
 import { GlobalExceptionsFilter } from 'src/lifecycle/filters/global.exception'
-import { JwtAuthGuard } from 'src/lifecycle/guard/jwt-auth.guard'
 import { TokenPayload } from 'src/shared/token.interface'
 import { UserRole } from '@prisma/client'
 import { LoggerService } from 'src/shared/logger/logger.service'
@@ -22,7 +21,14 @@ function buildTestUser(overrides: Partial<TokenPayload> = {}): TokenPayload {
 }
 
 function createMockLoggerService(): LoggerService {
-  return { log: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn(), verbose: jest.fn(), devLog: jest.fn() } as unknown as LoggerService
+  return {
+    log: jest.fn(),
+    warn: jest.fn(),
+    error: jest.fn(),
+    debug: jest.fn(),
+    verbose: jest.fn(),
+    devLog: jest.fn(),
+  } as unknown as LoggerService
 }
 
 describe('Stock API 测试', () => {
@@ -332,18 +338,24 @@ describe('Stock API 测试', () => {
     })
 
     it('ST-BIZ-027: 创建策略', async () => {
-      const res = await req.post('/stock/screener/strategies').send({
-        name: '低估值选股',
-        filters: { minPeTtm: 5, maxPeTtm: 15 },
-      }).expect(201)
+      const res = await req
+        .post('/stock/screener/strategies')
+        .send({
+          name: '低估值选股',
+          filters: { minPeTtm: 5, maxPeTtm: 15 },
+        })
+        .expect(201)
       expect(res.body.data).toHaveProperty('id')
     })
 
     it('ST-BIZ-028: 更新策略', async () => {
-      const res = await req.post('/stock/screener/strategies/update').send({
-        id: 1,
-        name: '更新后策略',
-      }).expect(201)
+      const res = await req
+        .post('/stock/screener/strategies/update')
+        .send({
+          id: 1,
+          name: '更新后策略',
+        })
+        .expect(201)
       expect(res.body.data).toHaveProperty('id')
     })
 
@@ -391,7 +403,6 @@ describe('Stock API 测试', () => {
       unauthApp.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }))
       unauthApp.useGlobalGuards({
         canActivate(): boolean {
-          const { UnauthorizedException } = require('@nestjs/common')
           throw new UnauthorizedException()
         },
       })
@@ -399,9 +410,7 @@ describe('Stock API 测试', () => {
       unauthApp.useGlobalFilters(new GlobalExceptionsFilter(true, createMockLoggerService()))
       await unauthApp.init()
 
-      await request(unauthApp.getHttpServer())
-        .post('/stock/screener/strategies/list')
-        .expect(401)
+      await request(unauthApp.getHttpServer()).post('/stock/screener/strategies/list').expect(401)
       await unauthApp.close()
     })
   })

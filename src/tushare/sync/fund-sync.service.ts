@@ -12,7 +12,7 @@ import {
   mapFundShareRecord,
 } from '../tushare-sync.mapper'
 import { SyncHelperService } from './sync-helper.service'
-import { TushareSyncMode, TushareSyncPlan, TushareSyncPlanContext } from './sync-plan.types'
+import { TushareSyncPlan, TushareSyncPlanContext } from './sync-plan.types'
 import { ValidationCollector } from './quality/validation-collector'
 
 const TUSHARE_MAX_ROWS_PER_REQUEST = 2000

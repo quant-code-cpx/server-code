@@ -18,14 +18,21 @@ import { UserRole } from '@prisma/client'
 import { LoggerService } from 'src/shared/logger/logger.service'
 import { ExportController } from '../export.controller'
 import { ExportService } from '../export.service'
-import { ForbiddenException, NotFoundException } from '@nestjs/common'
+import { ForbiddenException, NotFoundException, UnauthorizedException } from '@nestjs/common'
 
 function buildTestUser(overrides: Partial<TokenPayload> = {}): TokenPayload {
   return { id: 1, account: 'test', nickname: 'Test', role: UserRole.USER, jti: 'test-jti', ...overrides }
 }
 
 function createMockLoggerService(): LoggerService {
-  return { log: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn(), verbose: jest.fn(), devLog: jest.fn() } as unknown as LoggerService
+  return {
+    log: jest.fn(),
+    warn: jest.fn(),
+    error: jest.fn(),
+    debug: jest.fn(),
+    verbose: jest.fn(),
+    devLog: jest.fn(),
+  } as unknown as LoggerService
 }
 
 /** 解析 text/csv 响应为 JSON (ResponseModel 格式) */
@@ -55,9 +62,7 @@ describe('Export API 测试', () => {
 
     const moduleRef: TestingModule = await Test.createTestingModule({
       controllers: [ExportController],
-      providers: [
-        { provide: ExportService, useValue: mockExportService },
-      ],
+      providers: [{ provide: ExportService, useValue: mockExportService }],
     })
       .overrideGuard(JwtAuthGuard)
       .useValue({
@@ -213,7 +218,10 @@ describe('Export API 测试', () => {
     })
 
     it('EX-ERR-011: columns 含非法列名应 400', async () => {
-      await req.post('/export/stock-list').send({ columns: ['tsCode', 'hacker_col'] }).expect(400)
+      await req
+        .post('/export/stock-list')
+        .send({ columns: ['tsCode', 'hacker_col'] })
+        .expect(400)
     })
 
     it('EX-ERR-012: columns 超过 25 列应 400', async () => {
@@ -309,14 +317,12 @@ describe('Export API 测试', () => {
     it('EX-SEC-003: 无 Token 访问 backtest-trades 应 401', async () => {
       const unauthModuleRef = await Test.createTestingModule({
         controllers: [ExportController],
-        providers: [
-          { provide: ExportService, useValue: mockExportService },
-        ],
+        providers: [{ provide: ExportService, useValue: mockExportService }],
       })
         .overrideGuard(JwtAuthGuard)
         .useValue({
           canActivate(): boolean {
-            throw new (require('@nestjs/common').UnauthorizedException)()
+            throw new UnauthorizedException()
           },
         })
         .compile()
@@ -327,24 +333,19 @@ describe('Export API 测试', () => {
       unauthApp.useGlobalFilters(new GlobalExceptionsFilter(true, createMockLoggerService()))
       await unauthApp.init()
 
-      await request(unauthApp.getHttpServer())
-        .post('/export/backtest-trades')
-        .send({ runId: 'some-run' })
-        .expect(401)
+      await request(unauthApp.getHttpServer()).post('/export/backtest-trades').send({ runId: 'some-run' }).expect(401)
       await unauthApp.close()
     })
 
     it('EX-SEC-004: 无 Token 访问 stock-list 应 401', async () => {
       const unauthModuleRef = await Test.createTestingModule({
         controllers: [ExportController],
-        providers: [
-          { provide: ExportService, useValue: mockExportService },
-        ],
+        providers: [{ provide: ExportService, useValue: mockExportService }],
       })
         .overrideGuard(JwtAuthGuard)
         .useValue({
           canActivate(): boolean {
-            throw new (require('@nestjs/common').UnauthorizedException)()
+            throw new UnauthorizedException()
           },
         })
         .compile()
@@ -355,10 +356,7 @@ describe('Export API 测试', () => {
       unauthApp.useGlobalFilters(new GlobalExceptionsFilter(true, createMockLoggerService()))
       await unauthApp.init()
 
-      await request(unauthApp.getHttpServer())
-        .post('/export/stock-list')
-        .send({})
-        .expect(401)
+      await request(unauthApp.getHttpServer()).post('/export/stock-list').send({}).expect(401)
       await unauthApp.close()
     })
   })

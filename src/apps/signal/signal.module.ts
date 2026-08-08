@@ -8,11 +8,7 @@ import { SignalGenerationService } from './signal-generation.service'
 import { DriftDetectionService } from './drift-detection.service'
 
 @Module({
-  imports: [
-    WebsocketModule,
-    forwardRef(() => BacktestModule),
-    forwardRef(() => PortfolioModule),
-  ],
+  imports: [WebsocketModule, forwardRef(() => BacktestModule), forwardRef(() => PortfolioModule)],
   controllers: [SignalController],
   providers: [SignalService, SignalGenerationService, DriftDetectionService],
   exports: [SignalGenerationService, DriftDetectionService, SignalService],

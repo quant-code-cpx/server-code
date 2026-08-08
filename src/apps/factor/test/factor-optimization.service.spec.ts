@@ -57,7 +57,9 @@ function buildPrismaMock(n = 4, T = 60) {
 }
 
 function createService(prismaMock: ReturnType<typeof buildPrismaMock>['prisma']) {
-  return new FactorOptimizationService(prismaMock as any)
+  return new FactorOptimizationService(
+    prismaMock as unknown as ConstructorParameters<typeof FactorOptimizationService>[0],
+  )
 }
 
 async function runMode(mode: OptimizationMode, extraDto: Partial<FactorOptimizationDto> = {}) {
@@ -152,7 +154,7 @@ describe('FactorOptimizationService', () => {
       },
       strategy: { create: jest.fn() },
     }
-    const svc = createService(prisma as any)
+    const svc = createService(prisma as unknown as ReturnType<typeof buildPrismaMock>['prisma'])
     await expect(
       svc.optimize({ tsCodes, mode: OptimizationMode.MIN_VARIANCE } as FactorOptimizationDto, 1),
     ).rejects.toThrow('数据不足')

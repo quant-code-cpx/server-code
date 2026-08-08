@@ -6,10 +6,7 @@ import { CACHE_NAMESPACE } from 'src/constant/cache.constant'
 import { CacheService } from 'src/shared/cache.service'
 import { PrismaService } from 'src/shared/prisma.service'
 import { IndustryDictMappingQueryDto } from './dto/industry-dict-query.dto'
-import type {
-  IndustryDictMappingResponseDto,
-  IndustryDictMappingItemDto,
-} from './dto/industry-dict-response.dto'
+import type { IndustryDictMappingResponseDto, IndustryDictMappingItemDto } from './dto/industry-dict-response.dto'
 
 dayjs.extend(utc)
 dayjs.extend(timezone)
@@ -31,14 +28,18 @@ export class IndustryDictService {
 
     return this.rememberCache(cacheKey, DICT_CACHE_TTL, async () => {
       // Step 1: 申万 L1 行业
-      const swRows = await this.prisma.$queryRawUnsafe<{ index_code: string; industry_name: string; src: string | null }[]>(
+      const swRows = await this.prisma.$queryRawUnsafe<
+        { index_code: string; industry_name: string; src: string | null }[]
+      >(
         `SELECT index_code, industry_name, src
          FROM sw_industry_classification
          WHERE level = 'L1'`,
       )
 
       // Step 2: 最新交易日东财行业板块
-      const dcRows = await this.prisma.$queryRawUnsafe<{ ts_code: string; board_code: string; name: string; trade_date: Date }[]>(
+      const dcRows = await this.prisma.$queryRawUnsafe<
+        { ts_code: string; board_code: string; name: string; trade_date: Date }[]
+      >(
         `WITH latest_dc AS (
            SELECT MAX(trade_date) AS trade_date
            FROM sector_capital_flows
@@ -129,9 +130,7 @@ export class IndustryDictService {
           listedStockCount,
           listedStockMappedCount,
           listedStockMappedRate:
-            listedStockCount > 0
-              ? Math.round((listedStockMappedCount / listedStockCount) * 10000) / 10000
-              : 0,
+            listedStockCount > 0 ? Math.round((listedStockMappedCount / listedStockCount) * 10000) / 10000 : 0,
         },
         items,
       }

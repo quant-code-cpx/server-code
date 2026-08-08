@@ -8,8 +8,7 @@
  */
 
 import { Test, TestingModule } from '@nestjs/testing'
-import { CanActivate, ExecutionContext, INestApplication, UnauthorizedException, ValidationPipe } from '@nestjs/common'
-import { Reflector } from '@nestjs/core'
+import { CanActivate, INestApplication, ValidationPipe } from '@nestjs/common'
 import request from 'supertest'
 import { UserStatus } from '@prisma/client'
 import * as bcrypt from 'bcrypt'
@@ -20,17 +19,9 @@ import { TokenService } from 'src/shared/token.service'
 import { LoggerService } from 'src/shared/logger/logger.service'
 import { TransformInterceptor } from 'src/lifecycle/interceptors/transform.interceptor'
 import { GlobalExceptionsFilter } from 'src/lifecycle/filters/global.exception'
-import {
-  PUBLIC_KEY,
-  LOGIN_MAX_FAIL,
-  LOGIN_FAIL_WINDOW,
-  LOGIN_LOCK_DURATION,
-  CAPTCHA_TTL,
-  REDIS_KEY,
-} from 'src/constant/auth.constant'
+import { LOGIN_MAX_FAIL, REDIS_KEY } from 'src/constant/auth.constant'
 import { BusinessException } from 'src/common/exceptions/business.exception'
 import { ErrorEnum } from 'src/constant/response-code.constant'
-import { buildTestUser } from 'test/helpers/create-test-app'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -123,8 +114,15 @@ function createMockRedis() {
 describe('AuthService — 登录核心流程', () => {
   let service: AuthService
   let mockRedis: ReturnType<typeof createMockRedis>
-  let mockPrisma: any
-  let mockTokenService: any
+  let mockPrisma: { user: { findUnique: jest.Mock; update: jest.Mock } }
+  let mockTokenService: {
+    generateTokens: jest.Mock
+    verifyRefreshToken: jest.Mock
+    consumeRefreshToken: jest.Mock
+    generateAccessToken: jest.Mock
+    blacklistAccessToken: jest.Mock
+    deleteRefreshToken: jest.Mock
+  }
 
   const TEST_USER = {
     id: 1,
@@ -396,8 +394,13 @@ describe('AuthService — 登录核心流程', () => {
 
 describe('AuthController — DTO校验 + Guard行为', () => {
   let app: INestApplication
-  let httpRequest: any
-  let mockAuthService: any
+  let httpRequest: ReturnType<typeof request>
+  let mockAuthService: {
+    generateCaptcha: jest.Mock
+    login: jest.Mock
+    refreshToken: jest.Mock
+    logout: jest.Mock
+  }
 
   beforeAll(async () => {
     mockAuthService = {
@@ -424,8 +427,6 @@ describe('AuthController — DTO校验 + Guard行为', () => {
     }).compile()
 
     app = module.createNestApplication()
-    const reflector = module.get<Reflector>(Reflector)
-
     // All auth endpoints are @Public, so guard always passes
     const permissiveGuard: CanActivate = {
       canActivate: () => true,
@@ -485,7 +486,7 @@ describe('AuthController — DTO校验 + Guard行为', () => {
   // ── Logout ──────────────────────────────────────────────────────────────
   describe('logout', () => {
     it('POST /auth/logout → 201', async () => {
-      const res = await httpRequest.post('/auth/logout').set('Authorization', 'Bearer some-token').expect(201)
+      await httpRequest.post('/auth/logout').set('Authorization', 'Bearer some-token').expect(201)
     })
   })
 })

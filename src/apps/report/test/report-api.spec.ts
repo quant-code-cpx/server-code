@@ -4,7 +4,7 @@
  * 覆盖：回测报告、个股研报、组合报告、策略研究报告、列表查询、详情、删除、定时任务
  * 方法：Test.createTestingModule + overrideGuard(JwtAuthGuard) + mock services + supertest
  */
-import { ExecutionContext, INestApplication, ValidationPipe } from '@nestjs/common'
+import { ExecutionContext, INestApplication, UnauthorizedException, ValidationPipe } from '@nestjs/common'
 import { Test, TestingModule } from '@nestjs/testing'
 import request from 'supertest'
 import { UserRole } from '@prisma/client'
@@ -38,12 +38,27 @@ function createMockLoggerService(): LoggerService {
 const user = buildTestUser()
 
 const mockReportService = {
-  createBacktestReport: jest.fn().mockResolvedValue({ id: 'rpt-1', type: 'BACKTEST', title: '回测报告', status: 'COMPLETED' }),
-  createStockReport: jest.fn().mockResolvedValue({ id: 'rpt-2', type: 'STOCK', title: '个股报告', status: 'COMPLETED' }),
-  createPortfolioReport: jest.fn().mockResolvedValue({ id: 'rpt-3', type: 'PORTFOLIO', title: '组合报告', status: 'COMPLETED' }),
-  createStrategyResearchReport: jest.fn().mockResolvedValue({ id: 'rpt-4', type: 'STRATEGY_RESEARCH', title: '策略研究报告', status: 'COMPLETED' }),
-  queryReports: jest.fn().mockResolvedValue({ items: [{ id: 'rpt-1', type: 'BACKTEST', title: '回测报告' }], total: 1, page: 1, pageSize: 20 }),
-  getReportDetail: jest.fn().mockResolvedValue({ id: 'rpt-1', type: 'BACKTEST', title: '回测报告', status: 'COMPLETED', data: {} }),
+  createBacktestReport: jest
+    .fn()
+    .mockResolvedValue({ id: 'rpt-1', type: 'BACKTEST', title: '回测报告', status: 'COMPLETED' }),
+  createStockReport: jest
+    .fn()
+    .mockResolvedValue({ id: 'rpt-2', type: 'STOCK', title: '个股报告', status: 'COMPLETED' }),
+  createPortfolioReport: jest
+    .fn()
+    .mockResolvedValue({ id: 'rpt-3', type: 'PORTFOLIO', title: '组合报告', status: 'COMPLETED' }),
+  createStrategyResearchReport: jest
+    .fn()
+    .mockResolvedValue({ id: 'rpt-4', type: 'STRATEGY_RESEARCH', title: '策略研究报告', status: 'COMPLETED' }),
+  queryReports: jest.fn().mockResolvedValue({
+    items: [{ id: 'rpt-1', type: 'BACKTEST', title: '回测报告' }],
+    total: 1,
+    page: 1,
+    pageSize: 20,
+  }),
+  getReportDetail: jest
+    .fn()
+    .mockResolvedValue({ id: 'rpt-1', type: 'BACKTEST', title: '回测报告', status: 'COMPLETED', data: {} }),
   deleteReport: jest.fn().mockResolvedValue({ deleted: true }),
 }
 
@@ -112,10 +127,7 @@ describe('Report API 测试', () => {
   })
 
   it('[BIZ] POST /report/strategy-research → 201, 生成策略研究报告', async () => {
-    const res = await req
-      .post('/report/strategy-research')
-      .send({ backtestRunId: 'run-1' })
-      .expect(201)
+    const res = await req.post('/report/strategy-research').send({ backtestRunId: 'run-1' }).expect(201)
     expect(res.body.code).toBe(0)
     expect(mockReportService.createStrategyResearchReport).toHaveBeenCalledWith(
       expect.objectContaining({ backtestRunId: 'run-1' }),
@@ -124,10 +136,7 @@ describe('Report API 测试', () => {
   })
 
   it('[BIZ] POST /report/backtest format=HTML → 201', async () => {
-    const res = await req
-      .post('/report/backtest')
-      .send({ runId: 'run-1', format: 'HTML' })
-      .expect(201)
+    const res = await req.post('/report/backtest').send({ runId: 'run-1', format: 'HTML' }).expect(201)
     expect(res.body.code).toBe(0)
     expect(mockReportService.createBacktestReport).toHaveBeenCalledWith(
       expect.objectContaining({ format: 'HTML' }),
@@ -136,10 +145,7 @@ describe('Report API 测试', () => {
   })
 
   it('[BIZ] POST /report/backtest format=PDF → 201', async () => {
-    const res = await req
-      .post('/report/backtest')
-      .send({ runId: 'run-1', format: 'PDF' })
-      .expect(201)
+    const res = await req.post('/report/backtest').send({ runId: 'run-1', format: 'PDF' }).expect(201)
     expect(res.body.code).toBe(0)
   })
 
@@ -154,10 +160,7 @@ describe('Report API 测试', () => {
   it('[BIZ] POST /report/list type=BACKTEST → 201, 按类型过滤', async () => {
     const res = await req.post('/report/list').send({ type: 'BACKTEST' }).expect(201)
     expect(res.body.code).toBe(0)
-    expect(mockReportService.queryReports).toHaveBeenCalledWith(
-      expect.objectContaining({ type: 'BACKTEST' }),
-      user.id,
-    )
+    expect(mockReportService.queryReports).toHaveBeenCalledWith(expect.objectContaining({ type: 'BACKTEST' }), user.id)
   })
 
   it('[BIZ] POST /report/detail → 201, 获取报告详情', async () => {
@@ -201,10 +204,7 @@ describe('Report API 测试', () => {
   })
 
   it('[ERR] POST /report/backtest format=DOCX（非法枚举）→ 400', async () => {
-    const res = await req
-      .post('/report/backtest')
-      .send({ runId: 'run-1', format: 'DOCX' })
-      .expect(400)
+    const res = await req.post('/report/backtest').send({ runId: 'run-1', format: 'DOCX' }).expect(400)
     expect(res.body.code).not.toBe(0)
   })
 
@@ -246,9 +246,7 @@ describe('Report API 测试', () => {
   })
 
   it('[ERR] POST /report/backtest 回测记录不存在 → service error', async () => {
-    mockReportService.createBacktestReport.mockRejectedValueOnce(
-      new Error('回测记录不存在或无权访问'),
-    )
+    mockReportService.createBacktestReport.mockRejectedValueOnce(new Error('回测记录不存在或无权访问'))
     const res = await req.post('/report/backtest').send({ runId: 'bad-run' }).expect(500)
     expect(res.body.code).not.toBe(0)
   })
@@ -260,9 +258,7 @@ describe('Report API 测试', () => {
   })
 
   it('[ERR] POST /report/portfolio 组合不存在 → service error', async () => {
-    mockReportService.createPortfolioReport.mockRejectedValueOnce(
-      new Error('组合不存在或无权访问'),
-    )
+    mockReportService.createPortfolioReport.mockRejectedValueOnce(new Error('组合不存在或无权访问'))
     const res = await req.post('/report/portfolio').send({ portfolioId: 'bad-port' }).expect(500)
     expect(res.body.code).not.toBe(0)
   })
@@ -321,10 +317,7 @@ describe('Report API 测试', () => {
   })
 
   it('[EDGE] POST /report/backtest 带 title → 201', async () => {
-    const res = await req
-      .post('/report/backtest')
-      .send({ runId: 'run-1', title: '自定义回测报告' })
-      .expect(201)
+    const res = await req.post('/report/backtest').send({ runId: 'run-1', title: '自定义回测报告' }).expect(201)
     expect(res.body.code).toBe(0)
     expect(mockReportService.createBacktestReport).toHaveBeenCalledWith(
       expect.objectContaining({ title: '自定义回测报告' }),
@@ -345,8 +338,7 @@ describe('Report API [SEC] 安全', () => {
     })
       .overrideGuard(JwtAuthGuard)
       .useValue({
-        canActivate: (_ctx: ExecutionContext) => {
-          const { UnauthorizedException } = require('@nestjs/common')
+        canActivate: () => {
           throw new UnauthorizedException('用户未登录')
         },
       })

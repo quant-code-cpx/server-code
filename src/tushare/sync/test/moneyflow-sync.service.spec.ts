@@ -32,7 +32,6 @@ const MOCK_CONFIG = {
 }
 
 function buildMockConfigService(): ConfigService {
-  // @ts-ignore
   return {
     get: jest.fn((token: string) => {
       if (token === TUSHARE_CONFIG_TOKEN) return MOCK_CONFIG
@@ -48,7 +47,11 @@ function buildMockHelper() {
     isTaskSyncedForTradeDate: jest.fn(async () => false),
     isTaskSyncedToday: jest.fn(async () => false),
     getLatestDateString: jest.fn(async () => null as string | null),
-    addDays: jest.fn((_date: string, _n: number) => '20240102'),
+    addDays: jest.fn((date: string, days: number) => {
+      void date
+      void days
+      return '20240102'
+    }),
     compareDateString: jest.fn((a: string, b: string) => (a > b ? 1 : a < b ? -1 : 0)),
     getOpenTradeDatesBetween: jest.fn(async () => [] as string[]),
     getRecentOpenTradeDates: jest.fn(async () => ['20240101'] as string[]),
@@ -76,7 +79,6 @@ function createService(
   helper = buildMockHelper(),
   configService = buildMockConfigService(),
 ): MoneyflowSyncService {
-  // @ts-ignore 局部 mock，跳过 DI
   return new MoneyflowSyncService(
     api as unknown as MoneyflowApiService,
     helper as unknown as SyncHelperService,

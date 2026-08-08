@@ -176,7 +176,7 @@ describe('StrategyController ([AUTH] 权限边界)', () => {
     })
       .overrideGuard(JwtAuthGuard)
       .useValue({
-        canActivate: (_ctx: ExecutionContext) => {
+        canActivate: () => {
           throw new UnauthorizedException('用户未登录')
         },
       })

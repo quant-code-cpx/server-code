@@ -7,7 +7,7 @@
  * - compile(): 合法 AST 返回含 sql 属性的 CompiledQuery
  */
 import { FactorExpressionService } from '../services/factor-expression.service'
-import { ValidationResult } from '../types/expression.types'
+import { ExpressionAST, ValidationResult } from '../types/expression.types'
 
 // ── 工具：通过手动构造 AST 对象测试 compile() ─────────────────────────────────
 
@@ -158,64 +158,64 @@ describe('FactorExpressionService', () => {
   describe('compile()', () => {
     it('compile() 对 close 字段返回包含 sql 的 CompiledQuery', () => {
       // 构造最小 AST
-      const ast = {
+      const ast: ExpressionAST = {
         root: { type: 'field', name: 'close' },
         referencedFields: ['close'],
         requiredTables: new Set(['prices', 'adj']),
         maxWindowSize: 0,
         nestingDepth: 1,
       }
-      const result = service.compile(ast as any, '20250102')
+      const result = service.compile(ast, '20250102')
       expect(result).toHaveProperty('sql')
       expect(typeof result.sql).toBe('string')
       expect(result.sql.length).toBeGreaterThan(0)
     })
 
     it('compile() 对 roe 字段设置 needsFinapit = true', () => {
-      const ast = {
+      const ast: ExpressionAST = {
         root: { type: 'field', name: 'roe' },
         referencedFields: ['roe'],
         requiredTables: new Set(['fina_pit']),
         maxWindowSize: 0,
         nestingDepth: 1,
       }
-      const result = service.compile(ast as any, '20250102')
+      const result = service.compile(ast, '20250102')
       expect(result.needsFinapit).toBe(true)
     })
 
     it('compile() 对 pe_ttm 字段 needsFinapit = false', () => {
-      const ast = {
+      const ast: ExpressionAST = {
         root: { type: 'field', name: 'pe_ttm' },
         referencedFields: ['pe_ttm'],
         requiredTables: new Set(['daily_basic']),
         maxWindowSize: 0,
         nestingDepth: 1,
       }
-      const result = service.compile(ast as any, '20250102')
+      const result = service.compile(ast, '20250102')
       expect(result.needsFinapit).toBe(false)
     })
 
     it('compile() 返回 requiredTables 为 Set', () => {
-      const ast = {
+      const ast: ExpressionAST = {
         root: { type: 'field', name: 'close' },
         referencedFields: ['close'],
         requiredTables: new Set(['prices', 'adj']),
         maxWindowSize: 0,
         nestingDepth: 1,
       }
-      const result = service.compile(ast as any, '20250102')
+      const result = service.compile(ast, '20250102')
       expect(result.requiredTables).toBeInstanceOf(Set)
     })
 
     it('compile() maxWindowSize 从 ast 透传', () => {
-      const ast = {
+      const ast: ExpressionAST = {
         root: { type: 'field', name: 'vol' },
         referencedFields: ['vol'],
         requiredTables: new Set(['prices']),
         maxWindowSize: 20,
         nestingDepth: 1,
       }
-      const result = service.compile(ast as any, '20250102')
+      const result = service.compile(ast, '20250102')
       expect(result.maxWindowSize).toBe(20)
     })
   })

@@ -6,9 +6,6 @@ import { FactorValuesQueryDto } from '../dto/factor-values.dto'
 import { FactorFieldMapping, FactorValueItem, FactorValueSummary } from '../types/factor.types'
 import { FactorExpressionService } from './factor-expression.service'
 
-/** Days after IPO to exclude new listings from factor analysis */
-const NEW_LISTING_EXCLUSION_DAYS = 60
-
 /** Maps factor name → DB column in daily_basic or related tables */
 const FIELD_REF_MAP: Record<string, FactorFieldMapping> = {
   pe_ttm: { table: 'daily_basic', column: 'pe_ttm' },

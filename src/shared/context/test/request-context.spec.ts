@@ -8,9 +8,7 @@ describe('RequestContextService', () => {
   describe('run() + getCurrentContext()', () => {
     it('[BIZ] run 内部可获取上下文', () => {
       RequestContextService.run({ traceId: 'abc123' }, () => {
-        expect(RequestContextService.getCurrentContext()).toEqual(
-          expect.objectContaining({ traceId: 'abc123' }),
-        )
+        expect(RequestContextService.getCurrentContext()).toEqual(expect.objectContaining({ traceId: 'abc123' }))
       })
     })
 

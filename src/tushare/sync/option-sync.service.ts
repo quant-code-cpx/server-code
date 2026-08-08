@@ -5,7 +5,7 @@ import { TushareSyncExecutionStatus, TushareSyncTaskName } from 'src/constant/tu
 import { OptionApiService } from '../api/option-api.service'
 import { mapOptBasicRecord, mapOptDailyRecord } from '../tushare-sync.mapper'
 import { SyncHelperService } from './sync-helper.service'
-import { TushareSyncMode, TushareSyncPlan, TushareSyncPlanContext } from './sync-plan.types'
+import { TushareSyncPlan, TushareSyncPlanContext } from './sync-plan.types'
 import { ValidationCollector } from './quality/validation-collector'
 
 /** 支持期权交易的交易所 */

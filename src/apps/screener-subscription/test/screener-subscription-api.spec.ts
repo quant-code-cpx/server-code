@@ -4,7 +4,7 @@
  * 覆盖：订阅 CRUD、暂停/恢复、手动执行、日志、校验
  * 方法：Test.createTestingModule + overrideGuard(JwtAuthGuard) + mock services
  */
-import { CanActivate, ExecutionContext, INestApplication, ValidationPipe } from '@nestjs/common'
+import { CanActivate, ExecutionContext, INestApplication, UnauthorizedException, ValidationPipe } from '@nestjs/common'
 import { Test, TestingModule } from '@nestjs/testing'
 import request from 'supertest'
 import { TransformInterceptor } from 'src/lifecycle/interceptors/transform.interceptor'
@@ -21,7 +21,14 @@ function buildTestUser(overrides: Partial<TokenPayload> = {}): TokenPayload {
 }
 
 function createMockLoggerService(): LoggerService {
-  return { log: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn(), verbose: jest.fn(), devLog: jest.fn() } as unknown as LoggerService
+  return {
+    log: jest.fn(),
+    warn: jest.fn(),
+    error: jest.fn(),
+    debug: jest.fn(),
+    verbose: jest.fn(),
+    devLog: jest.fn(),
+  } as unknown as LoggerService
 }
 
 describe('ScreenerSubscription API 测试', () => {
@@ -125,7 +132,6 @@ describe('ScreenerSubscription API 测试', () => {
     it('SS-SEC-001: 无 Token 查询列表应 401', async () => {
       const mockJwtGuardNoAuth: CanActivate = {
         canActivate(): boolean {
-          const { UnauthorizedException } = require('@nestjs/common')
           throw new UnauthorizedException()
         },
       }
@@ -144,9 +150,7 @@ describe('ScreenerSubscription API 测试', () => {
       unauthApp.useGlobalFilters(new GlobalExceptionsFilter(true, createMockLoggerService()))
       await unauthApp.init()
 
-      await request(unauthApp.getHttpServer())
-        .post('/screener-subscription/list')
-        .expect(401)
+      await request(unauthApp.getHttpServer()).post('/screener-subscription/list').expect(401)
       await unauthApp.close()
     })
   })
@@ -184,23 +188,29 @@ describe('ScreenerSubscription API 测试', () => {
     })
 
     it('SS-BIZ-004: 创建订阅（name+strategyId）', async () => {
-      await req
-        .post('/screener-subscription/create')
-        .send({ name: '策略订阅', strategyId: 5 })
-        .expect(201)
+      await req.post('/screener-subscription/create').send({ name: '策略订阅', strategyId: 5 }).expect(201)
       expect(mockService.create).toHaveBeenCalledWith(1, expect.objectContaining({ name: '策略订阅', strategyId: 5 }))
     })
 
     it('SS-ERR-003: create 缺 name 应 400', async () => {
-      await req.post('/screener-subscription/create').send({ filters: { pe: 10 } }).expect(400)
+      await req
+        .post('/screener-subscription/create')
+        .send({ filters: { pe: 10 } })
+        .expect(400)
     })
 
     it('SS-ERR-004: create name 空应 400', async () => {
-      await req.post('/screener-subscription/create').send({ name: '', filters: { pe: 10 } }).expect(400)
+      await req
+        .post('/screener-subscription/create')
+        .send({ name: '', filters: { pe: 10 } })
+        .expect(400)
     })
 
     it('SS-ERR-005: create name 超 50 字符应 400', async () => {
-      await req.post('/screener-subscription/create').send({ name: 'a'.repeat(51), filters: { pe: 10 } }).expect(400)
+      await req
+        .post('/screener-subscription/create')
+        .send({ name: 'a'.repeat(51), filters: { pe: 10 } })
+        .expect(400)
     })
 
     it('SS-ERR-006: create filters 非对象应 400', async () => {
@@ -212,11 +222,17 @@ describe('ScreenerSubscription API 测试', () => {
     })
 
     it('SS-ERR-008: create 无效 frequency 应 400', async () => {
-      await req.post('/screener-subscription/create').send({ name: 'test', filters: {}, frequency: 'INVALID' }).expect(400)
+      await req
+        .post('/screener-subscription/create')
+        .send({ name: 'test', filters: {}, frequency: 'INVALID' })
+        .expect(400)
     })
 
     it('SS-ERR-009: create 无效 sortOrder 应 400', async () => {
-      await req.post('/screener-subscription/create').send({ name: 'test', filters: {}, sortOrder: 'random' }).expect(400)
+      await req
+        .post('/screener-subscription/create')
+        .send({ name: 'test', filters: {}, sortOrder: 'random' })
+        .expect(400)
     })
 
     it('SS-EDGE-001: create name 1 字符', async () => {
@@ -224,11 +240,17 @@ describe('ScreenerSubscription API 测试', () => {
     })
 
     it('SS-EDGE-002: create name 50 字符', async () => {
-      await req.post('/screener-subscription/create').send({ name: 'a'.repeat(50), filters: {} }).expect(201)
+      await req
+        .post('/screener-subscription/create')
+        .send({ name: 'a'.repeat(50), filters: {} })
+        .expect(201)
     })
 
     it('SS-EDGE-003: create name 51 字符应 400', async () => {
-      await req.post('/screener-subscription/create').send({ name: 'a'.repeat(51), filters: {} }).expect(400)
+      await req
+        .post('/screener-subscription/create')
+        .send({ name: 'a'.repeat(51), filters: {} })
+        .expect(400)
     })
   })
 
@@ -236,10 +258,7 @@ describe('ScreenerSubscription API 测试', () => {
 
   describe('更新', () => {
     it('SS-BIZ-005: 更新订阅名称', async () => {
-      const res = await req
-        .post('/screener-subscription/update')
-        .send({ id: 10, name: '更新后订阅' })
-        .expect(201)
+      const res = await req.post('/screener-subscription/update').send({ id: 10, name: '更新后订阅' }).expect(201)
       expect(res.body.data.name).toBe('更新后订阅')
       expect(mockService.update).toHaveBeenCalledWith(1, 10, expect.objectContaining({ id: 10, name: '更新后订阅' }))
     })
@@ -249,7 +268,11 @@ describe('ScreenerSubscription API 测试', () => {
         .post('/screener-subscription/update')
         .send({ id: 10, frequency: SubscriptionFrequency.WEEKLY })
         .expect(201)
-      expect(mockService.update).toHaveBeenCalledWith(1, 10, expect.objectContaining({ frequency: SubscriptionFrequency.WEEKLY }))
+      expect(mockService.update).toHaveBeenCalledWith(
+        1,
+        10,
+        expect.objectContaining({ frequency: SubscriptionFrequency.WEEKLY }),
+      )
     })
 
     it('SS-ERR-010: update 缺 id 应 400', async () => {
@@ -257,7 +280,10 @@ describe('ScreenerSubscription API 测试', () => {
     })
 
     it('SS-ERR-011: update name 超 50 字符应 400', async () => {
-      await req.post('/screener-subscription/update').send({ id: 10, name: 'a'.repeat(51) }).expect(400)
+      await req
+        .post('/screener-subscription/update')
+        .send({ id: 10, name: 'a'.repeat(51) })
+        .expect(400)
     })
 
     it('SS-ERR-012: update 无效 frequency 应 400', async () => {
@@ -332,7 +358,11 @@ describe('ScreenerSubscription API 测试', () => {
 
     it('SS-BIZ-012: 查询日志（自定义分页）', async () => {
       await req.post('/screener-subscription/logs').send({ id: 10, page: 2, pageSize: 10 }).expect(201)
-      expect(mockService.getLogs).toHaveBeenCalledWith(1, 10, expect.objectContaining({ id: 10, page: 2, pageSize: 10 }))
+      expect(mockService.getLogs).toHaveBeenCalledWith(
+        1,
+        10,
+        expect.objectContaining({ id: 10, page: 2, pageSize: 10 }),
+      )
     })
 
     it('SS-ERR-017: logs 缺 id 应 400', async () => {
@@ -352,18 +382,27 @@ describe('ScreenerSubscription API 测试', () => {
         hasDuplicate: true,
         similarSubscriptions: [{ id: 5, name: '已有订阅', similarity: 'SAME_FILTERS' }],
       })
-      const res = await req.post('/screener-subscription/validate').send({ filters: { pe: { max: 30 } } }).expect(201)
+      const res = await req
+        .post('/screener-subscription/validate')
+        .send({ filters: { pe: { max: 30 } } })
+        .expect(201)
       expect(res.body.data.hasDuplicate).toBe(true)
       expect(res.body.data.similarSubscriptions).toHaveLength(1)
     })
 
     it('SS-BIZ-014: 校验无重复', async () => {
-      const res = await req.post('/screener-subscription/validate').send({ filters: { pe: { max: 30 } } }).expect(201)
+      const res = await req
+        .post('/screener-subscription/validate')
+        .send({ filters: { pe: { max: 30 } } })
+        .expect(201)
       expect(res.body.data.hasDuplicate).toBe(false)
     })
 
     it('SS-EDGE-005: validate 传 id 排除自身', async () => {
-      await req.post('/screener-subscription/validate').send({ id: 10, filters: { pe: 10 } }).expect(201)
+      await req
+        .post('/screener-subscription/validate')
+        .send({ id: 10, filters: { pe: 10 } })
+        .expect(201)
       expect(mockService.validate).toHaveBeenCalledWith(1, expect.objectContaining({ id: 10 }))
     })
   })

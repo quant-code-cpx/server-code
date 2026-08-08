@@ -15,7 +15,7 @@ function buildPrismaMock() {
   return {
     $queryRaw: jest.fn(async () => []),
     moneyflowMktDc: {
-      findMany: jest.fn(async () => []),
+      findMany: jest.fn<Promise<unknown[]>, []>(async () => []),
       findFirst: jest.fn(async () => null),
     },
     moneyflowIndDc: {
@@ -68,6 +68,23 @@ function readSqlText(sqlArg: unknown): string {
   return sql.sql ?? sql.strings?.join('') ?? String(sqlArg)
 }
 
+type MarketServiceDependencies = ConstructorParameters<typeof MarketService>
+
+type MarketServicePrivateApi = {
+  computeValuationPercentile(tradeDate: Date, field: string): Promise<{ oneYear: number | null }>
+}
+
+function createMarketService(prismaMock = buildPrismaMock(), cacheMock = buildCacheMock()): MarketService {
+  return new MarketService(
+    prismaMock as unknown as MarketServiceDependencies[0],
+    cacheMock as unknown as MarketServiceDependencies[1],
+  )
+}
+
+function getMarketServicePrivateApi(service: MarketService): MarketServicePrivateApi {
+  return service as unknown as MarketServicePrivateApi
+}
+
 // ── 测试套件 ──────────────────────────────────────────────────────────────────
 
 describe('MarketService', () => {
@@ -78,7 +95,7 @@ describe('MarketService', () => {
   beforeEach(() => {
     mockPrisma = buildPrismaMock()
     mockCache = buildCacheMock()
-    service = new MarketService(mockPrisma as any, mockCache as any)
+    service = createMarketService(mockPrisma, mockCache)
   })
 
   // ── getMarketMoneyFlow() ──────────────────────────────────────────────────
@@ -132,7 +149,7 @@ describe('MarketService', () => {
       mockPrisma.moneyflowIndDc.findMany.mockResolvedValueOnce([
         { contentType: 'INDUSTRY', rank: 1, netAmount: 100, name: '电子' },
         { contentType: 'CONCEPT', rank: 1, netAmount: 50, name: '半导体' },
-      ] as any)
+      ])
 
       const result = await service.getSectorFlow({ trade_date: '20240102' })
 
@@ -322,7 +339,7 @@ describe('MarketService', () => {
     it('getMarketValuation() 使用 valuation_daily_medians 预计算表，避免实时扫描原始估值表', async () => {
       const prisma = buildPrismaMock()
       const cache = buildCacheMock()
-      const svc = new MarketService(prisma as any, cache as any)
+      const svc = createMarketService(prisma, cache)
 
       prisma.valuationDailyMedian.findFirst.mockResolvedValueOnce({ tradeDate: new Date('2024-01-05T00:00:00.000Z') })
       prisma.$queryRaw.mockResolvedValueOnce([
@@ -344,7 +361,7 @@ describe('MarketService', () => {
     it('getMoneyFlowTrend() 先限定最近交易日再聚合，避免对全历史 groupBy', async () => {
       const prisma = buildPrismaMock()
       const cache = buildCacheMock()
-      const svc = new MarketService(prisma as any, cache as any)
+      const svc = createMarketService(prisma, cache)
 
       prisma.moneyflow.findFirst.mockResolvedValueOnce({ tradeDate: new Date('2024-01-05T00:00:00.000Z') })
       prisma.$queryRaw.mockResolvedValueOnce([
@@ -379,21 +396,7 @@ describe('MarketService', () => {
       const prisma = buildPrismaMock()
       const cache = buildCacheMock()
 
-      // 5个historical medians: [10, 20, 30, 40, 50]，当前=10（最小值）
-      // rank = filter(v <= 10).length = 1
-      // percentile = round(1/5 * 100) = 20（不是0）
-      const medians = [
-        { daily_median: '10' },
-        { daily_median: '20' },
-        { daily_median: '30' },
-        { daily_median: '40' },
-        { daily_median: '50' }, // 当前值（最后一个，ORDER BY trade_date）
-      ]
-      // Wait, currentVal = last element = '50' in medians order...
-      // Actually current = dailyMedians[length-1] = 50, allVals sorted = [10,20,30,40,50]
-      // rank = filter(v <= 50).length = 5 → percentile = 100%
-      // To test minimum: current = '10' (first/last in sorted order)
-      // Make current the smallest: medians in date order, last = smallest
+      // 当前值取最后一个交易日；为覆盖历史最小值，将最小值放在数组末尾。
       const mediansForMin = [
         { daily_median: '50' },
         { daily_median: '40' },
@@ -402,10 +405,10 @@ describe('MarketService', () => {
         { daily_median: '10' }, // 当前（最后一个 trade_date）= 10（历史最小）
       ]
       prisma.$queryRaw.mockResolvedValue(mediansForMin)
-      const svc = new (require('../market.service').MarketService)(prisma as any, cache as any)
+      const svc = createMarketService(prisma, cache)
 
       const tradeDate = new Date('2024-01-15')
-      const result = await (svc as any).computeValuationPercentile(tradeDate, 'pe_ttm')
+      const result = await getMarketServicePrivateApi(svc).computeValuationPercentile(tradeDate, 'pe_ttm')
 
       // [BUG P3-B17] currentVal=10 → rank=filter(v<=10).length=1 → percentile=round(1/5*100)=20
       // 正确应为 0%, 但实现返回 20%（最低值不能是上界百分之一）
@@ -425,10 +428,10 @@ describe('MarketService', () => {
         { daily_median: '50' }, // 当前值（最后）= 50（历史最大）
       ]
       prisma.$queryRaw.mockResolvedValue(medians)
-      const svc = new (require('../market.service').MarketService)(prisma as any, cache as any)
+      const svc = createMarketService(prisma, cache)
 
       const tradeDate = new Date('2024-01-15')
-      const result = await (svc as any).computeValuationPercentile(tradeDate, 'pe_ttm')
+      const result = await getMarketServicePrivateApi(svc).computeValuationPercentile(tradeDate, 'pe_ttm')
 
       expect(result.oneYear).toBe(100)
     })
@@ -438,10 +441,10 @@ describe('MarketService', () => {
       const cache = buildCacheMock()
 
       prisma.$queryRaw.mockResolvedValue([{ daily_median: '25' }]) // 只有1条
-      const svc = new (require('../market.service').MarketService)(prisma as any, cache as any)
+      const svc = createMarketService(prisma, cache)
 
       const tradeDate = new Date('2024-01-15')
-      const result = await (svc as any).computeValuationPercentile(tradeDate, 'pe_ttm')
+      const result = await getMarketServicePrivateApi(svc).computeValuationPercentile(tradeDate, 'pe_ttm')
 
       expect(result.oneYear).toBeNull()
     })

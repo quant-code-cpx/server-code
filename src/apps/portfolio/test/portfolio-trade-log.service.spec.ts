@@ -25,7 +25,9 @@ function buildPrismaMock() {
 }
 
 function createService(prismaMock = buildPrismaMock()) {
-  return new PortfolioTradeLogService(prismaMock as any)
+  return new PortfolioTradeLogService(
+    prismaMock as unknown as ConstructorParameters<typeof PortfolioTradeLogService>[0],
+  )
 }
 
 describe('PortfolioTradeLogService', () => {

@@ -34,7 +34,7 @@ function buildPrismaMock() {
 }
 
 function buildSvc(prismaMock: ReturnType<typeof buildPrismaMock>) {
-  return new RebalancePlanService(prismaMock as any)
+  return new RebalancePlanService(prismaMock as unknown as ConstructorParameters<typeof RebalancePlanService>[0])
 }
 
 // ── 共用夹具 ──────────────────────────────────────────────────────────────────
@@ -251,10 +251,6 @@ describe('RebalancePlanService', () => {
   it('资金不足：isFeasible=false', async () => {
     // initialCash=10000, 无持仓, 想买入 1000 股@10=10000 + 成本 → cashAfter<0
     setupBasicMocks(prisma, [], [{ tsCode: '000001.SZ', close: 10 }])
-    const result = await svc.rebalancePlan(
-      { portfolioId: 'p-1', targets: [{ tsCode: '000001.SZ', targetWeight: 1.0 }], totalValue: 10000 },
-      1,
-    )
     // cashBefore = 200000 - 0 = 200000 > 0, so need to set initialCash small
     // Let's just check that when totalBuyAmount > cashBefore, isFeasible is false
     // Here initialCash is 200000, so we need to reduce via custom mock

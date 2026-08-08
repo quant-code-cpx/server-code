@@ -39,8 +39,8 @@ export class CrossTableCheckService {
       { id: 'C-04', name: '日线 ↔ 停牌互斥', minMode: 'recent', run: (m) => this.checkDailyVsSuspend(m) },
       { id: 'C-05', name: '利润表 ↔ 资产负债表', minMode: 'recent', run: (m) => this.checkIncomeVsBalance(m) },
       { id: 'C-06', name: '利润表 ↔ 现金流量表', minMode: 'recent', run: (m) => this.checkIncomeVsCashflow(m) },
-      { id: 'C-07', name: '指数权重 → 基础信息', minMode: 'full', run: (m) => this.checkIndexWeightRefIntegrity(m) },
-      { id: 'C-08', name: '指数行情 ↔ 指数权重', minMode: 'full', run: (m) => this.checkIndexDailyVsWeight(m) },
+      { id: 'C-07', name: '指数权重 → 基础信息', minMode: 'full', run: () => this.checkIndexWeightRefIntegrity() },
+      { id: 'C-08', name: '指数行情 ↔ 指数权重', minMode: 'full', run: () => this.checkIndexDailyVsWeight() },
     ]
   }
 
@@ -329,7 +329,7 @@ export class CrossTableCheckService {
 
   // ─── C-07: 指数权重 → 基础信息（引用完整性）───────────────────────────────
 
-  private async checkIndexWeightRefIntegrity(_mode: 'recent' | 'full'): Promise<DataQualityReport> {
+  private async checkIndexWeightRefIntegrity(): Promise<DataQualityReport> {
     const latestDate = await this.helper.getLatestDateString('indexWeight', 'tradeDate')
     if (!latestDate) {
       return { dataSet: 'C-07', checkType: 'cross-table', status: 'warn', message: '指数权重表无数据' }
@@ -379,7 +379,7 @@ export class CrossTableCheckService {
 
   // ─── C-08: 指数行情 ↔ 指数权重（指数粒度覆盖）────────────────────────────
 
-  private async checkIndexDailyVsWeight(_mode: 'recent' | 'full'): Promise<DataQualityReport> {
+  private async checkIndexDailyVsWeight(): Promise<DataQualityReport> {
     const [indices, weightIndices] = await Promise.all([
       this.prisma.indexDaily.findMany({ select: { tsCode: true }, distinct: ['tsCode'] }),
       this.prisma.indexWeight.findMany({ select: { indexCode: true }, distinct: ['indexCode'] }),

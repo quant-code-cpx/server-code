@@ -63,7 +63,16 @@ const mockStockAnalysisService = {
   getMarginData: jest.fn(async () => ({})),
   getRelativeStrength: jest.fn(async () => ({})),
   getTechnicalFactors: jest.fn(async () => ({ tsCode: '000001.SZ', count: 0, items: [] })),
-  getLatestFactors: jest.fn(async () => ({ tsCode: '000001.SZ', tradeDate: null, close: null, macdSignal: null, kdjSignal: null, rsiSignal: null, bollPosition: null, raw: null })),
+  getLatestFactors: jest.fn(async () => ({
+    tsCode: '000001.SZ',
+    tradeDate: null,
+    close: null,
+    macdSignal: null,
+    kdjSignal: null,
+    rsiSignal: null,
+    bollPosition: null,
+    raw: null,
+  })),
 }
 
 describe('StockController (integration)', () => {
@@ -211,13 +220,33 @@ describe('StockController (integration)', () => {
     ['/stock/detail/share-capital', mockStockService.getDetailShareCapital as jest.Mock, { tsCode: '000001.SZ' }],
     ['/stock/detail/financing', mockStockService.getDetailFinancing as jest.Mock, { tsCode: '000001.SZ' }],
     ['/stock/detail/today-flow', mockStockService.getDetailTodayFlow as jest.Mock, { code: '000001.SZ' }],
-    ['/stock/detail/financial-statements', mockStockService.getDetailFinancialStatements as jest.Mock, { tsCode: '000001.SZ' }],
+    [
+      '/stock/detail/financial-statements',
+      mockStockService.getDetailFinancialStatements as jest.Mock,
+      { tsCode: '000001.SZ' },
+    ],
     ['/stock/detail/concepts', mockStockService.getStockConcepts as jest.Mock, { tsCode: '000001.SZ' }],
-    ['/stock/detail/analysis/technical', mockStockAnalysisService.getTechnicalIndicators as jest.Mock, { tsCode: '000001.SZ' }],
-    ['/stock/detail/analysis/timing-signals', mockStockAnalysisService.getTimingSignals as jest.Mock, { tsCode: '000001.SZ' }],
-    ['/stock/detail/analysis/chip-distribution', mockStockAnalysisService.getChipDistribution as jest.Mock, { tsCode: '000001.SZ' }],
+    [
+      '/stock/detail/analysis/technical',
+      mockStockAnalysisService.getTechnicalIndicators as jest.Mock,
+      { tsCode: '000001.SZ' },
+    ],
+    [
+      '/stock/detail/analysis/timing-signals',
+      mockStockAnalysisService.getTimingSignals as jest.Mock,
+      { tsCode: '000001.SZ' },
+    ],
+    [
+      '/stock/detail/analysis/chip-distribution',
+      mockStockAnalysisService.getChipDistribution as jest.Mock,
+      { tsCode: '000001.SZ' },
+    ],
     ['/stock/detail/analysis/margin', mockStockAnalysisService.getMarginData as jest.Mock, { tsCode: '000001.SZ' }],
-    ['/stock/detail/analysis/relative-strength', mockStockAnalysisService.getRelativeStrength as jest.Mock, { tsCode: '000001.SZ', benchmarkCode: '000300.SH' }],
+    [
+      '/stock/detail/analysis/relative-strength',
+      mockStockAnalysisService.getRelativeStrength as jest.Mock,
+      { tsCode: '000001.SZ', benchmarkCode: '000300.SH' },
+    ],
     ['/stock/screener/presets', mockStockService.getScreenerPresets as jest.Mock, {}],
     ['/stock/screener/concepts', mockStockService.getScreenerConcepts as jest.Mock, {}],
     ['/stock/areas', mockStockService.getAreas as jest.Mock, {}],
@@ -226,9 +255,13 @@ describe('StockController (integration)', () => {
   detailEndpoints.forEach(([path, svcMock, body]) => {
     it(`[BIZ] POST ${path} → 201`, async () => {
       svcMock.mockResolvedValueOnce(svcMock === mockStockService.getAreas ? [] : {})
-      await request(app.getHttpServer()).post(path).send(body).expect(201).expect((res: any) => {
-        expect(res.body.code).toBe(0)
-      })
+      await request(app.getHttpServer())
+        .post(path)
+        .send(body)
+        .expect(201)
+        .expect((res) => {
+          expect(res.body.code).toBe(0)
+        })
     })
   })
 })

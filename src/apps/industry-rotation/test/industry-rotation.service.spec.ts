@@ -28,16 +28,21 @@ function buildPrismaMock() {
 
 function buildCacheMock() {
   return {
-    buildKey: jest.fn((prefix: string, payload?: unknown) => `${prefix}:mock`),
-    rememberJson: jest.fn(async ({ loader }: any) => loader()),
+    buildKey: jest.fn((prefix: string) => `${prefix}:mock`),
+    rememberJson: jest.fn(async ({ loader }: { loader: () => Promise<unknown> }) => loader()),
   }
 }
 
-function createService(overrides?: { prisma?: any; cache?: any }) {
+function createService(overrides?: {
+  prisma?: ReturnType<typeof buildPrismaMock>
+  cache?: ReturnType<typeof buildCacheMock>
+}) {
   const prisma = overrides?.prisma ?? buildPrismaMock()
   const cache = overrides?.cache ?? buildCacheMock()
-  // @ts-ignore 局部 mock
-  return new IndustryRotationService(prisma as any, cache as any)
+  return new IndustryRotationService(
+    prisma as unknown as ConstructorParameters<typeof IndustryRotationService>[0],
+    cache as unknown as ConstructorParameters<typeof IndustryRotationService>[1],
+  )
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

@@ -12,6 +12,13 @@
 import { EventStudyService } from '../event-study.service'
 import { EventType } from '../event-type.registry'
 import { EventStudyAnalyzeDto } from '../dto/event-study-analyze.dto'
+import type { PrismaService } from 'src/shared/prisma.service'
+
+type EventQueryArgs = {
+  where: { inDe?: string; tsCode?: string }
+  skip?: number
+  take?: number
+}
 
 // ── Mock 工厂 ─────────────────────────────────────────────────────────────────
 
@@ -61,22 +68,10 @@ function buildPrismaMock() {
 }
 
 function createService(prismaMock = buildPrismaMock()) {
-  return new EventStudyService(prismaMock as any)
+  return new EventStudyService(prismaMock as unknown as PrismaService)
 }
 
 // ── 数据构造助手 ───────────────────────────────────────────────────────────────
-
-/** 生成 n 个连续交易日（从 startDate 起） */
-function makeTradeDays(startDate: string, n: number) {
-  const result: { calDate: Date; exchange: string; isOpen: string }[] = []
-  const d = new Date(startDate)
-  for (let i = 0; i < n; i++) {
-    const day = new Date(d)
-    day.setUTCDate(day.getUTCDate() + i)
-    result.push({ calDate: day, exchange: 'SSE', isOpen: '1' })
-  }
-  return result
-}
 
 /** 构造带 pctChg 的 daily 行 */
 function makeDailyRow(tsCode: string, tradeDateStr: string, pctChg: number) {
@@ -130,7 +125,7 @@ describe('EventStudyService', () => {
     it('FORECAST → 查询 forecast 模型', async () => {
       const prisma = buildPrismaMock()
       prisma.forecast.count.mockResolvedValue(2)
-      prisma.forecast.findMany.mockResolvedValue([{ tsCode: '000001.SZ', annDate: new Date('2024-01-15') }] as any)
+      prisma.forecast.findMany.mockResolvedValue([{ tsCode: '000001.SZ', annDate: new Date('2024-01-15') }])
       const svc = createService(prisma)
 
       const result = await svc.queryEvents({
@@ -147,7 +142,7 @@ describe('EventStudyService', () => {
     it('DIVIDEND_EX → 查询 dividend 模型', async () => {
       const prisma = buildPrismaMock()
       prisma.dividend.count.mockResolvedValue(1)
-      prisma.dividend.findMany.mockResolvedValue([{ tsCode: '000002.SZ', exDate: new Date('2024-01-10') }] as any)
+      prisma.dividend.findMany.mockResolvedValue([{ tsCode: '000002.SZ', exDate: new Date('2024-01-10') }])
       const svc = createService(prisma)
 
       const result = await svc.queryEvents({ eventType: EventType.DIVIDEND_EX })
@@ -165,7 +160,7 @@ describe('EventStudyService', () => {
       await svc.queryEvents({ eventType: EventType.HOLDER_INCREASE })
 
       expect(prisma.stkHolderTrade.findMany).toHaveBeenCalledTimes(1)
-      const callArgs = (prisma.stkHolderTrade.findMany.mock.calls[0] as any)[0]
+      const [[callArgs]] = prisma.stkHolderTrade.findMany.mock.calls as unknown as [[EventQueryArgs]]
       expect(callArgs.where.inDe).toBe('IN')
     })
 
@@ -177,7 +172,7 @@ describe('EventStudyService', () => {
 
       await svc.queryEvents({ eventType: EventType.HOLDER_DECREASE })
 
-      const callArgs = (prisma.stkHolderTrade.findMany.mock.calls[0] as any)[0]
+      const [[callArgs]] = prisma.stkHolderTrade.findMany.mock.calls as unknown as [[EventQueryArgs]]
       expect(callArgs.where.inDe).toBe('DE')
     })
 
@@ -233,7 +228,7 @@ describe('EventStudyService', () => {
 
       await svc.queryEvents({ eventType: EventType.FORECAST, tsCode: '000001.SZ' })
 
-      const callArgs = (prisma.forecast.findMany.mock.calls[0] as any)[0]
+      const [[callArgs]] = prisma.forecast.findMany.mock.calls as unknown as [[EventQueryArgs]]
       expect(callArgs.where.tsCode).toBe('000001.SZ')
     })
 
@@ -245,7 +240,7 @@ describe('EventStudyService', () => {
 
       await svc.queryEvents({ eventType: EventType.FORECAST, page: 2, pageSize: 10 })
 
-      const callArgs = (prisma.forecast.findMany.mock.calls[0] as any)[0]
+      const [[callArgs]] = prisma.forecast.findMany.mock.calls as unknown as [[EventQueryArgs]]
       expect(callArgs.skip).toBe(10)
       expect(callArgs.take).toBe(10)
     })
@@ -293,7 +288,7 @@ describe('EventStudyService', () => {
       const eventDate = '2024-01-15'
 
       // forecast.findMany → 一条事件记录
-      prisma.forecast.findMany.mockResolvedValue([{ tsCode, annDate: new Date(eventDate) }] as any)
+      prisma.forecast.findMany.mockResolvedValue([{ tsCode, annDate: new Date(eventDate) }])
 
       // 7 个交易日：11, 12, 15, 16, 17, 18, 19
       const tradeDateStrs = [
@@ -318,7 +313,7 @@ describe('EventStudyService', () => {
       prisma.daily.findMany.mockResolvedValue(tradeDateStrs.map((d, i) => makeDailyRow(tsCode, d, stockReturns[i])))
 
       // 股票名称
-      prisma.stockBasic.findMany.mockResolvedValue([{ tsCode, name: '平安银行' }] as any)
+      prisma.stockBasic.findMany.mockResolvedValue([{ tsCode, name: '平安银行' }])
 
       return prisma
     }
@@ -431,7 +426,7 @@ describe('EventStudyService', () => {
   describe('analyze() — tTest 行为', () => {
     it('n=1 样本 → tStatistic=0, pValue=1（不足以做 t 检验）', async () => {
       const prisma = buildPrismaMock()
-      prisma.forecast.findMany.mockResolvedValue([{ tsCode: '000001.SZ', annDate: new Date('2024-01-15') }] as any)
+      prisma.forecast.findMany.mockResolvedValue([{ tsCode: '000001.SZ', annDate: new Date('2024-01-15') }])
 
       const tradeDateStrs = ['2024-01-11', '2024-01-12', '2024-01-15', '2024-01-16', '2024-01-17']
       prisma.tradeCal.findMany.mockResolvedValue(
@@ -439,7 +434,7 @@ describe('EventStudyService', () => {
       )
       prisma.indexDaily.findMany.mockResolvedValue(tradeDateStrs.map((d) => makeIndexRow(d, 0)))
       prisma.daily.findMany.mockResolvedValue(tradeDateStrs.map((d) => makeDailyRow('000001.SZ', d, 0)))
-      prisma.stockBasic.findMany.mockResolvedValue([{ tsCode: '000001.SZ', name: '平安银行' }] as any)
+      prisma.stockBasic.findMany.mockResolvedValue([{ tsCode: '000001.SZ', name: '平安银行' }])
 
       const svc = createService(prisma)
       const result = await svc.analyze({ eventType: EventType.FORECAST, preDays: 2, postDays: 2 })
@@ -454,7 +449,7 @@ describe('EventStudyService', () => {
       prisma.forecast.findMany.mockResolvedValue([
         { tsCode: '000001.SZ', annDate: new Date('2024-01-15') },
         { tsCode: '000002.SZ', annDate: new Date('2024-01-15') },
-      ] as any)
+      ])
 
       const tradeDateStrs = ['2024-01-11', '2024-01-12', '2024-01-15', '2024-01-16', '2024-01-17']
       prisma.tradeCal.findMany.mockResolvedValue(
@@ -469,7 +464,7 @@ describe('EventStudyService', () => {
       prisma.stockBasic.findMany.mockResolvedValue([
         { tsCode: '000001.SZ', name: '平安银行' },
         { tsCode: '000002.SZ', name: '万科A' },
-      ] as any)
+      ])
 
       const svc = createService(prisma)
       const result = await svc.analyze({ eventType: EventType.FORECAST, preDays: 2, postDays: 2 })
@@ -488,7 +483,7 @@ describe('EventStudyService', () => {
       // 使用 UTC 2024-01-15T00:00:00Z（任何时区下 toISOString 均返回 2024-01-15）
       prisma.forecast.findMany.mockResolvedValue([
         { tsCode: '000001.SZ', annDate: new Date('2024-01-15T00:00:00.000Z') },
-      ] as any)
+      ])
       const svc = createService(prisma)
 
       const samples = await svc.extractEventSamples({ eventType: EventType.FORECAST })
@@ -506,7 +501,7 @@ describe('EventStudyService', () => {
       // 若 Prisma 实际存入 CST，DB存 2024-01-16，返回值可能是 2024-01-15T16:00:00Z (即CST 2024-01-16)
       prisma.forecast.findMany.mockResolvedValue([
         { tsCode: '000002.SZ', annDate: new Date('2024-01-15T16:00:00.000Z') }, // CST: 2024-01-16 00:00
-      ] as any)
+      ])
       const svc = createService(prisma)
 
       const samples = await svc.extractEventSamples({ eventType: EventType.FORECAST })
@@ -518,7 +513,7 @@ describe('EventStudyService', () => {
 
     it('SHARE_FLOAT floatDate 字符串直接转换为 YYYY-MM-DD', async () => {
       const prisma = buildPrismaMock()
-      prisma.shareFloat.findMany.mockResolvedValue([{ tsCode: '000003.SZ', floatDate: '20240201' }] as any)
+      prisma.shareFloat.findMany.mockResolvedValue([{ tsCode: '000003.SZ', floatDate: '20240201' }])
       const svc = createService(prisma)
 
       const samples = await svc.extractEventSamples({ eventType: EventType.SHARE_FLOAT })

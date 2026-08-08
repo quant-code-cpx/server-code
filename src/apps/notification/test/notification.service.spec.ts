@@ -24,12 +24,12 @@ import { NotificationService } from '../notification.service'
 function buildPrismaMock() {
   return {
     notificationPreference: {
-      findUnique: jest.fn(async () => null),
-      findMany: jest.fn(async () => []),
-      upsert: jest.fn(async () => ({})),
+      findUnique: jest.fn<Promise<unknown>, []>(async () => null),
+      findMany: jest.fn<Promise<unknown>, []>(async () => []),
+      upsert: jest.fn<Promise<unknown>, []>(async () => ({})),
     },
     notification: {
-      create: jest.fn(async () => ({
+      create: jest.fn<Promise<unknown>, []>(async () => ({
         id: 1,
         type: NotificationType.PRICE_ALERT,
         title: '测试标题',
@@ -38,13 +38,13 @@ function buildPrismaMock() {
         isRead: false,
         createdAt: new Date('2026-01-01'),
       })),
-      findUnique: jest.fn(async () => null),
-      findMany: jest.fn(async () => []),
-      findFirst: jest.fn(async () => null),
-      count: jest.fn(async () => 0),
-      update: jest.fn(async () => ({})),
-      updateMany: jest.fn(async () => ({ count: 5 })),
-      delete: jest.fn(async () => ({})),
+      findUnique: jest.fn<Promise<unknown>, []>(async () => null),
+      findMany: jest.fn<Promise<unknown>, []>(async () => []),
+      findFirst: jest.fn<Promise<unknown>, []>(async () => null),
+      count: jest.fn<Promise<unknown>, []>(async () => 0),
+      update: jest.fn<Promise<unknown>, []>(async () => ({})),
+      updateMany: jest.fn<Promise<unknown>, []>(async () => ({ count: 5 })),
+      delete: jest.fn<Promise<unknown>, []>(async () => ({})),
     },
   }
 }
@@ -54,7 +54,10 @@ function buildGatewayMock() {
 }
 
 function createService(prismaMock = buildPrismaMock(), gatewayMock = buildGatewayMock()) {
-  return new NotificationService(prismaMock as any, gatewayMock as any)
+  return new NotificationService(
+    prismaMock as unknown as ConstructorParameters<typeof NotificationService>[0],
+    gatewayMock as unknown as ConstructorParameters<typeof NotificationService>[1],
+  )
 }
 
 describe('NotificationService', () => {
@@ -63,7 +66,7 @@ describe('NotificationService', () => {
   describe('create()', () => {
     it('enabled=false → 跳过写库和推送', async () => {
       const prisma = buildPrismaMock()
-      prisma.notificationPreference.findUnique.mockResolvedValue({ enabled: false } as any)
+      prisma.notificationPreference.findUnique.mockResolvedValue({ enabled: false })
       const gateway = buildGatewayMock()
       const svc = createService(prisma, gateway)
 
@@ -87,7 +90,7 @@ describe('NotificationService', () => {
 
     it('偏好 enabled=true → 写库并 emitToUser', async () => {
       const prisma = buildPrismaMock()
-      prisma.notificationPreference.findUnique.mockResolvedValue({ enabled: true } as any)
+      prisma.notificationPreference.findUnique.mockResolvedValue({ enabled: true })
       const gateway = buildGatewayMock()
       const svc = createService(prisma, gateway)
 
@@ -127,7 +130,7 @@ describe('NotificationService', () => {
         readAt: null,
         createdAt: new Date('2026-01-01'),
       }
-      prisma.notification.findMany.mockResolvedValue([mockItem as any])
+      prisma.notification.findMany.mockResolvedValue([mockItem])
       prisma.notification.count.mockResolvedValueOnce(10).mockResolvedValueOnce(3)
 
       const svc = createService(prisma)
@@ -144,7 +147,9 @@ describe('NotificationService', () => {
       const prisma = buildPrismaMock()
       const svc = createService(prisma)
       await svc.list(1, { unreadOnly: true })
-      const callArg = (prisma.notification.findMany.mock.calls[0] as any[])[0]
+      const [callArg] = prisma.notification.findMany.mock.calls[0] as unknown as [
+        { where?: { userId?: number; isRead?: boolean } } | undefined,
+      ]
       expect(callArg?.where).toMatchObject({ userId: 1, isRead: false })
     })
   })
@@ -174,7 +179,7 @@ describe('NotificationService', () => {
 
     it('已读时不重复 update', async () => {
       const prisma = buildPrismaMock()
-      prisma.notification.findFirst.mockResolvedValue({ id: 1, userId: 1, isRead: true } as any)
+      prisma.notification.findFirst.mockResolvedValue({ id: 1, userId: 1, isRead: true })
       const svc = createService(prisma)
       await svc.markRead(1, 1)
       expect(prisma.notification.update).not.toHaveBeenCalled()
@@ -182,7 +187,7 @@ describe('NotificationService', () => {
 
     it('未读时调用 update 设置 isRead=true', async () => {
       const prisma = buildPrismaMock()
-      prisma.notification.findFirst.mockResolvedValue({ id: 1, userId: 1, isRead: false } as any)
+      prisma.notification.findFirst.mockResolvedValue({ id: 1, userId: 1, isRead: false })
       const svc = createService(prisma)
       await svc.markRead(1, 1)
       expect(prisma.notification.update).toHaveBeenCalledWith(
@@ -214,7 +219,7 @@ describe('NotificationService', () => {
 
     it('存在时调用 delete', async () => {
       const prisma = buildPrismaMock()
-      prisma.notification.findFirst.mockResolvedValue({ id: 5, userId: 1 } as any)
+      prisma.notification.findFirst.mockResolvedValue({ id: 5, userId: 1 })
       const svc = createService(prisma)
       await svc.deleteNotification(1, 5)
       expect(prisma.notification.delete).toHaveBeenCalledWith({ where: { id: 5 } })
@@ -235,9 +240,7 @@ describe('NotificationService', () => {
 
     it('已配置 PRICE_ALERT enabled=false → 返回 false', async () => {
       const prisma = buildPrismaMock()
-      prisma.notificationPreference.findMany.mockResolvedValue([
-        { type: NotificationType.PRICE_ALERT, enabled: false } as any,
-      ])
+      prisma.notificationPreference.findMany.mockResolvedValue([{ type: NotificationType.PRICE_ALERT, enabled: false }])
       const svc = createService(prisma)
       const prefs = await svc.getPreferences(1)
       const priceAlertPref = prefs.find((p) => p.type === NotificationType.PRICE_ALERT)

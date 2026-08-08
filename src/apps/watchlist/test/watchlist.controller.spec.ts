@@ -92,10 +92,7 @@ describe('WatchlistController (integration)', () => {
   })
 
   it('POST /watchlist/create with valid name → 201, data.id present', async () => {
-    const res = await request(app.getHttpServer())
-      .post('/watchlist/create')
-      .send({ name: '自选1' })
-      .expect(201)
+    const res = await request(app.getHttpServer()).post('/watchlist/create').send({ name: '自选1' }).expect(201)
     expect(res.body.code).toBe(0)
     expect(res.body.data.id).toBe(1)
     expect(mockWatchlistService.createWatchlist).toHaveBeenCalledWith(
@@ -136,5 +133,3 @@ describe('WatchlistController (integration)', () => {
     await request(app.getHttpServer()).post('/watchlist/overview').send({}).expect(404)
   })
 })
-
-

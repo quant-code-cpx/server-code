@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common'
+import { BadRequestException, Injectable, Logger } from '@nestjs/common'
 import { PrismaService } from 'src/shared/prisma.service'
 import { PortfolioService } from 'src/apps/portfolio/portfolio.service'
 import { EventsGateway } from 'src/websocket/events.gateway'
@@ -32,7 +32,8 @@ export class DriftDetectionService {
         where: { portfolioId: dto.portfolioId, isActive: true },
         select: { strategyId: true },
       })
-      if (!activation) throw new BadRequestException('组合未关联策略信号，请先激活策略并关联组合，或手动指定 strategyId')
+      if (!activation)
+        throw new BadRequestException('组合未关联策略信号，请先激活策略并关联组合，或手动指定 strategyId')
       strategyId = activation.strategyId
     }
 
@@ -159,7 +160,9 @@ export class DriftDetectionService {
       where: { tsCode: { in: allTsCodes } },
       select: { tsCode: true, name: true, industry: true },
     })
-    const stockInfoMap = new Map(stocks.map((s) => [s.tsCode, { name: s.name ?? s.tsCode, industry: s.industry ?? '其他' }]))
+    const stockInfoMap = new Map(
+      stocks.map((s) => [s.tsCode, { name: s.name ?? s.tsCode, industry: s.industry ?? '其他' }]),
+    )
 
     // ── 计算偏离度 ────────────────────────────────────────────────────────
 

@@ -17,6 +17,9 @@ import { StrategyService } from '../strategy.service'
 
 // ── Mock 工厂 ─────────────────────────────────────────────────────────────────
 
+type StrategyFindManyCall = { where: { strategyType?: string; OR?: unknown[] } }
+type StrategyUpdateCall = { data: { version?: unknown; tags?: unknown } }
+
 function buildStrategy(overrides: Record<string, unknown> = {}) {
   return {
     id: 'strat-1',
@@ -80,8 +83,11 @@ function createService(
   backtestRunService = buildBacktestRunServiceMock(),
   schemaValidator = buildSchemaValidatorMock(),
 ): StrategyService {
-  // @ts-ignore 局部 mock，绕过依赖注入
-  return new StrategyService(prisma as any, backtestRunService as any, schemaValidator as any)
+  return new StrategyService(
+    prisma as unknown as ConstructorParameters<typeof StrategyService>[0],
+    backtestRunService as unknown as ConstructorParameters<typeof StrategyService>[1],
+    schemaValidator as unknown as ConstructorParameters<typeof StrategyService>[2],
+  )
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -186,7 +192,7 @@ describe('StrategyService', () => {
 
       await svc.list(1, { strategyType: 'FACTOR_RANKING' })
 
-      const callArgs = (prisma.strategy.findMany.mock.calls as any)[0][0]
+      const callArgs = (prisma.strategy.findMany.mock.calls[0] as unknown as [StrategyFindManyCall])[0]
       expect(callArgs.where).toHaveProperty('strategyType', 'FACTOR_RANKING')
     })
 
@@ -198,7 +204,7 @@ describe('StrategyService', () => {
 
       await svc.list(1, { keyword: '动量' })
 
-      const callArgs = (prisma.strategy.findMany.mock.calls as any)[0][0]
+      const callArgs = (prisma.strategy.findMany.mock.calls[0] as unknown as [StrategyFindManyCall])[0]
       expect(callArgs.where).toHaveProperty('OR')
       expect(Array.isArray(callArgs.where.OR)).toBe(true)
     })
@@ -533,7 +539,7 @@ describe('StrategyService', () => {
 
       // 修复后：backtestDefaults 变更也写快照并递增版本
       expect(prisma.strategyVersion.create).toHaveBeenCalledTimes(1)
-      const updateCall = (prisma.strategy.update.mock.calls as any)[0][0]
+      const updateCall = (prisma.strategy.update.mock.calls[0] as unknown as [StrategyUpdateCall])[0]
       expect(updateCall.data).toHaveProperty('version', { increment: 1 })
     })
   })
@@ -565,11 +571,8 @@ describe('StrategyService', () => {
       // strategy.version=5，所以 versionB=5 直接用 strategyConfig，不查 DB
       prisma.strategy.findFirst.mockResolvedValue(buildStrategy({ version: 5, strategyConfig: { topN: 30 } }))
       // versionA=1 的快照不存在
-      ;(prisma as any).strategyVersion = {
-        ...prisma.strategyVersion,
-        findUnique: jest.fn(async () => null), // version=1 快照不存在
-      }
-      ;(prisma as any).backtestRun = { findFirst: jest.fn(async () => null) }
+      prisma.strategyVersion.findUnique = jest.fn(async () => null) // version=1 快照不存在
+      prisma.backtestRun.findFirst = jest.fn(async () => null)
       const svc = createService(prisma)
 
       // versionA=1 < versionB=5 满足顺序要求，但 version=1 的快照不存在
@@ -661,7 +664,7 @@ describe('StrategyService', () => {
 
       await svc.update(1, { id: 'strat-1', tags: [] })
 
-      const updateCall = (prisma.strategy.update.mock.calls as any)[0][0]
+      const updateCall = (prisma.strategy.update.mock.calls[0] as unknown as [StrategyUpdateCall])[0]
       expect(updateCall.data.tags).toEqual([])
     })
   })
@@ -685,7 +688,7 @@ describe('StrategyService', () => {
       expect(prisma.$transaction).toHaveBeenCalledTimes(1)
       // 验证快照写入和版本递增都发生
       expect(prisma.strategyVersion.create).toHaveBeenCalledTimes(1)
-      const updateCall = (prisma.strategy.update.mock.calls as any)[0][0]
+      const updateCall = (prisma.strategy.update.mock.calls[0] as unknown as [StrategyUpdateCall])[0]
       expect(updateCall.data.version).toEqual({ increment: 1 })
     })
 

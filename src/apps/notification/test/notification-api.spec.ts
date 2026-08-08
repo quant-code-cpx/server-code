@@ -4,7 +4,7 @@
  * 覆盖：通知列表、未读计数、标记已读、删除通知、通知偏好
  * 方法：Test.createTestingModule + useGlobalGuards(mock) + mock services
  */
-import { CanActivate, ExecutionContext, INestApplication, ValidationPipe } from '@nestjs/common'
+import { CanActivate, ExecutionContext, INestApplication, UnauthorizedException, ValidationPipe } from '@nestjs/common'
 import { Test, TestingModule } from '@nestjs/testing'
 import request from 'supertest'
 import { NotificationType } from '@prisma/client'
@@ -241,7 +241,6 @@ describe('Notification API 测试', () => {
     it('NT-SEC-001: 无 Token 访问 list 应 401', async () => {
       const mockAuthGuardNoAuth: CanActivate = {
         canActivate(): boolean {
-          const { UnauthorizedException } = require('@nestjs/common')
           throw new UnauthorizedException()
         },
       }
@@ -265,7 +264,6 @@ describe('Notification API 测试', () => {
     it('NT-SEC-002: 无 Token 访问 unread-count 应 401', async () => {
       const mockAuthGuardNoAuth: CanActivate = {
         canActivate(): boolean {
-          const { UnauthorizedException } = require('@nestjs/common')
           throw new UnauthorizedException()
         },
       }

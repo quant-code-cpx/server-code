@@ -64,7 +64,11 @@ describe('FactorAnalysisService', () => {
     mockPrisma = buildPrismaMock()
     mockCompute = buildComputeMock()
     mockCache = buildCacheMock()
-    service = new FactorAnalysisService(mockPrisma as any, mockCompute as any, mockCache as any)
+    service = new FactorAnalysisService(
+      mockPrisma as unknown as ConstructorParameters<typeof FactorAnalysisService>[0],
+      mockCompute as unknown as ConstructorParameters<typeof FactorAnalysisService>[1],
+      mockCache as unknown as ConstructorParameters<typeof FactorAnalysisService>[2],
+    )
   })
 
   describe('getIcAnalysis()', () => {

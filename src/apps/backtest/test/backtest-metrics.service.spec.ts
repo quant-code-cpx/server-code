@@ -270,9 +270,9 @@ describe('BacktestMetricsService', () => {
 
       // 手算 downside deviation (使用全体 N=252 做分母)
       const rfDaily = 0.02 / 252
-      const excessReturns = records.map(r => r.dailyReturn - rfDaily)
+      const excessReturns = records.map((r) => r.dailyReturn - rfDaily)
       const downsideSquaredSum = excessReturns.reduce((a, r) => a + (r < 0 ? r ** 2 : 0), 0)
-      const downsideVar = downsideSquaredSum / excessReturns.length  // N=252, not ~126
+      const downsideVar = downsideSquaredSum / excessReturns.length // N=252, not ~126
       const downsideStd = Math.sqrt(downsideVar) * Math.sqrt(252)
 
       // 验证 Sortino 是有限值且非零

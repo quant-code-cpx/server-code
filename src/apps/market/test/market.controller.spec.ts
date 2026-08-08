@@ -1,4 +1,4 @@
-import { Test, TestingModule } from '@nestjs/testing'
+import { Test } from '@nestjs/testing'
 import { INestApplication, ValidationPipe } from '@nestjs/common'
 import request from 'supertest'
 import { TransformInterceptor } from 'src/lifecycle/interceptors/transform.interceptor'
@@ -8,15 +8,32 @@ import { MarketService } from '../market.service'
 const SUCCESS_CODE = 0
 
 const mockMarketService: Record<string, jest.Mock> = {
-  getMarketMoneyFlow: jest.fn(), getSectorFlow: jest.fn(), getMarketSentiment: jest.fn(),
-  getMarketValuation: jest.fn(), getIndexQuote: jest.fn(), getHsgtFlow: jest.fn(),
-  getIndexTrend: jest.fn(), getIndexQuoteWithSparkline: jest.fn(), getChangeDistribution: jest.fn(),
-  getSectorRanking: jest.fn(), getVolumeOverview: jest.fn(), getSentimentTrend: jest.fn(),
-  getValuationTrend: jest.fn(), getMoneyFlowTrend: jest.fn(), getSectorFlowRanking: jest.fn(),
-  getSectorFlowTrend: jest.fn(), getHsgtTrend: jest.fn(), getMainFlowRanking: jest.fn(),
-  getStockFlowDetail: jest.fn(), getConceptList: jest.fn(), getConceptMembers: jest.fn(),
-  getDailyNarrative: jest.fn(), getTopMovers: jest.fn(), getDataDates: jest.fn(),
-  getSectorTopBottom: jest.fn(), getMarketBreadth: jest.fn(),
+  getMarketMoneyFlow: jest.fn(),
+  getSectorFlow: jest.fn(),
+  getMarketSentiment: jest.fn(),
+  getMarketValuation: jest.fn(),
+  getIndexQuote: jest.fn(),
+  getHsgtFlow: jest.fn(),
+  getIndexTrend: jest.fn(),
+  getIndexQuoteWithSparkline: jest.fn(),
+  getChangeDistribution: jest.fn(),
+  getSectorRanking: jest.fn(),
+  getVolumeOverview: jest.fn(),
+  getSentimentTrend: jest.fn(),
+  getValuationTrend: jest.fn(),
+  getMoneyFlowTrend: jest.fn(),
+  getSectorFlowRanking: jest.fn(),
+  getSectorFlowTrend: jest.fn(),
+  getHsgtTrend: jest.fn(),
+  getMainFlowRanking: jest.fn(),
+  getStockFlowDetail: jest.fn(),
+  getConceptList: jest.fn(),
+  getConceptMembers: jest.fn(),
+  getDailyNarrative: jest.fn(),
+  getTopMovers: jest.fn(),
+  getDataDates: jest.fn(),
+  getSectorTopBottom: jest.fn(),
+  getMarketBreadth: jest.fn(),
 }
 
 const ok = (key: string) => (mockMarketService[key] as jest.Mock).mockResolvedValueOnce({})
@@ -26,7 +43,8 @@ describe('MarketController', () => {
   beforeEach(async () => {
     jest.clearAllMocks()
     const m = await Test.createTestingModule({
-      controllers: [MarketController], providers: [{ provide: MarketService, useValue: mockMarketService }],
+      controllers: [MarketController],
+      providers: [{ provide: MarketService, useValue: mockMarketService }],
     }).compile()
     app = m.createNestApplication()
     app.useGlobalInterceptors(new TransformInterceptor())
@@ -59,7 +77,7 @@ describe('MarketController', () => {
     ['/market/concept/list', 'getConceptList', {}],
     ['/market/concept/members', 'getConceptMembers', { tsCode: '885835.TI' }],
     ['/market/daily-narrative', 'getDailyNarrative', {}],
-        ['/market/top-movers', 'getTopMovers', { dim: 'gain' }],
+    ['/market/top-movers', 'getTopMovers', { dim: 'gain' }],
     ['/market/data-dates', 'getDataDates', {}],
     ['/market/sector-top-bottom', 'getSectorTopBottom', {}],
   ]
@@ -67,9 +85,13 @@ describe('MarketController', () => {
   eps.forEach(([path, svcKey, body]) => {
     it(`[BIZ] POST ${path} → 201`, async () => {
       ok(svcKey)
-      await request(app.getHttpServer()).post(path).send(body).expect(201).expect((res: any) => {
-        expect(res.body.code).toBe(SUCCESS_CODE)
-      })
+      await request(app.getHttpServer())
+        .post(path)
+        .send(body)
+        .expect(201)
+        .expect((res: { body: { code: number } }) => {
+          expect(res.body.code).toBe(SUCCESS_CODE)
+        })
     })
   })
 

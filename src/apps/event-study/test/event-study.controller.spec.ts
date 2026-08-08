@@ -1,11 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing'
-import {
-  INestApplication,
-  ValidationPipe,
-  ExecutionContext,
-  NotFoundException,
-  UnauthorizedException,
-} from '@nestjs/common'
+import { INestApplication, ValidationPipe, NotFoundException, UnauthorizedException } from '@nestjs/common'
 import request from 'supertest'
 import { UserRole } from '@prisma/client'
 import { Reflector } from '@nestjs/core'
@@ -33,7 +27,7 @@ const mockEventSignalService = {
 
 describe('EventStudyController', () => {
   let app: INestApplication
-  let req: any
+  let req: ReturnType<typeof request>
 
   beforeAll(async () => {
     const result = await createTestApp({
@@ -67,7 +61,10 @@ describe('EventStudyController', () => {
 
   it('[BIZ] POST /event-study/analyze → 201', async () => {
     mockEventStudyService.analyze.mockResolvedValueOnce({})
-    const res = await req.post('/event-study/analyze').send({ eventType: 'FORECAST', startDate: '20230101', endDate: '20231231' }).expect(201)
+    const res = await req
+      .post('/event-study/analyze')
+      .send({ eventType: 'FORECAST', startDate: '20230101', endDate: '20231231' })
+      .expect(201)
     expect(res.body.code).toBe(0)
   })
 
@@ -96,7 +93,7 @@ describe('EventStudyController', () => {
 
 describe('EventStudyController (SUPER_ADMIN)', () => {
   let app: INestApplication
-  let req: any
+  let req: ReturnType<typeof request>
 
   beforeAll(async () => {
     const result = await createTestApp({
@@ -181,7 +178,7 @@ describe('EventStudyController (SUPER_ADMIN)', () => {
 
 describe('EventStudyController ([AUTH] 未登录)', () => {
   let app: INestApplication
-  let req: any
+  let req: ReturnType<typeof request>
 
   beforeAll(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -192,7 +189,11 @@ describe('EventStudyController ([AUTH] 未登录)', () => {
       ],
     })
       .overrideGuard(RolesGuard)
-      .useValue({ canActivate: (_ctx: ExecutionContext) => { throw new UnauthorizedException('用户未登录') } })
+      .useValue({
+        canActivate: () => {
+          throw new UnauthorizedException('用户未登录')
+        },
+      })
       .compile()
 
     app = module.createNestApplication()

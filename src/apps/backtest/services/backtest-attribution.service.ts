@@ -266,7 +266,7 @@ export class BacktestAttributionService {
 
         // Portfolio industry return (weighted avg of stock pctChg, then compound)
         const pStocks = portfolioStocksByInd.get(indCode) ?? []
-        const Rp = this.industryReturn(pStocks, wp, period.dateStrs, priceMap, 'portfolio', industryMap)
+        const Rp = this.industryReturn(pStocks, wp, period.dateStrs, priceMap)
 
         // Benchmark industry return (weighted avg of stock pctChg, then compound)
         const bStocks = benchmarkStocksByInd.get(indCode) ?? new Map<string, number>()
@@ -392,8 +392,6 @@ export class BacktestAttributionService {
     totalWeight: number,
     dateStrs: string[],
     priceMap: Map<string, number>,
-    _side: 'portfolio',
-    _industryMap: Map<string, { code: string; name: string }>,
   ): number {
     if (stocks.length === 0 || totalWeight <= 0) return 0
     const dailyPctChgs = dateStrs.map((ds) => {

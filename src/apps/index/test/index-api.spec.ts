@@ -126,10 +126,7 @@ describe('Index API 测试', () => {
     })
 
     it('IDX-BIZ-004: 单日查询（trade_date）', async () => {
-      const res = await req
-        .post('/index/daily')
-        .send({ ts_code: '000001.SH', trade_date: '20260523' })
-        .expect(201)
+      const res = await req.post('/index/daily').send({ ts_code: '000001.SH', trade_date: '20260523' }).expect(201)
       expect(res.body.data).toHaveProperty('data')
     })
 
@@ -151,24 +148,15 @@ describe('Index API 测试', () => {
     })
 
     it('IDX-ERR-003: trade_date 格式错误应 400', async () => {
-      await req
-        .post('/index/daily')
-        .send({ ts_code: '000001.SH', trade_date: '2026-05-23' })
-        .expect(400)
+      await req.post('/index/daily').send({ ts_code: '000001.SH', trade_date: '2026-05-23' }).expect(400)
     })
 
     it('IDX-ERR-004: start_date 格式错误应 400', async () => {
-      await req
-        .post('/index/daily')
-        .send({ ts_code: '000001.SH', start_date: 'bad-date' })
-        .expect(400)
+      await req.post('/index/daily').send({ ts_code: '000001.SH', start_date: 'bad-date' }).expect(400)
     })
 
     it('IDX-ERR-005: end_date 格式错误应 400', async () => {
-      await req
-        .post('/index/daily')
-        .send({ ts_code: '000001.SH', end_date: '2026/05/23' })
-        .expect(400)
+      await req.post('/index/daily').send({ ts_code: '000001.SH', end_date: '2026/05/23' }).expect(400)
     })
 
     it('IDX-EDGE-001: trade_date 优先于 start/end_date', async () => {
@@ -182,9 +170,7 @@ describe('Index API 测试', () => {
         })
         .expect(201)
       expect(res.body.data).toHaveProperty('data')
-      expect(mockIndexService.getIndexDaily).toHaveBeenCalledWith(
-        expect.objectContaining({ trade_date: '20260523' }),
-      )
+      expect(mockIndexService.getIndexDaily).toHaveBeenCalledWith(expect.objectContaining({ trade_date: '20260523' }))
     })
   })
 
@@ -192,10 +178,7 @@ describe('Index API 测试', () => {
 
   describe('成分股', () => {
     it('IDX-BIZ-006: 查询成分股及权重', async () => {
-      const res = await req
-        .post('/index/constituents')
-        .send({ index_code: '000300.SH' })
-        .expect(201)
+      const res = await req.post('/index/constituents').send({ index_code: '000300.SH' }).expect(201)
       expect(res.body.data).toHaveProperty('indexCode')
       expect(res.body.data).toHaveProperty('constituents')
       expect(Array.isArray(res.body.data.constituents)).toBe(true)
@@ -219,10 +202,7 @@ describe('Index API 测试', () => {
     })
 
     it('IDX-ERR-008: constituents trade_date 格式错误应 400', async () => {
-      await req
-        .post('/index/constituents')
-        .send({ index_code: '000300.SH', trade_date: '2026-05-23' })
-        .expect(400)
+      await req.post('/index/constituents').send({ index_code: '000300.SH', trade_date: '2026-05-23' }).expect(400)
     })
   })
 })

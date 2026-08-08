@@ -38,9 +38,7 @@ describe('StrategyDraftService', () => {
 
     const result = await service.getDrafts(1)
     expect(result).toEqual({ drafts })
-    expect(prisma.strategyDraft.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { userId: 1 } }),
-    )
+    expect(prisma.strategyDraft.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { userId: 1 } }))
   })
 
   // ── getDraft ──────────────────────────────────────────────────────────────

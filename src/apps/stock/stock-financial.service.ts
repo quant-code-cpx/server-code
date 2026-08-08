@@ -34,7 +34,7 @@ function yoy(curr: number | null, prev: number | null): number | null {
 
 function buildIncomeItems(rows: Income[], limit: number) {
   // rows 已按 endDate desc 排序
-  const byKey = new Map<string, any>()
+  const byKey = new Map<string, Income>()
   for (const r of rows) byKey.set(fmtPeriodKey(r.endDate), r)
 
   return rows.slice(0, limit).map((r) => {
@@ -64,7 +64,7 @@ function buildIncomeItems(rows: Income[], limit: number) {
 }
 
 function buildBalanceSheetItems(rows: BalanceSheet[], limit: number) {
-  const byKey = new Map<string, any>()
+  const byKey = new Map<string, BalanceSheet>()
   for (const r of rows) byKey.set(fmtPeriodKey(r.endDate), r)
 
   return rows.slice(0, limit).map((r) => {
@@ -93,7 +93,7 @@ function buildBalanceSheetItems(rows: BalanceSheet[], limit: number) {
 }
 
 function buildCashflowItems(rows: Cashflow[], limit: number) {
-  const byKey = new Map<string, any>()
+  const byKey = new Map<string, Cashflow>()
   for (const r of rows) byKey.set(fmtPeriodKey(r.endDate), r)
 
   return rows.slice(0, limit).map((r) => {

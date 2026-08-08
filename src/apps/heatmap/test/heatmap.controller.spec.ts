@@ -103,10 +103,7 @@ describe('HeatmapController', () => {
 
   // HeatmapQueryDto.trade_date uses @IsOptional() @Matches — hyphen format fails
   it('[VAL] POST /heatmap/data trade_date 含横线格式 → 400', async () => {
-    await request(app.getHttpServer())
-      .post('/heatmap/data')
-      .send({ trade_date: '2023-12-01' })
-      .expect(400)
+    await request(app.getHttpServer()).post('/heatmap/data').send({ trade_date: '2023-12-01' }).expect(400)
     expect(mockHeatmapService.getHeatmap).not.toHaveBeenCalled()
   })
 

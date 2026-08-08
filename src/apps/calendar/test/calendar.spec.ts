@@ -6,31 +6,36 @@
 
 import { Test, TestingModule } from '@nestjs/testing'
 import { CanActivate, ExecutionContext, INestApplication, UnauthorizedException, ValidationPipe } from '@nestjs/common'
-import { Reflector } from '@nestjs/core'
 import request from 'supertest'
 import { CalendarController } from '../calendar.controller'
 import { CalendarService } from '../calendar.service'
 import { LoggerService } from 'src/shared/logger/logger.service'
 import { TransformInterceptor } from 'src/lifecycle/interceptors/transform.interceptor'
 import { GlobalExceptionsFilter } from 'src/lifecycle/filters/global.exception'
+import { JwtAuthGuard } from 'src/lifecycle/guard/jwt-auth.guard'
 import { buildTestUser } from 'test/helpers/create-test-app'
 
 function createMockLoggerService(): LoggerService {
-  return { log: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn(), verbose: jest.fn(), devLog: jest.fn() } as unknown as LoggerService
+  return {
+    log: jest.fn(),
+    warn: jest.fn(),
+    error: jest.fn(),
+    debug: jest.fn(),
+    verbose: jest.fn(),
+    devLog: jest.fn(),
+  } as unknown as LoggerService
 }
 
 describe('CalendarController — DTO校验 + JWT鉴权', () => {
   let app: INestApplication
-  let httpRequest: any
-  let mockService: any
+  let httpRequest: ReturnType<typeof request>
+  let mockService: Record<string, jest.Mock>
 
   beforeAll(async () => {
     mockService = {
       getEventsByDateRange: jest.fn().mockResolvedValue({ events: [] }),
       getUpcomingEvents: jest.fn().mockResolvedValue({ events: [] }),
     }
-
-    const reflector = new Reflector()
 
     const mockJwtGuard: CanActivate = {
       canActivate(ctx: ExecutionContext): boolean {
@@ -46,7 +51,7 @@ describe('CalendarController — DTO校验 + JWT鉴权', () => {
         { provide: LoggerService, useValue: createMockLoggerService() },
       ],
     })
-      .overrideGuard(require('src/lifecycle/guard/jwt-auth.guard').JwtAuthGuard)
+      .overrideGuard(JwtAuthGuard)
       .useValue(mockJwtGuard)
       .compile()
 
@@ -67,10 +72,7 @@ describe('CalendarController — DTO校验 + JWT鉴权', () => {
   // ══════════════════════════════════════════════════════════════════════════
   describe('range', () => {
     it('正常查询', async () => {
-      await httpRequest
-        .post('/calendar/range')
-        .send({ startDate: '20260501', endDate: '20260523' })
-        .expect(201)
+      await httpRequest.post('/calendar/range').send({ startDate: '20260501', endDate: '20260523' }).expect(201)
     })
 
     it('按类型过滤', async () => {
@@ -95,69 +97,42 @@ describe('CalendarController — DTO校验 + JWT鉴权', () => {
     })
 
     it('缺 startDate → 400', async () => {
-      await httpRequest
-        .post('/calendar/range')
-        .send({ endDate: '20260523' })
-        .expect(400)
+      await httpRequest.post('/calendar/range').send({ endDate: '20260523' }).expect(400)
     })
 
     it('缺 endDate → 400', async () => {
-      await httpRequest
-        .post('/calendar/range')
-        .send({ startDate: '20260501' })
-        .expect(400)
+      await httpRequest.post('/calendar/range').send({ startDate: '20260501' }).expect(400)
     })
 
     it('startDate 格式错误 → 400', async () => {
-      await httpRequest
-        .post('/calendar/range')
-        .send({ startDate: 'abc', endDate: '20260523' })
-        .expect(400)
+      await httpRequest.post('/calendar/range').send({ startDate: 'abc', endDate: '20260523' }).expect(400)
     })
 
     it('endDate 格式错误 → 400', async () => {
-      await httpRequest
-        .post('/calendar/range')
-        .send({ startDate: '20260501', endDate: 'abc' })
-        .expect(400)
+      await httpRequest.post('/calendar/range').send({ startDate: '20260501', endDate: 'abc' }).expect(400)
     })
   })
 
   // ══════════════════════════════════════════════════════════════════════════
   describe('upcoming', () => {
     it('默认 30 天', async () => {
-      await httpRequest
-        .post('/calendar/upcoming')
-        .send({})
-        .expect(201)
+      await httpRequest.post('/calendar/upcoming').send({}).expect(201)
     })
 
     it('自定义 7 天', async () => {
-      await httpRequest
-        .post('/calendar/upcoming')
-        .send({ days: 7 })
-        .expect(201)
+      await httpRequest.post('/calendar/upcoming').send({ days: 7 }).expect(201)
     })
 
     it('days=365（最大值）', async () => {
-      await httpRequest
-        .post('/calendar/upcoming')
-        .send({ days: 365 })
-        .expect(201)
+      await httpRequest.post('/calendar/upcoming').send({ days: 365 }).expect(201)
     })
 
     it('days=366（超限）→ 400', async () => {
-      await httpRequest
-        .post('/calendar/upcoming')
-        .send({ days: 366 })
-        .expect(400)
+      await httpRequest.post('/calendar/upcoming').send({ days: 366 }).expect(400)
     })
 
     it('days=0 → 400', async () => {
-      await httpRequest
-        .post('/calendar/upcoming')
-        .send({ days: 0 })
-        .expect(400)
+      await httpRequest.post('/calendar/upcoming').send({ days: 0 }).expect(400)
     })
   })
 
@@ -165,7 +140,7 @@ describe('CalendarController — DTO校验 + JWT鉴权', () => {
   describe('鉴权', () => {
     it('无 Token → 401', async () => {
       const unauthGuard: CanActivate = {
-        canActivate(_ctx: ExecutionContext): boolean {
+        canActivate(): boolean {
           throw new UnauthorizedException('用户未登录或 Token 已失效')
         },
       }
@@ -177,7 +152,7 @@ describe('CalendarController — DTO校验 + JWT鉴权', () => {
           { provide: LoggerService, useValue: createMockLoggerService() },
         ],
       })
-        .overrideGuard(require('src/lifecycle/guard/jwt-auth.guard').JwtAuthGuard)
+        .overrideGuard(JwtAuthGuard)
         .useValue(unauthGuard)
         .compile()
 

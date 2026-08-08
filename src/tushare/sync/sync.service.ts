@@ -284,7 +284,7 @@ export class TushareSyncService implements OnApplicationBootstrap {
     const doms = parseField(domPart, 1, 31)
     const months = parseField(monthPart, 1, 12)
     // cron 周字段：0 或 7 = 周日；dayjs.day() 返回 0=周日
-    let dows = parseField(dowPart, 0, 7)
+    const dows = parseField(dowPart, 0, 7)
     if (dows && dows.has(7)) dows.add(0)
     if (!minutes || !hours || !doms || !months || !dows) {
       // 解析失败，保守视为已过

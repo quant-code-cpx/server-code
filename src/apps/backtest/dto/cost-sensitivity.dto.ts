@@ -1,4 +1,4 @@
-import { IsArray, IsNumber, IsOptional, IsString, Max, Min } from 'class-validator'
+import { IsArray, IsNumber, IsOptional, IsString } from 'class-validator'
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
 
 // ── Request DTO ───────────────────────────────────────────────────────────────

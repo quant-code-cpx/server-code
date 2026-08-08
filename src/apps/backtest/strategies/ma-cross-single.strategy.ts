@@ -10,6 +10,8 @@ export class MaCrossSingleStrategy implements IBacktestStrategy<'MA_CROSS_SINGLE
     historicalBars: Map<string, DailyBar[]>,
     _prisma: PrismaService,
   ): Promise<SignalOutput> {
+    void _barData
+    void _prisma
     const cfg: MaCrossSingleStrategyConfig = config.strategyConfig
     const { tsCode, shortWindow = 5, longWindow = 20 } = cfg
 

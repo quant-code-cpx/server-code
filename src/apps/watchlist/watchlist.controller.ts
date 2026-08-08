@@ -23,7 +23,6 @@ import {
   BatchRemoveResponseDto,
   WatchlistDto,
   WatchlistMessageResponseDto,
-  WatchlistOverviewItemDto,
   WatchlistOverviewResponseDto,
   WatchlistOverviewSummaryDto,
   WatchlistStockDto,
@@ -113,10 +112,7 @@ export class WatchlistController {
   @Post('stocks/update')
   @ApiOperation({ summary: '更新股票备注/标签/目标价' })
   @ApiSuccessResponse(WatchlistStockDto)
-  updateStock(
-    @CurrentUser() user: TokenPayload,
-    @Body() dto: UpdateStockBodyDto,
-  ) {
+  updateStock(@CurrentUser() user: TokenPayload, @Body() dto: UpdateStockBodyDto) {
     return this.watchlistService.updateStock(user.id, dto.id, dto.stockId, dto)
   }
 

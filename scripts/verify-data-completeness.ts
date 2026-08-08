@@ -61,13 +61,26 @@ async function verifyBasicInfo() {
   }
 }
 
+type TradeDateGroup = {
+  tradeDate: Date
+  _count: { _all: number }
+}
+
+type TradeDateGroupByDelegate = {
+  groupBy: (args: {
+    by: ['tradeDate']
+    _count: { _all: true }
+    orderBy: { tradeDate: 'asc' }
+  }) => Promise<TradeDateGroup[]>
+}
+
 async function verifyTradeDate(label: string, modelName: string, expectedTradeDates: string[]) {
   banner(label)
 
-  const model = (prisma as any)[modelName]
+  const model = (prisma as unknown as Record<string, TradeDateGroupByDelegate>)[modelName]
 
   // 按交易日 groupBy 得到每日股票数
-  const groups: Array<{ tradeDate: Date; _count: { _all: number } }> = await model.groupBy({
+  const groups = await model.groupBy({
     by: ['tradeDate'],
     _count: { _all: true },
     orderBy: { tradeDate: 'asc' },
@@ -117,7 +130,7 @@ async function verifyTradeDate(label: string, modelName: string, expectedTradeDa
   }
 }
 
-async function verifyAdjFactor(expectedTradeDates: string[]) {
+async function verifyAdjFactor() {
   banner('复权因子')
 
   const groups = await prisma.adjFactor.groupBy({
@@ -249,6 +262,7 @@ async function main() {
   // 获取日线覆盖的日期范围
   const dailyMin = await prisma.daily.aggregate({ _min: { tradeDate: true } })
   const dailyMax = await prisma.daily.aggregate({ _max: { tradeDate: true } })
+  let expectedDailyDates: string[] = []
 
   if (dailyMin._min.tradeDate && dailyMax._max.tradeDate) {
     const minKey = toDateKey(dailyMin._min.tradeDate)
@@ -256,9 +270,7 @@ async function main() {
     console.log(`\n日线数据范围: ${minKey} ~ ${maxKey}`)
 
     // 只验证日线覆盖范围内的交易日
-    var expectedDailyDates = allTradeDates.filter((d) => d >= minKey && d <= maxKey)
-  } else {
-    var expectedDailyDates: string[] = []
+    expectedDailyDates = allTradeDates.filter((d) => d >= minKey && d <= maxKey)
   }
 
   // 周线覆盖的日期范围
@@ -280,7 +292,7 @@ async function main() {
   }
 
   await verifyTradeDate('月线行情', 'monthly', [])
-  await verifyAdjFactor(expectedDailyDates)
+  await verifyAdjFactor()
   await verifyDailyBasic(expectedDailyDates)
   await verifyFinancial()
   await verifyMoneyflow()

@@ -10,6 +10,7 @@ import { LoggerService } from 'src/shared/logger/logger.service'
 import { EventsGateway } from 'src/websocket/events.gateway'
 import { EventStudyService } from 'src/apps/event-study/event-study.service'
 import { DistributedCronLockService } from 'src/shared/scheduler/distributed-cron-lock.service'
+import { CalendarEventType } from '../dto/calendar-query.dto'
 
 const mockLogger = {
   log: () => {},
@@ -81,7 +82,7 @@ describe('Alert — 真实 DB 集成测试', () => {
   it('calendar/list — 按类型过滤', async () => {
     if (skipWhenDbUnavailable()) return
     const r = await calendarService.getCalendar(
-      { startDate: '20260501', endDate: '20260523', types: ['DIVIDEND' as any] },
+      { startDate: '20260501', endDate: '20260523', types: [CalendarEventType.DIVIDEND] },
       2,
     )
     expect(r).toBeDefined()
@@ -95,7 +96,7 @@ describe('Alert — 真实 DB 集成测试', () => {
 
   it('calendar/history-trend — 正常查询', async () => {
     if (skipWhenDbUnavailable()) return
-    const r = await calendarService.getHistoryTrend({ tsCode: '000001.SZ', type: 'DIVIDEND' as any })
+    const r = await calendarService.getHistoryTrend({ tsCode: '000001.SZ', type: CalendarEventType.DIVIDEND })
     expect(r).toBeDefined()
   }, 30000)
 

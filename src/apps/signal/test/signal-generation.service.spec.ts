@@ -88,6 +88,18 @@ function createService(mocks = buildMocks()) {
   return { svc, ...mocks }
 }
 
+type SignalGenerationServicePrivateApi = {
+  deriveActions(
+    holdings: Set<string>,
+    targets: Map<string, number>,
+    hasPortfolio: boolean,
+  ): Array<{ tsCode: string; action: string; targetWeight: number }>
+}
+
+function getSignalGenerationServicePrivateApi(service: SignalGenerationService): SignalGenerationServicePrivateApi {
+  return service as unknown as SignalGenerationServicePrivateApi
+}
+
 // ── 测试套件 ──────────────────────────────────────────────────────────────────
 
 describe('SignalGenerationService', () => {
@@ -236,7 +248,7 @@ describe('SignalGenerationService', () => {
         ['000002.SZ', 0.5],
       ])
 
-      const result = (svc as any).deriveActions(holdings, targets, true)
+      const result = getSignalGenerationServicePrivateApi(svc).deriveActions(holdings, targets, true)
 
       expect(result.every((r: { action: string }) => r.action === 'HOLD')).toBe(true)
       expect(result).toHaveLength(2)
@@ -250,7 +262,7 @@ describe('SignalGenerationService', () => {
         ['000004.SZ', 0.5],
       ])
 
-      const result = (svc as any).deriveActions(holdings, targets, true)
+      const result = getSignalGenerationServicePrivateApi(svc).deriveActions(holdings, targets, true)
 
       const actions = new Map(result.map((r: { tsCode: string; action: string }) => [r.tsCode, r.action]))
       expect(actions.get('000001.SZ')).toBe('SELL')
@@ -264,7 +276,7 @@ describe('SignalGenerationService', () => {
       const holdings = new Set(['000001.SZ'])
       const targets = new Map([['000002.SZ', 0.5]])
 
-      const result = (svc as any).deriveActions(holdings, targets, true)
+      const result = getSignalGenerationServicePrivateApi(svc).deriveActions(holdings, targets, true)
 
       const sell = result.find((r: { action: string }) => r.action === 'SELL')
       expect(sell).toBeDefined()
@@ -277,7 +289,7 @@ describe('SignalGenerationService', () => {
       const holdings = new Set<string>()
       const targets = new Map([['000001.SZ', 0]]) // weight=0 且未持仓
 
-      const result = (svc as any).deriveActions(holdings, targets, true)
+      const result = getSignalGenerationServicePrivateApi(svc).deriveActions(holdings, targets, true)
 
       // 修复后：weight=0 且未持仓 → 空结果
       expect(result).toHaveLength(0)
@@ -477,8 +489,6 @@ describe('SignalGenerationService', () => {
 
     it('[BIZ] weight=0 不触发等权（nullish coalescing 不处理假值 0）', () => {
       // 手算：0 ?? 1/2 → 0（不触发等权，0 保留）
-      const { svc } = createService()
-      const holdings = new Set<string>()
       const targets = new Map([
         ['000001.SZ', 0], // weight=0 → 保留 0，不等权
         ['000002.SZ', null as unknown as number], // weight=null → 等权

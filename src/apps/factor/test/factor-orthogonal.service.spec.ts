@@ -10,6 +10,26 @@
  * - orthogonalize(): 公共股票 < 10 时返回 error；正常时返回 originalCorrelation 和 orthogonalCorrelation
  */
 import { FactorOrthogonalService } from '../services/factor-orthogonal.service'
+import { FactorOrthogonalizeDto } from '../dto/factor-orthogonal.dto'
+
+type OrthogonalizationResult = { matrix: number[][]; names: string[] }
+
+type FactorOrthogonalPrivateApi = {
+  pearsonCorr(xs: number[], ys: number[]): number
+  standardizeColumns(matrix: number[][]): number[][]
+  correlationMatrix(matrix: number[][]): number[][]
+  regressionOrthogonalize(matrix: number[][], factorNames: string[]): OrthogonalizationResult
+  symmetricOrthogonalize(matrix: number[][], factorNames: string[]): OrthogonalizationResult | null
+}
+
+function getPrivateFactorOrthogonalService(service: FactorOrthogonalService): FactorOrthogonalPrivateApi {
+  return service as unknown as FactorOrthogonalPrivateApi
+}
+
+function requireOrthogonalizationResult(result: OrthogonalizationResult | null): OrthogonalizationResult {
+  if (!result) throw new Error('预期对称正交化成功')
+  return result
+}
 
 // ── mock 工厂 ─────────────────────────────────────────────────────────────────
 
@@ -27,8 +47,10 @@ function buildComputeMock() {
 }
 
 function createService(prismaMock = buildPrismaMock(), computeMock = buildComputeMock()): FactorOrthogonalService {
-  // @ts-ignore 局部 mock，跳过 DI
-  return new FactorOrthogonalService(prismaMock, computeMock)
+  return new FactorOrthogonalService(
+    prismaMock as unknown as ConstructorParameters<typeof FactorOrthogonalService>[0],
+    computeMock as unknown as ConstructorParameters<typeof FactorOrthogonalService>[1],
+  )
 }
 
 // ── 数学工具 ──────────────────────────────────────────────────────────────────
@@ -48,33 +70,35 @@ function std(arr: number[]): number {
 
 describe('FactorOrthogonalService', () => {
   let service: FactorOrthogonalService
+  let privateService: FactorOrthogonalPrivateApi
 
   beforeEach(() => {
     jest.clearAllMocks()
     service = createService()
+    privateService = getPrivateFactorOrthogonalService(service)
   })
 
   // ── pearsonCorr ────────────────────────────────────────────────────────────
 
   describe('pearsonCorr()', () => {
     it('完美正相关 [1,2,3,4,5] vs [2,4,6,8,10] ≈ 1.0', () => {
-      const corr: number = (service as any).pearsonCorr([1, 2, 3, 4, 5], [2, 4, 6, 8, 10])
+      const corr = privateService.pearsonCorr([1, 2, 3, 4, 5], [2, 4, 6, 8, 10])
       expect(corr).toBeCloseTo(1.0, 8)
     })
 
     it('完美负相关 [1,2,3,4,5] vs [-1,-2,-3,-4,-5] ≈ -1.0', () => {
-      const corr: number = (service as any).pearsonCorr([1, 2, 3, 4, 5], [-1, -2, -3, -4, -5])
+      const corr = privateService.pearsonCorr([1, 2, 3, 4, 5], [-1, -2, -3, -4, -5])
       expect(corr).toBeCloseTo(-1.0, 8)
     })
 
     it('样本长度 < 3 时返回 0', () => {
-      expect((service as any).pearsonCorr([1, 2], [3, 4])).toBe(0)
-      expect((service as any).pearsonCorr([1], [1])).toBe(0)
-      expect((service as any).pearsonCorr([], [])).toBe(0)
+      expect(privateService.pearsonCorr([1, 2], [3, 4])).toBe(0)
+      expect(privateService.pearsonCorr([1], [1])).toBe(0)
+      expect(privateService.pearsonCorr([], [])).toBe(0)
     })
 
     it('零方差（xs 全相同）时返回 0', () => {
-      const corr: number = (service as any).pearsonCorr([5, 5, 5, 5, 5], [1, 2, 3, 4, 5])
+      const corr = privateService.pearsonCorr([5, 5, 5, 5, 5], [1, 2, 3, 4, 5])
       expect(corr).toBe(0)
     })
 
@@ -82,7 +106,7 @@ describe('FactorOrthogonalService', () => {
       // 使用相位差 90° 的正弦/余弦序列，理论相关性为 0
       const xs = Array.from({ length: 20 }, (_, i) => Math.sin((i * Math.PI) / 10))
       const ys = Array.from({ length: 20 }, (_, i) => Math.cos((i * Math.PI) / 10))
-      const corr: number = (service as any).pearsonCorr(xs, ys)
+      const corr = privateService.pearsonCorr(xs, ys)
       expect(Math.abs(corr)).toBeLessThan(0.05)
     })
   })
@@ -98,7 +122,7 @@ describe('FactorOrthogonalService', () => {
         [4, 40],
         [5, 50],
       ]
-      const standardized: number[][] = (service as any).standardizeColumns(matrix)
+      const standardized = privateService.standardizeColumns(matrix)
       const col0 = standardized.map((r) => r[0])
       const col1 = standardized.map((r) => r[1])
       expect(mean(col0)).toBeCloseTo(0, 8)
@@ -113,7 +137,7 @@ describe('FactorOrthogonalService', () => {
         [4, 40],
         [5, 50],
       ]
-      const standardized: number[][] = (service as any).standardizeColumns(matrix)
+      const standardized = privateService.standardizeColumns(matrix)
       const col0 = standardized.map((r) => r[0])
       const col1 = standardized.map((r) => r[1])
       expect(std(col0)).toBeCloseTo(1, 8)
@@ -121,7 +145,7 @@ describe('FactorOrthogonalService', () => {
     })
 
     it('空矩阵时返回空数组', () => {
-      expect((service as any).standardizeColumns([])).toEqual([])
+      expect(privateService.standardizeColumns([])).toEqual([])
     })
 
     it('列方差为 0 时不修改该列（保持原值）', () => {
@@ -130,7 +154,7 @@ describe('FactorOrthogonalService', () => {
         [5, 2],
         [5, 3],
       ]
-      const result: number[][] = (service as any).standardizeColumns(matrix)
+      const result = privateService.standardizeColumns(matrix)
       // 第 0 列方差=0，保持原值 5
       expect(result[0][0]).toBe(5)
       expect(result[1][0]).toBe(5)
@@ -148,7 +172,7 @@ describe('FactorOrthogonalService', () => {
         [4, -3],
         [5, -5],
       ]
-      const corr: number[][] = (service as any).correlationMatrix(matrix)
+      const corr = privateService.correlationMatrix(matrix)
       for (let i = 0; i < 2; i++) {
         expect(corr[i][i]).toBe(1)
       }
@@ -162,8 +186,8 @@ describe('FactorOrthogonalService', () => {
         Math.sin((i * Math.PI) / 2), // 与线性趋势正交
       ])
       // 先标准化再算相关矩阵
-      const std2: number[][] = (service as any).standardizeColumns(matrix)
-      const corr: number[][] = (service as any).correlationMatrix(std2)
+      const std2 = privateService.standardizeColumns(matrix)
+      const corr = privateService.correlationMatrix(std2)
       // 非对角线应接近 0
       expect(Math.abs(corr[0][1])).toBeLessThan(0.2)
     })
@@ -176,7 +200,7 @@ describe('FactorOrthogonalService', () => {
         [4, 4],
         [5, 5],
       ]
-      const corr: number[][] = (service as any).correlationMatrix(matrix)
+      const corr = privateService.correlationMatrix(matrix)
       expect(corr[0][1]).toBeCloseTo(1.0, 8)
     })
 
@@ -188,7 +212,7 @@ describe('FactorOrthogonalService', () => {
         [1, 3, 5],
         [2, 2, 4],
       ]
-      const corr: number[][] = (service as any).correlationMatrix(matrix)
+      const corr = privateService.correlationMatrix(matrix)
       for (let i = 0; i < 3; i++) {
         for (let j = 0; j < 3; j++) {
           expect(corr[i][j]).toBeCloseTo(corr[j][i], 10)
@@ -203,7 +227,7 @@ describe('FactorOrthogonalService', () => {
     it('factor[0] 经过正交化后保持不变', () => {
       const n = 50
       const matrix = Array.from({ length: n }, (_, i) => [i + 1, 2 * (i + 1) + 3])
-      const { matrix: orth } = (service as any).regressionOrthogonalize(matrix, ['f1', 'f2'])
+      const { matrix: orth } = privateService.regressionOrthogonalize(matrix, ['f1', 'f2'])
       // 第 0 列与原始相同
       for (let i = 0; i < n; i++) {
         expect(orth[i][0]).toBeCloseTo(matrix[i][0], 8)
@@ -214,12 +238,12 @@ describe('FactorOrthogonalService', () => {
       const n = 100
       // 构造高度相关的两列（先标准化确保数值稳定）
       const raw = Array.from({ length: n }, (_, i) => [i + 1, 3 * (i + 1) + Math.sin(i) * 2])
-      const matrix: number[][] = (service as any).standardizeColumns(raw)
-      const { matrix: orth } = (service as any).regressionOrthogonalize(matrix, ['f1', 'f2'])
+      const matrix = privateService.standardizeColumns(raw)
+      const { matrix: orth } = privateService.regressionOrthogonalize(matrix, ['f1', 'f2'])
 
       const col0 = orth.map((r: number[]) => r[0])
       const col1 = orth.map((r: number[]) => r[1])
-      const corr: number = (service as any).pearsonCorr(col0, col1)
+      const corr = privateService.pearsonCorr(col0, col1)
       expect(Math.abs(corr)).toBeLessThan(1e-6)
     })
 
@@ -229,7 +253,7 @@ describe('FactorOrthogonalService', () => {
         [3, 4],
         [5, 6],
       ]
-      const { names } = (service as any).regressionOrthogonalize(matrix, ['factorA', 'factorB'])
+      const { names } = privateService.regressionOrthogonalize(matrix, ['factorA', 'factorB'])
       expect(names[0]).toBe('factorA')
       expect(names[1]).toBe('factorB_orth')
     })
@@ -241,9 +265,8 @@ describe('FactorOrthogonalService', () => {
     it('返回与输入相同维度的矩阵', () => {
       const n = 30
       const raw = Array.from({ length: n }, (_, i) => [Math.sin(i * 0.3), Math.cos(i * 0.5)])
-      const matrix: number[][] = (service as any).standardizeColumns(raw)
-      const result = (service as any).symmetricOrthogonalize(matrix, ['f1', 'f2'])
-      expect(result).not.toBeNull()
+      const matrix = privateService.standardizeColumns(raw)
+      const result = requireOrthogonalizationResult(privateService.symmetricOrthogonalize(matrix, ['f1', 'f2']))
       expect(result.matrix).toHaveLength(n)
       expect(result.matrix[0]).toHaveLength(2)
     })
@@ -251,9 +274,8 @@ describe('FactorOrthogonalService', () => {
     it('返回以 _orth 结尾的 names', () => {
       const n = 20
       const raw = Array.from({ length: n }, (_, i) => [Math.sin(i), Math.cos(i)])
-      const matrix: number[][] = (service as any).standardizeColumns(raw)
-      const result = (service as any).symmetricOrthogonalize(matrix, ['alpha', 'beta'])
-      expect(result).not.toBeNull()
+      const matrix = privateService.standardizeColumns(raw)
+      const result = requireOrthogonalizationResult(privateService.symmetricOrthogonalize(matrix, ['alpha', 'beta']))
       expect(result.names[0]).toBe('alpha_orth')
       expect(result.names[1]).toBe('beta_orth')
     })
@@ -261,10 +283,9 @@ describe('FactorOrthogonalService', () => {
     it('输出列对角相关系数为 1', () => {
       const n = 50
       const raw = Array.from({ length: n }, (_, i) => [Math.sin(i * 0.3), Math.cos(i * 0.5)])
-      const matrix: number[][] = (service as any).standardizeColumns(raw)
-      const result = (service as any).symmetricOrthogonalize(matrix, ['f1', 'f2'])
-      expect(result).not.toBeNull()
-      const corr: number[][] = (service as any).correlationMatrix(result.matrix)
+      const matrix = privateService.standardizeColumns(raw)
+      const result = requireOrthogonalizationResult(privateService.symmetricOrthogonalize(matrix, ['f1', 'f2']))
+      const corr = privateService.correlationMatrix(result.matrix)
       expect(corr[0][0]).toBeCloseTo(1, 8)
       expect(corr[1][1]).toBeCloseTo(1, 8)
     })
@@ -272,13 +293,9 @@ describe('FactorOrthogonalService', () => {
     it('相关矩阵严格正定时能成功执行', () => {
       // 两列近似正交的三角函数
       const n = 40
-      const raw = Array.from({ length: n }, (_, i) => [
-        Math.sin((i * Math.PI) / 20),
-        Math.cos((i * Math.PI) / 20),
-      ])
-      const matrix: number[][] = (service as any).standardizeColumns(raw)
-      const result = (service as any).symmetricOrthogonalize(matrix, ['sin', 'cos'])
-      expect(result).not.toBeNull()
+      const raw = Array.from({ length: n }, (_, i) => [Math.sin((i * Math.PI) / 20), Math.cos((i * Math.PI) / 20)])
+      const matrix = privateService.standardizeColumns(raw)
+      const result = requireOrthogonalizationResult(privateService.symmetricOrthogonalize(matrix, ['sin', 'cos']))
       expect(result.matrix).toHaveLength(n)
     })
   })
@@ -289,16 +306,17 @@ describe('FactorOrthogonalService', () => {
     it('公共股票 < 10 时返回 error 字段', async () => {
       const computeMock = buildComputeMock()
       // 模拟每个因子只有 5 只股票
-      computeMock.getRawFactorValuesForDate.mockImplementation(async (factorName: string) =>
+      computeMock.getRawFactorValuesForDate.mockImplementation(async () =>
         Array.from({ length: 5 }, (_, i) => ({ tsCode: `00000${i}.SZ`, factorValue: i + 1 })),
       )
       const svc = createService(buildPrismaMock(), computeMock)
 
-      const result = await svc.orthogonalize({
+      const dto: FactorOrthogonalizeDto = {
         factorNames: ['f1', 'f2'],
         tradeDate: '20250102',
         method: 'regression',
-      } as any)
+      }
+      const result = await svc.orthogonalize(dto)
 
       expect(result).toHaveProperty('error')
     })
@@ -315,15 +333,17 @@ describe('FactorOrthogonalService', () => {
       )
       const svc = createService(buildPrismaMock(), computeMock)
 
-      const result = await svc.orthogonalize({
+      const dto: FactorOrthogonalizeDto = {
         factorNames: ['f1', 'f2'],
         tradeDate: '20250102',
         method: 'regression',
-      } as any)
+      }
+      const result = await svc.orthogonalize(dto)
 
       expect(result).toHaveProperty('originalCorrelation')
       expect(result).toHaveProperty('orthogonalCorrelation')
-      expect((result as any).originalCorrelation.matrix).toBeDefined()
+      if (!('originalCorrelation' in result)) throw new Error(`正交化失败：${result.error}`)
+      expect(result.originalCorrelation.matrix).toBeDefined()
     })
 
     it('symmetric 方法时也能正常返回结果', async () => {
@@ -337,11 +357,12 @@ describe('FactorOrthogonalService', () => {
       )
       const svc = createService(buildPrismaMock(), computeMock)
 
-      const result = await svc.orthogonalize({
+      const dto: FactorOrthogonalizeDto = {
         factorNames: ['f1', 'f2'],
         tradeDate: '20250102',
         method: 'symmetric',
-      } as any)
+      }
+      const result = await svc.orthogonalize(dto)
 
       // 不完全正交时可能失败并返回 error，但至少不抛出异常
       expect(result).toBeDefined()

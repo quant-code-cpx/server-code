@@ -28,7 +28,11 @@ function buildMockHelper() {
     getOpenTradeDatesBetween: jest.fn(async () => [] as string[]),
     getPeriodEndTradeDates: jest.fn(async () => [] as string[]),
     compareDateString: jest.fn((a: string, b: string) => (a > b ? 1 : a < b ? -1 : 0)),
-    addDays: jest.fn((_date: string, n: number) => '20240102'),
+    addDays: jest.fn((date: string, days: number) => {
+      void date
+      void days
+      return '20240102'
+    }),
     toDate: jest.fn((s: string) => new Date(s.replace(/(\d{4})(\d{2})(\d{2})/, '$1-$2-$3'))),
     formatDate: jest.fn(() => '20220101'),
     replaceTradeDateRows: jest.fn(async () => 100),
@@ -98,8 +102,7 @@ function indexDailyApiRow(tradeDate: string) {
 }
 
 function createService(api = buildMockApi(), helper = buildMockHelper()): MarketSyncService {
-  // @ts-ignore 局部 mock，跳过 DI
-  return new MarketSyncService(api as MarketApiService, helper as SyncHelperService)
+  return new MarketSyncService(api as unknown as MarketApiService, helper as unknown as SyncHelperService)
 }
 
 // ── 测试套件 ──────────────────────────────────────────────────────────────────

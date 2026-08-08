@@ -8,13 +8,18 @@
  * - deleteRule(): 软删除（status → DELETED）
  * - querySignals(): 先拿用户规则 ID，再查信号
  * - scanAndGenerate(): 无 ACTIVE 规则时跳过扫描；有规则时调用正确逻辑
- * - matchConditions() [private]: 通过 scanAndGenerate 间接测试或 (svc as any) 调用
+ * - matchConditions() [private]: 通过 scanAndGenerate 间接测试或测试专用接口调用
  */
 
 import { BadRequestException, NotFoundException } from '@nestjs/common'
 import { EventSignalRuleStatus } from '@prisma/client'
+import type { Queue } from 'bullmq'
 import { EventStudyJobName } from 'src/constant/queue.constant'
+import type { PrismaService } from 'src/shared/prisma.service'
+import type { EventsGateway } from 'src/websocket/events.gateway'
 import { EventSignalService } from '../event-signal.service'
+import type { EventStudyService } from '../event-study.service'
+import type { EventSignalScanJobData, EventSignalScanJobResult } from '../event-signal-scan.types'
 import { EventType } from '../event-type.registry'
 
 // ── Mock 工厂 ─────────────────────────────────────────────────────────────────
@@ -64,7 +69,30 @@ function createService(
   eventStudyMock = buildEventStudyMock(),
   queueMock = buildQueueMock(),
 ) {
-  return new EventSignalService(prismaMock as any, gatewayMock as any, eventStudyMock as any, queueMock as any)
+  return new EventSignalService(
+    prismaMock as unknown as PrismaService,
+    gatewayMock as unknown as EventsGateway,
+    eventStudyMock as unknown as EventStudyService,
+    queueMock as unknown as Queue<EventSignalScanJobData, EventSignalScanJobResult>,
+  )
+}
+
+type EventSignalTestApi = {
+  matchConditions(event: Record<string, unknown>, conditions: Record<string, unknown>): boolean
+}
+
+type EventSignalRuleFindManyArgs = {
+  where: { status?: { not: EventSignalRuleStatus } }
+  skip?: number
+  take?: number
+}
+
+function matchConditions(
+  service: EventSignalService,
+  event: Record<string, unknown>,
+  conditions: Record<string, unknown>,
+): boolean {
+  return (service as unknown as EventSignalTestApi).matchConditions(event, conditions)
 }
 
 // ── 规则数据助手 ──────────────────────────────────────────────────────────────
@@ -167,7 +195,8 @@ describe('EventSignalService', () => {
 
       await svc.listRules(42)
 
-      const where = (prisma.eventSignalRule.findMany.mock.calls[0] as any)[0].where
+      const [[callArgs]] = prisma.eventSignalRule.findMany.mock.calls as unknown as [[EventSignalRuleFindManyArgs]]
+      const where = callArgs.where
       expect(where.status).toEqual({ not: EventSignalRuleStatus.DELETED })
     })
 
@@ -179,7 +208,7 @@ describe('EventSignalService', () => {
 
       await svc.listRules(42, 2, 5)
 
-      const callArgs = (prisma.eventSignalRule.findMany.mock.calls[0] as any)[0]
+      const [[callArgs]] = prisma.eventSignalRule.findMany.mock.calls as unknown as [[EventSignalRuleFindManyArgs]]
       expect(callArgs.skip).toBe(5)
       expect(callArgs.take).toBe(5)
     })
@@ -222,7 +251,7 @@ describe('EventSignalService', () => {
     it('规则存在 → 执行软删除（status=DELETED）', async () => {
       const prisma = buildPrismaMock()
       prisma.eventSignalRule.findFirst.mockResolvedValue(makeRule())
-      prisma.eventSignalRule.update.mockResolvedValue({} as any)
+      prisma.eventSignalRule.update.mockResolvedValue({})
       const svc = createService(prisma)
 
       await svc.deleteRule(42, 1)
@@ -249,10 +278,10 @@ describe('EventSignalService', () => {
 
     it('用户有规则 → 查询对应信号', async () => {
       const prisma = buildPrismaMock()
-      prisma.eventSignalRule.findMany.mockResolvedValue([{ id: 1 }, { id: 2 }] as any)
+      prisma.eventSignalRule.findMany.mockResolvedValue([{ id: 1 }, { id: 2 }])
       prisma.eventSignal.findMany.mockResolvedValue([
         { id: 10, ruleId: 1, tsCode: '000001.SZ', triggeredAt: new Date() },
-      ] as any)
+      ])
       prisma.eventSignal.count.mockResolvedValue(1)
       const svc = createService(prisma)
 
@@ -281,7 +310,7 @@ describe('EventSignalService', () => {
       const prisma = buildPrismaMock()
       prisma.eventSignalRule.findMany.mockResolvedValue([
         makeRule({ id: 1, eventType: EventType.FORECAST, status: EventSignalRuleStatus.ACTIVE }),
-      ] as any)
+      ])
       prisma.forecast.findMany.mockResolvedValue([]) // queryDateEvents → 无事件
       const svc = createService(prisma)
 
@@ -302,11 +331,11 @@ describe('EventSignalService', () => {
           conditions: {},
           status: EventSignalRuleStatus.ACTIVE,
         }),
-      ] as any)
+      ])
       prisma.forecast.findMany.mockResolvedValue([
         { tsCode: '000001.SZ', annDate: new Date('2024-01-15'), type: '预增' },
-      ] as any)
-      prisma.eventSignal.create.mockResolvedValue({ id: 100 } as any)
+      ])
+      prisma.eventSignal.create.mockResolvedValue({ id: 100 })
 
       const svc = createService(prisma, gateway)
       const result = await svc.scanAndGenerate('20240115')
@@ -327,7 +356,7 @@ describe('EventSignalService', () => {
       const prisma = buildPrismaMock()
       prisma.eventSignalRule.findMany.mockResolvedValue([
         makeRule({ id: 1, eventType: EventType.FORECAST, status: EventSignalRuleStatus.ACTIVE }),
-      ] as any)
+      ])
       prisma.forecast.findMany.mockResolvedValue([])
       const svc = createService(prisma)
 
@@ -398,7 +427,7 @@ describe('EventSignalService', () => {
         timestamp: Date.UTC(2024, 0, 15, 9),
         processedOn: Date.UTC(2024, 0, 15, 9, 1),
         finishedOn: Date.UTC(2024, 0, 15, 9, 2),
-      } as any)
+      })
       const svc = createService(buildPrismaMock(), buildGatewayMock(), buildEventStudyMock(), queue)
 
       const result = await svc.getScanJobStatus('job-1')
@@ -421,7 +450,7 @@ describe('EventSignalService', () => {
         timestamp: undefined,
         processedOn: undefined,
         finishedOn: undefined,
-      } as any)
+      })
       const svc = createService(buildPrismaMock(), buildGatewayMock(), buildEventStudyMock(), queue)
 
       const result = await svc.getScanJobStatus('job-1')
@@ -434,88 +463,82 @@ describe('EventSignalService', () => {
 
   // ── matchConditions() [private] ──────────────────────────────────────────
 
-  describe('matchConditions() [private, via (svc as any)]', () => {
+  describe('matchConditions() [private, via test API]', () => {
     it('空条件 → 始终匹配', () => {
       const svc = createService()
-      const match = (svc as any).matchConditions({ tsCode: '000001.SZ', type: '预增' }, {})
+      const match = matchConditions(svc, { tsCode: '000001.SZ', type: '预增' }, {})
       expect(match).toBe(true)
     })
 
     it('直接值条件 — 匹配', () => {
       const svc = createService()
-      const match = (svc as any).matchConditions({ tsCode: '000001.SZ', type: '预增' }, { type: '预增' })
+      const match = matchConditions(svc, { tsCode: '000001.SZ', type: '预增' }, { type: '预增' })
       expect(match).toBe(true)
     })
 
     it('直接值条件 — 不匹配', () => {
       const svc = createService()
-      const match = (svc as any).matchConditions({ tsCode: '000001.SZ', type: '预减' }, { type: '预增' })
+      const match = matchConditions(svc, { tsCode: '000001.SZ', type: '预减' }, { type: '预增' })
       expect(match).toBe(false)
     })
 
     it('字段为 null → 返回 false', () => {
       const svc = createService()
-      const match = (svc as any).matchConditions({ tsCode: '000001.SZ', pChangeMin: null }, { pChangeMin: { gte: 50 } })
+      const match = matchConditions(svc, { tsCode: '000001.SZ', pChangeMin: null }, { pChangeMin: { gte: 50 } })
       expect(match).toBe(false)
     })
 
     it('gte 操作符 — 满足', () => {
       const svc = createService()
-      const match = (svc as any).matchConditions({ pChangeMin: 60 }, { pChangeMin: { gte: 50 } })
+      const match = matchConditions(svc, { pChangeMin: 60 }, { pChangeMin: { gte: 50 } })
       expect(match).toBe(true)
     })
 
     it('gte 操作符 — 不满足', () => {
       const svc = createService()
-      const match = (svc as any).matchConditions({ pChangeMin: 30 }, { pChangeMin: { gte: 50 } })
+      const match = matchConditions(svc, { pChangeMin: 30 }, { pChangeMin: { gte: 50 } })
       expect(match).toBe(false)
     })
 
     it('lte 操作符 — 满足', () => {
       const svc = createService()
-      const match = (svc as any).matchConditions({ pChangeMin: 40 }, { pChangeMin: { lte: 50 } })
+      const match = matchConditions(svc, { pChangeMin: 40 }, { pChangeMin: { lte: 50 } })
       expect(match).toBe(true)
     })
 
     it('gt 操作符 — 等于边界时不满足', () => {
       const svc = createService()
-      const match = (svc as any).matchConditions({ value: 50 }, { value: { gt: 50 } })
+      const match = matchConditions(svc, { value: 50 }, { value: { gt: 50 } })
       expect(match).toBe(false)
     })
 
     it('lt 操作符 — 等于边界时不满足', () => {
       const svc = createService()
-      const match = (svc as any).matchConditions({ value: 50 }, { value: { lt: 50 } })
+      const match = matchConditions(svc, { value: 50 }, { value: { lt: 50 } })
       expect(match).toBe(false)
     })
 
     it('in 操作符 — 包含', () => {
       const svc = createService()
-      const match = (svc as any).matchConditions({ type: '预增' }, { type: { in: ['预增', '略增'] } })
+      const match = matchConditions(svc, { type: '预增' }, { type: { in: ['预增', '略增'] } })
       expect(match).toBe(true)
     })
 
     it('in 操作符 — 不包含', () => {
       const svc = createService()
-      const match = (svc as any).matchConditions({ type: '预减' }, { type: { in: ['预增', '略增'] } })
+      const match = matchConditions(svc, { type: '预减' }, { type: { in: ['预增', '略增'] } })
       expect(match).toBe(false)
     })
 
     it('[P3-B7] 多条件：所有满足才返回 true', () => {
       const svc = createService()
-      const match = (svc as any).matchConditions(
-        { type: '预增', pChangeMin: 80 },
-        { type: '预增', pChangeMin: { gte: 50 } },
-      )
+      const match = matchConditions(svc, { type: '预增', pChangeMin: 80 }, { type: '预增', pChangeMin: { gte: 50 } })
       expect(match).toBe(true)
     })
 
     it('[P3-B7] 多条件：任一不满足返回 false', () => {
       const svc = createService()
-      const match = (svc as any).matchConditions(
-        { type: '预减', pChangeMin: 80 },
-        { type: '预增', pChangeMin: { gte: 50 } },
-      )
+      const match = matchConditions(svc, { type: '预减', pChangeMin: 80 }, { type: '预增', pChangeMin: { gte: 50 } })
       expect(match).toBe(false)
     })
   })

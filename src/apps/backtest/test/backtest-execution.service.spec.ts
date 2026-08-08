@@ -293,8 +293,8 @@ describe('BacktestExecutionService', () => {
         new Date('2025-01-02'),
       )
 
-      const sellTrades = trades.filter(t => t.side === 'SELL')
-      const buyTrades = trades.filter(t => t.side === 'BUY')
+      const sellTrades = trades.filter((t) => t.side === 'SELL')
+      const buyTrades = trades.filter((t) => t.side === 'BUY')
       expect(sellTrades).toHaveLength(1)
       expect(sellTrades[0].tsCode).toBe('000001.SZ')
       expect(buyTrades).toHaveLength(1)
@@ -314,9 +314,7 @@ describe('BacktestExecutionService', () => {
         ]),
       })
       const signal: SignalOutput = { targets: [] } // sell everything
-      const bars = new Map([
-        ['000001.SZ', buildBar({ tsCode: '000001.SZ', open: 10, close: 10, isSuspended: true })],
-      ])
+      const bars = new Map([['000001.SZ', buildBar({ tsCode: '000001.SZ', open: 10, close: 10, isSuspended: true })]])
 
       const { trades, rebalanceLog } = service.executeTrades(
         portfolio,
@@ -341,9 +339,7 @@ describe('BacktestExecutionService', () => {
         ]),
       })
       const signal: SignalOutput = { targets: [] }
-      const bars = new Map([
-        ['000001.SZ', buildBar({ tsCode: '000001.SZ', open: 9, close: 9, downLimit: 9 })],
-      ])
+      const bars = new Map([['000001.SZ', buildBar({ tsCode: '000001.SZ', open: 9, close: 9, downLimit: 9 })]])
 
       const { trades, rebalanceLog } = service.executeTrades(
         portfolio,
@@ -362,9 +358,7 @@ describe('BacktestExecutionService', () => {
       const config = buildConfig({ enableTradeConstraints: true })
       const portfolio = buildPortfolio({ cash: 100000 })
       const signal: SignalOutput = { targets: [{ tsCode: '000001.SZ', weight: 1.0 }] }
-      const bars = new Map([
-        ['000001.SZ', buildBar({ tsCode: '000001.SZ', open: 11, close: 11, upLimit: 11 })],
-      ])
+      const bars = new Map([['000001.SZ', buildBar({ tsCode: '000001.SZ', open: 11, close: 11, upLimit: 11 })]])
 
       const { trades, rebalanceLog } = service.executeTrades(
         portfolio,
@@ -446,8 +440,8 @@ describe('BacktestExecutionService', () => {
       // weight capped at 0.3 for 000001
       // 000001: targetValue = 100000 * 0.3 = 30000, qty = floor(30000/10/100)*100 = 3000
       // 000002: targetValue = 100000 * 0.3 = 30000, qty = 3000
-      const buyA = trades.find(t => t.tsCode === '000001.SZ')
-      const buyB = trades.find(t => t.tsCode === '000002.SZ')
+      const buyA = trades.find((t) => t.tsCode === '000001.SZ')
+      const buyB = trades.find((t) => t.tsCode === '000002.SZ')
       expect(buyA!.quantity).toBe(3000)
       expect(buyB!.quantity).toBe(3000)
     })
@@ -497,7 +491,7 @@ describe('BacktestExecutionService', () => {
       // diffValue = 24500
       // rawQty = floor(24500/10/100)*100 = 2400
       // B: getExecutionPrice returns null (open=0, price <= 0) → skip buy
-      const buyA = trades.find(t => t.tsCode === '000001.SZ' && t.side === 'BUY')
+      const buyA = trades.find((t) => t.tsCode === '000001.SZ' && t.side === 'BUY')
       expect(buyA).toBeDefined()
       expect(buyA!.quantity).toBe(2400)
     })

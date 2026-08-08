@@ -69,10 +69,7 @@ describe('IndustryController', () => {
       items: [],
     })
 
-    await request(app.getHttpServer())
-      .post('/industry/dict-mapping')
-      .send({})
-      .expect(201)
+    await request(app.getHttpServer()).post('/industry/dict-mapping').send({}).expect(201)
 
     expect(mockDictService.getDictMapping).toHaveBeenCalledWith(
       expect.objectContaining({ source: 'sw_l1', target: 'dc_industry' }),
@@ -98,19 +95,13 @@ describe('IndustryController', () => {
   })
 
   it('[VAL] 非法 source → 400', async () => {
-    await request(app.getHttpServer())
-      .post('/industry/dict-mapping')
-      .send({ source: 'invalid_source' })
-      .expect(400)
+    await request(app.getHttpServer()).post('/industry/dict-mapping').send({ source: 'invalid_source' }).expect(400)
 
     expect(mockDictService.getDictMapping).not.toHaveBeenCalled()
   })
 
   it('[VAL] 非法 target → 400', async () => {
-    await request(app.getHttpServer())
-      .post('/industry/dict-mapping')
-      .send({ target: 'invalid_target' })
-      .expect(400)
+    await request(app.getHttpServer()).post('/industry/dict-mapping').send({ target: 'invalid_target' }).expect(400)
 
     expect(mockDictService.getDictMapping).not.toHaveBeenCalled()
   })

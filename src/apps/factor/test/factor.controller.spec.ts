@@ -10,7 +10,6 @@ import request from 'supertest'
 import { UserRole } from '@prisma/client'
 import { TransformInterceptor } from 'src/lifecycle/interceptors/transform.interceptor'
 import { JwtAuthGuard } from 'src/lifecycle/guard/jwt-auth.guard'
-import { Reflector } from '@nestjs/core'
 import { FactorController } from '../factor.controller'
 import { FactorService } from '../factor.service'
 import { RolesGuard } from 'src/lifecycle/guard/roles.guard'
@@ -796,10 +795,7 @@ describe('FactorController', () => {
 
     it('fac-biz-028: POST /factor/admin/precompute → 201', async () => {
       mockFactorService.triggerPrecompute.mockResolvedValueOnce(null)
-      await request(app.getHttpServer())
-        .post('/factor/admin/precompute')
-        .send({ tradeDate: '20240101' })
-        .expect(201)
+      await request(app.getHttpServer()).post('/factor/admin/precompute').send({ tradeDate: '20240101' }).expect(201)
     })
 
     it('fac-biz-029: POST /factor/admin/backfill → 201', async () => {
@@ -820,18 +816,12 @@ describe('FactorController', () => {
 
     it('fac-biz-031: POST /factor/admin/jobs → 201', async () => {
       mockFactorService.listAdminJobs.mockResolvedValueOnce({ items: [], total: 0, page: 1, pageSize: 20 })
-      await request(app.getHttpServer())
-        .post('/factor/admin/jobs')
-        .send({})
-        .expect(201)
+      await request(app.getHttpServer()).post('/factor/admin/jobs').send({}).expect(201)
     })
 
     it('fac-biz-032: POST /factor/admin/jobs/detail → 201', async () => {
       mockFactorService.getAdminJobDetail.mockResolvedValueOnce({ tradeDate: '20240101', items: [] })
-      await request(app.getHttpServer())
-        .post('/factor/admin/jobs/detail')
-        .send({ tradeDate: '20240101' })
-        .expect(201)
+      await request(app.getHttpServer()).post('/factor/admin/jobs/detail').send({ tradeDate: '20240101' }).expect(201)
     })
   })
 
@@ -855,7 +845,12 @@ describe('FactorController', () => {
     })
 
     it('fac-biz-035: POST /factor/analysis/correlation → 201', async () => {
-      mockFactorService.getCorrelation.mockResolvedValueOnce({ matrix: [[1, 0.5], [0.5, 1]] })
+      mockFactorService.getCorrelation.mockResolvedValueOnce({
+        matrix: [
+          [1, 0.5],
+          [0.5, 1],
+        ],
+      })
       await request(app.getHttpServer())
         .post('/factor/analysis/correlation')
         .send({ factorNames: ['pe_ttm', 'pb'], tradeDate: '20240101' })
@@ -908,10 +903,7 @@ describe('FactorController', () => {
 
     it('fac-biz-041: POST /factor/backtest/attribution → 201', async () => {
       mockFactorService.attribution.mockResolvedValueOnce({ contributions: [] })
-      await request(app.getHttpServer())
-        .post('/factor/backtest/attribution')
-        .send({ id: 'bt-123' })
-        .expect(201)
+      await request(app.getHttpServer()).post('/factor/backtest/attribution').send({ id: 'bt-123' }).expect(201)
     })
 
     it('fac-biz-042: POST /factor/backtest/save-as-strategy → 201', async () => {
@@ -940,10 +932,7 @@ describe('FactorController', () => {
 
     it('fac-biz-045: POST /factor/custom/delete → 201', async () => {
       mockFactorService.deleteCustomFactor.mockResolvedValueOnce(null)
-      await request(app.getHttpServer())
-        .post('/factor/custom/delete')
-        .send({ name: 'my_factor' })
-        .expect(201)
+      await request(app.getHttpServer()).post('/factor/custom/delete').send({ name: 'my_factor' }).expect(201)
     })
   })
 })

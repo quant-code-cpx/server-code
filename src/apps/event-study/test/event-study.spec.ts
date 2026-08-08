@@ -74,8 +74,12 @@ import { buildTestUser } from 'test/helpers/create-test-app'
 
 // Simplified mock factories with hand-computable data
 const SSE_CALENDAR = [
-  new Date('2026-01-12'), new Date('2026-01-13'), new Date('2026-01-14'),
-  new Date('2026-01-15'), new Date('2026-01-16'), new Date('2026-01-19'),
+  new Date('2026-01-12'),
+  new Date('2026-01-13'),
+  new Date('2026-01-14'),
+  new Date('2026-01-15'),
+  new Date('2026-01-16'),
+  new Date('2026-01-19'),
   new Date('2026-01-20'),
 ]
 
@@ -111,16 +115,28 @@ const STOCK_NAMES = [
 
 function createMockLoggerService(): LoggerService {
   return {
-    log: jest.fn(), warn: jest.fn(), error: jest.fn(),
-    debug: jest.fn(), verbose: jest.fn(), devLog: jest.fn(),
+    log: jest.fn(),
+    warn: jest.fn(),
+    error: jest.fn(),
+    debug: jest.fn(),
+    verbose: jest.fn(),
+    devLog: jest.fn(),
   } as unknown as LoggerService
 }
 
 // ── Service Unit Tests ────────────────────────────────────────────────────────
 
+type EventStudyPrismaMock = {
+  forecast: { findMany: jest.Mock }
+  tradeCal: { findMany: jest.Mock }
+  indexDaily: { findMany: jest.Mock }
+  daily: { findMany: jest.Mock }
+  stockBasic: { findMany: jest.Mock }
+}
+
 describe('EventStudyService — 金融计算正确性（手算验证）', () => {
   let service: EventStudyService
-  let mockPrisma: any
+  let mockPrisma: EventStudyPrismaMock
 
   beforeAll(async () => {
     mockPrisma = {
@@ -128,13 +144,11 @@ describe('EventStudyService — 金融计算正确性（手算验证）', () => 
         findMany: jest.fn().mockResolvedValue(FORECAST_EVENTS),
       },
       tradeCal: {
-        findMany: jest.fn().mockResolvedValue(
-          SSE_CALENDAR.map((d) => ({ calDate: d })),
-        ),
+        findMany: jest.fn().mockResolvedValue(SSE_CALENDAR.map((d) => ({ calDate: d }))),
       },
       indexDaily: {
-        findMany: jest.fn().mockImplementation((args: any) => {
-          const rows: any[] = []
+        findMany: jest.fn().mockImplementation((args: { where: { tsCode: string } }) => {
+          const rows: Array<{ tradeDate: Date; pctChg: number }> = []
           for (const [date, map] of Object.entries(INDEX_DAILY)) {
             if (args.where.tsCode in map) {
               rows.push({ tradeDate: new Date(date), pctChg: map[args.where.tsCode] })
@@ -144,9 +158,9 @@ describe('EventStudyService — 金融计算正确性（手算验证）', () => 
         }),
       },
       daily: {
-        findMany: jest.fn().mockImplementation((args: any) => {
+        findMany: jest.fn().mockImplementation((args: { where: { tsCode: { in: string[] } } }) => {
           const tsCodes = args.where.tsCode.in as string[]
-          const rows: any[] = []
+          const rows: Array<{ tsCode: string; tradeDate: Date; pctChg: number }> = []
           for (const tsCode of tsCodes) {
             const map = STOCK_DAILY[tsCode]
             if (map) {
@@ -164,10 +178,7 @@ describe('EventStudyService — 金融计算正确性（手算验证）', () => 
     }
 
     const module: TestingModule = await Test.createTestingModule({
-      providers: [
-        EventStudyService,
-        { provide: PrismaService, useValue: mockPrisma },
-      ],
+      providers: [EventStudyService, { provide: PrismaService, useValue: mockPrisma }],
     }).compile()
 
     service = module.get<EventStudyService>(EventStudyService)
@@ -359,9 +370,9 @@ describe('EventStudyService — 金融计算正确性（手算验证）', () => 
   describe('自定义基准', () => {
     it('使用中证500为基准', async () => {
       // Mock 000905.SH index data
-      mockPrisma.indexDaily.findMany.mockImplementation((args: any) => {
+      mockPrisma.indexDaily.findMany.mockImplementation(() => {
         // 返回恒定的 1% 收益
-        const rows: any[] = []
+        const rows: Array<{ tradeDate: Date; pctChg: number }> = []
         for (const d of SSE_CALENDAR) {
           rows.push({ tradeDate: d, pctChg: 1.0 })
         }
@@ -378,8 +389,8 @@ describe('EventStudyService — 金融计算正确性（手算验证）', () => 
       expect(result.benchmark).toBe('000905.SH')
 
       // 恢复默认 mock
-      mockPrisma.indexDaily.findMany.mockImplementation((args: any) => {
-        const rows: any[] = []
+      mockPrisma.indexDaily.findMany.mockImplementation((args: { where: { tsCode: string } }) => {
+        const rows: Array<{ tradeDate: Date; pctChg: number }> = []
         for (const [date, map] of Object.entries(INDEX_DAILY)) {
           if (args.where.tsCode in map) {
             rows.push({ tradeDate: new Date(date), pctChg: map[args.where.tsCode] })
@@ -395,24 +406,27 @@ describe('EventStudyService — 金融计算正确性（手算验证）', () => 
 
 describe('EventStudyController — DTO校验 + Guard权限 + 接口契约', () => {
   let app: INestApplication
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let httpRequest: any
-  let mockEventStudyService: any
-  let mockEventSignalService: any
+  let httpRequest: ReturnType<typeof request>
+  let mockEventStudyService: Record<string, jest.Mock>
+  let mockEventSignalService: Record<string, jest.Mock>
 
   beforeAll(async () => {
     mockEventStudyService = {
-      getEventTypes: jest.fn().mockReturnValue([
-        { type: 'FORECAST', label: '业绩预告', description: 'desc' },
-      ]),
+      getEventTypes: jest.fn().mockReturnValue([{ type: 'FORECAST', label: '业绩预告', description: 'desc' }]),
       getEventSchema: jest.fn().mockResolvedValue({ eventType: 'FORECAST', fields: [] }),
       queryEventsWithNames: jest.fn().mockResolvedValue({ total: 0, items: [] }),
       eventsCalendar: jest.fn().mockResolvedValue({ cells: [] }),
       analyze: jest.fn().mockResolvedValue({
-        eventType: 'FORECAST', eventLabel: '业绩预告', sampleCount: 10,
-        window: '[-5, +20]', benchmark: '000300.SH',
-        aarSeries: [], caarSeries: [], caar: 0,
-        tStatistic: 2.5, pValue: 0.01,
+        eventType: 'FORECAST',
+        eventLabel: '业绩预告',
+        sampleCount: 10,
+        window: '[-5, +20]',
+        benchmark: '000300.SH',
+        aarSeries: [],
+        caarSeries: [],
+        caar: 0,
+        tStatistic: 2.5,
+        pValue: 0.01,
       }),
     }
 
@@ -466,9 +480,7 @@ describe('EventStudyController — DTO校验 + Guard权限 + 接口契约', () =
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }))
     app.useGlobalGuards(mockJwtGuard, new RolesGuard(reflector))
     app.useGlobalInterceptors(new TransformInterceptor())
-    app.useGlobalFilters(
-      new GlobalExceptionsFilter(true, createMockLoggerService()),
-    )
+    app.useGlobalFilters(new GlobalExceptionsFilter(true, createMockLoggerService()))
 
     await app.init()
     httpRequest = request(app.getHttpServer())
@@ -481,25 +493,17 @@ describe('EventStudyController — DTO校验 + Guard权限 + 接口契约', () =
   // ── 常规流程 ────────────────────────────────────────────────────────────
   describe('常规流程 BIZ', () => {
     it('POST event-types/list 返回事件类型列表', async () => {
-      const res = await httpRequest
-        .post('/event-study/event-types/list')
-        .expect(201)
+      const res = await httpRequest.post('/event-study/event-types/list').expect(201)
       expect(res.body.data).toBeDefined()
     })
 
     it('POST events 查询事件（mock 返回空）', async () => {
-      const res = await httpRequest
-        .post('/event-study/events')
-        .send({ eventType: 'FORECAST' })
-        .expect(201)
+      const res = await httpRequest.post('/event-study/events').send({ eventType: 'FORECAST' }).expect(201)
       expect(res.body.data).toEqual({ total: 0, items: [] })
     })
 
     it('POST analyze 正常计算', async () => {
-      const res = await httpRequest
-        .post('/event-study/analyze')
-        .send({ eventType: 'FORECAST' })
-        .expect(201)
+      const res = await httpRequest.post('/event-study/analyze').send({ eventType: 'FORECAST' }).expect(201)
       expect(res.body.data.sampleCount).toBe(10)
       expect(res.body.data.tStatistic).toBe(2.5)
     })
@@ -513,10 +517,7 @@ describe('EventStudyController — DTO校验 + Guard权限 + 接口契约', () =
     })
 
     it('POST signal-rules/list 查询自己的规则', async () => {
-      const res = await httpRequest
-        .post('/event-study/signal-rules/list')
-        .send({})
-        .expect(201)
+      const res = await httpRequest.post('/event-study/signal-rules/list').send({}).expect(201)
       expect(res.body.data.items).toEqual([])
     })
 
@@ -529,17 +530,11 @@ describe('EventStudyController — DTO校验 + Guard权限 + 接口契约', () =
     })
 
     it('POST signal-rules/delete 删除规则', async () => {
-      const res = await httpRequest
-        .post('/event-study/signal-rules/delete')
-        .send({ id: 1 })
-        .expect(201)
+      await httpRequest.post('/event-study/signal-rules/delete').send({ id: 1 }).expect(201)
     })
 
     it('POST signals 查询信号', async () => {
-      const res = await httpRequest
-        .post('/event-study/signals')
-        .send({})
-        .expect(201)
+      const res = await httpRequest.post('/event-study/signals').send({}).expect(201)
       expect(res.body.data.items).toEqual([])
     })
   })
@@ -547,80 +542,47 @@ describe('EventStudyController — DTO校验 + Guard权限 + 接口契约', () =
   // ── DTO 校验 ────────────────────────────────────────────────────────────
   describe('DTO 校验 ERR', () => {
     it('events 无效 eventType → 400', async () => {
-      await httpRequest
-        .post('/event-study/events')
-        .send({ eventType: 'INVALID' })
-        .expect(400)
+      await httpRequest.post('/event-study/events').send({ eventType: 'INVALID' }).expect(400)
     })
 
     it('events 缺 eventType → 400', async () => {
-      await httpRequest
-        .post('/event-study/events')
-        .send({})
-        .expect(400)
+      await httpRequest.post('/event-study/events').send({}).expect(400)
     })
 
     it('events 日期格式错误 → 400', async () => {
-      await httpRequest
-        .post('/event-study/events')
-        .send({ eventType: 'FORECAST', startDate: 'abc' })
-        .expect(400)
+      await httpRequest.post('/event-study/events').send({ eventType: 'FORECAST', startDate: 'abc' }).expect(400)
     })
 
     it('events pageSize=201 → 400', async () => {
-      await httpRequest
-        .post('/event-study/events')
-        .send({ eventType: 'FORECAST', pageSize: 201 })
-        .expect(400)
+      await httpRequest.post('/event-study/events').send({ eventType: 'FORECAST', pageSize: 201 }).expect(400)
     })
 
     it('events pageSize=0 → 400', async () => {
-      await httpRequest
-        .post('/event-study/events')
-        .send({ eventType: 'FORECAST', pageSize: 0 })
-        .expect(400)
+      await httpRequest.post('/event-study/events').send({ eventType: 'FORECAST', pageSize: 0 }).expect(400)
     })
 
     it('analyze 无效 eventType → 400', async () => {
-      await httpRequest
-        .post('/event-study/analyze')
-        .send({ eventType: 'INVALID' })
-        .expect(400)
+      await httpRequest.post('/event-study/analyze').send({ eventType: 'INVALID' }).expect(400)
     })
 
     it('analyze preDays=61 → 400', async () => {
-      await httpRequest
-        .post('/event-study/analyze')
-        .send({ eventType: 'FORECAST', preDays: 61 })
-        .expect(400)
+      await httpRequest.post('/event-study/analyze').send({ eventType: 'FORECAST', preDays: 61 }).expect(400)
     })
 
     it('analyze postDays=0 → 400', async () => {
-      await httpRequest
-        .post('/event-study/analyze')
-        .send({ eventType: 'FORECAST', postDays: 0 })
-        .expect(400)
+      await httpRequest.post('/event-study/analyze').send({ eventType: 'FORECAST', postDays: 0 }).expect(400)
     })
 
     it('analyze postDays=121 → 400', async () => {
-      await httpRequest
-        .post('/event-study/analyze')
-        .send({ eventType: 'FORECAST', postDays: 121 })
-        .expect(400)
+      await httpRequest.post('/event-study/analyze').send({ eventType: 'FORECAST', postDays: 121 }).expect(400)
     })
 
     it('analyze 日期格式错误 → 400', async () => {
-      await httpRequest
-        .post('/event-study/analyze')
-        .send({ eventType: 'FORECAST', startDate: 'abc' })
-        .expect(400)
+      await httpRequest.post('/event-study/analyze').send({ eventType: 'FORECAST', startDate: 'abc' }).expect(400)
     })
 
     it('create signal-rule 缺 name → 400', async () => {
-      await httpRequest
-        .post('/event-study/signal-rules')
-        .send({ eventType: 'FORECAST' })
-        .expect(400)
+      await httpRequest.post('/event-study/signal-rules').send({ eventType: 'FORECAST' }).expect(400)
     })
 
     it('create signal-rule 无效 signalType → 400', async () => {

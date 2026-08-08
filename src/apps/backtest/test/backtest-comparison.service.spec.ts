@@ -1,5 +1,9 @@
 import { NotFoundException } from '@nestjs/common'
+import type { Queue } from 'bullmq'
+import type { PrismaService } from 'src/shared/prisma.service'
+import type { BacktestEngineService } from '../services/backtest-engine.service'
 import { BacktestComparisonService } from '../services/backtest-comparison.service'
+import type { BacktestReportService } from '../services/backtest-report.service'
 
 function buildPrismaMock() {
   return {
@@ -16,7 +20,12 @@ function buildPrismaMock() {
 }
 
 function createService(prisma = buildPrismaMock()) {
-  return new BacktestComparisonService(prisma as any, {} as any, {} as any, {} as any)
+  return new BacktestComparisonService(
+    prisma as unknown as PrismaService,
+    {} as unknown as BacktestEngineService,
+    {} as unknown as BacktestReportService,
+    {} as unknown as Queue,
+  )
 }
 
 describe('BacktestComparisonService owner guard', () => {

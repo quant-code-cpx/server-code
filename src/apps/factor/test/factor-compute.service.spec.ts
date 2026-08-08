@@ -9,8 +9,41 @@
  */
 import { NotFoundException } from '@nestjs/common'
 import { FactorSourceType } from '@prisma/client'
+import { FactorValuesQueryDto } from '../dto/factor-values.dto'
 import { FactorComputeService } from '../services/factor-compute.service'
-import { FactorExpressionService } from '../services/factor-expression.service'
+
+interface CustomSqlResult {
+  factorName: string
+  tradeDate: string
+  items: Array<{ tsCode: string }>
+  summary: {
+    count: number
+    missing: number
+    mean: number | null
+    median: number | null
+    stdDev: number | null
+  }
+}
+
+type FactorComputePrivateApi = {
+  buildUniverseJoinStr(universe: string | undefined, tradeDate: string, alias: string): string
+  getCustomSqlValues(
+    dto: FactorValuesQueryDto,
+    factorName: string,
+    page: number,
+    pageSize: number,
+    offset: number,
+    sortDirection: string,
+  ): Promise<CustomSqlResult>
+}
+
+function getPrivateFactorComputeService(service: FactorComputeService): FactorComputePrivateApi {
+  return service as unknown as FactorComputePrivateApi
+}
+
+function buildCustomValuesDto(factorName: string): FactorValuesQueryDto {
+  return { factorName, tradeDate: '20240101' }
+}
 
 // ── Mock 工厂 ─────────────────────────────────────────────────────────────────
 
@@ -54,8 +87,10 @@ function buildExpressionMock() {
 }
 
 function createService(prismaMock = buildPrismaMock(), exprMock = buildExpressionMock()): FactorComputeService {
-  // @ts-ignore 局部 mock
-  return new FactorComputeService(prismaMock as any, exprMock as FactorExpressionService)
+  return new FactorComputeService(
+    prismaMock as unknown as ConstructorParameters<typeof FactorComputeService>[0],
+    exprMock as unknown as ConstructorParameters<typeof FactorComputeService>[1],
+  )
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -77,12 +112,12 @@ describe('FactorComputeService', () => {
     })
 
     it('无 universe 时返回空字符串', () => {
-      const result = (svc as any).buildUniverseJoinStr(undefined, '20240101', 'd')
+      const result = getPrivateFactorComputeService(svc).buildUniverseJoinStr(undefined, '20240101', 'd')
       expect(result).toBe('')
     })
 
     it('有效 universe 生成 INNER JOIN 片段', () => {
-      const result = (svc as any).buildUniverseJoinStr('000300.SH', '20240101', 'd')
+      const result = getPrivateFactorComputeService(svc).buildUniverseJoinStr('000300.SH', '20240101', 'd')
       expect(result).toContain('INNER JOIN index_constituent_weights')
       expect(result).toContain('000300.SH')
       expect(result).toContain('20240101')
@@ -90,13 +125,13 @@ describe('FactorComputeService', () => {
     })
 
     it('universe 格式非法时抛出错误（注入防护）', () => {
-      expect(() => (svc as any).buildUniverseJoinStr("'; DROP TABLE users;--", '20240101', 'd')).toThrow(
-        'Invalid universe format',
-      )
+      expect(() =>
+        getPrivateFactorComputeService(svc).buildUniverseJoinStr("'; DROP TABLE users;--", '20240101', 'd'),
+      ).toThrow('Invalid universe format')
     })
 
     it('tradeDate 格式非法时抛出错误', () => {
-      expect(() => (svc as any).buildUniverseJoinStr('000300.SH', 'invalid-date', 'd')).toThrow(
+      expect(() => getPrivateFactorComputeService(svc).buildUniverseJoinStr('000300.SH', 'invalid-date', 'd')).toThrow(
         'Invalid tradeDate format',
       )
     })
@@ -267,31 +302,31 @@ describe('FactorComputeService', () => {
     })
 
     it('[SEC] universe 含空格变体不通过', () => {
-      expect(() => (svc as any).buildUniverseJoinStr('000300.SH OR 1=1', '20240101', 'd')).toThrow(
-        'Invalid universe format',
-      )
+      expect(() =>
+        getPrivateFactorComputeService(svc).buildUniverseJoinStr('000300.SH OR 1=1', '20240101', 'd'),
+      ).toThrow('Invalid universe format')
     })
 
     it('[SEC] universe 含 Unicode 注入不通过', () => {
-      expect(() => (svc as any).buildUniverseJoinStr('000300.SH\u003b DROP TABLE', '20240101', 'd')).toThrow(
-        'Invalid universe format',
-      )
+      expect(() =>
+        getPrivateFactorComputeService(svc).buildUniverseJoinStr('000300.SH\u003b DROP TABLE', '20240101', 'd'),
+      ).toThrow('Invalid universe format')
     })
 
     it('[SEC] tradeDate 含分号不通过', () => {
-      expect(() => (svc as any).buildUniverseJoinStr('000300.SH', '20240101; --', 'd')).toThrow(
+      expect(() => getPrivateFactorComputeService(svc).buildUniverseJoinStr('000300.SH', '20240101; --', 'd')).toThrow(
         'Invalid tradeDate format',
       )
     })
 
     it('[SEC] tradeDate 含字母不通过', () => {
-      expect(() => (svc as any).buildUniverseJoinStr('000300.SH', '2024-01-01', 'd')).toThrow(
+      expect(() => getPrivateFactorComputeService(svc).buildUniverseJoinStr('000300.SH', '2024-01-01', 'd')).toThrow(
         'Invalid tradeDate format',
       )
     })
 
     it('[BIZ] 合法 universe（6 位数字.2 位字符）通过校验', () => {
-      expect(() => (svc as any).buildUniverseJoinStr('000905.SH', '20240101', 'd')).not.toThrow()
+      expect(() => getPrivateFactorComputeService(svc).buildUniverseJoinStr('000905.SH', '20240101', 'd')).not.toThrow()
     })
   })
 
@@ -304,8 +339,14 @@ describe('FactorComputeService', () => {
       const svc = createService(prisma)
 
       await expect(
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (svc as any).getCustomSqlValues({ tradeDate: '20240101', universe: undefined }, 'my_factor', 1, 50, 0, 'DESC'),
+        getPrivateFactorComputeService(svc).getCustomSqlValues(
+          buildCustomValuesDto('my_factor'),
+          'my_factor',
+          1,
+          50,
+          0,
+          'DESC',
+        ),
       ).rejects.toThrow(NotFoundException)
     })
 
@@ -315,9 +356,8 @@ describe('FactorComputeService', () => {
       const svc = createService(prisma)
 
       await expect(
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (svc as any).getCustomSqlValues(
-          { tradeDate: '20240101', universe: undefined },
+        getPrivateFactorComputeService(svc).getCustomSqlValues(
+          buildCustomValuesDto('no_such_factor'),
           'no_such_factor',
           1,
           50,
@@ -374,7 +414,7 @@ describe('FactorComputeService', () => {
       // 修复后：pe_ttm=-10 → CASE WHEN -10 != 0 → true → -0.1
       // 手算：PE=-10 亏损公司，EP = 1/PE = -0.1，应出现在因子排序最低端
       const svc = createService()
-      const epExpr: string = (svc as any).constructor.name // sanity check
+      const epExpr: string = svc.constructor.name // sanity check
       expect(epExpr).toBeDefined()
     })
 
@@ -452,18 +492,22 @@ describe('FactorComputeService', () => {
 
     it('universe 后缀含下划线（如 000300._H）应抛出错误', () => {
       // 修复后正则 /^\d{6}\.[A-Z]{2}$/ — _H 不匹配，应 throw
-      expect(() => (svc as any).buildUniverseJoinStr('000300._H', '20240101', 'd')).toThrow('Invalid universe format')
+      expect(() => getPrivateFactorComputeService(svc).buildUniverseJoinStr('000300._H', '20240101', 'd')).toThrow(
+        'Invalid universe format',
+      )
     })
 
     it('universe 后缀小写（如 000300.sh）应抛出错误', () => {
       // A 股标准：后缀必须为大写 SH/SZ/BJ
-      expect(() => (svc as any).buildUniverseJoinStr('000300.sh', '20240101', 'd')).toThrow('Invalid universe format')
+      expect(() => getPrivateFactorComputeService(svc).buildUniverseJoinStr('000300.sh', '20240101', 'd')).toThrow(
+        'Invalid universe format',
+      )
     })
 
     it('[BIZ] 合法后缀 SH/SZ/BJ 均应通过校验', () => {
-      expect(() => (svc as any).buildUniverseJoinStr('000300.SH', '20240101', 'd')).not.toThrow()
-      expect(() => (svc as any).buildUniverseJoinStr('399001.SZ', '20240101', 'd')).not.toThrow()
-      expect(() => (svc as any).buildUniverseJoinStr('899050.BJ', '20240101', 'd')).not.toThrow()
+      expect(() => getPrivateFactorComputeService(svc).buildUniverseJoinStr('000300.SH', '20240101', 'd')).not.toThrow()
+      expect(() => getPrivateFactorComputeService(svc).buildUniverseJoinStr('399001.SZ', '20240101', 'd')).not.toThrow()
+      expect(() => getPrivateFactorComputeService(svc).buildUniverseJoinStr('899050.BJ', '20240101', 'd')).not.toThrow()
     })
   })
 
@@ -498,9 +542,8 @@ describe('FactorComputeService', () => {
       const expr = buildExpressionMock()
       const svc = createService(prisma, expr)
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const result = await (svc as any).getCustomSqlValues(
-        { tradeDate: '20240101', universe: undefined, factorName: 'my_factor' },
+      const result = await getPrivateFactorComputeService(svc).getCustomSqlValues(
+        buildCustomValuesDto('my_factor'),
         'my_factor',
         1,
         50,
@@ -532,9 +575,8 @@ describe('FactorComputeService', () => {
         .mockResolvedValueOnce([]) // stats 空
       const svc = createService(prisma)
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const result = await (svc as any).getCustomSqlValues(
-        { tradeDate: '20240101', universe: undefined, factorName: 'empty_factor' },
+      const result = await getPrivateFactorComputeService(svc).getCustomSqlValues(
+        buildCustomValuesDto('empty_factor'),
         'empty_factor',
         1,
         50,

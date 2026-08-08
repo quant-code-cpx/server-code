@@ -11,7 +11,7 @@ function buildPrismaMock() {
 }
 
 function createService(prismaMock = buildPrismaMock()) {
-  return new FundService(prismaMock as any)
+  return new FundService(prismaMock as unknown as ConstructorParameters<typeof FundService>[0])
 }
 
 describe('FundService', () => {
@@ -19,12 +19,41 @@ describe('FundService', () => {
     it('[手算验证] 多只基金同持一只股票 → 正确聚合 mkv/amount/avgRatio', async () => {
       const prisma = buildPrismaMock()
       prisma.fundPortfolio.findMany.mockResolvedValue([
-        { tsCode: 'F1', endDate: new Date('2024-06-30'), annDate: new Date('2024-08-01'), symbol: '000001', mkv: 1000, amount: 100, stkMkvRatio: 0.05, stkFloatRatio: 0.03 },
-        { tsCode: 'F2', endDate: new Date('2024-06-30'), annDate: new Date('2024-08-01'), symbol: '000001', mkv: 2000, amount: 200, stkMkvRatio: 0.08, stkFloatRatio: 0.05 },
-        { tsCode: 'F3', endDate: new Date('2024-06-30'), annDate: new Date('2024-08-01'), symbol: '000001', mkv: 3000, amount: 300, stkMkvRatio: 0.10, stkFloatRatio: 0.07 },
+        {
+          tsCode: 'F1',
+          endDate: new Date('2024-06-30'),
+          annDate: new Date('2024-08-01'),
+          symbol: '000001',
+          mkv: 1000,
+          amount: 100,
+          stkMkvRatio: 0.05,
+          stkFloatRatio: 0.03,
+        },
+        {
+          tsCode: 'F2',
+          endDate: new Date('2024-06-30'),
+          annDate: new Date('2024-08-01'),
+          symbol: '000001',
+          mkv: 2000,
+          amount: 200,
+          stkMkvRatio: 0.08,
+          stkFloatRatio: 0.05,
+        },
+        {
+          tsCode: 'F3',
+          endDate: new Date('2024-06-30'),
+          annDate: new Date('2024-08-01'),
+          symbol: '000001',
+          mkv: 3000,
+          amount: 300,
+          stkMkvRatio: 0.1,
+          stkFloatRatio: 0.07,
+        },
       ])
       prisma.fundBasic.findMany.mockResolvedValue([
-        { tsCode: 'F1', name: '基金A' }, { tsCode: 'F2', name: '基金B' }, { tsCode: 'F3', name: '基金C' },
+        { tsCode: 'F1', name: '基金A' },
+        { tsCode: 'F2', name: '基金B' },
+        { tsCode: 'F3', name: '基金C' },
       ])
       const svc = createService(prisma)
       const result = await svc.getInstitutionalSummary({ end_date: '20240630' } as FundInstitutionalSummaryQueryDto)
@@ -40,12 +69,41 @@ describe('FundService', () => {
     it('[手算验证] 多只股票 → 按 total_mkv 降序排列', async () => {
       const prisma = buildPrismaMock()
       prisma.fundPortfolio.findMany.mockResolvedValue([
-        { tsCode: 'F1', endDate: new Date('2024-06-30'), annDate: new Date('2024-08-01'), symbol: 'S1', mkv: 1000, amount: 100, stkMkvRatio: 0.05, stkFloatRatio: 0.03 },
-        { tsCode: 'F2', endDate: new Date('2024-06-30'), annDate: new Date('2024-08-01'), symbol: 'S2', mkv: 5000, amount: 500, stkMkvRatio: 0.08, stkFloatRatio: 0.05 },
-        { tsCode: 'F3', endDate: new Date('2024-06-30'), annDate: new Date('2024-08-01'), symbol: 'S3', mkv: 3000, amount: 300, stkMkvRatio: 0.10, stkFloatRatio: 0.07 },
+        {
+          tsCode: 'F1',
+          endDate: new Date('2024-06-30'),
+          annDate: new Date('2024-08-01'),
+          symbol: 'S1',
+          mkv: 1000,
+          amount: 100,
+          stkMkvRatio: 0.05,
+          stkFloatRatio: 0.03,
+        },
+        {
+          tsCode: 'F2',
+          endDate: new Date('2024-06-30'),
+          annDate: new Date('2024-08-01'),
+          symbol: 'S2',
+          mkv: 5000,
+          amount: 500,
+          stkMkvRatio: 0.08,
+          stkFloatRatio: 0.05,
+        },
+        {
+          tsCode: 'F3',
+          endDate: new Date('2024-06-30'),
+          annDate: new Date('2024-08-01'),
+          symbol: 'S3',
+          mkv: 3000,
+          amount: 300,
+          stkMkvRatio: 0.1,
+          stkFloatRatio: 0.07,
+        },
       ])
       prisma.fundBasic.findMany.mockResolvedValue([
-        { tsCode: 'F1', name: 'A' }, { tsCode: 'F2', name: 'B' }, { tsCode: 'F3', name: 'C' },
+        { tsCode: 'F1', name: 'A' },
+        { tsCode: 'F2', name: 'B' },
+        { tsCode: 'F3', name: 'C' },
       ])
       const svc = createService(prisma)
       const result = await svc.getInstitutionalSummary({ end_date: '20240630' } as FundInstitutionalSummaryQueryDto)

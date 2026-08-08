@@ -148,10 +148,7 @@ describe('PrismaService.recordQueryMetrics()', () => {
 
     ;(service as unknown as { recordQueryMetrics: RecordQueryMetricsFn }).recordQueryMetrics(600)
 
-    expect(mockLogger.warn).toHaveBeenCalledWith(
-      expect.objectContaining({ durationMs: 600 }),
-      'PrismaSlowQuery',
-    )
+    expect(mockLogger.warn).toHaveBeenCalledWith(expect.objectContaining({ durationMs: 600 }), 'PrismaSlowQuery')
   })
 
   it('[BIZ] 正常查询（duration <= 500ms）→ 记录 histogram + counter，不记录 warn', () => {

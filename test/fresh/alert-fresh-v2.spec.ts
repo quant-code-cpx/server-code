@@ -108,9 +108,13 @@ describe('Alert Fresh V2', () => {
       ],
     })
 
-    await request.post('/alert/limit-list').send({ pageSize: 201 }).expect(201).expect(({ body }) => {
-      expect(body.data.pageSize).toBeLessThanOrEqual(200)
-    })
+    await request
+      .post('/alert/limit-list')
+      .send({ pageSize: 201 })
+      .expect(201)
+      .expect(({ body }) => {
+        expect(body.data.pageSize).toBeLessThanOrEqual(200)
+      })
 
     await app.close()
   })

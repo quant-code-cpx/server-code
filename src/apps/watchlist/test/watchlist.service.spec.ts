@@ -63,7 +63,10 @@ function buildCacheMock() {
 }
 
 function createService(prismaMock = buildPrismaMock(), cacheMock = buildCacheMock()) {
-  return new WatchlistService(prismaMock as any, cacheMock as any)
+  return new WatchlistService(
+    prismaMock as unknown as ConstructorParameters<typeof WatchlistService>[0],
+    cacheMock as unknown as ConstructorParameters<typeof WatchlistService>[1],
+  )
 }
 
 function buildWatchlist(overrides: Record<string, unknown> = {}) {
@@ -561,8 +564,28 @@ describe('WatchlistService', () => {
       ]
       prisma.watchlistStock.findMany.mockResolvedValue(stocks)
       prisma.$queryRaw.mockResolvedValue([
-        { ts_code: '000001.SZ', close: 10, pct_chg: 5.0, vol: 1000, amount: 10000, pe_ttm: 15, pb: 2, total_mv: 10000, trade_date: new Date() },
-        { ts_code: '000002.SZ', close: 10, pct_chg: null, vol: 1000, amount: 10000, pe_ttm: 15, pb: 2, total_mv: 20000, trade_date: new Date() },
+        {
+          ts_code: '000001.SZ',
+          close: 10,
+          pct_chg: 5.0,
+          vol: 1000,
+          amount: 10000,
+          pe_ttm: 15,
+          pb: 2,
+          total_mv: 10000,
+          trade_date: new Date(),
+        },
+        {
+          ts_code: '000002.SZ',
+          close: 10,
+          pct_chg: null,
+          vol: 1000,
+          amount: 10000,
+          pe_ttm: 15,
+          pb: 2,
+          total_mv: 20000,
+          trade_date: new Date(),
+        },
       ])
       const svc = createService(prisma)
 

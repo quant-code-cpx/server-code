@@ -18,8 +18,6 @@ import {
   mapMonthlyRecord,
   mapMoneyflowRecord,
   mapStockBasicRecord,
-  mapMoneyflowIndDcRecord,
-  mapMoneyflowMktDcRecord,
   mapTradeCalRecord,
   mapWeeklyRecord,
   normalizePctChange,

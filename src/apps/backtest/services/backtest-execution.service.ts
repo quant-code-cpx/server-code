@@ -29,8 +29,6 @@ export class BacktestExecutionService {
     let skippedLimitCount = 0
     let skippedSuspendCount = 0
 
-    const targetMap = new Map(signal.targets.map((t) => [t.tsCode, t.weight]))
-
     // Compute target weights (equal if not specified)
     const totalTargets = signal.targets.length
     const effectiveWeights = new Map<string, number>()

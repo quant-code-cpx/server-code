@@ -12,6 +12,8 @@
  */
 
 import { StockFinancialService } from '../stock-financial.service'
+import type { PrismaService } from 'src/shared/prisma.service'
+import type { FinancialSyncService } from 'src/tushare/sync/financial-sync.service'
 
 // ── Mock 工厂 ─────────────────────────────────────────────────────────────────
 
@@ -35,7 +37,7 @@ function buildFinancialSyncMock() {
 }
 
 function createService(prismaMock = buildPrismaMock(), syncMock = buildFinancialSyncMock()) {
-  return new StockFinancialService(prismaMock as any, syncMock as any)
+  return new StockFinancialService(prismaMock as unknown as PrismaService, syncMock as unknown as FinancialSyncService)
 }
 
 /** 构造一条 income / balanceSheet / cashflow 行 */
@@ -95,8 +97,42 @@ describe('StockFinancialService', () => {
     it('返回 history 和 latest，history 按升序排列', async () => {
       const prisma = buildPrismaMock()
       const rows = [
-        { endDate: new Date('2024-09-30'), annDate: new Date('2024-10-30'), eps: 0.5, dtEps: 0.48, roe: 12, dtRoe: 11, roa: 5, grossprofit_margin: 35, netprofit_margin: 15, debtToAssets: 40, currentRatio: 1.5, quickRatio: 1.2, revenueYoy: 10, netprofitYoy: 8, ocfToNetprofit: 1.1, fcff: 200 },
-        { endDate: new Date('2024-06-30'), annDate: new Date('2024-07-30'), eps: 0.4, dtEps: 0.38, roe: 11, dtRoe: 10, roa: 4, grossprofit_margin: 33, netprofit_margin: 14, debtToAssets: 41, currentRatio: 1.4, quickRatio: 1.1, revenueYoy: 9, netprofitYoy: 7, ocfToNetprofit: 1.0, fcff: 180 },
+        {
+          endDate: new Date('2024-09-30'),
+          annDate: new Date('2024-10-30'),
+          eps: 0.5,
+          dtEps: 0.48,
+          roe: 12,
+          dtRoe: 11,
+          roa: 5,
+          grossprofit_margin: 35,
+          netprofit_margin: 15,
+          debtToAssets: 40,
+          currentRatio: 1.5,
+          quickRatio: 1.2,
+          revenueYoy: 10,
+          netprofitYoy: 8,
+          ocfToNetprofit: 1.1,
+          fcff: 200,
+        },
+        {
+          endDate: new Date('2024-06-30'),
+          annDate: new Date('2024-07-30'),
+          eps: 0.4,
+          dtEps: 0.38,
+          roe: 11,
+          dtRoe: 10,
+          roa: 4,
+          grossprofit_margin: 33,
+          netprofit_margin: 14,
+          debtToAssets: 41,
+          currentRatio: 1.4,
+          quickRatio: 1.1,
+          revenueYoy: 9,
+          netprofitYoy: 7,
+          ocfToNetprofit: 1.0,
+          fcff: 180,
+        },
       ]
       // findMany 返回降序排列（模拟 orderBy: desc）
       prisma.finaIndicator.findMany.mockResolvedValue(rows)
@@ -130,7 +166,16 @@ describe('StockFinancialService', () => {
       const prisma = buildPrismaMock()
       prisma.finaIndicator.findMany.mockResolvedValue([])
       prisma.express.findMany.mockResolvedValue([
-        { annDate: new Date('2024-10-30'), endDate: new Date('2024-09-30'), revenue: 1000, nIncome: 150, dilutedEps: 0.5, dilutedRoe: 12, yoyNetProfit: 8, yoySales: 10 },
+        {
+          annDate: new Date('2024-10-30'),
+          endDate: new Date('2024-09-30'),
+          revenue: 1000,
+          nIncome: 150,
+          dilutedEps: 0.5,
+          dilutedRoe: 12,
+          yoyNetProfit: 8,
+          yoySales: 10,
+        },
       ])
       const svc = createService(prisma)
 
@@ -190,10 +235,7 @@ describe('StockFinancialService', () => {
 
       it('上一年同期 totalRevenue 为 0 时，totalRevenueYoy 为 null', async () => {
         const prisma = buildPrismaMock()
-        const rows = [
-          makeRow('2024-09-30', { totalRevenue: 500 }),
-          makeRow('2023-09-30', { totalRevenue: 0 }),
-        ]
+        const rows = [makeRow('2024-09-30', { totalRevenue: 500 }), makeRow('2023-09-30', { totalRevenue: 0 })]
         prisma.income.findMany.mockResolvedValue(rows)
         prisma.balanceSheet.findMany.mockResolvedValue([])
         prisma.cashflow.findMany.mockResolvedValue([])
@@ -206,10 +248,7 @@ describe('StockFinancialService', () => {
 
       it('上一年同期 nIncome 为 null 时，nIncomeYoy 为 null', async () => {
         const prisma = buildPrismaMock()
-        const rows = [
-          makeRow('2024-09-30', { nIncome: 150 }),
-          makeRow('2023-09-30', { nIncome: null }),
-        ]
+        const rows = [makeRow('2024-09-30', { nIncome: 150 }), makeRow('2023-09-30', { nIncome: null })]
         prisma.income.findMany.mockResolvedValue(rows)
         prisma.balanceSheet.findMany.mockResolvedValue([])
         prisma.cashflow.findMany.mockResolvedValue([])
@@ -292,10 +331,7 @@ describe('StockFinancialService', () => {
 
       it('freeCashflow 为 0 时，freeCashflowYoy 为 null', async () => {
         const prisma = buildPrismaMock()
-        const rows = [
-          makeRow('2024-09-30', { freeCashflow: 100 }),
-          makeRow('2023-09-30', { freeCashflow: 0 }),
-        ]
+        const rows = [makeRow('2024-09-30', { freeCashflow: 100 }), makeRow('2023-09-30', { freeCashflow: 0 })]
         prisma.income.findMany.mockResolvedValue([])
         prisma.balanceSheet.findMany.mockResolvedValue([])
         prisma.cashflow.findMany.mockResolvedValue(rows)
@@ -336,10 +372,7 @@ describe('StockFinancialService', () => {
       it('2025-01-01 的同比期匹配 2024-01-01（UTC 日期）', async () => {
         const prisma = buildPrismaMock()
         // 这里模拟 2025-01-01T00:00:00Z 的数据
-        const rows = [
-          makeRow('2025-01-01', { totalRevenue: 1100 }),
-          makeRow('2024-01-01', { totalRevenue: 1000 }),
-        ]
+        const rows = [makeRow('2025-01-01', { totalRevenue: 1100 }), makeRow('2024-01-01', { totalRevenue: 1000 })]
         prisma.income.findMany.mockResolvedValue(rows)
         prisma.balanceSheet.findMany.mockResolvedValue([])
         prisma.cashflow.findMany.mockResolvedValue([])
@@ -406,9 +439,7 @@ describe('StockFinancialService', () => {
         floatShare: 800,
         freeShare: 750,
       })
-      prisma.$queryRaw.mockResolvedValue([
-        { tradeDate: new Date('2024-01-01'), totalShare: 1000, floatShare: 800 },
-      ])
+      prisma.$queryRaw.mockResolvedValue([{ tradeDate: new Date('2024-01-01'), totalShare: 1000, floatShare: 800 }])
       const svc = createService(prisma)
 
       const result = await svc.getDetailShareCapital({ tsCode: '000001.SZ' })

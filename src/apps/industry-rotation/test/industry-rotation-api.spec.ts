@@ -290,7 +290,7 @@ describe('Industry-rotation API 测试', () => {
     })
 
     it('IR-BIZ-005: 指定 method=simple', async () => {
-      const res = await req.post('/industry-rotation/momentum-ranking').send({ method: 'simple' }).expect(201)
+      await req.post('/industry-rotation/momentum-ranking').send({ method: 'simple' }).expect(201)
       expect(mockService.getMomentumRanking).toHaveBeenCalledWith(expect.objectContaining({ method: 'simple' }))
     })
 
@@ -341,10 +341,7 @@ describe('Industry-rotation API 测试', () => {
     })
 
     it('IR-BIZ-008: 指定 days+sort_by', async () => {
-      const res = await req
-        .post('/industry-rotation/flow-analysis')
-        .send({ days: 10, sort_by: 'flow_momentum' })
-        .expect(201)
+      await req.post('/industry-rotation/flow-analysis').send({ days: 10, sort_by: 'flow_momentum' }).expect(201)
       expect(mockService.getFlowAnalysis).toHaveBeenCalledWith(
         expect.objectContaining({ days: 10, sort_by: 'flow_momentum' }),
       )
@@ -377,7 +374,7 @@ describe('Industry-rotation API 测试', () => {
     })
 
     it('IR-BIZ-010: 指定 industry 筛选', async () => {
-      const res = await req.post('/industry-rotation/valuation').send({ industry: '银行' }).expect(201)
+      await req.post('/industry-rotation/valuation').send({ industry: '银行' }).expect(201)
       expect(mockService.getIndustryValuation).toHaveBeenCalledWith(expect.objectContaining({ industry: '银行' }))
     })
 
@@ -462,7 +459,7 @@ describe('Industry-rotation API 测试', () => {
     })
 
     it('IR-BIZ-017: 自定义 periods', async () => {
-      const res = await req
+      await req
         .post('/industry-rotation/heatmap')
         .send({ periods: [5, 20] })
         .expect(201)

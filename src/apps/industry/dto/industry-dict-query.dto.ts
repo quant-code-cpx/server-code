@@ -2,6 +2,9 @@ import { ApiPropertyOptional } from '@nestjs/swagger'
 import { IsBoolean, IsIn, IsOptional } from 'class-validator'
 import { Type } from 'class-transformer'
 
+const DEFAULT_SOURCE = 'sw_l1' as const
+const DEFAULT_TARGET = 'dc_industry' as const
+
 export class IndustryDictMappingQueryDto {
   @ApiPropertyOptional({
     description: '源字典：sw_l1（申万一级行业）',
@@ -10,7 +13,7 @@ export class IndustryDictMappingQueryDto {
   })
   @IsOptional()
   @IsIn(['sw_l1'])
-  source?: 'sw_l1' = 'sw_l1'
+  source?: typeof DEFAULT_SOURCE = DEFAULT_SOURCE
 
   @ApiPropertyOptional({
     description: '目标字典：dc_industry（东财行业板块）',
@@ -19,7 +22,7 @@ export class IndustryDictMappingQueryDto {
   })
   @IsOptional()
   @IsIn(['dc_industry'])
-  target?: 'dc_industry' = 'dc_industry'
+  target?: typeof DEFAULT_TARGET = DEFAULT_TARGET
 
   @ApiPropertyOptional({
     description: '是否返回未匹配的申万行业',
